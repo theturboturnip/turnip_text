@@ -1,5 +1,5 @@
 use lexer_rs::{Lexer, LexerOfStr, SimpleParseError, StreamCharPos};
-use turnip_text::tokens::{SimpleToken, SpecialChar};
+use turnip_text::tokens::{Escapable, SimpleToken};
 
 type TextPos = StreamCharPos<usize>;
 type LexToken = SimpleToken<TextPos>;
@@ -9,7 +9,7 @@ type TextStream<'stream> = LexerOfStr<'stream, TextPos, LexToken, LexError>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SimpleTokenType {
     Newline,
-    Escaped(SpecialChar),
+    Escaped(Escapable),
     Backslash,
     CodeOpen { n: usize },
     CodeClose { n: usize },
@@ -22,7 +22,7 @@ impl SimpleTokenType {
     fn from_str_tok(data: &str, t: SimpleToken<StreamCharPos<usize>>) -> Self {
         match t {
             SimpleToken::Newline(_) => Self::Newline,
-            SimpleToken::Escaped(_, char) => Self::Escaped(char),
+            SimpleToken::Escaped(_, escapable) => Self::Escaped(escapable),
             SimpleToken::Backslash(_) => Self::Backslash,
             SimpleToken::CodeOpen { n, .. } => Self::CodeOpen { n },
             SimpleToken::CodeClose { n, .. } => Self::CodeClose { n },
@@ -121,9 +121,9 @@ pub fn test_inline_code_with_escaped_extra_delimiter() {
         vec![
             Other("Number of values in (1,2,3): ".into()),
             CodeOpen { n: 0 },
-            Escaped(SpecialChar::Hash),
+            Escaped(Escapable::Hash),
             Other(" len((1,2,3)) ".into()),
-            Escaped(SpecialChar::Hash),
+            Escaped(Escapable::Hash),
             CodeClose { n: 0 },
         ],
     )
@@ -135,11 +135,11 @@ pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
         r#"Number of values in (1,2,3): \[\# len((1,2,3)) \#\]"#,
         vec![
             Other("Number of values in (1,2,3): ".into()),
-            Escaped(SpecialChar::SqrOpen),
-            Escaped(SpecialChar::Hash),
+            Escaped(Escapable::SqrOpen),
+            Escaped(Escapable::Hash),
             Other(" len((1,2,3)) ".into()),
-            Escaped(SpecialChar::Hash),
-            Escaped(SpecialChar::SqrClose),
+            Escaped(Escapable::Hash),
+            Escaped(Escapable::SqrClose),
         ],
     )
 }
@@ -192,7 +192,7 @@ pub fn test_special_with_escaped_backslash() {
         r#"About to see a backslash! \\[code]"#,
         vec![
             Other("About to see a backslash! ".into()),
-            Escaped(SpecialChar::Backslash),
+            Escaped(Escapable::Backslash),
             CodeOpen { n: 0 },
             Other("code".into()),
             CodeClose { n: 0 },
@@ -206,8 +206,8 @@ pub fn test_escaped_special_with_escaped_backslash() {
         r#"About to see a backslash and square brace! \\\[ that didn't open code!"#,
         vec![
             Other("About to see a backslash and square brace! ".into()),
-            Escaped(SpecialChar::Backslash),
-            Escaped(SpecialChar::SqrOpen),
+            Escaped(Escapable::Backslash),
+            Escaped(Escapable::SqrOpen),
             Other(" that didn't open code!".into()),
         ],
     )
@@ -216,4 +216,32 @@ pub fn test_escaped_special_with_escaped_backslash() {
 #[test]
 pub fn test_escaped_notspecial() {
     expect_tokens(r#"\a"#, vec![Backslash, Other("a".into())])
+}
+
+#[test]
+pub fn test_escaped_cr() {
+    // '\' + '\r'
+    let s: String = ['\\', '\r'].iter().collect::<String>() + "content";
+    expect_tokens(
+        &s,
+        vec![Escaped(Escapable::Newline), Other("content".into())],
+    )
+}
+#[test]
+pub fn test_escaped_lf() {
+    // '\' + '\n'
+    let s: String = ['\\', '\n'].iter().collect::<String>() + "content";
+    expect_tokens(
+        &s,
+        vec![Escaped(Escapable::Newline), Other("content".into())],
+    )
+}
+#[test]
+pub fn test_escaped_crlf() {
+    // '\' + '\r' + '\n'
+    let s: String = ['\\', '\r', '\n'].iter().collect::<String>() + "content";
+    expect_tokens(
+        &s,
+        vec![Escaped(Escapable::Newline), Other("content".into())],
+    )
 }
