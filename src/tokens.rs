@@ -2,13 +2,15 @@ use lexer_rs::PosnInCharStream;
 use lexer_rs::StreamCharSpan;
 use lexer_rs::{CharStream, Lexer, LexerParseResult};
 
-/// Single unicode code points that can define the start of a [SimpleToken]
+/// Sequences that can define the start of a [SimpleToken]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum LexerPrefixChar {
+pub enum LexerPrefixSeq {
     /// `\r`
     CarriageReturn,
     /// `\n`
     LineFeed,
+    /// `\r\n`,
+    CRLF,
     /// `\`
     Backslash,
     /// `[`
@@ -21,25 +23,48 @@ pub enum LexerPrefixChar {
     SqgClose,
     /// `#`
     Hash,
+    /// `r{`
+    RSqgOpen,
 }
-impl LexerPrefixChar {
-    pub fn try_from_char(x: char) -> Option<Self> {
-        use LexerPrefixChar::*;
-        match x {
-            '\r' => Some(CarriageReturn),
-            '\n' => Some(LineFeed),
-            '\\' => Some(Backslash),
-            '[' => Some(SqrOpen),
-            ']' => Some(SqrClose),
-            '{' => Some(SqgOpen),
-            '}' => Some(SqgClose),
-            '#' => Some(Hash),
+impl LexerPrefixSeq {
+    pub fn try_from_char2(ch: char, ch2: Option<char>) -> Option<(Self, usize)> {
+        use LexerPrefixSeq::*;
+        match ch {
+            '\r' => match ch2 {
+                Some('\n') => Some((CRLF, 2)),
+                _ => Some((CarriageReturn, 1)),
+            },
+            '\n' => Some((LineFeed, 1)),
+            '\\' => Some((Backslash, 1)),
+            '[' => Some((SqrOpen, 1)),
+            ']' => Some((SqrClose, 1)),
+            '{' => Some((SqgOpen, 1)),
+            '}' => Some((SqgClose, 1)),
+            '#' => Some((Hash, 1)),
+            'r' => match ch2 {
+                Some('{') => Some((RSqgOpen, 2)),
+                _ => None,
+            },
             _ => None,
         }
+    }
+
+    pub fn try_extract<L, P>(stream: &L, state: L::State) -> Option<(Self, usize)>
+    where
+        P: PosnInCharStream,
+        L: CharStream<P>,
+        L: Lexer<Token = SimpleToken<P>, State = P>,
+    {
+        Self::try_from_char2(
+            stream.peek_at(&state)?,
+            stream.peek_at(&stream.consumed(state, 1)),
+        )
     }
 }
 
 /// Characters/sequences that usually have special meaning in the lexer and can be backslash-escaped
+///
+/// [LexerPrefixSeq::RSqgOpen] is *not* included, because that is part of a raw scope open 'r{" which is escaped by escaping the '{' not the 'r'.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Escapable {
     /// `\r`, `\r\n`, `\n`
@@ -107,25 +132,21 @@ where
     ///
     /// TODO - A LaTeX-output backend could choose to disallow plain backslashes, as they would interact with LaTeX in potentially unexpected ways.
     Backslash(P),
-    /// `[` character not preceded by a backslash, plus N # characters
+    /// `[` character not preceded by a backslash
+    CodeOpen(P),
+    /// `]` character not preceded by a backslash
+    CodeClose(P),
+    /// `{` character not preceded by a backslash
+    ScopeOpen(P),
+    /// `r{` sequence plus N # characters
     ///
-    /// Regex (sans backslash handling): `\[#*`
-    CodeOpen { pos: StreamCharSpan<P>, n: usize },
-    /// `]` character not preceded by a backslash, plus N # characters
-    ///
-    /// Regex (sans backslash handling): `#*\]`
-    CodeClose { pos: StreamCharSpan<P>, n: usize },
-    /// `{` character not preceded by a backslash, plus N # characters
-    ///
-    /// Regex (sans backslash handling): `\{#*`
-    ScopeOpen { pos: StreamCharSpan<P>, n: usize },
-    /// `}` character not preceded by a backslash, plus N # characters
-    ///
-    /// Regex (sans backslash handling): `#*\}`
-    ScopeClose { pos: StreamCharSpan<P>, n: usize },
-    /// String of N `#` characters not preceded by a backslash that is not a participant in [CodeOpen], [CodeClose], [ScopeOpen], [ScopeClose]
+    /// Escaped by escaping the SqgOpen - `r\{`
+    RawScopeOpen(StreamCharSpan<P>),
+    /// `}` character not preceded by a backslash
+    ScopeClose(P),
+    /// String of N `#` characters not preceded by a backslash
     Hashes(StreamCharSpan<P>, usize),
-    /// Span of characters not included in [SpecialChar]
+    /// Span of characters not included in [LexerPrefixSeq]
     Other(StreamCharSpan<P>),
     // TODO
     // /// `%` character not preceded by a backslash
@@ -144,143 +165,98 @@ where
         L: CharStream<P>,
         L: Lexer<Token = Self, State = P>,
     {
-        match LexerPrefixChar::try_from_char(ch) {
-            // Backslash => check if the following character is special, in which case Escaped(), else Backslash()
-            Some(LexerPrefixChar::Backslash) => {
-                let state_of_escapee = stream.consumed(state, 1);
-                match Escapable::try_extract(stream, state_of_escapee) {
-                    Some((escapable, n_chars)) => {
-                        // Consume the initial backslash + the number of characters in the escaped sequence
-                        let end = stream.consumed(state, n_chars + 1);
-                        let span = StreamCharSpan::new(state, end);
-                        Ok(Some((end, Self::Escaped(span, escapable))))
-                    }
-                    None => Ok(Some((stream.consumed(state, 1), Self::Backslash(state)))),
-                }
-            }
-            // Carriage return => check if the following character is line feed, if so Newline() of \r\n, else Newline() of \r
-            Some(LexerPrefixChar::CarriageReturn) => {
-                match stream.peek_at(&stream.consumed(state, 1)) {
-                    Some('\n') => {
-                        let end = stream.consumed(state, 2);
-                        let span = StreamCharSpan::new(state, end);
-                        Ok(Some((end, Self::Newline(span))))
-                    }
-                    _ => {
-                        let end = stream.consumed(state, 1);
-                        let span = StreamCharSpan::new(state, end);
-                        Ok(Some((end, Self::Newline(span))))
+        if let Some((seq, n_chars_in_seq)) = LexerPrefixSeq::try_extract(stream, state) {
+            let start = state;
+            let state_after_seq = stream.consumed(state, n_chars_in_seq);
+            let seq_span = StreamCharSpan::new(start, state_after_seq);
+            match seq {
+                // Backslash => check if the following character is special, in which case Escaped(), else Backslash()
+                LexerPrefixSeq::Backslash => {
+                    match Escapable::try_extract(stream, state_after_seq) {
+                        Some((escapable, n_chars)) => {
+                            // Consume the initial backslash + the number of characters in the escaped sequence
+                            let end = stream.consumed(state, n_chars + 1);
+                            let span = StreamCharSpan::new(start, end);
+                            Ok(Some((end, Self::Escaped(span, escapable))))
+                        }
+                        None => Ok(Some((state_after_seq, Self::Backslash(state)))),
                     }
                 }
-            }
-            // Line feed (not participating in an \r\n) => Newline() of \n
-            Some(LexerPrefixChar::LineFeed) => {
-                let end = stream.consumed(state, 1);
-                let span = StreamCharSpan::new(state, end);
-                Ok(Some((end, Self::Newline(span))))
-            }
-            // SqrOpen => CodeOpen(), optionally consume Hash characters afterward
-            Some(LexerPrefixChar::SqrOpen) => {
-                match stream.do_while(state, ch, &|n, ch| n == 0 || ch == '#') {
-                    (state, Some((start, n))) => {
-                        let span = StreamCharSpan::new(start, state);
-                        Ok(Some((
-                            state,
-                            Self::CodeOpen {
-                                pos: span,
-                                n: n - 1,
-                            },
-                        )))
-                    }
-                    (_, None) => unreachable!(),
+                // CRLF | Carriage return (not participating in CRLF) | Line feed (not participating in CRLF) => Newline()
+                LexerPrefixSeq::CRLF
+                | LexerPrefixSeq::CarriageReturn
+                | LexerPrefixSeq::LineFeed => Ok(Some((state_after_seq, Self::Newline(seq_span)))),
+                // SqrOpen => CodeOpen()
+                LexerPrefixSeq::SqrOpen => Ok(Some((state_after_seq, Self::CodeOpen(state)))),
+                // SqrOpen => ScopeOpen()
+                LexerPrefixSeq::SqgOpen => Ok(Some((state_after_seq, Self::ScopeOpen(state)))),
+                // 'r{' => RawScopeOpen()
+                LexerPrefixSeq::RSqgOpen => {
+                    Ok(Some((state_after_seq, Self::RawScopeOpen(seq_span))))
                 }
-            }
-            // SqrOpen => ScopeOpen(), optionally consume Hash characters afterward
-            Some(LexerPrefixChar::SqgOpen) => {
-                match stream.do_while(state, ch, &|n, ch| n == 0 || ch == '#') {
-                    (state, Some((start, n))) => {
-                        let span = StreamCharSpan::new(start, state);
-                        Ok(Some((
-                            state,
-                            Self::ScopeOpen {
-                                pos: span,
-                                n: n - 1,
-                            },
-                        )))
-                    }
-                    (_, None) => unreachable!(),
-                }
-            }
-            // Hash => CodeClose() if followed by hashes then ], ScopeClose if followed by hashes then }, else Hash
-            Some(LexerPrefixChar::Hash) => {
-                // Run will have at least one hash, because it's starting with this character.
-                let (hash_run_end_pos, hash_run_end_result) =
-                    stream.do_while(state, ch, &|_, ch| ch == '#');
-                let (_, hash_run_n) = hash_run_end_result.unwrap();
+                // SqrClose => CodeClose
+                LexerPrefixSeq::SqrClose => Ok(Some((state_after_seq, Self::CodeClose(state)))),
+                // SqgClose => ScopeClose
+                LexerPrefixSeq::SqgClose => Ok(Some((state_after_seq, Self::ScopeClose(state)))),
+                // Hash => Hashes
+                LexerPrefixSeq::Hash => {
+                    // Run will have at least one hash, because it's starting with this character.
+                    let (hash_run_end_pos, hash_run_end_result) =
+                        stream.do_while(state, ch, &|_, ch| ch == '#');
+                    let (_, hash_run_n) = hash_run_end_result.unwrap();
 
-                match stream.peek_at(&hash_run_end_pos) {
-                    Some(']') => {
-                        // Consume the extra ] character
-                        let end = stream.consumed(hash_run_end_pos, 1);
-                        let span = StreamCharSpan::new(state, end);
-                        Ok(Some((
-                            end,
-                            Self::CodeClose {
-                                pos: span,
-                                n: hash_run_n,
-                            },
-                        )))
-                    }
-                    Some('}') => {
-                        // Consume the extra } character
-                        let end = stream.consumed(hash_run_end_pos, 1);
-                        let span = StreamCharSpan::new(state, end);
-                        Ok(Some((
-                            end,
-                            Self::ScopeClose {
-                                pos: span,
-                                n: hash_run_n,
-                            },
-                        )))
-                    }
-                    _ => {
-                        let span = StreamCharSpan::new(state, hash_run_end_pos);
-                        Ok(Some((hash_run_end_pos, Self::Hashes(span, hash_run_n))))
-                    }
+                    let span = StreamCharSpan::new(start, hash_run_end_pos);
+                    Ok(Some((hash_run_end_pos, Self::Hashes(span, hash_run_n))))
                 }
             }
-            // SqrClose when not participating in a Hash string => CodeClose
-            Some(LexerPrefixChar::SqrClose) => {
-                let end = stream.consumed(state, 1);
-                let span = StreamCharSpan::new(state, end);
-                Ok(Some((end, Self::CodeClose { pos: span, n: 0 })))
-            }
-            // SqgClose when not participating in a Hash string => ScopeClose
-            Some(LexerPrefixChar::SqgClose) => {
-                let end = stream.consumed(state, 1);
-                let span = StreamCharSpan::new(state, end);
-                Ok(Some((end, Self::ScopeClose { pos: span, n: 0 })))
-            }
-            None => Ok(None),
+        } else {
+            Ok(None)
         }
     }
     pub fn parse_other<L>(
         stream: &L,
-        state: L::State,
-        ch: char,
+        start: L::State,
+        start_ch: char,
     ) -> LexerParseResult<P, Self, L::Error>
     where
         L: CharStream<P>,
         L: Lexer<Token = Self, State = P>,
     {
-        match stream.do_while(state, ch, &|_, ch| {
-            LexerPrefixChar::try_from_char(ch).is_none()
-        }) {
-            (state, Some((start, _n))) => {
-                let span = StreamCharSpan::new(start, state);
-                Ok(Some((state, Self::Other(span))))
+        // This function moves an `end` stream-state forward until it reaches
+        // 1) the end of the stream
+        // 2) the start of a two-character sequence matched by LexerPrefixSeq
+        //
+        // This is then used to either construct Some(Other(StreamCharSpan(start, end))), or None if start == end.
+        // I *believe* StreamCharSpan(start, end) is [inclusive, exclusive).
+        let mut end = start;
+        let mut end_ch = start_ch;
+        loop {
+            // Peek at the next character/stream state
+            let next = stream.consumed(end, 1);
+            let next_ch = stream.peek_at(&next);
+
+            // See if (end_ch, next_ch) is a prefix sequence
+            if LexerPrefixSeq::try_from_char2(end_ch, next_ch).is_some() {
+                // if so, break so we can construct a stream for [start_ch, end_ch)
+                break;
             }
-            (_, None) => Ok(None),
+
+            // Move forward by one character
+            // If next_ch == None, this means 'end' points to the end of the stream.
+            // We check for this and break immediately after this, but it's important that 'end' points to the stream end when we break
+            // Otherwise we will miss a character off the end
+            end = next;
+            // See if we've hit the end of the stream
+            match next_ch {
+                Some(ch2) => end_ch = ch2,
+                None => break, // End of stream => break
+            }
+        }
+        if start == end {
+            Ok(None)
+        } else {
+            let span = StreamCharSpan::new(start, end);
+            Ok(Some((end, Self::Other(span))))
         }
     }
 }

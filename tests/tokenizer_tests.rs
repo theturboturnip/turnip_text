@@ -11,10 +11,11 @@ pub enum SimpleTokenType {
     Newline,
     Escaped(Escapable),
     Backslash,
-    CodeOpen { n: usize },
-    CodeClose { n: usize },
-    ScopeOpen { n: usize },
-    ScopeClose { n: usize },
+    CodeOpen,
+    CodeClose,
+    ScopeOpen,
+    RawScopeOpen,
+    ScopeClose,
     Hashes(usize),
     Other(String),
 }
@@ -24,10 +25,11 @@ impl SimpleTokenType {
             SimpleToken::Newline(_) => Self::Newline,
             SimpleToken::Escaped(_, escapable) => Self::Escaped(escapable),
             SimpleToken::Backslash(_) => Self::Backslash,
-            SimpleToken::CodeOpen { n, .. } => Self::CodeOpen { n },
-            SimpleToken::CodeClose { n, .. } => Self::CodeClose { n },
-            SimpleToken::ScopeOpen { n, .. } => Self::ScopeOpen { n },
-            SimpleToken::ScopeClose { n, .. } => Self::ScopeClose { n },
+            SimpleToken::CodeOpen(_) => Self::CodeOpen,
+            SimpleToken::CodeClose(_) => Self::CodeClose,
+            SimpleToken::ScopeOpen(_) => Self::ScopeOpen,
+            SimpleToken::RawScopeOpen(_) => Self::RawScopeOpen,
+            SimpleToken::ScopeClose(_) => Self::ScopeClose,
             SimpleToken::Hashes(_, n) => Self::Hashes(n),
             SimpleToken::Other(span) => {
                 Self::Other(data[span.start().pos()..span.end().pos()].into())
@@ -50,6 +52,7 @@ pub fn lex_test_string(data: &str) -> Vec<SimpleTokenType> {
 }
 
 pub fn expect_tokens(data: &str, tokens: Vec<SimpleTokenType>) {
+    println!("{:?}", data);
     assert_eq!(lex_test_string(data), tokens);
 }
 
@@ -81,9 +84,9 @@ pub fn test_inline_code() {
         r#"Number of values in (1,2,3): [len((1,2,3))]"#,
         vec![
             Other("Number of values in (1,2,3): ".into()),
-            CodeOpen { n: 0 },
+            CodeOpen,
             Other("len((1,2,3))".into()),
-            CodeClose { n: 0 },
+            CodeClose,
         ],
     )
 }
@@ -94,9 +97,11 @@ pub fn test_inline_code_with_extra_delimiter() {
         r#"Number of values in (1,2,3): [# len((1,2,3)) #]"#,
         vec![
             Other("Number of values in (1,2,3): ".into()),
-            CodeOpen { n: 1 },
+            CodeOpen,
+            Hashes(1),
             Other(" len((1,2,3)) ".into()),
-            CodeClose { n: 1 },
+            Hashes(1),
+            CodeClose,
         ],
     )
 }
@@ -107,9 +112,11 @@ pub fn test_inline_code_with_long_extra_delimiter() {
         r#"Number of values in (1,2,3): [#### len((1,2,3)) ####]"#,
         vec![
             Other("Number of values in (1,2,3): ".into()),
-            CodeOpen { n: 4 },
+            CodeOpen,
+            Hashes(4),
             Other(" len((1,2,3)) ".into()),
-            CodeClose { n: 4 },
+            Hashes(4),
+            CodeClose,
         ],
     )
 }
@@ -120,11 +127,11 @@ pub fn test_inline_code_with_escaped_extra_delimiter() {
         r#"Number of values in (1,2,3): [\# len((1,2,3)) \#]"#,
         vec![
             Other("Number of values in (1,2,3): ".into()),
-            CodeOpen { n: 0 },
+            CodeOpen,
             Escaped(Escapable::Hash),
             Other(" len((1,2,3)) ".into()),
             Escaped(Escapable::Hash),
-            CodeClose { n: 0 },
+            CodeClose,
         ],
     )
 }
@@ -150,13 +157,15 @@ pub fn test_inline_list_with_extra_delimiter() {
         r#"Number of values in (1,2,3): [# len([1,2,3]) #]"#,
         vec![
             Other("Number of values in (1,2,3): ".into()),
-            CodeOpen { n: 1 },
+            CodeOpen,
+            Hashes(1),
             Other(" len(".into()),
-            CodeOpen { n: 0 },
+            CodeOpen,
             Other("1,2,3".into()),
-            CodeClose { n: 0 },
+            CodeClose,
             Other(") ".into()),
-            CodeClose { n: 1 },
+            Hashes(1),
+            CodeClose,
         ],
     )
 }
@@ -167,10 +176,57 @@ pub fn test_inline_scope() {
         r#"Outside the scope {inside the scope}"#,
         vec![
             Other("Outside the scope ".into()),
-            ScopeOpen { n: 0 },
+            ScopeOpen,
             Other("inside the scope".into()),
-            ScopeClose { n: 0 },
+            ScopeClose,
         ],
+    )
+}
+
+#[test]
+pub fn test_inline_escaped_scope() {
+    expect_tokens(
+        r#"Outside the scope \{not inside a scope\}"#,
+        vec![
+            Other("Outside the scope ".into()),
+            Escaped(Escapable::SqgOpen),
+            Other("not inside a scope".into()),
+            Escaped(Escapable::SqgClose),
+        ],
+    )
+}
+
+#[test]
+pub fn test_inline_raw_scope() {
+    expect_tokens(
+        r#"Outside the scope r{inside the raw scope}"#,
+        vec![
+            Other("Outside the scope ".into()),
+            RawScopeOpen,
+            Other("inside the raw scope".into()),
+            ScopeClose,
+        ],
+    )
+}
+
+#[test]
+pub fn test_inline_raw_escaped_scope() {
+    expect_tokens(
+        r#"Outside the scope r\{not inside a scope\}"#,
+        vec![
+            Other("Outside the scope r".into()),
+            Escaped(Escapable::SqgOpen),
+            Other("not inside a scope".into()),
+            Escaped(Escapable::SqgClose),
+        ],
+    )
+}
+
+#[test]
+pub fn test_r_without_starting_raw_scope() {
+    expect_tokens(
+        r#" r doesn't always start a scope "#,
+        vec![Other(" r doesn't always start a scope ".into())],
     )
 }
 
@@ -193,9 +249,9 @@ pub fn test_special_with_escaped_backslash() {
         vec![
             Other("About to see a backslash! ".into()),
             Escaped(Escapable::Backslash),
-            CodeOpen { n: 0 },
+            CodeOpen,
             Other("code".into()),
-            CodeClose { n: 0 },
+            CodeClose,
         ],
     )
 }
@@ -210,6 +266,22 @@ pub fn test_escaped_special_with_escaped_backslash() {
             Escaped(Escapable::SqrOpen),
             Other(" that didn't open code!".into()),
         ],
+    )
+}
+
+#[test]
+pub fn test_uneven_code() {
+    expect_tokens(
+        r#"code with no open]"#,
+        vec![Other("code with no open".into()), CodeClose],
+    )
+}
+
+#[test]
+pub fn test_uneven_scope() {
+    expect_tokens(
+        r#"scope with no open}"#,
+        vec![Other("scope with no open".into()), ScopeClose],
     )
 }
 
@@ -244,4 +316,23 @@ pub fn test_escaped_crlf() {
         &s,
         vec![Escaped(Escapable::Newline), Other("content".into())],
     )
+}
+
+#[test]
+pub fn test_cr() {
+    // '\r'
+    let s: String = ['\r'].iter().collect::<String>() + "content";
+    expect_tokens(&s, vec![Newline, Other("content".into())])
+}
+#[test]
+pub fn test_lf() {
+    // '\n'
+    let s: String = ['\n'].iter().collect::<String>() + "content";
+    expect_tokens(&s, vec![Newline, Other("content".into())])
+}
+#[test]
+pub fn test_crlf() {
+    // '\r' + '\n'
+    let s: String = ['\r', '\n'].iter().collect::<String>() + "content";
+    expect_tokens(&s, vec![Newline, Other("content".into())])
 }
