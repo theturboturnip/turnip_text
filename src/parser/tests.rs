@@ -1,5 +1,5 @@
+use super::lexer::{Escapable, SimpleToken};
 use lexer_rs::{Lexer, LexerOfStr, SimpleParseError, StreamCharPos};
-use turnip_text::tokens::{Escapable, SimpleToken};
 
 type TextPos = StreamCharPos<usize>;
 type LexToken = SimpleToken<TextPos>;
