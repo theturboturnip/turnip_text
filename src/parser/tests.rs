@@ -31,7 +31,7 @@ impl SimpleTokenType {
             SimpleToken::RawScopeOpen(_, n) => Self::RawScopeOpen(n),
             SimpleToken::ScopeClose(_, n) => Self::ScopeClose(n),
             SimpleToken::Hashes(_, n) => Self::Hashes(n),
-            SimpleToken::Other(span) => {
+            SimpleToken::OtherText(span) => {
                 Self::Other(data[span.start().pos()..span.end().pos()].into())
             }
         }

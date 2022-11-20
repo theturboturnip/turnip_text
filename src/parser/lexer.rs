@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use lexer_rs::PosnInCharStream;
 use lexer_rs::StreamCharSpan;
 use lexer_rs::{CharStream, Lexer, LexerParseResult};
@@ -51,16 +49,13 @@ impl LexerPrefixSeq {
         }
     }
 
-    pub fn try_extract<L, P>(stream: &L, state: L::State) -> Option<(Self, usize)>
+    pub fn try_extract<L, P>(stream: &L, state: L::State, ch: char) -> Option<(Self, usize)>
     where
         P: PosnInCharStream,
         L: CharStream<P>,
         L: Lexer<Token = SimpleToken<P>, State = P>,
     {
-        Self::try_from_char2(
-            stream.peek_at(&state)?,
-            stream.peek_at(&stream.consumed(state, 1)),
-        )
+        Self::try_from_char2(ch, stream.peek_at(&stream.consumed(state, 1)))
     }
 }
 
@@ -107,6 +102,17 @@ impl Escapable {
             _ => None,
         }
     }
+    pub fn stringify(self) -> &'static str {
+        match self {
+            Escapable::Newline => "\n",
+            Escapable::Backslash => "\\",
+            Escapable::SqrOpen => "[",
+            Escapable::SqrClose => "]",
+            Escapable::SqgOpen => "{",
+            Escapable::SqgClose => "}",
+            Escapable::Hash => "#",
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -149,7 +155,7 @@ where
     /// String of N `#` characters not preceded by a backslash
     Hashes(StreamCharSpan<P>, usize),
     /// Span of characters not included in [LexerPrefixSeq]
-    Other(StreamCharSpan<P>),
+    OtherText(StreamCharSpan<P>),
     // TODO
     // /// `%` character not preceded by a backslash
     // Percent(P),
@@ -165,10 +171,7 @@ where
     {
         if let Some(ch) = stream.peek_at(&state) {
             match stream.do_while(state, ch, &|_, ch| ch == '#') {
-                (end, Some((start, n))) => {
-                    let span = StreamCharSpan::new(start, end);
-                    Ok(Some((end, n)))
-                }
+                (end, Some((_, n))) => Ok(Some((end, n))),
                 _ => Ok(None),
             }
         } else {
@@ -184,7 +187,7 @@ where
         L: CharStream<P>,
         L: Lexer<Token = Self, State = P>,
     {
-        if let Some((seq, n_chars_in_seq)) = LexerPrefixSeq::try_extract(stream, state) {
+        if let Some((seq, n_chars_in_seq)) = LexerPrefixSeq::try_extract(stream, state, ch) {
             let start = state;
             let state_after_seq = stream.consumed(state, n_chars_in_seq);
             let seq_span = StreamCharSpan::new(start, state_after_seq);
@@ -201,7 +204,7 @@ where
                         None => Ok(Some((state_after_seq, Self::Backslash(state)))),
                     }
                 }
-                // CRLF | Carriage return (not participating in CRLF) | Line feed (not participating in CRLF) => Newline()
+                // CRLF or (CR outside CRLF) or (LF outside CRLF) => Newline()
                 LexerPrefixSeq::CRLF
                 | LexerPrefixSeq::CarriageReturn
                 | LexerPrefixSeq::LineFeed => Ok(Some((state_after_seq, Self::Newline(seq_span)))),
@@ -214,7 +217,7 @@ where
                     let span = StreamCharSpan::new(start, end);
                     Ok(Some((end, Self::CodeOpen(span, n))))
                 }
-                // SqrOpen => ScopeOpen()
+                // SqrOpen => ScopeOpen(), optionally grab hashes
                 LexerPrefixSeq::SqgOpen => {
                     let (end, n) = match Self::parse_hashes(stream, state_after_seq)? {
                         Some((end, n)) => (end, n),
@@ -223,7 +226,7 @@ where
                     let span = StreamCharSpan::new(start, end);
                     Ok(Some((end, Self::ScopeOpen(span, n))))
                 }
-                // 'r{' => RawScopeOpen()
+                // 'r{' => RawScopeOpen(), optionally grab hashes
                 LexerPrefixSeq::RSqgOpen => {
                     let (end, n) = match Self::parse_hashes(stream, state_after_seq)? {
                         Some((end, n)) => (end, n),
@@ -240,16 +243,19 @@ where
                 LexerPrefixSeq::SqgClose => {
                     Ok(Some((state_after_seq, Self::ScopeClose(seq_span, 0))))
                 }
-                // Hash => Hashes
+                // Hash => Hashes or CodeClose or ScopeClose
                 LexerPrefixSeq::Hash => {
                     // Run will have at least one hash, because it's starting with this character.
                     match Self::parse_hashes(stream, state)? {
+                        // Check the character after the hashes
                         Some((hash_end, n)) => match stream.peek_at(&hash_end) {
+                            // String of hashes ending in ']' = CodeClose
                             Some(']') => {
                                 let end = stream.consumed(hash_end, 1);
                                 let span = StreamCharSpan::new(start, end);
                                 Ok(Some((end, Self::CodeClose(span, n))))
                             }
+                            // String of hashes ending in '}' = ScopeClose
                             Some('}') => {
                                 let end = stream.consumed(hash_end, 1);
                                 let span = StreamCharSpan::new(start, end);
@@ -311,13 +317,11 @@ where
             Ok(None)
         } else {
             let span = StreamCharSpan::new(start, end);
-            Ok(Some((end, Self::Other(span))))
+            Ok(Some((end, Self::OtherText(span))))
         }
     }
 
-    pub fn byte_range(&self) -> Range<usize> {
-        // TODO right now all of the special characters are single-byte ASCII so we can return p.byte_ofs()+1,
-        // but that's kind of a hack. Really all SimpleTokens should have spans
+    pub fn stringify<'a>(&self, data: &'a str) -> &'a str {
         use SimpleToken::*;
         match self {
             Newline(span)
@@ -328,12 +332,8 @@ where
             | ScopeOpen(span, _)
             | ScopeClose(span, _)
             | Hashes(span, _)
-            | Other(span) => span.byte_range(),
-            Backslash(p) => p.byte_ofs()..p.byte_ofs() + 1,
+            | OtherText(span) => &data[span.byte_range()],
+            Backslash(_) => "\\",
         }
-    }
-
-    pub fn stringify<'a>(&self, data: &'a str) -> &'a str {
-        &data[self.byte_range()]
     }
 }
