@@ -2,8 +2,8 @@ use crate::parser::parse_simple_tokens;
 
 use crate::{
     lexer::{Escapable, LexError, LexPosn, LexToken, SimpleToken},
-    parser::ParserSpan,
-    ParseError, Token,
+    parser::{ParseError, ParserSpan},
+    Token,
 };
 use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
 

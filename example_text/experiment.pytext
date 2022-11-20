@@ -1,0 +1,13 @@
+[title]{Experimental new Python-based text engine}
+[author]{Samuel Stark}
+
+[abstract]{
+    LaTeX is great at typesetting text, but the macro-based approach is showing age and is horrible for writing anything more complicated than text substitution.
+    It also likes to mix content with formatting - even the location in source code that figures are created affects the final typesetting output.
+    This is my attempt to improve on both of those issues:
+    [list # crap, that's a builtin!]{
+        [item]{Instead of designing a new macro-based language, embed a Python interpreter and generate text using Python code.}
+        [item]{Use different Python libraries to output to different formats (Markdown, XeLaTeX, Pandoc?)}
+        [item]{Use [quote]{overlay files} to separate formatting decisions (page breaks, figure placement) from content}
+    }
+}

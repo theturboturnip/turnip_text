@@ -1,6 +1,7 @@
 use crate::lexer::{LexPosn, SimpleToken};
 use crate::Token;
 use lexer_rs::{PosnInCharStream, StreamCharSpan, UserPosn};
+use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParserPosn {
@@ -24,29 +25,30 @@ pub struct ParserSpan {
     pub end: ParserPosn,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ParseError {
+    #[error("Newline encountered in code block")]
     NewlineInCode {
         code_start: ParserSpan,
         newline: ParserSpan,
     },
+    #[error("Code close encountered in text mode")]
     CodeCloseInText(ParserSpan),
+    #[error("Scope close encountered with no matching scope open")]
     ScopeCloseOutsideScope(ParserSpan),
+    #[error("Scope close with {n_hashes} hashes encountered when closest scope open has {expected_closing_hashes}")]
     MismatchingScopeClose {
         n_hashes: usize,
         expected_closing_hashes: usize,
         scope_open_span: ParserSpan,
         scope_close_span: ParserSpan,
     },
-    EndedInsideCode {
-        code_start: ParserSpan,
-    },
-    EndedInsideRawScope {
-        raw_scope_start: ParserSpan,
-    },
-    EndedInsideScope {
-        scope_start: ParserSpan,
-    },
+    #[error("File ended inside code block")]
+    EndedInsideCode { code_start: ParserSpan },
+    #[error("File ended inside raw scope")]
+    EndedInsideRawScope { raw_scope_start: ParserSpan },
+    #[error("File ended inside scope")]
+    EndedInsideScope { scope_start: ParserSpan },
 }
 
 /// Parses a stream of [SimpleToken] into a vector of [Token].

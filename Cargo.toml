@@ -7,6 +7,10 @@ edition = "2021"
 
 [dependencies]
 lexer-rs = "0.0.2"
+annotate-snippets = "0.9.1"
+anyhow = "1.0.66"
+thiserror = "1.0.37"
+argh = "0.1.9"
 
 [dependencies.pyo3]
 version = "0.17.3"

@@ -1,8 +1,6 @@
+pub mod cli;
 mod lexer;
 mod parser;
-
-pub use parser::parse_simple_tokens;
-pub use parser::ParseError;
 
 #[cfg(test)]
 mod tests;
