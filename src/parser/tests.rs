@@ -9,8 +9,9 @@ use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
 
 type TextStream<'stream> = LexerOfStr<'stream, LexPosn, LexToken, LexError>;
 
+/// A type mimicking [SimpleToken] for test purposes
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SimpleTokenType<'a> {
+pub enum TestSimpleToken<'a> {
     Newline,
     Escaped(Escapable),
     Backslash,
@@ -22,7 +23,7 @@ pub enum SimpleTokenType<'a> {
     Hashes(usize),
     OtherText(&'a str),
 }
-impl<'a> SimpleTokenType<'a> {
+impl<'a> TestSimpleToken<'a> {
     fn from_str_tok(data: &'a str, t: LexToken) -> Self {
         match t {
             SimpleToken::Newline(_) => Self::Newline,
@@ -41,6 +42,7 @@ impl<'a> SimpleTokenType<'a> {
     }
 }
 
+/// A type mimicking [ParserSpan] for test purposes
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TestParserSpan {
     start: (usize, usize),
@@ -55,8 +57,9 @@ impl From<ParserSpan> for TestParserSpan {
     }
 }
 
+/// A type mimicking [ParseError] for test purposes
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum ParseErrorType {
+enum TestParseError {
     NewlineInCode {
         code_start: TestParserSpan,
         newline: TestParserSpan,
@@ -79,7 +82,10 @@ enum ParseErrorType {
         scope_start: TestParserSpan,
     },
 }
-impl ParseErrorType {
+impl TestParseError {
+    /// Convert [ParseError] to [TestParseError]
+    ///
+    /// This is a lossy transformation, ignoring byte offsets in spans, but is good enough for testing
     fn from_parse_error(p: ParseError) -> Self {
         match p {
             ParseError::NewlineInCode {
@@ -117,8 +123,8 @@ impl ParseErrorType {
 
 fn expect_tokens<'a>(
     data: &str,
-    expected_stok_types: Vec<SimpleTokenType<'a>>,
-    expected_parse: Result<Vec<Token>, ParseErrorType>,
+    expected_stok_types: Vec<TestSimpleToken<'a>>,
+    expected_parse: Result<Vec<Token>, TestParseError>,
 ) {
     println!("{:?}", data);
 
@@ -131,9 +137,9 @@ fn expect_tokens<'a>(
         ])
         .scan((), |_, x| x.ok())
         .collect();
-    let stok_types: Vec<SimpleTokenType> = stoks
+    let stok_types: Vec<TestSimpleToken> = stoks
         .iter()
-        .map(|stok| SimpleTokenType::from_str_tok(data, *stok))
+        .map(|stok| TestSimpleToken::from_str_tok(data, *stok))
         .collect();
 
     assert_eq!(stok_types, expected_stok_types);
@@ -141,12 +147,12 @@ fn expect_tokens<'a>(
     // Second step: parse
     assert_eq!(
         parse_simple_tokens(data, Box::new(stoks.into_iter()))
-            .map_err(ParseErrorType::from_parse_error),
+            .map_err(TestParseError::from_parse_error),
         expected_parse
     );
 }
 
-use SimpleTokenType::*;
+use TestSimpleToken::*;
 #[test]
 pub fn test_basic_text() {
     expect_tokens(
@@ -417,7 +423,7 @@ pub fn test_uneven_code() {
     expect_tokens(
         r#"code with no open]"#,
         vec![OtherText("code with no open"), CodeClose(0)],
-        Err(ParseErrorType::CodeCloseInText(TestParserSpan {
+        Err(TestParseError::CodeCloseInText(TestParserSpan {
             start: (1, 18),
             end: (1, 19),
         })),
@@ -429,7 +435,7 @@ pub fn test_uneven_scope() {
     expect_tokens(
         r#"scope with no open}"#,
         vec![OtherText("scope with no open"), ScopeClose(0)],
-        Err(ParseErrorType::ScopeCloseOutsideScope(TestParserSpan {
+        Err(TestParseError::ScopeCloseOutsideScope(TestParserSpan {
             start: (1, 19),
             end: (1, 20),
         })),
@@ -518,7 +524,7 @@ pub fn test_newline_in_code() {
             OtherText("code.do_something_else()"),
             CodeClose(0),
         ],
-        Err(ParseErrorType::NewlineInCode {
+        Err(TestParseError::NewlineInCode {
             code_start: TestParserSpan {
                 start: (1, 1),
                 end: (1, 2),
@@ -539,7 +545,7 @@ pub fn test_code_close_in_text() {
             CodeClose(0),
             OtherText(" but closed code"),
         ],
-        Err(ParseErrorType::CodeCloseInText(TestParserSpan {
+        Err(TestParseError::CodeCloseInText(TestParserSpan {
             start: (1, 10),
             end: (1, 11),
         })),
@@ -554,7 +560,7 @@ pub fn test_scope_close_outside_scope() {
             ScopeClose(0),
             OtherText(" but closed scope"),
         ],
-        Err(ParseErrorType::ScopeCloseOutsideScope(TestParserSpan {
+        Err(TestParseError::ScopeCloseOutsideScope(TestParserSpan {
             start: (1, 16),
             end: (1, 17),
         })),
@@ -569,7 +575,7 @@ pub fn test_mismatching_scope_close() {
             OtherText(" text in a scope with a "),
             ScopeClose(1),
         ],
-        Err(ParseErrorType::MismatchingScopeClose {
+        Err(TestParseError::MismatchingScopeClose {
             n_hashes: 1,
             expected_closing_hashes: 2,
             scope_open_span: TestParserSpan {
@@ -588,7 +594,7 @@ pub fn test_ended_inside_code() {
     expect_tokens(
         "text [code",
         vec![OtherText("text "), CodeOpen(0), OtherText("code")],
-        Err(ParseErrorType::EndedInsideCode {
+        Err(TestParseError::EndedInsideCode {
             code_start: TestParserSpan {
                 start: (1, 6),
                 end: (1, 7),
@@ -601,7 +607,7 @@ pub fn test_ended_inside_raw_scope() {
     expect_tokens(
         "text r{#raw",
         vec![OtherText("text "), RawScopeOpen(1), OtherText("raw")],
-        Err(ParseErrorType::EndedInsideRawScope {
+        Err(TestParseError::EndedInsideRawScope {
             raw_scope_start: TestParserSpan {
                 start: (1, 6),
                 end: (1, 9),
@@ -614,7 +620,7 @@ pub fn test_ended_inside_scope() {
     expect_tokens(
         "text {##scope",
         vec![OtherText("text "), ScopeOpen(2), OtherText("scope")],
-        Err(ParseErrorType::EndedInsideScope {
+        Err(TestParseError::EndedInsideScope {
             scope_start: TestParserSpan {
                 start: (1, 6),
                 end: (1, 9),
