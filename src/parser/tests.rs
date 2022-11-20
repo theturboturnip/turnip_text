@@ -2,14 +2,64 @@ use crate::parser::parse_simple_tokens;
 
 use super::{
     lexer::{Escapable, SimpleToken},
+    parser::{ParserPosn, ParserSpan},
     ParseError, Token,
 };
-use lexer_rs::{Lexer, LexerOfStr, SimpleParseError, StreamCharPos};
+use lexer_rs::{Lexer, LexerOfStr, LineColumn, PosnInCharStream, SimpleParseError, StreamCharPos};
 
-type TextPos = StreamCharPos<usize>;
+type TextPos = StreamCharPos<LineColumn>;
 type LexToken = SimpleToken<TextPos>;
 type LexError = SimpleParseError<TextPos>;
 type TextStream<'stream> = LexerOfStr<'stream, TextPos, LexToken, LexError>;
+
+#[cfg(test)]
+impl From<StreamCharPos<usize>> for ParserPosn {
+    fn from(p: StreamCharPos<usize>) -> Self {
+        ParserPosn {
+            byte_ofs: p.byte_ofs(),
+            line: 0,
+            column: 0,
+        }
+    }
+}
+#[cfg(test)]
+impl From<usize> for ParserPosn {
+    fn from(byte_ofs: usize) -> Self {
+        ParserPosn {
+            byte_ofs,
+            line: 0,
+            column: 0,
+        }
+    }
+}
+
+// impl From<ParserSpan<usize>> for ParserSpan<TextPos> {
+//     fn from(_: ParserSpan<usize>) -> Self {
+//         ParserSpan { start: (), end: () }
+//     }
+// }
+// impl From<ParseError<usize>> for ParseError<TextPos> {
+//     fn from(e: ParseError<usize>) -> Self {
+//         use ParseError::*;
+//         match e {
+//             NewlineInCode {
+//                 code_start,
+//                 newline,
+//             } => todo!(),
+//             CodeCloseInText(_) => todo!(),
+//             ScopeCloseOutsideScope(_) => todo!(),
+//             MismatchingScopeClose {
+//                 n_hashes,
+//                 expected_closing_hashes,
+//                 scope_open_span,
+//                 scope_close_span,
+//             } => todo!(),
+//             EndedInsideCode { code_start } => todo!(),
+//             EndedInsideRawScope { raw_scope_start } => todo!(),
+//             EndedInsideScope { scope_start } => todo!(),
+//         }
+//     }
+// }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SimpleTokenType<'a> {
@@ -25,7 +75,7 @@ pub enum SimpleTokenType<'a> {
     OtherText(&'a str),
 }
 impl<'a> SimpleTokenType<'a> {
-    fn from_str_tok(data: &'a str, t: SimpleToken<StreamCharPos<usize>>) -> Self {
+    fn from_str_tok(data: &'a str, t: SimpleToken<TextPos>) -> Self {
         match t {
             SimpleToken::Newline(_) => Self::Newline,
             SimpleToken::Escaped(_, escapable) => Self::Escaped(escapable),
@@ -37,16 +87,90 @@ impl<'a> SimpleTokenType<'a> {
             SimpleToken::ScopeClose(_, n) => Self::ScopeClose(n),
             SimpleToken::Hashes(_, n) => Self::Hashes(n),
             SimpleToken::OtherText(span) => {
-                Self::OtherText(data[span.start().pos()..span.end().pos()].into())
+                Self::OtherText(data[span.start().byte_ofs()..span.end().byte_ofs()].into())
             }
         }
     }
 }
 
-pub fn expect_tokens<'a>(
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TestParserSpan {
+    start: (usize, usize),
+    end: (usize, usize),
+}
+impl From<ParserSpan> for TestParserSpan {
+    fn from(p: ParserSpan) -> Self {
+        Self {
+            start: (p.start.line, p.start.column),
+            end: (p.end.line, p.end.column),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ParseErrorType {
+    NewlineInCode {
+        code_start: TestParserSpan,
+        newline: TestParserSpan,
+    },
+    CodeCloseInText(TestParserSpan),
+    ScopeCloseOutsideScope(TestParserSpan),
+    MismatchingScopeClose {
+        n_hashes: usize,
+        expected_closing_hashes: usize,
+        scope_open_span: TestParserSpan,
+        scope_close_span: TestParserSpan,
+    },
+    EndedInsideCode {
+        code_start: TestParserSpan,
+    },
+    EndedInsideRawScope {
+        raw_scope_start: TestParserSpan,
+    },
+    EndedInsideScope {
+        scope_start: TestParserSpan,
+    },
+}
+impl ParseErrorType {
+    fn from_parse_error(p: ParseError) -> Self {
+        match p {
+            ParseError::NewlineInCode {
+                code_start,
+                newline,
+            } => Self::NewlineInCode {
+                code_start: code_start.into(),
+                newline: newline.into(),
+            },
+            ParseError::CodeCloseInText(span) => Self::CodeCloseInText(span.into()),
+            ParseError::ScopeCloseOutsideScope(span) => Self::ScopeCloseOutsideScope(span.into()),
+            ParseError::MismatchingScopeClose {
+                n_hashes,
+                expected_closing_hashes,
+                scope_open_span,
+                scope_close_span,
+            } => Self::MismatchingScopeClose {
+                n_hashes,
+                expected_closing_hashes,
+                scope_open_span: scope_open_span.into(),
+                scope_close_span: scope_close_span.into(),
+            },
+            ParseError::EndedInsideCode { code_start } => Self::EndedInsideCode {
+                code_start: code_start.into(),
+            },
+            ParseError::EndedInsideRawScope { raw_scope_start } => Self::EndedInsideRawScope {
+                raw_scope_start: raw_scope_start.into(),
+            },
+            ParseError::EndedInsideScope { scope_start } => Self::EndedInsideScope {
+                scope_start: scope_start.into(),
+            },
+        }
+    }
+}
+
+fn expect_tokens<'a>(
     data: &str,
     expected_stok_types: Vec<SimpleTokenType<'a>>,
-    expected_parse: Result<Vec<Token>, ParseError>,
+    expected_parse: Result<Vec<Token>, ParseErrorType>,
 ) {
     println!("{:?}", data);
 
@@ -68,7 +192,8 @@ pub fn expect_tokens<'a>(
 
     // Second step: parse
     assert_eq!(
-        parse_simple_tokens(data, Box::new(stoks.into_iter())),
+        parse_simple_tokens(data, Box::new(stoks.into_iter()))
+            .map_err(ParseErrorType::from_parse_error),
         expected_parse
     );
 }
@@ -344,7 +469,10 @@ pub fn test_uneven_code() {
     expect_tokens(
         r#"code with no open]"#,
         vec![OtherText("code with no open"), CodeClose(0)],
-        Err(ParseError::CodeCloseInText),
+        Err(ParseErrorType::CodeCloseInText(TestParserSpan {
+            start: (1, 18),
+            end: (1, 19),
+        })),
     )
 }
 
@@ -353,7 +481,10 @@ pub fn test_uneven_scope() {
     expect_tokens(
         r#"scope with no open}"#,
         vec![OtherText("scope with no open"), ScopeClose(0)],
-        Err(ParseError::ScopeCloseOutsideScope),
+        Err(ParseErrorType::ScopeCloseOutsideScope(TestParserSpan {
+            start: (1, 19),
+            end: (1, 20),
+        })),
     )
 }
 
@@ -431,8 +562,7 @@ pub fn test_crlf() {
 #[test]
 pub fn test_newline_in_code() {
     expect_tokens(
-        r#"[code.do_something();
-code.do_something_else()]"#,
+        "[code.do_something();\ncode.do_something_else()]",
         vec![
             CodeOpen(0),
             OtherText("code.do_something();"),
@@ -440,7 +570,16 @@ code.do_something_else()]"#,
             OtherText("code.do_something_else()"),
             CodeClose(0),
         ],
-        Err(ParseError::NewlineInCode),
+        Err(ParseErrorType::NewlineInCode {
+            code_start: TestParserSpan {
+                start: (1, 1),
+                end: (1, 2),
+            },
+            newline: TestParserSpan {
+                start: (1, 22),
+                end: (2, 1),
+            },
+        }),
     )
 }
 #[test]
@@ -452,7 +591,10 @@ pub fn test_code_close_in_text() {
             CodeClose(0),
             OtherText(" but closed code"),
         ],
-        Err(ParseError::CodeCloseInText),
+        Err(ParseErrorType::CodeCloseInText(TestParserSpan {
+            start: (1, 10),
+            end: (1, 11),
+        })),
     )
 }
 #[test]
@@ -464,7 +606,10 @@ pub fn test_scope_close_outside_scope() {
             ScopeClose(0),
             OtherText(" but closed scope"),
         ],
-        Err(ParseError::ScopeCloseOutsideScope),
+        Err(ParseErrorType::ScopeCloseOutsideScope(TestParserSpan {
+            start: (1, 16),
+            end: (1, 17),
+        })),
     )
 }
 #[test]
@@ -476,7 +621,18 @@ pub fn test_mismatching_scope_close() {
             OtherText(" text in a scope with a "),
             ScopeClose(1),
         ],
-        Err(ParseError::MismatchingScopeClose(1)),
+        Err(ParseErrorType::MismatchingScopeClose {
+            n_hashes: 1,
+            expected_closing_hashes: 2,
+            scope_open_span: TestParserSpan {
+                start: (1, 1),
+                end: (1, 4),
+            },
+            scope_close_span: TestParserSpan {
+                start: (1, 28),
+                end: (1, 30),
+            },
+        }),
     )
 }
 #[test]
@@ -484,7 +640,12 @@ pub fn test_ended_inside_code() {
     expect_tokens(
         "text [code",
         vec![OtherText("text "), CodeOpen(0), OtherText("code")],
-        Err(ParseError::EndedInsideCode),
+        Err(ParseErrorType::EndedInsideCode {
+            code_start: TestParserSpan {
+                start: (1, 6),
+                end: (1, 7),
+            },
+        }),
     )
 }
 #[test]
@@ -492,7 +653,12 @@ pub fn test_ended_inside_raw_scope() {
     expect_tokens(
         "text r{#raw",
         vec![OtherText("text "), RawScopeOpen(1), OtherText("raw")],
-        Err(ParseError::EndedInsideRawScope),
+        Err(ParseErrorType::EndedInsideRawScope {
+            raw_scope_start: TestParserSpan {
+                start: (1, 6),
+                end: (1, 9),
+            },
+        }),
     )
 }
 #[test]
@@ -500,6 +666,11 @@ pub fn test_ended_inside_scope() {
     expect_tokens(
         "text {##scope",
         vec![OtherText("text "), ScopeOpen(2), OtherText("scope")],
-        Err(ParseError::EndedInsideScope),
+        Err(ParseErrorType::EndedInsideScope {
+            scope_start: TestParserSpan {
+                start: (1, 6),
+                end: (1, 9),
+            },
+        }),
     )
 }

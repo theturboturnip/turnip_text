@@ -338,3 +338,5 @@ where
         }
     }
 }
+
+pub type LexerPosn = lexer_rs::StreamCharPos<lexer_rs::LineColumn>;
