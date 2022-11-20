@@ -1,4 +1,4 @@
-use super::lexer::{LexerPosn, SimpleToken};
+use super::lexer::{LexPosn, SimpleToken};
 use super::Token;
 use lexer_rs::{PosnInCharStream, StreamCharSpan, UserPosn};
 
@@ -8,8 +8,8 @@ pub struct ParserPosn {
     pub line: usize,
     pub column: usize,
 }
-impl From<LexerPosn> for ParserPosn {
-    fn from(p: LexerPosn) -> Self {
+impl From<LexPosn> for ParserPosn {
+    fn from(p: LexPosn) -> Self {
         ParserPosn {
             byte_ofs: p.byte_ofs(),
             line: p.line(),

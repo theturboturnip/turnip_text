@@ -1,65 +1,13 @@
 use crate::parser::parse_simple_tokens;
 
 use super::{
-    lexer::{Escapable, SimpleToken},
-    parser::{ParserPosn, ParserSpan},
+    lexer::{Escapable, LexError, LexPosn, LexToken, SimpleToken},
+    parser::ParserSpan,
     ParseError, Token,
 };
-use lexer_rs::{Lexer, LexerOfStr, LineColumn, PosnInCharStream, SimpleParseError, StreamCharPos};
+use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
 
-type TextPos = StreamCharPos<LineColumn>;
-type LexToken = SimpleToken<TextPos>;
-type LexError = SimpleParseError<TextPos>;
-type TextStream<'stream> = LexerOfStr<'stream, TextPos, LexToken, LexError>;
-
-#[cfg(test)]
-impl From<StreamCharPos<usize>> for ParserPosn {
-    fn from(p: StreamCharPos<usize>) -> Self {
-        ParserPosn {
-            byte_ofs: p.byte_ofs(),
-            line: 0,
-            column: 0,
-        }
-    }
-}
-#[cfg(test)]
-impl From<usize> for ParserPosn {
-    fn from(byte_ofs: usize) -> Self {
-        ParserPosn {
-            byte_ofs,
-            line: 0,
-            column: 0,
-        }
-    }
-}
-
-// impl From<ParserSpan<usize>> for ParserSpan<TextPos> {
-//     fn from(_: ParserSpan<usize>) -> Self {
-//         ParserSpan { start: (), end: () }
-//     }
-// }
-// impl From<ParseError<usize>> for ParseError<TextPos> {
-//     fn from(e: ParseError<usize>) -> Self {
-//         use ParseError::*;
-//         match e {
-//             NewlineInCode {
-//                 code_start,
-//                 newline,
-//             } => todo!(),
-//             CodeCloseInText(_) => todo!(),
-//             ScopeCloseOutsideScope(_) => todo!(),
-//             MismatchingScopeClose {
-//                 n_hashes,
-//                 expected_closing_hashes,
-//                 scope_open_span,
-//                 scope_close_span,
-//             } => todo!(),
-//             EndedInsideCode { code_start } => todo!(),
-//             EndedInsideRawScope { raw_scope_start } => todo!(),
-//             EndedInsideScope { scope_start } => todo!(),
-//         }
-//     }
-// }
+type TextStream<'stream> = LexerOfStr<'stream, LexPosn, LexToken, LexError>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SimpleTokenType<'a> {
@@ -75,7 +23,7 @@ pub enum SimpleTokenType<'a> {
     OtherText(&'a str),
 }
 impl<'a> SimpleTokenType<'a> {
-    fn from_str_tok(data: &'a str, t: SimpleToken<TextPos>) -> Self {
+    fn from_str_tok(data: &'a str, t: LexToken) -> Self {
         match t {
             SimpleToken::Newline(_) => Self::Newline,
             SimpleToken::Escaped(_, escapable) => Self::Escaped(escapable),

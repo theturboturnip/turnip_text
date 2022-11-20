@@ -1,4 +1,5 @@
 use lexer_rs::PosnInCharStream;
+use lexer_rs::SimpleParseError;
 use lexer_rs::StreamCharSpan;
 use lexer_rs::{CharStream, Lexer, LexerParseResult};
 
@@ -339,4 +340,6 @@ where
     }
 }
 
-pub type LexerPosn = lexer_rs::StreamCharPos<lexer_rs::LineColumn>;
+pub type LexPosn = lexer_rs::StreamCharPos<lexer_rs::LineColumn>;
+pub type LexToken = SimpleToken<LexPosn>;
+pub type LexError = SimpleParseError<LexPosn>;
