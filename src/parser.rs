@@ -1,5 +1,5 @@
-use super::lexer::{LexPosn, SimpleToken};
-use super::Token;
+use crate::lexer::{LexPosn, SimpleToken};
+use crate::Token;
 use lexer_rs::{PosnInCharStream, StreamCharSpan, UserPosn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

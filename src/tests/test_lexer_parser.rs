@@ -1,6 +1,6 @@
 use crate::parser::parse_simple_tokens;
 
-use super::{
+use crate::{
     lexer::{Escapable, LexError, LexPosn, LexToken, SimpleToken},
     parser::ParserSpan,
     ParseError, Token,
