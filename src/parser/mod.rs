@@ -31,11 +31,8 @@ pub enum ParseError {
     CodeCloseInText,
     ScopeCloseOutsideScope,
     MismatchingScopeClose(usize),
-    // TODO Test
     EndedInsideCode,
-    // TODO Test
     EndedInsideRawScope,
-    // TODO Test
     EndedInsideScope,
 }
 
