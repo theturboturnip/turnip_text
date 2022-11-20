@@ -10,6 +10,7 @@ mod tests;
 /// A turnip-text Token, represented by groups of [lexer::SimpleToken]
 ///
 /// TODO convert String to &'a str
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
     /// Python code to evaluate, without any newlines, contained in the String
     Code(String),
@@ -24,11 +25,18 @@ pub enum Token {
     // TODO add doc-comment type that gets included in output latex?
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseError {
     NewlineInCode,
     CodeCloseInText,
     ScopeCloseOutsideScope,
     MismatchingScopeClose(usize),
+    // TODO Test
+    EndedInsideCode,
+    // TODO Test
+    EndedInsideRawScope,
+    // TODO Test
+    EndedInsideScope,
 }
 
 /// Parses a stream of [SimpleToken] into a vector of [Token].
@@ -46,8 +54,7 @@ where
         .map(|stok| parser.parse_simple_token(data, stok))
         .collect();
     res?;
-    // TODO parser finalize() function which checks we didn't have any hanging scopes
-    Ok(parser.tokens)
+    parser.finalize()
 }
 
 // TODO block comments
@@ -227,6 +234,11 @@ impl ParserState {
             },
         };
 
+        self.execute_action(action)?;
+        Ok(())
+    }
+
+    fn execute_action(&mut self, action: ParserAction) -> Result<(), ParseError> {
         if let Some(new_inline_mode) = action.should_transition_to_new_mode() {
             let old_mode = std::mem::replace(&mut self.inline_mode, new_inline_mode);
             if let Some(token) = old_mode.into() {
@@ -266,5 +278,23 @@ impl ParserState {
         self.scope_stack
             .last_mut()
             .map_or(&mut self.tokens, |scope| &mut scope.tokens)
+    }
+
+    pub fn finalize(mut self) -> Result<Vec<Token>, ParseError> {
+        match self.inline_mode {
+            ParserInlineMode::Comment => {}
+            // If we have text pending, put it into self.tokens
+            ParserInlineMode::InlineText(_) => {
+                self.execute_action(ParserAction::EndTokenAndStartText)?
+            }
+            // If we're in code or raw scope mode, something went wrong
+            ParserInlineMode::InlineCode { .. } => Err(ParseError::EndedInsideCode)?,
+            ParserInlineMode::RawScope { .. } => Err(ParseError::EndedInsideRawScope)?,
+        };
+        match self.scope_stack.last() {
+            Some(_) => Err(ParseError::EndedInsideScope)?,
+            None => {}
+        };
+        Ok(self.tokens)
     }
 }
