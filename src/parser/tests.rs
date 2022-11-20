@@ -1,4 +1,9 @@
-use super::lexer::{Escapable, SimpleToken};
+use crate::parser::parse_simple_tokens;
+
+use super::{
+    lexer::{Escapable, SimpleToken},
+    ParseError, Token,
+};
 use lexer_rs::{Lexer, LexerOfStr, SimpleParseError, StreamCharPos};
 
 type TextPos = StreamCharPos<usize>;
@@ -17,7 +22,7 @@ pub enum SimpleTokenType {
     RawScopeOpen(usize),
     ScopeClose(usize),
     Hashes(usize),
-    Other(String),
+    OtherText(String),
 }
 impl SimpleTokenType {
     fn from_str_tok(data: &str, t: SimpleToken<StreamCharPos<usize>>) -> Self {
@@ -32,28 +37,40 @@ impl SimpleTokenType {
             SimpleToken::ScopeClose(_, n) => Self::ScopeClose(n),
             SimpleToken::Hashes(_, n) => Self::Hashes(n),
             SimpleToken::OtherText(span) => {
-                Self::Other(data[span.start().pos()..span.end().pos()].into())
+                Self::OtherText(data[span.start().pos()..span.end().pos()].into())
             }
         }
     }
 }
 
-pub fn lex_test_string(data: &str) -> Vec<SimpleTokenType> {
+pub fn expect_tokens(
+    data: &str,
+    expected_stok_types: Vec<SimpleTokenType>,
+    expected_parse: Result<Vec<Token>, ParseError>,
+) {
+    println!("{:?}", data);
+
+    // First step: lex
     let l = TextStream::new(data);
-    let tokens = l
+    let stoks: Vec<SimpleToken<_>> = l
         .iter(&[
             Box::new(SimpleToken::parse_special),
             Box::new(SimpleToken::parse_other),
         ])
         .scan((), |_, x| x.ok())
-        .map(|tok| SimpleTokenType::from_str_tok(data, tok))
         .collect();
-    tokens
-}
+    let stok_types: Vec<SimpleTokenType> = stoks
+        .iter()
+        .map(|stok| SimpleTokenType::from_str_tok(data, *stok))
+        .collect();
 
-pub fn expect_tokens(data: &str, tokens: Vec<SimpleTokenType>) {
-    println!("{:?}", data);
-    assert_eq!(lex_test_string(data), tokens);
+    assert_eq!(stok_types, expected_stok_types);
+
+    // Second step: parse
+    assert_eq!(
+        parse_simple_tokens(data, Box::new(stoks.into_iter())),
+        expected_parse
+    );
 }
 
 use SimpleTokenType::*;
@@ -66,15 +83,25 @@ It has survived not only five centuries, but also the leap into electronic types
 It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.
 "#,
         vec![
-            Other("Lorem Ipsum is simply dummy text of the printing and typesetting industry.".into()),
+            OtherText("Lorem Ipsum is simply dummy text of the printing and typesetting industry.".into()),
             Newline,
-            Other("Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book.".into()),
+            OtherText("Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book.".into()),
             Newline,
-            Other("It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged.".into()),
+            OtherText("It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged.".into()),
             Newline,
-            Other("It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.".into()),
+            OtherText("It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.".into()),
             Newline,
         ],
+        Ok(vec![
+            Token::Text("Lorem Ipsum is simply dummy text of the printing and typesetting industry.".into()),
+            Token::Newline,
+            Token::Text("Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book.".into()),
+            Token::Newline,
+            Token::Text("It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged.".into()),
+            Token::Newline,
+            Token::Text("It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.".into()),
+            Token::Newline,
+        ])
     )
 }
 
@@ -83,11 +110,15 @@ pub fn test_inline_code() {
     expect_tokens(
         r#"Number of values in (1,2,3): [len((1,2,3))]"#,
         vec![
-            Other("Number of values in (1,2,3): ".into()),
+            OtherText("Number of values in (1,2,3): ".into()),
             CodeOpen(0),
-            Other("len((1,2,3))".into()),
+            OtherText("len((1,2,3))".into()),
             CodeClose(0),
         ],
+        Ok(vec![
+            Token::Text("Number of values in (1,2,3): ".into()),
+            Token::Code("len((1,2,3))".into()),
+        ]),
     )
 }
 
@@ -96,11 +127,15 @@ pub fn test_inline_code_with_extra_delimiter() {
     expect_tokens(
         r#"Number of values in (1,2,3): [# len((1,2,3)) #]"#,
         vec![
-            Other("Number of values in (1,2,3): ".into()),
+            OtherText("Number of values in (1,2,3): ".into()),
             CodeOpen(1),
-            Other(" len((1,2,3)) ".into()),
+            OtherText(" len((1,2,3)) ".into()),
             CodeClose(1),
         ],
+        Ok(vec![
+            Token::Text("Number of values in (1,2,3): ".into()),
+            Token::Code(" len((1,2,3)) ".into()),
+        ]),
     )
 }
 
@@ -109,11 +144,15 @@ pub fn test_inline_code_with_long_extra_delimiter() {
     expect_tokens(
         r#"Number of values in (1,2,3): [#### len((1,2,3)) ####]"#,
         vec![
-            Other("Number of values in (1,2,3): ".into()),
+            OtherText("Number of values in (1,2,3): ".into()),
             CodeOpen(4),
-            Other(" len((1,2,3)) ".into()),
+            OtherText(" len((1,2,3)) ".into()),
             CodeClose(4),
         ],
+        Ok(vec![
+            Token::Text("Number of values in (1,2,3): ".into()),
+            Token::Code(" len((1,2,3)) ".into()),
+        ]),
     )
 }
 
@@ -122,13 +161,17 @@ pub fn test_inline_code_with_escaped_extra_delimiter() {
     expect_tokens(
         r#"Number of values in (1,2,3): [\# len((1,2,3)) \#]"#,
         vec![
-            Other("Number of values in (1,2,3): ".into()),
+            OtherText("Number of values in (1,2,3): ".into()),
             CodeOpen(0),
             Escaped(Escapable::Hash),
-            Other(" len((1,2,3)) ".into()),
+            OtherText(" len((1,2,3)) ".into()),
             Escaped(Escapable::Hash),
             CodeClose(0),
         ],
+        Ok(vec![
+            Token::Text("Number of values in (1,2,3): ".into()),
+            Token::Code(r#"\# len((1,2,3)) \#"#.into()),
+        ]),
     )
 }
 
@@ -137,13 +180,16 @@ pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
     expect_tokens(
         r#"Number of values in (1,2,3): \[\# len((1,2,3)) \#\]"#,
         vec![
-            Other("Number of values in (1,2,3): ".into()),
+            OtherText("Number of values in (1,2,3): ".into()),
             Escaped(Escapable::SqrOpen),
             Escaped(Escapable::Hash),
-            Other(" len((1,2,3)) ".into()),
+            OtherText(" len((1,2,3)) ".into()),
             Escaped(Escapable::Hash),
             Escaped(Escapable::SqrClose),
         ],
+        Ok(vec![Token::Text(
+            "Number of values in (1,2,3): [# len((1,2,3)) #]".into(),
+        )]),
     )
 }
 
@@ -152,15 +198,19 @@ pub fn test_inline_list_with_extra_delimiter() {
     expect_tokens(
         r#"Number of values in (1,2,3): [# len([1,2,3]) #]"#,
         vec![
-            Other("Number of values in (1,2,3): ".into()),
+            OtherText("Number of values in (1,2,3): ".into()),
             CodeOpen(1),
-            Other(" len(".into()),
+            OtherText(" len(".into()),
             CodeOpen(0),
-            Other("1,2,3".into()),
+            OtherText("1,2,3".into()),
             CodeClose(0),
-            Other(") ".into()),
+            OtherText(") ".into()),
             CodeClose(1),
         ],
+        Ok(vec![
+            Token::Text("Number of values in (1,2,3): ".into()),
+            Token::Code(" len([1,2,3]) ".into()),
+        ]),
     )
 }
 
@@ -169,11 +219,15 @@ pub fn test_inline_scope() {
     expect_tokens(
         r#"Outside the scope {inside the scope}"#,
         vec![
-            Other("Outside the scope ".into()),
+            OtherText("Outside the scope ".into()),
             ScopeOpen(0),
-            Other("inside the scope".into()),
+            OtherText("inside the scope".into()),
             ScopeClose(0),
         ],
+        Ok(vec![
+            Token::Text("Outside the scope ".into()),
+            Token::Scope(vec![Token::Text("inside the scope".into())]),
+        ]),
     )
 }
 
@@ -182,11 +236,14 @@ pub fn test_inline_escaped_scope() {
     expect_tokens(
         r#"Outside the scope \{not inside a scope\}"#,
         vec![
-            Other("Outside the scope ".into()),
+            OtherText("Outside the scope ".into()),
             Escaped(Escapable::SqgOpen),
-            Other("not inside a scope".into()),
+            OtherText("not inside a scope".into()),
             Escaped(Escapable::SqgClose),
         ],
+        Ok(vec![Token::Text(
+            "Outside the scope {not inside a scope}".into(),
+        )]),
     )
 }
 
@@ -195,11 +252,15 @@ pub fn test_inline_raw_scope() {
     expect_tokens(
         r#"Outside the scope r{inside the raw scope}"#,
         vec![
-            Other("Outside the scope ".into()),
+            OtherText("Outside the scope ".into()),
             RawScopeOpen(0),
-            Other("inside the raw scope".into()),
+            OtherText("inside the raw scope".into()),
             ScopeClose(0),
         ],
+        Ok(vec![
+            Token::Text("Outside the scope ".into()),
+            Token::RawScope("inside the raw scope".into()),
+        ]),
     )
 }
 
@@ -208,11 +269,14 @@ pub fn test_inline_raw_escaped_scope() {
     expect_tokens(
         r#"Outside the scope r\{not inside a scope\}"#,
         vec![
-            Other("Outside the scope r".into()),
+            OtherText("Outside the scope r".into()),
             Escaped(Escapable::SqgOpen),
-            Other("not inside a scope".into()),
+            OtherText("not inside a scope".into()),
             Escaped(Escapable::SqgClose),
         ],
+        Ok(vec![Token::Text(
+            "Outside the scope r{not inside a scope}".into(),
+        )]),
     )
 }
 
@@ -220,7 +284,8 @@ pub fn test_inline_raw_escaped_scope() {
 pub fn test_r_without_starting_raw_scope() {
     expect_tokens(
         r#" r doesn't always start a scope "#,
-        vec![Other(" r doesn't always start a scope ".into())],
+        vec![OtherText(" r doesn't always start a scope ".into())],
+        Ok(vec![Token::Text(" r doesn't always start a scope ".into())]),
     )
 }
 
@@ -229,10 +294,14 @@ pub fn test_plain_hashes() {
     expect_tokens(
         r#"This has a string of ####### hashes in the middle"#,
         vec![
-            Other("This has a string of ".into()),
+            OtherText("This has a string of ".into()),
             Hashes(7),
-            Other(" hashes in the middle".into()),
+            OtherText(" hashes in the middle".into()),
         ],
+        Ok(vec![
+            Token::Text("This has a string of ".into()),
+            // The first hash in the chain starts a comment!
+        ]),
     )
 }
 
@@ -241,12 +310,16 @@ pub fn test_special_with_escaped_backslash() {
     expect_tokens(
         r#"About to see a backslash! \\[code]"#,
         vec![
-            Other("About to see a backslash! ".into()),
+            OtherText("About to see a backslash! ".into()),
             Escaped(Escapable::Backslash),
             CodeOpen(0),
-            Other("code".into()),
+            OtherText("code".into()),
             CodeClose(0),
         ],
+        Ok(vec![
+            Token::Text(r#"About to see a backslash! \"#.into()),
+            Token::Code("code".into()),
+        ]),
     )
 }
 
@@ -255,11 +328,14 @@ pub fn test_escaped_special_with_escaped_backslash() {
     expect_tokens(
         r#"About to see a backslash and square brace! \\\[ that didn't open code!"#,
         vec![
-            Other("About to see a backslash and square brace! ".into()),
+            OtherText("About to see a backslash and square brace! ".into()),
             Escaped(Escapable::Backslash),
             Escaped(Escapable::SqrOpen),
-            Other(" that didn't open code!".into()),
+            OtherText(" that didn't open code!".into()),
         ],
+        Ok(vec![Token::Text(
+            r#"About to see a backslash and square brace! \[ that didn't open code!"#.into(),
+        )]),
     )
 }
 
@@ -267,7 +343,8 @@ pub fn test_escaped_special_with_escaped_backslash() {
 pub fn test_uneven_code() {
     expect_tokens(
         r#"code with no open]"#,
-        vec![Other("code with no open".into()), CodeClose(0)],
+        vec![OtherText("code with no open".into()), CodeClose(0)],
+        Err(ParseError::CodeCloseInText),
     )
 }
 
@@ -275,13 +352,18 @@ pub fn test_uneven_code() {
 pub fn test_uneven_scope() {
     expect_tokens(
         r#"scope with no open}"#,
-        vec![Other("scope with no open".into()), ScopeClose(0)],
+        vec![OtherText("scope with no open".into()), ScopeClose(0)],
+        Err(ParseError::ScopeCloseOutsideScope),
     )
 }
 
 #[test]
 pub fn test_escaped_notspecial() {
-    expect_tokens(r#"\a"#, vec![Backslash, Other("a".into())])
+    expect_tokens(
+        r#"\a"#,
+        vec![Backslash, OtherText("a".into())],
+        Ok(vec![Token::Text(r#"\a"#.into())]),
+    )
 }
 
 #[test]
@@ -290,7 +372,8 @@ pub fn test_escaped_cr() {
     let s: String = ['\\', '\r'].iter().collect::<String>() + "content";
     expect_tokens(
         &s,
-        vec![Escaped(Escapable::Newline), Other("content".into())],
+        vec![Escaped(Escapable::Newline), OtherText("content".into())],
+        Ok(vec![Token::Text(r#"content"#.into())]),
     )
 }
 #[test]
@@ -299,7 +382,8 @@ pub fn test_escaped_lf() {
     let s: String = ['\\', '\n'].iter().collect::<String>() + "content";
     expect_tokens(
         &s,
-        vec![Escaped(Escapable::Newline), Other("content".into())],
+        vec![Escaped(Escapable::Newline), OtherText("content".into())],
+        Ok(vec![Token::Text(r#"content"#.into())]),
     )
 }
 #[test]
@@ -308,7 +392,8 @@ pub fn test_escaped_crlf() {
     let s: String = ['\\', '\r', '\n'].iter().collect::<String>() + "content";
     expect_tokens(
         &s,
-        vec![Escaped(Escapable::Newline), Other("content".into())],
+        vec![Escaped(Escapable::Newline), OtherText("content".into())],
+        Ok(vec![Token::Text(r#"content"#.into())]),
     )
 }
 
@@ -316,17 +401,117 @@ pub fn test_escaped_crlf() {
 pub fn test_cr() {
     // '\r'
     let s: String = ['\r'].iter().collect::<String>() + "content";
-    expect_tokens(&s, vec![Newline, Other("content".into())])
+    expect_tokens(
+        &s,
+        vec![Newline, OtherText("content".into())],
+        Ok(vec![Token::Newline, Token::Text("content".into())]),
+    )
 }
 #[test]
 pub fn test_lf() {
     // '\n'
     let s: String = ['\n'].iter().collect::<String>() + "content";
-    expect_tokens(&s, vec![Newline, Other("content".into())])
+    expect_tokens(
+        &s,
+        vec![Newline, OtherText("content".into())],
+        Ok(vec![Token::Newline, Token::Text("content".into())]),
+    )
 }
 #[test]
 pub fn test_crlf() {
     // '\r' + '\n'
     let s: String = ['\r', '\n'].iter().collect::<String>() + "content";
-    expect_tokens(&s, vec![Newline, Other("content".into())])
+    expect_tokens(
+        &s,
+        vec![Newline, OtherText("content".into())],
+        Ok(vec![Token::Newline, Token::Text("content".into())]),
+    )
+}
+
+#[test]
+pub fn test_newline_in_code() {
+    expect_tokens(
+        r#"[code.do_something();
+code.do_something_else()]"#,
+        vec![
+            CodeOpen(0),
+            OtherText("code.do_something();".into()),
+            Newline,
+            OtherText("code.do_something_else()".into()),
+            CodeClose(0),
+        ],
+        Err(ParseError::NewlineInCode),
+    )
+}
+#[test]
+pub fn test_code_close_in_text() {
+    expect_tokens(
+        "not code ] but closed code",
+        vec![
+            OtherText("not code ".into()),
+            CodeClose(0),
+            OtherText(" but closed code".into()),
+        ],
+        Err(ParseError::CodeCloseInText),
+    )
+}
+#[test]
+pub fn test_scope_close_outside_scope() {
+    expect_tokens(
+        "not in a scope } but closed scope",
+        vec![
+            OtherText("not in a scope ".into()),
+            ScopeClose(0),
+            OtherText(" but closed scope".into()),
+        ],
+        Err(ParseError::ScopeCloseOutsideScope),
+    )
+}
+#[test]
+pub fn test_mismatching_scope_close() {
+    expect_tokens(
+        "{## text in a scope with a #}",
+        vec![
+            ScopeOpen(2),
+            OtherText(" text in a scope with a ".into()),
+            ScopeClose(1),
+        ],
+        Err(ParseError::MismatchingScopeClose(1)),
+    )
+}
+#[test]
+pub fn test_ended_inside_code() {
+    expect_tokens(
+        "text [code",
+        vec![
+            OtherText("text ".into()),
+            CodeOpen(0),
+            OtherText("code".into()),
+        ],
+        Err(ParseError::EndedInsideCode),
+    )
+}
+#[test]
+pub fn test_ended_inside_raw_scope() {
+    expect_tokens(
+        "text r{#raw",
+        vec![
+            OtherText("text ".into()),
+            RawScopeOpen(1),
+            OtherText("raw".into()),
+        ],
+        Err(ParseError::EndedInsideRawScope),
+    )
+}
+#[test]
+pub fn test_ended_inside_scope() {
+    expect_tokens(
+        "text {##scope",
+        vec![
+            OtherText("text ".into()),
+            ScopeOpen(2),
+            OtherText("scope".into()),
+        ],
+        Err(ParseError::EndedInsideScope),
+    )
 }

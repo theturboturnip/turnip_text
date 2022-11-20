@@ -104,7 +104,8 @@ impl Escapable {
     }
     pub fn stringify(self) -> &'static str {
         match self {
-            Escapable::Newline => "\n",
+            // An escaped newline = no newline
+            Escapable::Newline => "",
             Escapable::Backslash => "\\",
             Escapable::SqrOpen => "[",
             Escapable::SqrClose => "]",
