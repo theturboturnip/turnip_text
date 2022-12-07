@@ -1,6 +1,7 @@
 pub mod cli;
 mod lexer;
 mod parser;
+mod python;
 
 #[cfg(test)]
 mod tests;

@@ -1,17 +1,15 @@
 [package]
-name = "turnip-text"
+name = "turnip_text"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+pyo3 = { version = "0.17.3", features = ["auto-initialize"] }
 lexer-rs = "0.0.2"
 annotate-snippets = "0.9.1"
 anyhow = "1.0.66"
 thiserror = "1.0.37"
 argh = "0.1.9"
-
-[dependencies.pyo3]
-version = "0.17.3"
-features = ["auto-initialize"]
+pyembed = "0.23.0"
