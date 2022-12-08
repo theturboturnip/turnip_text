@@ -38,6 +38,6 @@ Pandoc extensions can make it theoretically possible for Markdown to represent t
 While the LaTeX macro engine is horrible to work with, it *is* still useful to embed a programming language into text.
 This allows for e.g. [smart citations](http://tug.ctan.org/tex-archive/macros/latex/contrib/cleveref/cleveref.pdf) and [collecting TODO messages and notes](https://github.com/theturboturnip/latex-turnip-pkgs).
 The annoyance of LaTeX is that I spend more time figuring out the macro language than I do figuring out any code.
-With that in mind, I'd like the language to allow embedding a proper programming language like Python or Lua (see [/notes/code_syntax.md] for notes on which languages to embed).
+With that in mind, I'd like the language to allow embedding a proper programming language like Python or Lua (see [notes/code_syntax.md](notes/code_syntax.md) for notes on which languages to embed).
 
 
