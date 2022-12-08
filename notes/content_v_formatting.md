@@ -54,7 +54,7 @@ Implicit anchors
 
 ## Potential example
 ### `source.ltxt`
-```
+```python
 [section("chap:bg:sec:rvvmemory")]{RVV memory instructions}
 [emph]{Summarizes~[cite("specification-RVV-v1.0", "Sections~7-9")]}
 
@@ -103,7 +103,7 @@ With segmentation, elements are grouped into segments of [math]{n > 1} fields, w
 This principle extends to [code]{LMUL > 1} ([cref("fig:RVV_mem_lmul_3seg")]).
 ```
 ### `book.ltyp`
-```
+```python
 # Get content from the given file
 [addcontent("source.ltxt")]
 
