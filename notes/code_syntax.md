@@ -46,6 +46,25 @@ Ways to embed python
 If we use python, how does that interface with virtualenvs?
 Is PyO3 essentially doing a dylink with the nearest "python 3.X DLL"? That sounds like it would *just work* in a venv
 
+#### Embedding python is hard
+Tried using PyO3, which as expected does not support using the macros e.g. `#[pymodule]` for attaching modules before the interpreter starts running.
+
+Looked at using `pyembed` to initialize the interpreter - this requires a bunch of CPython FFI, and unfortunately PyO3 doesn't expose the magic it does to make functions FFI-able.
+For example, the `#[pyfunction]` macro will create a `PyMethodDef` and a function harness to convert the raw python arguments (e.g. `self: *mut PyObject, args_tuple: *mut PyObject` for `METH_VARARGS`) into Rust-y equivalents, but this is created as `::pyo3::impl_::pyfunction::PyMethodDef`.
+This can only be converted to `pyo3::ffi::PyMethodDef` with a `pub(crate)` function, _so I can't use it_ when I call `PyModule_Create`.
+That is mildly infuriating.
+
+For now, a holdover solution would be to manually create the PyModule and force it into the globals dict.
+```rust
+let module = PyModule::new(py, "turnip_text")?;
+module.add_function(wrap_pyfunction!(experiment, module)?)?;
+let globals = [("turnip_text", module)].into_py_dict(py);
+```
+This means you can't do `import turnip_text`, but that isn't the end of the world?
+
+Alternative thought: you can do `Python::with_gil` inside the PyInit, which means you can just use PyO3's easy module creation instead.
+This feels like it shouldn't work, but I'm not going to look a gift horse in the mouth.
+
 ### Lua?
 
 Has mature embedder library for Rust [rlua](https://github.com/amethyst/rlua)
