@@ -1,23 +1,15 @@
 use std::ffi::CStr;
 
 use pyembed::{ExtensionModule, MainPythonInterpreter, OxidizedPythonInterpreterConfig};
-use pyo3::prelude::*;
+use pyo3::{prelude::*, types::PyDict};
 
-#[pyfunction]
-fn experiment() -> PyResult<usize> {
-    eprintln!("called experiment");
-    Ok(42)
-}
-#[pymodule]
-fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(experiment, m)?)?;
-    Ok(())
-}
+mod interop;
+use interop::turnip_text;
 
 /// Struct holding references to current Python state, including the relevant globals/locals.
-/// Once created, the GIL is held until it is [Drop]-ped
-pub struct TurnipTextPython<'py> {
-    pub interp: MainPythonInterpreter<'py, 'py>,
+pub struct TurnipTextPython<'interp> {
+    pub interp: MainPythonInterpreter<'interp, 'interp>,
+    pub globals: Py<PyDict>,
 }
 
 fn interpreter_config<'a>() -> OxidizedPythonInterpreterConfig<'a> {
@@ -36,11 +28,28 @@ fn interpreter_config<'a>() -> OxidizedPythonInterpreterConfig<'a> {
     base_config
 }
 
-impl<'py> TurnipTextPython<'py> {
-    pub fn new() -> TurnipTextPython<'py> {
+impl<'interp> TurnipTextPython<'interp> {
+    pub fn new() -> TurnipTextPython<'interp> {
         let interp = MainPythonInterpreter::new(interpreter_config())
             .expect("Couldn't create python interpreter");
 
-        Self { interp }
+        pyo3::prepare_freethreaded_python();
+        let globals = interp
+            .with_gil(|py| -> PyResult<Py<PyDict>> {
+                let globals = PyDict::new(py);
+                py.run("from turnip_text import *", Some(globals), None)?;
+                Ok(globals.into())
+            })
+            .unwrap();
+
+        Self { interp, globals }
+    }
+
+    pub fn with_gil<F, R>(&self, f: F) -> R
+    where
+        F: for<'py> FnOnce(Python<'py>, &'py PyDict) -> R,
+    {
+        self.interp
+            .with_gil(|py| -> R { f(py, self.globals.as_ref(py)) })
     }
 }
