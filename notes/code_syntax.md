@@ -62,8 +62,7 @@ let globals = [("turnip_text", module)].into_py_dict(py);
 ```
 This means you can't do `import turnip_text`, but that isn't the end of the world?
 
-Alternative thought: you can do `Python::with_gil` inside the PyInit, which means you can just use PyO3's easy module creation instead.
-This feels like it shouldn't work, but I'm not going to look a gift horse in the mouth.
+Actual solution - PyO3 generates a `PyInit` function for modules created with `#[pymodule]` - just use that lol
 
 ### Lua?
 
@@ -88,3 +87,92 @@ LaTeX infamously requires multiple runs because back-references (e.g. table of c
 e.g. when you create a table of contents, one pass through the file is required to create the `.toc`, then another run detects that file and includes the relevant references.
 If we want this to create a markdown version, we'd have to embed the ToC ourselves, and ideally we don't do multiple runs.
 TODO figure out how this looks from a scripting perspective.
+
+Two passes: first pass creates a bunch of python objects and `eval`-s code[^1]
+e.g. `lorem ipsum [Fudge()] sit dolor` creates `["lorem ipsum ", Fudge(), " sit dolor"]`.
+Once that list is created, and any code has run that may impact what the python objects describe, including the typesetting/formatting code, pass through the list in order calling `render()` on those python objects.
+TODO need to decide what `render()` actually creates. Does it write out raw Markdown/LaTeX?
+
+[^1]: See [https://stackoverflow.com/questions/2220699/whats-the-difference-between-eval-exec-and-compile], this means the code in square brackets needs to be a single expression, not a statement/set of statements executed for their side-effects
+
+## Eval-brackets
+I want the embedded scripting square-bracket syntax to work with many situations
+1. Expressions that result in plain text
+  - `[5+7]` emits the text "12"
+2. Modifying some text inside a sub-scope
+  - `[emph]{emphasised text}` emits text with some backend-dependent wrapping e.g. `__emphasised text__` for markdown
+3. Calling impure functions for their side effects
+  - `[add_float(...)]{caption}` shouldn't emit any text immediately
+4. Both 2 and 3 at once - e.g. "Titled Labels"
+  - `[section]{The First Section}` should be valid?
+  - `[section("sec:first"){The First Section}]` should also be valid
+    - This mutates global state (a list of labels?) by adding "sec:first"
+  - THOUGHT: in this case, `[section()]` is probably fine syntax
+5. DEBATE: Are there compelling use cases for assigning to variables inside eval-brackets?
+  - for now, no
+  - What would `[x = 5]` emit? Python REPL doesn't emit any text
+6. Affecting eval-brackets within a sub-scope
+  - e.g. inside `[math]` in Markdown/MathJax, most formatting macros should probably be disabled
+
+What rules should Rust use to handle these consistently?
+Current draft:
+- `eval` the thing inside the square brackets
+  - This evaluates side-effects in impure functions => handles (3)
+- if the result subclasses `ScopeOwner`...
+  - if the eval-brackets are followed by an inline scope
+    - parse that scope block into a `Sentence` TODO how to handle raw inline scopes
+    - `result = scope_owner.create_inline(sentence)` (2)
+  - elif the eval-brackets are followed by a block scope and 
+    - parse that scope block into either a `RawTextBlock` or a set of `Paragraph`s (raw vs. not raw)
+    - `result = scope_owner.create_explicit(content)`
+  - elif the result subclasses `BlockNode` or `InlineNode`
+    - jump out of `if ScopeOwner`
+  - else
+    - it subclasses `ScopeOwner` but not `{Block,Inline}Node` => it must be attached to a scope, but it doesn't have an appropriate scope
+    - throw errors
+  - if `result` (after being modified by previous ifs) implements `ImplicitBlockScopeOwner` (TODO should that be a separate type from ScopeOwner)
+    - start an implicit block & break out
+    - TODO how could an implicit block restrict what appears within it? should it be able to? 
+- if the result (after being modified by previous ifs) subclasses `BlockNode` or `InlineNode`
+  - insert it directly into the current parent scope appropriately
+- else
+  - insert `UnescapedText(str(result))` (1)
+
+
+```python
+def handle(code, following_scope=None)
+  result = eval(code)
+  if isinstance(ScopeOwner, result):
+    if isinstance(InlineScope, following_scope) and result.can_inline():
+      result = result.create_inline(following_scope)
+    elif isinstance(BlockScope, following_scope) and result.can_explicit_block():
+      result = result.create_explicit_block(following_scope)
+    else:
+      raise RuntimeError(f"ScopeOwner {result} not followed by scope")
+
+  if isinstance((BlockNode, InlineNode), result):
+    emit(result)
+    if isinstance(ImplicitBlockScopeOwner, result):
+      start_implicit_block(result)
+  else:
+    emit(UnescapedText(str(result)))
+```
+  
+
+
+TODO we still need to figure out how `no [code] inside [math]` works
+
+
+## Stages of execution for complex backends
+1. Python Execution
+  - results in a sequence of things that are either text-to-escape, or backend-specific-stuff-wrapping-text-to-escape
+
+
+Talked about this with dad
+- a tree structure is very nice
+  - until now I was envisioning that Rust, after processing all text, would have a list of root objects (which could be Python objects that have within them children and a tree structure)
+  - Would we want rust to have a tree structure too?
+- Was previously struggling with how to restrict certain things from happening within scopes
+  - i.e. inside `[math]` you can't have `[code]`, or inside `[list] [item]` you can't have `[section]`
+  - enforce this by classes?
+    - i.e. "`[code]` format is inline, math mode disables other inline formatting" or "`[section]` is only allowed at the top level of `[chapter]`"

@@ -74,7 +74,7 @@ In these instructions, the values of [code]{vl}, [code]{vstart}, and the mask re
 
 # Note that the caption here uses \n, ideally we could turn that into \\ for the caption
 # TODO r{ raw syntax isn't great
-[code]r{
+[exec]r{
     class RVVMemUnitFigure(Figure):
         def __init__(self, subfig_width: Dimension, pos: FigPos):
             super().__init__(pos)
@@ -83,7 +83,7 @@ In these instructions, the values of [code]{vl}, [code]{vstart}, and the mask re
         # TODO some function that creates a layout that can be LaTeX converted, I guess
 }
 # NOTE put the caption in text scope so you can put formatting in it
-[add_figure(
+[add_float(
     "fig:RVV_mem_unit",
     RVVMemUnitFigure,
     # Default kwargs for the figure
@@ -105,13 +105,13 @@ This principle extends to [code]{LMUL > 1} ([cref("fig:RVV_mem_lmul_3seg")]).
 ### `book.ltyp`
 ```python
 # Get content from the given file
-[addcontent("source.ltxt")]
+[add_content("source.ltxt")]
 
 # Insert LaTeX code directly to induce a pagebreak
 [emit("latex", before=lookup("chap:bg:sec:rvvmemory", para=1))]r{\pagebreak}
 
 # Place the figure (if it wasn't placed, it would appear where it was originally defined)
-[emitfig(
+[emit_float(
     "fig:RVV_mem_unit",
     after=lookup(subsection="Segmented accesses", para=2),
     # other kwargs get passed though to figure constructor, override defaults
