@@ -27,11 +27,6 @@ pub struct ParserSpan {
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ParseError {
-    #[error("Newline encountered in code block")]
-    NewlineInCode {
-        code_start: ParserSpan,
-        newline: ParserSpan,
-    },
     #[error("Code close encountered in text mode")]
     CodeCloseInText(ParserSpan),
     #[error("Scope close encountered with no matching scope open")]
@@ -246,15 +241,10 @@ impl<'a> ParserState<'a> {
             ParserInlineMode::InlineCode {
                 expected_closing_hashes: closing_hashes,
                 content,
-                code_start,
+                ..
             } => match stok {
                 // Close inline code with a token using the same amount of hashes as the opener
                 CodeClose(_, n) if n == *closing_hashes => EndTokenAndStartText,
-                // If we hit a newline, error out
-                Newline(span) => Err(ParseError::NewlineInCode {
-                    code_start: *code_start,
-                    newline: self.parser_span(&span),
-                })?,
 
                 // All other tokens treated as python code
                 _ => {

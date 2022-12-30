@@ -11,7 +11,7 @@ mod tests;
 /// TODO convert String to &'a str
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
-    /// Python code to evaluate, without any newlines, contained in the String
+    /// Python code to evaluate
     Code(String),
     /// A Scope containing Tokens
     Scope(Vec<Token>),

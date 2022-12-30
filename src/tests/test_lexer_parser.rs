@@ -60,10 +60,6 @@ impl From<ParserSpan> for TestParserSpan {
 /// A type mimicking [ParseError] for test purposes
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TestParseError {
-    NewlineInCode {
-        code_start: TestParserSpan,
-        newline: TestParserSpan,
-    },
     CodeCloseInText(TestParserSpan),
     ScopeCloseOutsideScope(TestParserSpan),
     MismatchingScopeClose {
@@ -88,13 +84,6 @@ impl TestParseError {
     /// This is a lossy transformation, ignoring byte offsets in spans, but is good enough for testing
     fn from_parse_error(p: ParseError) -> Self {
         match p {
-            ParseError::NewlineInCode {
-                code_start,
-                newline,
-            } => Self::NewlineInCode {
-                code_start: code_start.into(),
-                newline: newline.into(),
-            },
             ParseError::CodeCloseInText(span) => Self::CodeCloseInText(span.into()),
             ParseError::ScopeCloseOutsideScope(span) => Self::ScopeCloseOutsideScope(span.into()),
             ParseError::MismatchingScopeClose {
@@ -524,16 +513,9 @@ pub fn test_newline_in_code() {
             OtherText("code.do_something_else()"),
             CodeClose(0),
         ],
-        Err(TestParseError::NewlineInCode {
-            code_start: TestParserSpan {
-                start: (1, 1),
-                end: (1, 2),
-            },
-            newline: TestParserSpan {
-                start: (1, 22),
-                end: (2, 1),
-            },
-        }),
+        Ok(vec![
+            Token::Code("code.do_something();\ncode.do_something_else()".into())
+        ]),
     )
 }
 #[test]

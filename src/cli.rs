@@ -83,36 +83,6 @@ impl GivesCliFeedback for ParseError {
     fn get_snippet<'a>(&self, file_src: &'a str) -> Snippet<'a> {
         use ParseError::*;
         match self {
-            NewlineInCode {
-                code_start,
-                newline,
-            } => Snippet {
-                title: Some(Annotation {
-                    label: Some("Newline in code block"),
-                    id: None,
-                    annotation_type: AnnotationType::Error,
-                }),
-                footer: vec![],
-                slices: vec![Slice {
-                    source: file_src,
-                    line_start: 1,
-                    origin: None,
-                    fold: true,
-                    annotations: vec![
-                        annotation_from_parse_span(
-                            "Code block starts here",
-                            AnnotationType::Note,
-                            code_start,
-                        ),
-                        annotation_from_parse_span(
-                            "Newline occurs here",
-                            AnnotationType::Error,
-                            newline,
-                        ),
-                    ],
-                }],
-                opt: Default::default(),
-            },
             CodeCloseInText(span) => snippet_from_parse_span(
                 file_src,
                 "Code close token in text mode",
