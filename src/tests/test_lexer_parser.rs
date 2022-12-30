@@ -2,8 +2,7 @@ use crate::parser::parse_simple_tokens;
 
 use crate::{
     lexer::{Escapable, LexError, LexPosn, LexToken, SimpleToken},
-    parser::{ParseError, ParserSpan},
-    Token,
+    parser::{ParseError, ParserSpan, ParseToken},
 };
 use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
 
@@ -113,7 +112,7 @@ impl TestParseError {
 fn expect_tokens<'a>(
     data: &str,
     expected_stok_types: Vec<TestSimpleToken<'a>>,
-    expected_parse: Result<Vec<Token>, TestParseError>,
+    expected_parse: Result<Vec<ParseToken>, TestParseError>,
 ) {
     println!("{:?}", data);
 
@@ -161,14 +160,14 @@ It was popularised in the 1960s with the release of Letraset sheets containing L
             Newline,
         ],
         Ok(vec![
-            Token::Text("Lorem Ipsum is simply dummy text of the printing and typesetting industry.".into()),
-            Token::Newline,
-            Token::Text("Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book.".into()),
-            Token::Newline,
-            Token::Text("It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged.".into()),
-            Token::Newline,
-            Token::Text("It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.".into()),
-            Token::Newline,
+            ParseToken::Text("Lorem Ipsum is simply dummy text of the printing and typesetting industry.".into()),
+            ParseToken::Newline,
+            ParseToken::Text("Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book.".into()),
+            ParseToken::Newline,
+            ParseToken::Text("It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged.".into()),
+            ParseToken::Newline,
+            ParseToken::Text("It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.".into()),
+            ParseToken::Newline,
         ])
     )
 }
@@ -184,8 +183,8 @@ pub fn test_inline_code() {
             CodeClose(0),
         ],
         Ok(vec![
-            Token::Text("Number of values in (1,2,3): ".into()),
-            Token::Code("len((1,2,3))".into()),
+            ParseToken::Text("Number of values in (1,2,3): ".into()),
+            ParseToken::Code("len((1,2,3))".into()),
         ]),
     )
 }
@@ -201,8 +200,8 @@ pub fn test_inline_code_with_extra_delimiter() {
             CodeClose(1),
         ],
         Ok(vec![
-            Token::Text("Number of values in (1,2,3): ".into()),
-            Token::Code(" len((1,2,3)) ".into()),
+            ParseToken::Text("Number of values in (1,2,3): ".into()),
+            ParseToken::Code(" len((1,2,3)) ".into()),
         ]),
     )
 }
@@ -218,8 +217,8 @@ pub fn test_inline_code_with_long_extra_delimiter() {
             CodeClose(4),
         ],
         Ok(vec![
-            Token::Text("Number of values in (1,2,3): ".into()),
-            Token::Code(" len((1,2,3)) ".into()),
+            ParseToken::Text("Number of values in (1,2,3): ".into()),
+            ParseToken::Code(" len((1,2,3)) ".into()),
         ]),
     )
 }
@@ -237,8 +236,8 @@ pub fn test_inline_code_with_escaped_extra_delimiter() {
             CodeClose(0),
         ],
         Ok(vec![
-            Token::Text("Number of values in (1,2,3): ".into()),
-            Token::Code(r#"\# len((1,2,3)) \#"#.into()),
+            ParseToken::Text("Number of values in (1,2,3): ".into()),
+            ParseToken::Code(r#"\# len((1,2,3)) \#"#.into()),
         ]),
     )
 }
@@ -255,7 +254,7 @@ pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
             Escaped(Escapable::Hash),
             Escaped(Escapable::SqrClose),
         ],
-        Ok(vec![Token::Text(
+        Ok(vec![ParseToken::Text(
             "Number of values in (1,2,3): [# len((1,2,3)) #]".into(),
         )]),
     )
@@ -276,8 +275,8 @@ pub fn test_inline_list_with_extra_delimiter() {
             CodeClose(1),
         ],
         Ok(vec![
-            Token::Text("Number of values in (1,2,3): ".into()),
-            Token::Code(" len([1,2,3]) ".into()),
+            ParseToken::Text("Number of values in (1,2,3): ".into()),
+            ParseToken::Code(" len([1,2,3]) ".into()),
         ]),
     )
 }
@@ -293,8 +292,8 @@ pub fn test_inline_scope() {
             ScopeClose(0),
         ],
         Ok(vec![
-            Token::Text("Outside the scope ".into()),
-            Token::Scope(vec![Token::Text("inside the scope".into())]),
+            ParseToken::Text("Outside the scope ".into()),
+            ParseToken::Scope(vec![ParseToken::Text("inside the scope".into())]),
         ]),
     )
 }
@@ -309,7 +308,7 @@ pub fn test_inline_escaped_scope() {
             OtherText("not inside a scope"),
             Escaped(Escapable::SqgClose),
         ],
-        Ok(vec![Token::Text(
+        Ok(vec![ParseToken::Text(
             "Outside the scope {not inside a scope}".into(),
         )]),
     )
@@ -328,8 +327,8 @@ pub fn test_raw_scope_newlines() {
             ScopeClose(0),
         ],
         Ok(vec![
-            Token::Text("Outside the scope ".into()),
-            Token::RawScope("\ninside the raw scope\n".into()),
+            ParseToken::Text("Outside the scope ".into()),
+            ParseToken::RawScope("\ninside the raw scope\n".into()),
         ]),
     )
 }
@@ -348,8 +347,8 @@ pub fn test_raw_scope_crlf_newlines() {
             ScopeClose(0),
         ],
         Ok(vec![
-            Token::Text("Outside the scope ".into()),
-            Token::RawScope("\ninside the raw scope\n".into()),
+            ParseToken::Text("Outside the scope ".into()),
+            ParseToken::RawScope("\ninside the raw scope\n".into()),
         ]),
     )
 }
@@ -365,8 +364,8 @@ pub fn test_inline_raw_scope() {
             ScopeClose(0),
         ],
         Ok(vec![
-            Token::Text("Outside the scope ".into()),
-            Token::RawScope("inside the raw scope".into()),
+            ParseToken::Text("Outside the scope ".into()),
+            ParseToken::RawScope("inside the raw scope".into()),
         ]),
     )
 }
@@ -381,7 +380,7 @@ pub fn test_inline_raw_escaped_scope() {
             OtherText("not inside a scope"),
             Escaped(Escapable::SqgClose),
         ],
-        Ok(vec![Token::Text(
+        Ok(vec![ParseToken::Text(
             "Outside the scope r{not inside a scope}".into(),
         )]),
     )
@@ -392,7 +391,7 @@ pub fn test_r_without_starting_raw_scope() {
     expect_tokens(
         r#" r doesn't always start a scope "#,
         vec![OtherText(" r doesn't always start a scope ")],
-        Ok(vec![Token::Text(" r doesn't always start a scope ".into())]),
+        Ok(vec![ParseToken::Text(" r doesn't always start a scope ".into())]),
     )
 }
 
@@ -406,7 +405,7 @@ pub fn test_plain_hashes() {
             OtherText(" hashes in the middle"),
         ],
         Ok(vec![
-            Token::Text("This has a string of ".into()),
+            ParseToken::Text("This has a string of ".into()),
             // The first hash in the chain starts a comment!
         ]),
     )
@@ -424,8 +423,8 @@ pub fn test_special_with_escaped_backslash() {
             CodeClose(0),
         ],
         Ok(vec![
-            Token::Text(r#"About to see a backslash! \"#.into()),
-            Token::Code("code".into()),
+            ParseToken::Text(r#"About to see a backslash! \"#.into()),
+            ParseToken::Code("code".into()),
         ]),
     )
 }
@@ -440,7 +439,7 @@ pub fn test_escaped_special_with_escaped_backslash() {
             Escaped(Escapable::SqrOpen),
             OtherText(" that didn't open code!"),
         ],
-        Ok(vec![Token::Text(
+        Ok(vec![ParseToken::Text(
             r#"About to see a backslash and square brace! \[ that didn't open code!"#.into(),
         )]),
     )
@@ -475,7 +474,7 @@ pub fn test_escaped_notspecial() {
     expect_tokens(
         r#"\a"#,
         vec![Backslash, OtherText("a")],
-        Ok(vec![Token::Text(r#"\a"#.into())]),
+        Ok(vec![ParseToken::Text(r#"\a"#.into())]),
     )
 }
 
@@ -486,7 +485,7 @@ pub fn test_escaped_cr() {
     expect_tokens(
         &s,
         vec![Escaped(Escapable::Newline), OtherText("content")],
-        Ok(vec![Token::Text(r#"content"#.into())]),
+        Ok(vec![ParseToken::Text(r#"content"#.into())]),
     )
 }
 #[test]
@@ -496,7 +495,7 @@ pub fn test_escaped_lf() {
     expect_tokens(
         &s,
         vec![Escaped(Escapable::Newline), OtherText("content")],
-        Ok(vec![Token::Text(r#"content"#.into())]),
+        Ok(vec![ParseToken::Text(r#"content"#.into())]),
     )
 }
 #[test]
@@ -506,7 +505,7 @@ pub fn test_escaped_crlf() {
     expect_tokens(
         &s,
         vec![Escaped(Escapable::Newline), OtherText("content")],
-        Ok(vec![Token::Text(r#"content"#.into())]),
+        Ok(vec![ParseToken::Text(r#"content"#.into())]),
     )
 }
 
@@ -517,7 +516,7 @@ pub fn test_cr() {
     expect_tokens(
         &s,
         vec![Newline, OtherText("content")],
-        Ok(vec![Token::Newline, Token::Text("content".into())]),
+        Ok(vec![ParseToken::Newline, ParseToken::Text("content".into())]),
     )
 }
 #[test]
@@ -527,7 +526,7 @@ pub fn test_lf() {
     expect_tokens(
         &s,
         vec![Newline, OtherText("content")],
-        Ok(vec![Token::Newline, Token::Text("content".into())]),
+        Ok(vec![ParseToken::Newline, ParseToken::Text("content".into())]),
     )
 }
 #[test]
@@ -537,7 +536,7 @@ pub fn test_crlf() {
     expect_tokens(
         &s,
         vec![Newline, OtherText("content")],
-        Ok(vec![Token::Newline, Token::Text("content".into())]),
+        Ok(vec![ParseToken::Newline, ParseToken::Text("content".into())]),
     )
 }
 
@@ -553,7 +552,7 @@ pub fn test_newline_in_code() {
             CodeClose(0),
         ],
         Ok(vec![
-            Token::Code("code.do_something();\ncode.do_something_else()".into())
+            ParseToken::Code("code.do_something();\ncode.do_something_else()".into())
         ]),
     )
 }

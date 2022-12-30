@@ -4,8 +4,7 @@ use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
 
 use crate::{
     lexer::{LexError, LexPosn, LexToken, SimpleToken},
-    parser::{parse_simple_tokens, ParseError, ParserSpan},
-    Token,
+    parser::{parse_simple_tokens, ParseToken, ParseError, ParserSpan},
 };
 
 pub trait GivesCliFeedback {
@@ -162,7 +161,7 @@ fn display_cli_feedback<T: GivesCliFeedback>(data: &str, err: &T) {
     let dl = DisplayList::from(err.get_snippet(&data));
     eprintln!("{}", dl);
 }
-pub fn parse_file(path: &std::path::Path) -> anyhow::Result<Vec<Token>> {
+pub fn parse_file(path: &std::path::Path) -> anyhow::Result<Vec<ParseToken>> {
     let data = std::fs::read_to_string(path)?;
 
     let mut tokens = vec![];

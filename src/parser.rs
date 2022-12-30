@@ -1,7 +1,25 @@
 use crate::lexer::{LexPosn, SimpleToken};
-use crate::Token;
 use lexer_rs::{PosnInCharStream, StreamCharSpan, UserPosn};
 use thiserror::Error;
+
+/// A parsed token, extracted from groups of [lexer::SimpleToken]
+///
+/// TODO convert String to &'a str
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParseToken {
+    /// Python code to evaluate, may contain newlines
+    Code(String),
+    /// A Scope containing further ParseTokens
+    Scope(Vec<ParseToken>),
+    /// A raw scope containing a string that may have newlines
+    RawScope(String),
+    /// Text without any newlines
+    Text(String),
+    /// Newline that is not contained in [ParseToken::RawScope] or [ParseToken::Code].
+    Newline,
+    // TODO add doc-comment type that gets included in output latex?
+}
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParserPosn {
@@ -52,7 +70,7 @@ pub enum ParseError {
 pub fn parse_simple_tokens<P>(
     data: &str,
     token_stream: Box<dyn Iterator<Item = SimpleToken<P>>>,
-) -> Result<Vec<Token>, ParseError>
+) -> Result<Vec<ParseToken>, ParseError>
 where
     P: PosnInCharStream + Into<ParserPosn>,
 {
@@ -69,7 +87,7 @@ where
 struct ParserScope {
     scope_start: ParserSpan,
     expected_closing_hashes: usize,
-    tokens: Vec<Token>,
+    tokens: Vec<ParseToken>,
 }
 enum ParserInlineMode {
     Comment,
@@ -90,7 +108,7 @@ impl Default for ParserInlineMode {
         ParserInlineMode::InlineText("".into())
     }
 }
-impl From<ParserInlineMode> for Option<Token> {
+impl From<ParserInlineMode> for Option<ParseToken> {
     fn from(mode: ParserInlineMode) -> Self {
         match mode {
             ParserInlineMode::Comment => None,
@@ -98,11 +116,11 @@ impl From<ParserInlineMode> for Option<Token> {
                 if text.is_empty() {
                     None
                 } else {
-                    Some(Token::Text(text))
+                    Some(ParseToken::Text(text))
                 }
             }
-            ParserInlineMode::InlineCode { content, .. } => Some(Token::Code(content)),
-            ParserInlineMode::RawScope { content, .. } => Some(Token::RawScope(content)),
+            ParserInlineMode::InlineCode { content, .. } => Some(ParseToken::Code(content)),
+            ParserInlineMode::RawScope { content, .. } => Some(ParseToken::RawScope(content)),
         }
     }
 }
@@ -167,7 +185,7 @@ impl ParserAction {
 struct ParserState<'a> {
     pub scope_stack: Vec<ParserScope>,
     pub inline_mode: ParserInlineMode,
-    pub tokens: Vec<Token>,
+    pub tokens: Vec<ParseToken>,
     data: &'a str,
 }
 impl<'a> ParserState<'a> {
@@ -291,13 +309,13 @@ impl<'a> ParserState<'a> {
         }
         if action.should_add_newline_token() {
             // We have to repeat this find_next_token_stack :(
-            self.find_next_token_stack().push(Token::Newline);
+            self.find_next_token_stack().push(ParseToken::Newline);
         }
         if action.should_pop_scope() {
             match self.scope_stack.pop() {
                 Some(scope) => self
                     .find_next_token_stack()
-                    .push(Token::Scope(scope.tokens)),
+                    .push(ParseToken::Scope(scope.tokens)),
                 None => panic!(
                     "Executed action {:?} which pops scope with no scopes on the stack",
                     action
@@ -319,13 +337,13 @@ impl<'a> ParserState<'a> {
         Ok(())
     }
 
-    fn find_next_token_stack<'b>(&'b mut self) -> &'b mut Vec<Token> {
+    fn find_next_token_stack<'b>(&'b mut self) -> &'b mut Vec<ParseToken> {
         self.scope_stack
             .last_mut()
             .map_or(&mut self.tokens, |scope| &mut scope.tokens)
     }
 
-    pub fn finalize(mut self) -> Result<Vec<Token>, ParseError> {
+    pub fn finalize(mut self) -> Result<Vec<ParseToken>, ParseError> {
         match self.inline_mode {
             ParserInlineMode::Comment => {}
             // If we have text pending, put it into self.tokens
