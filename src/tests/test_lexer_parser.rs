@@ -2,7 +2,7 @@ use crate::parser::parse_simple_tokens;
 
 use crate::{
     lexer::{Escapable, LexError, LexPosn, LexToken, SimpleToken},
-    parser::{ParseError, ParserSpan, ParseToken},
+    parser::{ParseError, ParseSpan, ParseToken},
 };
 use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
 
@@ -47,8 +47,8 @@ struct TestParserSpan {
     start: (usize, usize),
     end: (usize, usize),
 }
-impl From<ParserSpan> for TestParserSpan {
-    fn from(p: ParserSpan) -> Self {
+impl From<ParseSpan> for TestParserSpan {
+    fn from(p: ParseSpan) -> Self {
         Self {
             start: (p.start.line, p.start.column),
             end: (p.end.line, p.end.column),

@@ -4,7 +4,7 @@ use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
 
 use crate::{
     lexer::{LexError, LexPosn, LexToken, SimpleToken},
-    parser::{parse_simple_tokens, ParseToken, ParseError, ParserSpan},
+    parser::{parse_simple_tokens, ParseToken, ParseError, ParseSpan},
 };
 
 pub trait GivesCliFeedback {
@@ -43,7 +43,7 @@ fn snippet_from_parse_span<'a>(
     top_label: &'a str,
     specific_label: &'a str,
     annotation_type: AnnotationType,
-    span: &ParserSpan,
+    span: &ParseSpan,
 ) -> Snippet<'a> {
     Snippet {
         title: Some(Annotation {
@@ -69,7 +69,7 @@ fn snippet_from_parse_span<'a>(
 fn annotation_from_parse_span<'a>(
     label: &'a str,
     annotation_type: AnnotationType,
-    span: &ParserSpan,
+    span: &ParseSpan,
 ) -> SourceAnnotation<'a> {
     SourceAnnotation {
         range: (span.start.byte_ofs, span.end.byte_ofs),

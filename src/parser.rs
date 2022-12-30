@@ -20,16 +20,18 @@ pub enum ParseToken {
     // TODO add doc-comment type that gets included in output latex?
 }
 
-
+/// Helper struct representing the position of a character in a file, as both:
+/// - Byte offset of the start of the UTF-8 code point
+/// - (line, column) integers for display purposes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ParserPosn {
+pub struct ParsePosn {
     pub byte_ofs: usize,
     pub line: usize,
     pub column: usize,
 }
-impl From<LexPosn> for ParserPosn {
+impl From<LexPosn> for ParsePosn {
     fn from(p: LexPosn) -> Self {
-        ParserPosn {
+        ParsePosn {
             byte_ofs: p.byte_ofs(),
             line: p.line(),
             column: p.column(),
@@ -37,31 +39,33 @@ impl From<LexPosn> for ParserPosn {
     }
 }
 
+/// Helper struct representing a span of characters between `start` (inclusive) and `end` (exclusive) in a file
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ParserSpan {
-    pub start: ParserPosn,
-    pub end: ParserPosn,
+pub struct ParseSpan {
+    pub start: ParsePosn,
+    pub end: ParsePosn,
 }
 
+/// Enumeration of all possible parsing errors
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ParseError {
     #[error("Code close encountered in text mode")]
-    CodeCloseInText(ParserSpan),
+    CodeCloseInText(ParseSpan),
     #[error("Scope close encountered with no matching scope open")]
-    ScopeCloseOutsideScope(ParserSpan),
+    ScopeCloseOutsideScope(ParseSpan),
     #[error("Scope close with {n_hashes} hashes encountered when closest scope open has {expected_closing_hashes}")]
     MismatchingScopeClose {
         n_hashes: usize,
         expected_closing_hashes: usize,
-        scope_open_span: ParserSpan,
-        scope_close_span: ParserSpan,
+        scope_open_span: ParseSpan,
+        scope_close_span: ParseSpan,
     },
     #[error("File ended inside code block")]
-    EndedInsideCode { code_start: ParserSpan },
+    EndedInsideCode { code_start: ParseSpan },
     #[error("File ended inside raw scope")]
-    EndedInsideRawScope { raw_scope_start: ParserSpan },
+    EndedInsideRawScope { raw_scope_start: ParseSpan },
     #[error("File ended inside scope")]
-    EndedInsideScope { scope_start: ParserSpan },
+    EndedInsideScope { scope_start: ParseSpan },
 }
 
 /// Parses a stream of [SimpleToken] into a vector of [Token].
@@ -72,7 +76,7 @@ pub fn parse_simple_tokens<P>(
     token_stream: Box<dyn Iterator<Item = SimpleToken<P>>>,
 ) -> Result<Vec<ParseToken>, ParseError>
 where
-    P: PosnInCharStream + Into<ParserPosn>,
+    P: PosnInCharStream + Into<ParsePosn>,
 {
     let mut parser = ParserState::new(data);
     let res: Result<(), ParseError> = token_stream
@@ -85,7 +89,7 @@ where
 // TODO block comments
 
 struct ParserScope {
-    scope_start: ParserSpan,
+    scope_start: ParseSpan,
     expected_closing_hashes: usize,
     tokens: Vec<ParseToken>,
 }
@@ -93,12 +97,12 @@ enum ParserInlineMode {
     Comment,
     InlineText(String),
     InlineCode {
-        code_start: ParserSpan,
+        code_start: ParseSpan,
         expected_closing_hashes: usize,
         content: String,
     },
     RawScope {
-        raw_scope_start: ParserSpan,
+        raw_scope_start: ParseSpan,
         expected_closing_hashes: usize,
         content: String,
     },
@@ -129,9 +133,9 @@ enum ParserAction {
     EndTokenAndNewlineAndStartText,
     EndTokenAndStartText,
     EndTokenAndStartComment,
-    EndTokenAndStartCode(ParserSpan, usize),
-    EndTokenAndStartRawScope(ParserSpan, usize),
-    EndTokenAndPushNewScope(ParserSpan, usize),
+    EndTokenAndStartCode(ParseSpan, usize),
+    EndTokenAndStartRawScope(ParseSpan, usize),
+    EndTokenAndPushNewScope(ParseSpan, usize),
     EndTokenAndPopScope,
     NoAction,
 }
@@ -142,7 +146,7 @@ impl ParserAction {
             _ => false,
         }
     }
-    fn should_push_scope(&self) -> Option<(ParserSpan, usize)> {
+    fn should_push_scope(&self) -> Option<(ParseSpan, usize)> {
         match self {
             Self::EndTokenAndPushNewScope(span, hashes) => Some((*span, *hashes)),
             _ => None,
@@ -197,18 +201,18 @@ impl<'a> ParserState<'a> {
             data,
         }
     }
-    pub fn parser_span<P>(&self, l: &StreamCharSpan<P>) -> ParserSpan
+    pub fn parser_span<P>(&self, l: &StreamCharSpan<P>) -> ParseSpan
     where
-        P: PosnInCharStream + Into<ParserPosn>,
+        P: PosnInCharStream + Into<ParsePosn>,
     {
-        ParserSpan {
+        ParseSpan {
             start: (*l.start()).into(),
             end: (*l.end()).into(),
         }
     }
     fn parse_simple_token<P>(&mut self, stok: SimpleToken<P>) -> Result<(), ParseError>
     where
-        P: PosnInCharStream + Into<ParserPosn>,
+        P: PosnInCharStream + Into<ParsePosn>,
     {
         use ParserAction::*;
         use SimpleToken::*;
