@@ -326,8 +326,7 @@ where
     pub fn stringify<'a>(&self, data: &'a str) -> &'a str {
         use SimpleToken::*;
         match self {
-            Newline(span)
-            | Escaped(span, _)
+            Escaped(span, _)
             | RawScopeOpen(span, _)
             | CodeOpen(span, _)
             | CodeClose(span, _)
@@ -336,6 +335,7 @@ where
             | Hashes(span, _)
             | OtherText(span) => &data[span.byte_range()],
             Backslash(_) => "\\",
+            Newline(_) => "\n",
         }
     }
 }

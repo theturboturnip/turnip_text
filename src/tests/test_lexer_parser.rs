@@ -316,6 +316,45 @@ pub fn test_inline_escaped_scope() {
 }
 
 #[test]
+pub fn test_raw_scope_newlines() {
+    expect_tokens(
+        "Outside the scope r{\ninside the raw scope\n}",
+        vec![
+            OtherText("Outside the scope "),
+            RawScopeOpen(0),
+            Newline,
+            OtherText("inside the raw scope"),
+            Newline,
+            ScopeClose(0),
+        ],
+        Ok(vec![
+            Token::Text("Outside the scope ".into()),
+            Token::RawScope("\ninside the raw scope\n".into()),
+        ]),
+    )
+}
+
+/// newlines are converted to \n in all cases in the second tokenization phase, for convenience
+#[test]
+pub fn test_raw_scope_crlf_newlines() {
+    expect_tokens(
+        "Outside the scope r{\r\ninside the raw scope\r\n}",
+        vec![
+            OtherText("Outside the scope "),
+            RawScopeOpen(0),
+            Newline,
+            OtherText("inside the raw scope"),
+            Newline,
+            ScopeClose(0),
+        ],
+        Ok(vec![
+            Token::Text("Outside the scope ".into()),
+            Token::RawScope("\ninside the raw scope\n".into()),
+        ]),
+    )
+}
+
+#[test]
 pub fn test_inline_raw_scope() {
     expect_tokens(
         r#"Outside the scope r{inside the raw scope}"#,
@@ -505,7 +544,7 @@ pub fn test_crlf() {
 #[test]
 pub fn test_newline_in_code() {
     expect_tokens(
-        "[code.do_something();\ncode.do_something_else()]",
+        "[code.do_something();\r\ncode.do_something_else()]",
         vec![
             CodeOpen(0),
             OtherText("code.do_something();"),
