@@ -98,74 +98,33 @@ TODO need to decide what `render()` actually creates. Does it write out raw Mark
 ## Eval-brackets
 I want the embedded scripting square-bracket syntax to work with many situations
 1. Expressions that result in plain text
-  - `[5+7]` emits the text "12"
-2. Modifying some text inside a sub-scope
-  - `[emph]{emphasised text}` emits text with some backend-dependent wrapping e.g. `__emphasised text__` for markdown
+    - `[5+7]` emits the text "12"
+2. Inline markup
+    - `[emph]{emphasised text}` emits text with some backend-dependent wrapping e.g. `__emphasised text__` for markdown
 3. Calling impure functions for their side effects
-  - `[add_float(...)]{caption}` shouldn't emit any text immediately
-4. Both 2 and 3 at once - e.g. "Titled Labels"
-  - `[section]{The First Section}` should be valid?
-  - `[section("sec:first"){The First Section}]` should also be valid
-    - This mutates global state (a list of labels?) by adding "sec:first"
-  - THOUGHT: in this case, `[section()]` is probably fine syntax
+    - `[add_float(...)]` shouldn't emit anything text immediately
+4. Document structure
+    - `[section(r"The First Section")]`
+    - `[section(r"The First Section", label="sec:first")]`
+      - This mutates global state (a list of labels?) by adding "sec:first"
 5. DEBATE: Are there compelling use cases for assigning to variables inside eval-brackets?
-  - for now, no
-  - What would `[x = 5]` emit? Python REPL doesn't emit any text
+    - for now, no
+    - What would `[x = 5]` emit? Python REPL doesn't emit any text
 6. Affecting eval-brackets within a sub-scope
-  - e.g. inside `[math]` in Markdown/MathJax, most formatting macros should probably be disabled
+    - e.g. inside `[math]` in Markdown/MathJax, most formatting macros should probably be disabled
+    - for now, just use raw text mode
+    - other example: inside `[enumerate]`, only `[item]`s can be allowed at the top level?
+      - Don't try to solve this here!! Python has a type system, don't be afraid to embed text inside Python code and eval-brackets
 
-What rules should Rust use to handle these consistently?
-Current draft:
-- `eval` the thing inside the square brackets
-  - This evaluates side-effects in impure functions => handles (3)
-- if the result subclasses `ScopeOwner`...
-  - if the eval-brackets are followed by an inline scope
-    - parse that scope block into a `Sentence` TODO how to handle raw inline scopes
-    - `result = scope_owner.create_inline(sentence)` (2)
-  - elif the eval-brackets are followed by a block scope and 
-    - parse that scope block into either a `RawTextBlock` or a set of `Paragraph`s (raw vs. not raw)
-    - `result = scope_owner.create_explicit(content)`
-  - elif the result subclasses `BlockNode` or `InlineNode`
-    - jump out of `if ScopeOwner`
-  - else
-    - it subclasses `ScopeOwner` but not `{Block,Inline}Node` => it must be attached to a scope, but it doesn't have an appropriate scope
-    - throw errors
-  - if `result` (after being modified by previous ifs) implements `ImplicitBlockScopeOwner` (TODO should that be a separate type from ScopeOwner)
-    - start an implicit block & break out
-    - TODO how could an implicit block restrict what appears within it? should it be able to? 
-- if the result (after being modified by previous ifs) subclasses `BlockNode` or `InlineNode`
-  - insert it directly into the current parent scope appropriately
-- else
-  - insert `UnescapedText(str(result))` (1)
+We can be strict about block vs inline scopes.
+We need block scopes for custom block types a la AsciiDoctor.
+We need inline scopes for easily-readable inline formatting e.g. `[emph]{stuff}` is nicer than `[emph(r"stuff")]`.
+Strict way to delimit them: the only types of scopes allowed are
+- Block scopes, potentially begun by a code token at the start of a line and directly followed by a newline, which may contain any tokens (including paragraph breaks) until ending
+  - `^` `CODE?` `SCOPE_BEGIN` `NEWLINE` `[^SCOPE_END]*` `SCOPE_END`
+- Inline scopes, potentially begun by a code block and not directly followed by a newline, which may not contain paragraph breaks but may contain other tokens until ending
+  - `CODE?` `SCOPE_BEGIN` `([^SCOPE_END NEWLINE] [^SCOPE_END PARA_BREAK]*)` `SCOPE_END`
 
-
-```python
-def handle(code, following_scope=None)
-  result = eval(code)
-  if isinstance(ScopeOwner, result):
-    if isinstance(InlineScope, following_scope) and result.can_inline():
-      result = result.create_inline(following_scope)
-    elif isinstance(BlockScope, following_scope) and result.can_explicit_block():
-      result = result.create_explicit_block(following_scope)
-    else:
-      raise RuntimeError(f"ScopeOwner {result} not followed by scope")
-
-  if isinstance((BlockNode, InlineNode), result):
-    emit(result)
-    if isinstance(ImplicitBlockScopeOwner, result):
-      start_implicit_block(result)
-  else:
-    emit(UnescapedText(str(result)))
-```
-  
-
-
-TODO we still need to figure out how `no [code] inside [math]` works
-
-
-## Stages of execution for complex backends
-1. Python Execution
-  - results in a sequence of things that are either text-to-escape, or backend-specific-stuff-wrapping-text-to-escape
 
 
 Talked about this with dad
