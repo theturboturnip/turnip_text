@@ -5,7 +5,7 @@ use crate::{
     lexer::{Escapable, LexError, LexPosn, LexToken, TTToken},
     parser::{ParseError, ParseSpan, ParseToken},
 };
-use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
+use lexer_rs::{Lexer, LexerOfStr};
 
 type TextStream<'stream> = LexerOfStr<'stream, LexPosn, LexToken, LexError>;
 
@@ -25,7 +25,7 @@ pub enum TestTTToken<'a> {
     OtherText(&'a str),
 }
 impl<'a> TestTTToken<'a> {
-    fn from_str_tok(data: &'a str, t: TTToken<LexPosn>) -> Self {
+    fn from_str_tok(data: &'a str, t: TTToken) -> Self {
         match t {
             TTToken::Newline(_) => Self::Newline,
             TTToken::Escaped(_, escapable) => Self::Escaped(escapable),
@@ -38,7 +38,7 @@ impl<'a> TestTTToken<'a> {
             TTToken::ScopeClose(_, n) => Self::ScopeClose(n),
             TTToken::Hashes(_, n) => Self::Hashes(n),
             TTToken::OtherText(span) => {
-                Self::OtherText(data[span.start().byte_ofs()..span.end().byte_ofs()].into())
+                Self::OtherText(data[span.byte_range()].into())
             }
         }
     }
@@ -121,7 +121,7 @@ fn expect_tokens<'a>(
 
     // First step: lex
     let l = TextStream::new(data);
-    let units: Vec<Unit<_>> = l
+    let units: Vec<Unit> = l
         .iter(&[
             Box::new(Unit::parse_special),
             Box::new(Unit::parse_other),

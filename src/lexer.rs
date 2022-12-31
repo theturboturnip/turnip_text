@@ -1,7 +1,8 @@
 use lexer_rs::PosnInCharStream;
 use lexer_rs::SimpleParseError;
-use lexer_rs::StreamCharSpan;
 use lexer_rs::{CharStream, Lexer, LexerParseResult};
+
+use crate::parser::{ParsePosn, ParseSpan};
 
 /// Sequences that can define the start of a [SimpleToken]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -54,7 +55,7 @@ impl LexerPrefixSeq {
     where
         P: PosnInCharStream,
         L: CharStream<P>,
-        L: Lexer<Token = Unit<P>, State = P>,
+        L: Lexer<Token = Unit, State = P>,
     {
         Self::try_from_char2(ch, stream.peek_at(&stream.consumed(state, 1)))
     }
@@ -85,7 +86,7 @@ impl Escapable {
     where
         P: PosnInCharStream,
         L: CharStream<P>,
-        L: Lexer<Token = Unit<P>, State = P>,
+        L: Lexer<Token = Unit, State = P>,
     {
         use Escapable::*;
         match stream.peek_at(&state_of_escapee)? {
@@ -117,10 +118,12 @@ impl Escapable {
     }
 }
 
+pub type LexPosn = lexer_rs::StreamCharPos<lexer_rs::LineColumn>;
+pub type LexToken = Unit;
+pub type LexError = SimpleParseError<LexPosn>;
+
 #[derive(Debug, Copy, Clone)]
-pub enum Unit<P>
-where
-    P: PosnInCharStream,
+pub enum Unit
 {
     /// `\r\n`, `\n`, or `\r`, supports all for windows compatability
     ///
@@ -128,7 +131,7 @@ where
     /// The literal sequence of characters ('\\', 'n') would parse to (Backslash, Other)
     ///
     /// [https://stackoverflow.com/a/44996251/4248422]
-    Newline(StreamCharSpan<P>),
+    Newline(ParseSpan),
     /// Backslash-escaped escapable character
     ///
     /// This only counts a backslash preceding one of the characters covered by [Escapable].
@@ -137,39 +140,37 @@ where
     ///
     /// Current escapable characters/sequences are `[, ], {, }, \, #, \r, \n, \r\n`.
     /// TODO include `%` when [SimpleToken::Percent] is uncommented
-    Escaped(StreamCharSpan<P>, Escapable),
+    Escaped(ParseSpan, Escapable),
     /// '\' that does not participate in a [Self::Escaped]
     ///
     /// TODO - A LaTeX-output backend could choose to disallow plain backslashes, as they would interact with LaTeX in potentially unexpected ways.
-    Backslash(P),
+    Backslash(ParsePosn),
     /// `[` character not preceded by a backslash
-    CodeOpen(StreamCharSpan<P>),
+    CodeOpen(ParseSpan),
     /// `]` character not preceded by a backslash
-    CodeClose(StreamCharSpan<P>),
+    CodeClose(ParseSpan),
     /// `{` character not preceded by a backslash
-    ScopeOpen(StreamCharSpan<P>),
+    ScopeOpen(ParseSpan),
     /// `r{` sequence
     ///
     /// Escaped by escaping the SqgOpen - `r\{`
-    RawScopeOpen(StreamCharSpan<P>),
+    RawScopeOpen(ParseSpan),
     /// `}` character not preceded by a backslash
-    ScopeClose(StreamCharSpan<P>),
+    ScopeClose(ParseSpan),
     /// String of N `#` characters not preceded by a backslash
-    Hashes(StreamCharSpan<P>, usize),
+    Hashes(ParseSpan, usize),
     /// Span of characters not included in [LexerPrefixSeq]
-    OtherText(StreamCharSpan<P>),
+    OtherText(ParseSpan),
     // TODO
     // /// `%` character not preceded by a backslash
     // Percent(P),
 }
-impl<P> Unit<P>
-where
-    P: PosnInCharStream,
+impl Unit
 {
-    fn parse_hashes<L>(stream: &L, state: L::State) -> LexerParseResult<P, usize, L::Error>
+    fn parse_hashes<L>(stream: &L, state: L::State) -> LexerParseResult<LexPosn, usize, L::Error>
     where
-        L: CharStream<P>,
-        L: Lexer<Token = Self, State = P>,
+        L: CharStream<LexPosn>,
+        L: Lexer<Token = Self, State = LexPosn>,
     {
         if let Some(ch) = stream.peek_at(&state) {
             match stream.do_while(state, ch, &|_, ch| ch == '#') {
@@ -184,15 +185,15 @@ where
         stream: &L,
         state: L::State,
         ch: char,
-    ) -> LexerParseResult<P, Self, L::Error>
+    ) -> LexerParseResult<LexPosn, Self, L::Error>
     where
-        L: CharStream<P>,
-        L: Lexer<Token = Self, State = P>,
+        L: CharStream<LexPosn>,
+        L: Lexer<Token = Self, State = LexPosn>,
     {
         if let Some((seq, n_chars_in_seq)) = LexerPrefixSeq::try_extract(stream, state, ch) {
             let start = state;
             let state_after_seq = stream.consumed(state, n_chars_in_seq);
-            let seq_span = StreamCharSpan::new(start, state_after_seq);
+            let seq_span = ParseSpan::from_lex(start, state_after_seq);
             match seq {
                 // Backslash => check if the following character is special, in which case Escaped(), else Backslash()
                 LexerPrefixSeq::Backslash => {
@@ -200,10 +201,10 @@ where
                         Some((escapable, n_chars)) => {
                             // Consume the initial backslash + the number of characters in the escaped sequence
                             let end = stream.consumed(state, n_chars + 1);
-                            let span = StreamCharSpan::new(start, end);
+                            let span = ParseSpan::from_lex(start, end);
                             Ok(Some((end, Self::Escaped(span, escapable))))
                         }
-                        None => Ok(Some((state_after_seq, Self::Backslash(state)))),
+                        None => Ok(Some((state_after_seq, Self::Backslash(state.into())))),
                     }
                 }
                 // CRLF or (CR outside CRLF) or (LF outside CRLF) => Newline()
@@ -228,7 +229,7 @@ where
                     match Self::parse_hashes(stream, state)? {
                         Some((hash_end, n)) => Ok(Some((
                             hash_end,
-                            Self::Hashes(StreamCharSpan::new(start, hash_end), n),
+                            Self::Hashes(ParseSpan::from_lex(start, hash_end), n),
                         ))),
                         None => unreachable!(),
                     }
@@ -242,17 +243,17 @@ where
         stream: &L,
         start: L::State,
         start_ch: char,
-    ) -> LexerParseResult<P, Self, L::Error>
+    ) -> LexerParseResult<LexPosn, Self, L::Error>
     where
-        L: CharStream<P>,
-        L: Lexer<Token = Self, State = P>,
+        L: CharStream<LexPosn>,
+        L: Lexer<Token = Self, State = LexPosn>,
     {
         // This function moves an `end` stream-state forward until it reaches
         // 1) the end of the stream
         // 2) the start of a two-character sequence matched by LexerPrefixSeq
         //
-        // This is then used to either construct Some(Other(StreamCharSpan(start, end))), or None if start == end.
-        // I *believe* StreamCharSpan(start, end) is [inclusive, exclusive).
+        // This is then used to either construct Some(Other(ParseSpan(start, end))), or None if start == end.
+        // I *believe* ParseSpan(start, end) is [inclusive, exclusive).
         let mut end = start;
         let mut end_ch = start_ch;
         loop {
@@ -280,50 +281,44 @@ where
         if start == end {
             Ok(None)
         } else {
-            let span = StreamCharSpan::new(start, end);
+            let span = ParseSpan::from_lex(start, end);
             Ok(Some((end, Self::OtherText(span))))
         }
     }
 }
 
-pub type LexPosn = lexer_rs::StreamCharPos<lexer_rs::LineColumn>;
-pub type LexToken = Unit<LexPosn>;
-pub type LexError = SimpleParseError<LexPosn>;
-
 #[derive(Debug, Copy, Clone)]
-pub enum TTToken<P>
-where
-    P: PosnInCharStream,
+pub enum TTToken
 {
     /// See [Unit::Newline]
-    Newline(StreamCharSpan<P>),
+    Newline(ParseSpan),
     /// See [Unit::Escaped]
-    Escaped(StreamCharSpan<P>, Escapable),
+    Escaped(ParseSpan, Escapable),
     /// See [Unit::Backslash]
-    Backslash(P),
+    Backslash(ParsePosn),
     /// `[` character not preceded by a backslash plus N # characters
-    CodeOpen(StreamCharSpan<P>, usize),
+    CodeOpen(ParseSpan, usize),
     /// `]` character not preceded by a backslash, preceded by N # characters
-    CodeClose(StreamCharSpan<P>, usize),
+    CodeClose(ParseSpan, usize),
     /// `{` character not preceded by a backslash plus N # characters, not followed by newline
-    InlineScopeOpen(StreamCharSpan<P>, usize),
+    InlineScopeOpen(ParseSpan, usize),
     /// `{` character not preceded by a backslash plus N # characters, followed by newline
-    BlockScopeOpen(StreamCharSpan<P>, usize),
+    BlockScopeOpen(ParseSpan, usize),
     /// `r{` sequence plus N # characters
     ///
     /// Escaped by escaping the SqgOpen - `r\{`
-    RawScopeOpen(StreamCharSpan<P>, usize),
+    RawScopeOpen(ParseSpan, usize),
     /// `}` character not preceded by a backslash, preceded by N # characters
-    ScopeClose(StreamCharSpan<P>, usize),
+    ScopeClose(ParseSpan, usize),
     /// See [Unit::Hashes]
-    Hashes(StreamCharSpan<P>, usize),
+    Hashes(ParseSpan, usize),
     /// See [Unit::OtherText]
-    OtherText(StreamCharSpan<P>),
+    OtherText(ParseSpan),
     // TODO
     // /// `%` character not preceded by a backslash
     // Percent(P),
 }
-pub fn units_to_tokens<P: PosnInCharStream>(units: Vec<Unit<P>>) -> Vec<TTToken<P>> {
+pub fn units_to_tokens(units: Vec<Unit>) -> Vec<TTToken> {
     let mut toks = vec![];
     let mut i = 0;
     while i < units.len() {
@@ -339,11 +334,9 @@ pub fn units_to_tokens<P: PosnInCharStream>(units: Vec<Unit<P>>) -> Vec<TTToken<
     toks
 }
 
-impl<P> TTToken<P>
-where
-    P: PosnInCharStream,
+impl TTToken
 {
-    fn units_to_token(units: (&Unit<P>, Option<&Unit<P>>, Option<&Unit<P>>)) -> (Self, usize) {
+    fn units_to_token(units: (&Unit, Option<&Unit>, Option<&Unit>)) -> (Self, usize) {
         match units {
             (Unit::Newline(s), _, _) => (TTToken::Newline(*s), 1),
             (Unit::Escaped(s, e), _, _) => (TTToken::Escaped(*s, *e), 1),
@@ -353,35 +346,35 @@ where
             // Code open and close
             (Unit::CodeOpen(s_start), Some(Unit::Hashes(s_end, n)), _) => (
                 TTToken::CodeOpen(
-                    StreamCharSpan::new(*s_start.start(), *s_end.end()),
+                    ParseSpan::new(s_start.start, s_end.end),
                     *n,
                 ),
                 2,
             ),
             (Unit::CodeClose(s_start), Some(Unit::Hashes(s_end, n)), _) => (
                 TTToken::CodeClose(
-                    StreamCharSpan::new(*s_start.start(), *s_end.end()),
+                    ParseSpan::new(s_start.start, s_end.end),
                     *n,
                 ),
                 2,
             ),
             (Unit::CodeOpen(s), _, _) => (
                 TTToken::CodeOpen(
-                    StreamCharSpan::new(*s.start(), *s.end()),
+                    *s,
                     0,
                 ),
                 1,
             ),
             (Unit::CodeClose(s), _, _) => (
                 TTToken::CodeClose(
-                    StreamCharSpan::new(*s.start(), *s.end()),
+                   *s,
                     0,
                 ),
                 1,
             ),
             (Unit::Hashes(s_start, n), Some(Unit::CodeClose(s_end)), _) => (
                 TTToken::CodeClose(
-                    StreamCharSpan::new(*s_start.start(), *s_end.end()),
+                    ParseSpan::new(s_start.start, s_end.end),
                     *n,
                 ),
                 2,
@@ -390,14 +383,14 @@ where
             // Block Scope Open
             (Unit::ScopeOpen(s_start), Some(Unit::Hashes(_, n)), Some(Unit::Newline(s_end))) => (
                 TTToken::BlockScopeOpen(
-                    StreamCharSpan::new(*s_start.start(), *s_end.end()),
+                    ParseSpan::new(s_start.start, s_end.end),
                     *n,
                 ),
                 3,
             ),
             (Unit::ScopeOpen(s_start), Some(Unit::Newline(s_end)), _) => (
                 TTToken::BlockScopeOpen(
-                    StreamCharSpan::new(*s_start.start(), *s_end.end()),
+                    ParseSpan::new(s_start.start, s_end.end),
                     0,
                 ),
                 2,
@@ -406,14 +399,14 @@ where
             // Inline scope open
             (Unit::ScopeOpen(s_start), Some(Unit::Hashes(s_end, n)), _) => (
                 TTToken::InlineScopeOpen(
-                    StreamCharSpan::new(*s_start.start(), *s_end.end()),
+                    ParseSpan::new(s_start.start, s_end.end),
                     *n,
                 ),
                 2,
             ),
             (Unit::ScopeOpen(s), _, _) => (
                 TTToken::InlineScopeOpen(
-                    StreamCharSpan::new(*s.start(), *s.end()),
+                    *s,
                     0,
                 ),
                 1,
@@ -422,14 +415,14 @@ where
             // Raw scope open
             (Unit::RawScopeOpen(s_start), Some(Unit::Hashes(s_end, n)), _) => (
                 TTToken::RawScopeOpen(
-                    StreamCharSpan::new(*s_start.start(), *s_end.end()),
+                    ParseSpan::new(s_start.start, s_end.end),
                     *n,
                 ),
                 2,
             ),
             (Unit::RawScopeOpen(s), _, _) => (
                 TTToken::RawScopeOpen(
-                    StreamCharSpan::new(*s.start(), *s.end()),
+                    *s,
                     0,
                 ),
                 1,
@@ -438,14 +431,14 @@ where
             // Scope close
             (Unit::Hashes(s_start, n), Some(Unit::ScopeClose(s_end)), _) => (
                 TTToken::ScopeClose(
-                    StreamCharSpan::new(*s_start.start(), *s_end.end()),
+                    ParseSpan::new(s_start.start, s_end.end),
                     *n,
                 ),
                 2,
             ),
             (Unit::ScopeClose(s), _, _) => (
                 TTToken::ScopeClose(
-                    StreamCharSpan::new(*s.start(), *s.end()),
+                    *s,
                     0,
                 ),
                 1,

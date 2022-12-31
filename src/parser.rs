@@ -1,5 +1,7 @@
+use std::ops::Range;
+
 use crate::lexer::{LexPosn, TTToken};
-use lexer_rs::{PosnInCharStream, StreamCharSpan, UserPosn};
+use lexer_rs::{PosnInCharStream, UserPosn};
 use thiserror::Error;
 
 /// A parsed token, extracted from groups of [lexer::SimpleToken]
@@ -45,6 +47,23 @@ pub struct ParseSpan {
     pub start: ParsePosn,
     pub end: ParsePosn,
 }
+impl ParseSpan {
+    pub fn from_lex(start: LexPosn, end: LexPosn) -> Self {
+        Self {
+            start: start.into(),
+            end: end.into()
+        }
+    }
+    pub fn new(start: ParsePosn, end: ParsePosn) -> Self {
+        Self {
+            start,
+            end
+        }
+    }
+    pub fn byte_range(&self) -> Range<usize> {
+        self.start.byte_ofs..self.end.byte_ofs
+    } 
+}
 
 /// Enumeration of all possible parsing errors
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -71,12 +90,10 @@ pub enum ParseError {
 /// Parses a stream of [TTToken] into a vector of [Token].
 ///
 /// If a parse error is encountered, the parsed vector up to that point is still returned.
-pub fn parse_simple_tokens<P>(
+pub fn parse_simple_tokens(
     data: &str,
-    token_stream: Box<dyn Iterator<Item = TTToken<P>>>,
+    token_stream: Box<dyn Iterator<Item = TTToken>>,
 ) -> Result<Vec<ParseToken>, ParseError>
-where
-    P: PosnInCharStream + Into<ParsePosn>,
 {
     let mut parser = ParserState::new(data);
     let res: Result<(), ParseError> = token_stream
@@ -201,18 +218,7 @@ impl<'a> ParserState<'a> {
             data,
         }
     }
-    pub fn parser_span<P>(&self, l: &StreamCharSpan<P>) -> ParseSpan
-    where
-        P: PosnInCharStream + Into<ParsePosn>,
-    {
-        ParseSpan {
-            start: (*l.start()).into(),
-            end: (*l.end()).into(),
-        }
-    }
-    fn parse_simple_token<P>(&mut self, stok: TTToken<P>) -> Result<(), ParseError>
-    where
-        P: PosnInCharStream + Into<ParsePosn>,
+    fn parse_simple_token(&mut self, stok: TTToken) -> Result<(), ParseError>
     {
         use ParserAction::*;
         use TTToken::*;
@@ -224,12 +230,12 @@ impl<'a> ParserState<'a> {
                 // State transitions
                 Newline(_) => EndTokenAndNewlineAndStartText,
                 Hashes(_, _) => EndTokenAndStartComment,
-                CodeOpen(span, n) => EndTokenAndStartCode(self.parser_span(&span), n),
-                RawScopeOpen(span, n) => EndTokenAndStartRawScope(self.parser_span(&span), n),
+                CodeOpen(span, n) => EndTokenAndStartCode(span, n),
+                RawScopeOpen(span, n) => EndTokenAndStartRawScope(span, n),
 
                 // Handle scopes
-                BlockScopeOpen(span, n) => EndTokenAndPushNewScope(self.parser_span(&span), n),
-                InlineScopeOpen(span, n) => EndTokenAndPushNewScope(self.parser_span(&span), n),
+                BlockScopeOpen(span, n) => EndTokenAndPushNewScope(span, n),
+                InlineScopeOpen(span, n) => EndTokenAndPushNewScope(span, n),
                 ScopeClose(span, n_hashes) => match current_scope {
                     Some(ParserScope {
                         expected_closing_hashes,
@@ -243,13 +249,13 @@ impl<'a> ParserState<'a> {
                         n_hashes,
                         expected_closing_hashes: *expected_closing_hashes,
                         scope_open_span: *scope_start,
-                        scope_close_span: self.parser_span(&span),
+                        scope_close_span: span,
                     })?,
-                    None => Err(ParseError::ScopeCloseOutsideScope(self.parser_span(&span)))?,
+                    None => Err(ParseError::ScopeCloseOutsideScope(span))?,
                 },
 
                 // Handle invalid code close
-                CodeClose(span, _) => Err(ParseError::CodeCloseInText(self.parser_span(&span)))?,
+                CodeClose(span, _) => Err(ParseError::CodeCloseInText(span))?,
 
                 // Handle valid text
                 OtherText(_) | Backslash(_) => {
