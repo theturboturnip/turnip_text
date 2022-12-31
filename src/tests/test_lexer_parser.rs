@@ -1,40 +1,43 @@
+use crate::lexer::{units_to_tokens, Unit};
 use crate::parser::parse_simple_tokens;
 
 use crate::{
-    lexer::{Escapable, LexError, LexPosn, LexToken, Unit},
+    lexer::{Escapable, LexError, LexPosn, LexToken, TTToken},
     parser::{ParseError, ParseSpan, ParseToken},
 };
 use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
 
 type TextStream<'stream> = LexerOfStr<'stream, LexPosn, LexToken, LexError>;
 
-/// A type mimicking [Unit] for test purposes
+/// A type mimicking [TTToken] for test purposes
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TestUnit<'a> {
+pub enum TestTTToken<'a> {
     Newline,
     Escaped(Escapable),
     Backslash,
     CodeOpen(usize),
     CodeClose(usize),
-    ScopeOpen(usize),
+    InlineScopeOpen(usize),
+    BlockScopeOpen(usize),
     RawScopeOpen(usize),
     ScopeClose(usize),
     Hashes(usize),
     OtherText(&'a str),
 }
-impl<'a> TestUnit<'a> {
-    fn from_str_tok(data: &'a str, t: LexToken) -> Self {
+impl<'a> TestTTToken<'a> {
+    fn from_str_tok(data: &'a str, t: TTToken<LexPosn>) -> Self {
         match t {
-            Unit::Newline(_) => Self::Newline,
-            Unit::Escaped(_, escapable) => Self::Escaped(escapable),
-            Unit::Backslash(_) => Self::Backslash,
-            Unit::CodeOpen(_, n) => Self::CodeOpen(n),
-            Unit::CodeClose(_, n) => Self::CodeClose(n),
-            Unit::ScopeOpen(_, n) => Self::ScopeOpen(n),
-            Unit::RawScopeOpen(_, n) => Self::RawScopeOpen(n),
-            Unit::ScopeClose(_, n) => Self::ScopeClose(n),
-            Unit::Hashes(_, n) => Self::Hashes(n),
-            Unit::OtherText(span) => {
+            TTToken::Newline(_) => Self::Newline,
+            TTToken::Escaped(_, escapable) => Self::Escaped(escapable),
+            TTToken::Backslash(_) => Self::Backslash,
+            TTToken::CodeOpen(_, n) => Self::CodeOpen(n),
+            TTToken::CodeClose(_, n) => Self::CodeClose(n),
+            TTToken::InlineScopeOpen(_, n) => Self::InlineScopeOpen(n),
+            TTToken::BlockScopeOpen(_, n) => Self::BlockScopeOpen(n),
+            TTToken::RawScopeOpen(_, n) => Self::RawScopeOpen(n),
+            TTToken::ScopeClose(_, n) => Self::ScopeClose(n),
+            TTToken::Hashes(_, n) => Self::Hashes(n),
+            TTToken::OtherText(span) => {
                 Self::OtherText(data[span.start().byte_ofs()..span.end().byte_ofs()].into())
             }
         }
@@ -111,23 +114,24 @@ impl TestParseError {
 
 fn expect_tokens<'a>(
     data: &str,
-    expected_stok_types: Vec<TestUnit<'a>>,
+    expected_stok_types: Vec<TestTTToken<'a>>,
     expected_parse: Result<Vec<ParseToken>, TestParseError>,
 ) {
     println!("{:?}", data);
 
     // First step: lex
     let l = TextStream::new(data);
-    let stoks: Vec<Unit<_>> = l
+    let units: Vec<Unit<_>> = l
         .iter(&[
             Box::new(Unit::parse_special),
             Box::new(Unit::parse_other),
         ])
         .scan((), |_, x| x.ok())
         .collect();
-    let stok_types: Vec<TestUnit> = stoks
+    let stoks = units_to_tokens(units);
+    let stok_types: Vec<TestTTToken> = stoks
         .iter()
-        .map(|stok| TestUnit::from_str_tok(data, *stok))
+        .map(|stok| TestTTToken::from_str_tok(data, *stok))
         .collect();
 
     assert_eq!(stok_types, expected_stok_types);
@@ -140,7 +144,7 @@ fn expect_tokens<'a>(
     );
 }
 
-use TestUnit::*;
+use TestTTToken::*;
 #[test]
 pub fn test_basic_text() {
     expect_tokens(
@@ -287,7 +291,7 @@ pub fn test_inline_scope() {
         r#"Outside the scope {inside the scope}"#,
         vec![
             OtherText("Outside the scope "),
-            ScopeOpen(0),
+            InlineScopeOpen(0),
             OtherText("inside the scope"),
             ScopeClose(0),
         ],
@@ -591,7 +595,7 @@ pub fn test_mismatching_scope_close() {
     expect_tokens(
         "{## text in a scope with a #}",
         vec![
-            ScopeOpen(2),
+            InlineScopeOpen(2),
             OtherText(" text in a scope with a "),
             ScopeClose(1),
         ],
@@ -639,7 +643,7 @@ pub fn test_ended_inside_raw_scope() {
 pub fn test_ended_inside_scope() {
     expect_tokens(
         "text {##scope",
-        vec![OtherText("text "), ScopeOpen(2), OtherText("scope")],
+        vec![OtherText("text "), InlineScopeOpen(2), OtherText("scope")],
         Err(TestParseError::EndedInsideScope {
             scope_start: TestParserSpan {
                 start: (1, 6),
@@ -647,4 +651,25 @@ pub fn test_ended_inside_scope() {
             },
         }),
     )
+}
+
+#[test]
+pub fn test_block_scope_vs_inline_scope() {
+    expect_tokens(
+        r#"{
+block scope
+}{inline scope}"#, 
+    vec![
+        BlockScopeOpen(0), OtherText("block scope"), Newline, ScopeClose(0),
+        InlineScopeOpen(0), OtherText("inline scope"), ScopeClose(0)
+    ],
+    Ok(vec![
+        ParseToken::Scope(vec![
+            ParseToken::Text("block scope".into()),
+            ParseToken::Newline,
+        ]),
+        ParseToken::Scope(vec![
+            ParseToken::Text("inline scope".into()),
+        ])
+    ]))
 }

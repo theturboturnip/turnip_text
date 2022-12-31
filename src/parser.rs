@@ -1,4 +1,4 @@
-use crate::lexer::{LexPosn, Unit};
+use crate::lexer::{LexPosn, TTToken};
 use lexer_rs::{PosnInCharStream, StreamCharSpan, UserPosn};
 use thiserror::Error;
 
@@ -68,12 +68,12 @@ pub enum ParseError {
     EndedInsideScope { scope_start: ParseSpan },
 }
 
-/// Parses a stream of [Unit] into a vector of [Token].
+/// Parses a stream of [TTToken] into a vector of [Token].
 ///
 /// If a parse error is encountered, the parsed vector up to that point is still returned.
 pub fn parse_simple_tokens<P>(
     data: &str,
-    token_stream: Box<dyn Iterator<Item = Unit<P>>>,
+    token_stream: Box<dyn Iterator<Item = TTToken<P>>>,
 ) -> Result<Vec<ParseToken>, ParseError>
 where
     P: PosnInCharStream + Into<ParsePosn>,
@@ -210,12 +210,12 @@ impl<'a> ParserState<'a> {
             end: (*l.end()).into(),
         }
     }
-    fn parse_simple_token<P>(&mut self, stok: Unit<P>) -> Result<(), ParseError>
+    fn parse_simple_token<P>(&mut self, stok: TTToken<P>) -> Result<(), ParseError>
     where
         P: PosnInCharStream + Into<ParsePosn>,
     {
         use ParserAction::*;
-        use Unit::*;
+        use TTToken::*;
 
         let current_scope = self.scope_stack.last();
 
@@ -228,7 +228,8 @@ impl<'a> ParserState<'a> {
                 RawScopeOpen(span, n) => EndTokenAndStartRawScope(self.parser_span(&span), n),
 
                 // Handle scopes
-                ScopeOpen(span, n) => EndTokenAndPushNewScope(self.parser_span(&span), n),
+                BlockScopeOpen(span, n) => EndTokenAndPushNewScope(self.parser_span(&span), n),
+                InlineScopeOpen(span, n) => EndTokenAndPushNewScope(self.parser_span(&span), n),
                 ScopeClose(span, n_hashes) => match current_scope {
                     Some(ParserScope {
                         expected_closing_hashes,
@@ -287,12 +288,8 @@ impl<'a> ParserState<'a> {
             } => match stok {
                 // Close inline code with a token using the same amount of hashes as the opener
                 ScopeClose(_, n) if n == *expected_closing_hashes => EndTokenAndStartText,
-                // If we hit a newline, pass a consistent \n
-                Newline(_) => {
-                    content.push_str("\n");
-                    NoAction
-                }
-                // All other tokens taken exactly as from the original text
+                // All other tokens taken as from the original text
+                // [TTToken::stringify] always returns \n for newlines
                 _ => {
                     content.push_str(stok.stringify(self.data));
                     NoAction
