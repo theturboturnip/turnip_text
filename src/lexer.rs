@@ -54,7 +54,7 @@ impl LexerPrefixSeq {
     where
         P: PosnInCharStream,
         L: CharStream<P>,
-        L: Lexer<Token = SimpleToken<P>, State = P>,
+        L: Lexer<Token = Unit<P>, State = P>,
     {
         Self::try_from_char2(ch, stream.peek_at(&stream.consumed(state, 1)))
     }
@@ -85,7 +85,7 @@ impl Escapable {
     where
         P: PosnInCharStream,
         L: CharStream<P>,
-        L: Lexer<Token = SimpleToken<P>, State = P>,
+        L: Lexer<Token = Unit<P>, State = P>,
     {
         use Escapable::*;
         match stream.peek_at(&state_of_escapee)? {
@@ -118,7 +118,7 @@ impl Escapable {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum SimpleToken<P>
+pub enum Unit<P>
 where
     P: PosnInCharStream,
 {
@@ -162,7 +162,7 @@ where
     // /// `%` character not preceded by a backslash
     // Percent(P),
 }
-impl<P> SimpleToken<P>
+impl<P> Unit<P>
 where
     P: PosnInCharStream,
 {
@@ -264,9 +264,9 @@ where
                                 Ok(Some((end, Self::ScopeClose(span, n))))
                             }
                             _ => Ok(Some((
-                                hash_end,
-                                Self::Hashes(StreamCharSpan::new(start, hash_end), n),
-                            ))),
+                            hash_end,
+                            Self::Hashes(StreamCharSpan::new(start, hash_end), n),
+                        ))),
                         },
                         None => unreachable!(),
                     }
@@ -324,7 +324,7 @@ where
     }
 
     pub fn stringify<'a>(&self, data: &'a str) -> &'a str {
-        use SimpleToken::*;
+        use Unit::*;
         match self {
             Escaped(span, _)
             | RawScopeOpen(span, _)
@@ -341,5 +341,5 @@ where
 }
 
 pub type LexPosn = lexer_rs::StreamCharPos<lexer_rs::LineColumn>;
-pub type LexToken = SimpleToken<LexPosn>;
+pub type LexToken = Unit<LexPosn>;
 pub type LexError = SimpleParseError<LexPosn>;

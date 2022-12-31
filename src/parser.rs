@@ -1,4 +1,4 @@
-use crate::lexer::{LexPosn, SimpleToken};
+use crate::lexer::{LexPosn, Unit};
 use lexer_rs::{PosnInCharStream, StreamCharSpan, UserPosn};
 use thiserror::Error;
 
@@ -68,12 +68,12 @@ pub enum ParseError {
     EndedInsideScope { scope_start: ParseSpan },
 }
 
-/// Parses a stream of [SimpleToken] into a vector of [Token].
+/// Parses a stream of [Unit] into a vector of [Token].
 ///
 /// If a parse error is encountered, the parsed vector up to that point is still returned.
 pub fn parse_simple_tokens<P>(
     data: &str,
-    token_stream: Box<dyn Iterator<Item = SimpleToken<P>>>,
+    token_stream: Box<dyn Iterator<Item = Unit<P>>>,
 ) -> Result<Vec<ParseToken>, ParseError>
 where
     P: PosnInCharStream + Into<ParsePosn>,
@@ -210,12 +210,12 @@ impl<'a> ParserState<'a> {
             end: (*l.end()).into(),
         }
     }
-    fn parse_simple_token<P>(&mut self, stok: SimpleToken<P>) -> Result<(), ParseError>
+    fn parse_simple_token<P>(&mut self, stok: Unit<P>) -> Result<(), ParseError>
     where
         P: PosnInCharStream + Into<ParsePosn>,
     {
         use ParserAction::*;
-        use SimpleToken::*;
+        use Unit::*;
 
         let current_scope = self.scope_stack.last();
 

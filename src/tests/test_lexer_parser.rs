@@ -1,16 +1,16 @@
 use crate::parser::parse_simple_tokens;
 
 use crate::{
-    lexer::{Escapable, LexError, LexPosn, LexToken, SimpleToken},
+    lexer::{Escapable, LexError, LexPosn, LexToken, Unit},
     parser::{ParseError, ParseSpan, ParseToken},
 };
 use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
 
 type TextStream<'stream> = LexerOfStr<'stream, LexPosn, LexToken, LexError>;
 
-/// A type mimicking [SimpleToken] for test purposes
+/// A type mimicking [Unit] for test purposes
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TestSimpleToken<'a> {
+pub enum TestUnit<'a> {
     Newline,
     Escaped(Escapable),
     Backslash,
@@ -22,19 +22,19 @@ pub enum TestSimpleToken<'a> {
     Hashes(usize),
     OtherText(&'a str),
 }
-impl<'a> TestSimpleToken<'a> {
+impl<'a> TestUnit<'a> {
     fn from_str_tok(data: &'a str, t: LexToken) -> Self {
         match t {
-            SimpleToken::Newline(_) => Self::Newline,
-            SimpleToken::Escaped(_, escapable) => Self::Escaped(escapable),
-            SimpleToken::Backslash(_) => Self::Backslash,
-            SimpleToken::CodeOpen(_, n) => Self::CodeOpen(n),
-            SimpleToken::CodeClose(_, n) => Self::CodeClose(n),
-            SimpleToken::ScopeOpen(_, n) => Self::ScopeOpen(n),
-            SimpleToken::RawScopeOpen(_, n) => Self::RawScopeOpen(n),
-            SimpleToken::ScopeClose(_, n) => Self::ScopeClose(n),
-            SimpleToken::Hashes(_, n) => Self::Hashes(n),
-            SimpleToken::OtherText(span) => {
+            Unit::Newline(_) => Self::Newline,
+            Unit::Escaped(_, escapable) => Self::Escaped(escapable),
+            Unit::Backslash(_) => Self::Backslash,
+            Unit::CodeOpen(_, n) => Self::CodeOpen(n),
+            Unit::CodeClose(_, n) => Self::CodeClose(n),
+            Unit::ScopeOpen(_, n) => Self::ScopeOpen(n),
+            Unit::RawScopeOpen(_, n) => Self::RawScopeOpen(n),
+            Unit::ScopeClose(_, n) => Self::ScopeClose(n),
+            Unit::Hashes(_, n) => Self::Hashes(n),
+            Unit::OtherText(span) => {
                 Self::OtherText(data[span.start().byte_ofs()..span.end().byte_ofs()].into())
             }
         }
@@ -111,23 +111,23 @@ impl TestParseError {
 
 fn expect_tokens<'a>(
     data: &str,
-    expected_stok_types: Vec<TestSimpleToken<'a>>,
+    expected_stok_types: Vec<TestUnit<'a>>,
     expected_parse: Result<Vec<ParseToken>, TestParseError>,
 ) {
     println!("{:?}", data);
 
     // First step: lex
     let l = TextStream::new(data);
-    let stoks: Vec<SimpleToken<_>> = l
+    let stoks: Vec<Unit<_>> = l
         .iter(&[
-            Box::new(SimpleToken::parse_special),
-            Box::new(SimpleToken::parse_other),
+            Box::new(Unit::parse_special),
+            Box::new(Unit::parse_other),
         ])
         .scan((), |_, x| x.ok())
         .collect();
-    let stok_types: Vec<TestSimpleToken> = stoks
+    let stok_types: Vec<TestUnit> = stoks
         .iter()
-        .map(|stok| TestSimpleToken::from_str_tok(data, *stok))
+        .map(|stok| TestUnit::from_str_tok(data, *stok))
         .collect();
 
     assert_eq!(stok_types, expected_stok_types);
@@ -140,7 +140,7 @@ fn expect_tokens<'a>(
     );
 }
 
-use TestSimpleToken::*;
+use TestUnit::*;
 #[test]
 pub fn test_basic_text() {
     expect_tokens(

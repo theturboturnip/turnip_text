@@ -3,7 +3,7 @@ use anyhow::bail;
 use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
 
 use crate::{
-    lexer::{LexError, LexPosn, LexToken, SimpleToken},
+    lexer::{LexError, LexPosn, LexToken, Unit},
     parser::{parse_simple_tokens, ParseToken, ParseError, ParseSpan},
 };
 
@@ -168,8 +168,8 @@ pub fn parse_file(path: &std::path::Path) -> anyhow::Result<Vec<ParseToken>> {
     let lexer = LexerOfStr::<LexPosn, LexToken, LexError>::new(&data);
 
     for t in lexer.iter(&[
-        Box::new(SimpleToken::parse_special),
-        Box::new(SimpleToken::parse_other),
+        Box::new(Unit::parse_special),
+        Box::new(Unit::parse_other),
     ]) {
         tokens.push(t.map_err(|err| {
             display_cli_feedback(&data, &err);
