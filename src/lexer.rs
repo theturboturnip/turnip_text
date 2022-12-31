@@ -142,17 +142,17 @@ where
     ///
     /// TODO - A LaTeX-output backend could choose to disallow plain backslashes, as they would interact with LaTeX in potentially unexpected ways.
     Backslash(P),
-    /// `[` character not preceded by a backslash
+    /// `[` character not preceded by a backslash plus N # characters
     CodeOpen(StreamCharSpan<P>, usize),
-    /// `]` character not preceded by a backslash
+    /// `]` character not preceded by a backslash, preceded by N # characters
     CodeClose(StreamCharSpan<P>, usize),
-    /// `{` character not preceded by a backslash
+    /// `{` character not preceded by a backslash plus N # characters
     ScopeOpen(StreamCharSpan<P>, usize),
     /// `r{` sequence plus N # characters
     ///
     /// Escaped by escaping the SqgOpen - `r\{`
     RawScopeOpen(StreamCharSpan<P>, usize),
-    /// `}` character not preceded by a backslash
+    /// `}` character not preceded by a backslash, preceded by N # characters
     ScopeClose(StreamCharSpan<P>, usize),
     /// String of N `#` characters not preceded by a backslash
     Hashes(StreamCharSpan<P>, usize),
