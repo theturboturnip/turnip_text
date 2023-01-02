@@ -1,5 +1,5 @@
 use anyhow::bail;
-use pyo3::prelude::*;
+use pyo3::{prelude::*, types::PyDict};
 
 use crate::{lexer::TTToken, parser::ParseSpan, python::{interop::*, interp::{InterpError, compute_action_for_code_mode}}};
 
@@ -10,7 +10,14 @@ pub(crate) struct InterpParaState {
     inl_state: InterpInlineState,
     para: Py<Paragraph>,
     sentence: Py<Sentence>,
-    inline_stack: Vec<Py<InlineScope>>,
+    inline_stack: Vec<InterpInlineScopeState>,
+}
+
+#[derive(Debug)]
+struct InterpInlineScopeState {
+    scope: Py<InlineScope>,
+    scope_start: ParseSpan,
+    expected_n_hashes: usize,
 }
 
 /// Interpreter state specific to parsing paragraphs and the content within (i.e. inline content)
@@ -102,18 +109,33 @@ pub(crate) enum InterpParaAction {
 }
 
 impl InterpParaState {
+    pub(crate) fn new(py: Python) -> PyResult<Self> {
+        Ok(Self {
+            inl_state: InterpInlineState::LineStart,
+            para: Py::new(py, Paragraph::new())?,
+            sentence: Py::new(py, Sentence::new())?,
+            inline_stack: vec![],
+        })
+    }
+
+    pub(crate) fn para(&self) -> &Py<Paragraph> {
+        &self.para
+    }
+
     pub(crate) fn handle_token(
         &mut self,
+        py: Python,
+        globals: &PyDict,
         tok: TTToken,
         data: &str,
     ) -> anyhow::Result<(Option<InterpBlockAction>, Option<InterpSpecialAction>)> {
-        let actions = self.compute_action(tok, data)?;
-        self.handle_action(actions, data)
+        let actions = self.compute_action(py, globals, tok, data)?;
+        self.handle_action(py, actions)
     }
     pub(crate) fn handle_action(
         &mut self,
+        py: Python,
         action: Option<InterpParaAction>,
-        data: &str,
     ) -> anyhow::Result<(Option<InterpBlockAction>, Option<InterpSpecialAction>)> {
         if let Some(action) = action {
             use InterpInlineState as S;
@@ -128,12 +150,16 @@ impl InterpParaState {
                     S::LineStart | S::MidLine | S::BuildingCode { .. } | S::BuildingRawText { .. },
                     A::PushInlineContent(content),
                 ) => {
-                    let content = todo!("create content in Python world?");
-                    todo!("Put content into topmost scope or current sentence");
+                    let content = content.to_py(py)?;
+                    self.push_to_topmost_scope(py, content.as_ref(py))?;
                     (S::MidLine, (None, None))
                 }
                 (S::MidLine, A::BreakSentence) => {
-                    todo!("if self.sentence has items, push it into the paragraph");
+                    // If the sentence has stuff in it, push it into the paragraph and make a new one
+                    if self.sentence.borrow(py).__len__() > 0 {
+                        self.para.borrow_mut(py).push_sentence(self.sentence.as_ref(py))?;
+                        self.sentence = Py::new(py, Sentence::new())?;
+                    }
                     (S::LineStart, (None, None))
                 }
 
@@ -141,17 +167,24 @@ impl InterpParaState {
                     S::LineStart | S::MidLine | S::AttachingInlineLevelCode { .. },
                     A::PushInlineScope(owner, span, n),
                 ) => {
-                    let scope = todo!("create python InlineScope");
+                    let scope = InterpInlineScopeState {
+                        scope: Py::new(py, InlineScope::new_rs(owner))?,
+                        scope_start: span,
+                        expected_n_hashes: n,
+                    };
                     self.inline_stack.push(scope);
                     (S::MidLine, (None, None))
                 }
-                (S::LineStart | S::MidLine, A::PopInlineScope(scope_close_span)) => {
+                (
+                    S::LineStart | S::MidLine,
+                    A::PopInlineScope(scope_close_span)
+                ) => {
                     let popped_scope = self.inline_stack.pop();
                     match popped_scope {
-                        Some(popped_scope) => todo!("Insert popped_scope at the new topmost scope or in the current sentence"),
+                        Some(popped_scope) => self.push_to_topmost_scope(py, popped_scope.scope.as_ref(py))?,
                         // TODO should specify *inline* scope, not all scopes
                         None => bail!(InterpError::ScopeCloseOutsideScope(scope_close_span))
-                    }
+                    };
                     (S::MidLine, (None, None))
                 }
 
@@ -187,13 +220,17 @@ impl InterpParaState {
                 ),
 
                 (S::LineStart, A::EndParagraph(end_para_span)) => {
-                    if !self.inline_stack.is_empty() {
+                    if let Some(i) = self.inline_stack.last() {
                         bail!(InterpError::ParaBreakInInlineScope {
-                            scope_start: todo!("span for self.inline_stack.last()"),
+                            scope_start: i.scope_start,
                             para_break: end_para_span
                         })
                     }
-                    todo!("finalize current sentence and push into paragraph");
+                    // If the sentence has stuff in it, push it into the paragraph and make a new one
+                    if self.sentence.borrow(py).__len__() > 0 {
+                        self.para.borrow_mut(py).push_sentence(self.sentence.as_ref(py))?;
+                        self.sentence = Py::new(py, Sentence::new())?;
+                    }
                     (S::LineStart, (Some(InterpBlockAction::EndParagraph), None))
                 }
 
@@ -211,6 +248,8 @@ impl InterpParaState {
     }
     fn compute_action(
         &mut self,
+        py: Python,
+        globals: &PyDict,
         tok: TTToken,
         data: &str,
     ) -> anyhow::Result<Option<InterpParaAction>> {
@@ -230,9 +269,23 @@ impl InterpParaState {
                 RawScopeOpen(span, n) => Some(StartRawScope(span, n)),
 
                 CodeClose(span, _) => bail!(InterpError::CodeCloseOutsideCode(span)),
-                ScopeClose(_, _) => {
-                    todo!("try to close inline scopes, complain if inline scopes empty")
-                }
+                ScopeClose(span, n_hashes) => match self.inline_stack.last() {
+                    Some(InterpInlineScopeState {
+                        expected_n_hashes,
+                        ..
+                    }) if n_hashes == *expected_n_hashes => Some(PopInlineScope(span)),
+                    Some(InterpInlineScopeState {
+                        expected_n_hashes,
+                        scope_start,
+                        ..
+                    }) => Err(InterpError::MismatchingScopeClose {
+                        n_hashes,
+                        expected_n_hashes: *expected_n_hashes,
+                        scope_open_span: *scope_start,
+                        scope_close_span: span,
+                    })?,
+                    None => Err(InterpError::ScopeCloseOutsideScope(span))?,
+                },
 
                 _ => Some(PushInlineContent(InlineNodeToCreate::UnescapedText(
                     tok.stringify(data).into(),
@@ -251,9 +304,23 @@ impl InterpParaState {
                 RawScopeOpen(span, n) => Some(StartRawScope(span, n)),
 
                 CodeClose(span, _) => bail!(InterpError::CodeCloseOutsideCode(span)),
-                ScopeClose(_, _) => {
-                    todo!("try to close inline scopes, complain if inline scopes empty")
-                }
+                ScopeClose(span, n_hashes) => match self.inline_stack.last() {
+                    Some(InterpInlineScopeState {
+                        expected_n_hashes,
+                        ..
+                    }) if n_hashes == *expected_n_hashes => Some(PopInlineScope(span)),
+                    Some(InterpInlineScopeState {
+                        expected_n_hashes,
+                        scope_start,
+                        ..
+                    }) => Err(InterpError::MismatchingScopeClose {
+                        n_hashes,
+                        expected_n_hashes: *expected_n_hashes,
+                        scope_open_span: *scope_start,
+                        scope_close_span: span,
+                    })?,
+                    None => Err(InterpError::ScopeCloseOutsideScope(span))?,
+                },
 
                 _ => Some(PushInlineContent(InlineNodeToCreate::UnescapedText(
                     tok.stringify(data).into(),
@@ -267,9 +334,16 @@ impl InterpParaState {
                 let code_span =
                     compute_action_for_code_mode(data, tok, code, code_start, *expected_n_hashes);
                 match code_span {
-                    Some(_code_span) => {
+                    Some(code_span) => {
                         // The code ended...
-                        let _eval_result = todo!("eval code and see if it's a block owner");
+                        // TODO PyErr -> InterpErr?
+                        let res = EvalBracketResult::eval(py, globals, code.as_str())?;
+                        let inl_action = match res {
+                            EvalBracketResult::Block(_) => bail!(InterpError::BlockOwnerCodeMidPara { code_span }),
+                            EvalBracketResult::Inline(i) => WaitToAttachInlineCode(i, code_span),
+                            EvalBracketResult::Other(s) => PushInlineContent(InlineNodeToCreate::UnescapedPyString(s)),
+                        };
+                        Some(inl_action)
                         // if eval_result is a BlockScopeOwner, fail! can't have block scope inside inline text
                         // elif eval_result is an InlineScopeOwner, WaitToAttachInlineCode
                         // else stringify and PushInlineContent
@@ -300,5 +374,12 @@ impl InterpParaState {
             },
         };
         Ok(action)
+    }
+
+    fn push_to_topmost_scope(&self, py: Python, node: &PyAny) -> PyResult<()> {
+        match self.inline_stack.last() {
+            Some(i) => i.scope.borrow_mut(py).push_node(node),
+            None => self.sentence.borrow_mut(py).push_node(node),
+        }
     }
 }

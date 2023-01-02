@@ -2,7 +2,7 @@
 
 use anyhow::bail;
 use thiserror::Error;
-use pyo3::prelude::*;
+use pyo3::{prelude::*, types::{PyString, PyDict}};
 
 use crate::{lexer::TTToken, parser::ParseSpan};
 use self::para::{InterpParaState, InterpParaAction};
@@ -11,7 +11,7 @@ use super::{interop::*, TurnipTextPython};
 
 mod para;
 
-pub struct InterpState<'interp, 'a: 'interp> {
+pub struct InterpState<'a> {
     /// FSM state
     block_state: InterpBlockState,
     /// Overrides InterpBlockState and raw_state - if Some(state), we are in "comment mode" and all other state machines are paused
@@ -19,9 +19,7 @@ pub struct InterpState<'interp, 'a: 'interp> {
     /// Stack of block scopes
     block_stack: Vec<InterpBlockScopeState>,
     /// Root of the document
-    root: Py<BlockNode>,
-    /// Python interpreter and context
-    ttpython: &'a mut TurnipTextPython<'interp>,
+    root: Py<BlockScope>,
     /// Raw text data
     data: &'a str,
 }
@@ -61,12 +59,10 @@ struct InterpCommentState {
 
 #[derive(Debug)]
 struct InterpBlockScopeState {
-    node: Py<BlockNode>,
+    scope: Py<BlockScope>,
     scope_start: ParseSpan,
     expected_n_hashes: usize,
 }
-
-
 
 #[derive(Debug)]
 pub(crate) enum InterpBlockAction {
@@ -86,6 +82,7 @@ pub(crate) enum InterpBlockAction {
     ///
     /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::WritingPara]
     /// - [InterpBlockState::BuildingBlockLevelCode] -> [InterpBlockState::WritingPara]
+    /// TODO dear god stop using Option here, its so verbose and actually unnecessary
     StartParagraph(Option<InterpParaAction>),
 
     /// On encountering a paragraph break (a blank line), add the paragraph to the document
@@ -115,12 +112,30 @@ pub(crate) enum InterpSpecialAction {
     EndComment,
 }
 
-
-
 #[derive(Debug)]
 pub(crate) enum InlineNodeToCreate {
     UnescapedText(String),
     RawText(String),
+    UnescapedPyString(Py<PyString>)
+}
+impl InlineNodeToCreate {
+    pub(crate) fn to_py(self, py: Python) -> PyResult<Py<InlineNode>> {
+        let node: Py<InlineNode> = match self {
+            InlineNodeToCreate::UnescapedText(s) => {
+                let u = Py::new(py, UnescapedText::new_rs(py, s.as_str()))?;
+                downcast_gil_ref(py, u)?
+            }
+            InlineNodeToCreate::RawText(s) => {
+                let r = Py::new(py, RawText::new_rs(py, s.as_str()))?;
+                downcast_gil_ref(py, r)?
+            }
+            InlineNodeToCreate::UnescapedPyString(s) => {
+                let u = Py::new(py, UnescapedText::new(s))?;
+                downcast_gil_ref(py, u)?
+            }
+        };
+        Ok(node)
+    }
 }
 
 /// Enumeration of all possible interpreter errors
@@ -130,10 +145,10 @@ pub enum InterpError {
     CodeCloseOutsideCode(ParseSpan),
     #[error("Scope close encountered with no matching scope open")]
     ScopeCloseOutsideScope(ParseSpan),
-    #[error("Scope close with {n_hashes} hashes encountered when closest scope open has {expected_closing_hashes}")]
+    #[error("Scope close with {n_hashes} hashes encountered when closest scope open has {expected_n_hashes}")]
     MismatchingScopeClose {
         n_hashes: usize,
-        expected_closing_hashes: usize,
+        expected_n_hashes: usize,
         scope_open_span: ParseSpan,
         scope_close_span: ParseSpan,
     },
@@ -145,6 +160,8 @@ pub enum InterpError {
     EndedInsideScope { scope_start: ParseSpan },
     #[error("Block scope encountered mid-line")]
     BlockScopeOpenedMidPara { scope_start: ParseSpan },
+    #[error("A Python `BlockScopeOwner` was returned by inline code inside a paragraph")]
+    BlockOwnerCodeMidPara { code_span: ParseSpan },
     #[error("Inline scope contained paragraph break")]
     ParaBreakInInlineScope {
         scope_start: ParseSpan,
@@ -158,27 +175,30 @@ pub enum InterpError {
     InlineOwnerCodeHasNoScope { code_span: ParseSpan },
 }
 
-impl<'interp, 'a> InterpState<'interp, 'a> {
-    fn new(ttpython: &'a mut TurnipTextPython<'interp>, data: &'a str) -> PyResult<Self> {
-        let root: Py<BlockNode> = ttpython.with_gil(|py, _| Py::new(py, BlockNode::new()))?;
+impl<'a> InterpState<'a> {
+    fn new<'interp>(ttpython: &'a mut TurnipTextPython<'interp>, data: &'a str) -> PyResult<Self> {
+        let root = ttpython.with_gil(|py, _| Py::new(py, BlockScope::new(None)))?;
         Ok(Self {
             block_state: InterpBlockState::ReadyForNewBlock,
             comment_state: None,
             block_stack: vec![],
             root,
-            ttpython,
             data,
         })
     }
 
-    pub fn handle_token(&mut self, tok: TTToken) -> anyhow::Result<()> {
-        let actions = self.compute_action(tok)?;
-        self.handle_action(actions)
+    pub fn handle_token<'interp>(&mut self, ttpython: &TurnipTextPython<'interp>, tok: TTToken) -> anyhow::Result<()> {
+        ttpython.with_gil(|py, globals| {
+            let actions = self.compute_action(py, globals, tok)?;
+            self.handle_action(py, globals, actions)
+        })
     }
 
     /// Return (block action, special action) to be executed in the order (block action, special action)
     fn compute_action(
         &mut self,
+        py: Python,
+        globals: &PyDict,
         tok: TTToken,
     ) -> anyhow::Result<(Option<InterpBlockAction>, Option<InterpSpecialAction>)> {
         use InterpBlockAction::*;
@@ -219,7 +239,23 @@ impl<'interp, 'a> InterpState<'interp, 'a> {
                     ),
 
                     // Try a scope close
-                    ScopeClose(_, _) => todo!(),
+                    ScopeClose(span, n_hashes) => match self.block_stack.last() {
+                        Some(InterpBlockScopeState {
+                            expected_n_hashes,
+                            ..
+                        }) if n_hashes == *expected_n_hashes => (Some(PopBlock(span)), None),
+                        Some(InterpBlockScopeState {
+                            expected_n_hashes,
+                            scope_start,
+                            ..
+                        }) => Err(InterpError::MismatchingScopeClose {
+                            n_hashes,
+                            expected_n_hashes: *expected_n_hashes,
+                            scope_open_span: *scope_start,
+                            scope_close_span: span,
+                        })?,
+                        None => Err(InterpError::ScopeCloseOutsideScope(span))?,
+                    },
 
                     // Complain - not in code mode
                     CodeClose(span, _) => bail!(InterpError::CodeCloseOutsideCode(span)),
@@ -239,7 +275,9 @@ impl<'interp, 'a> InterpState<'interp, 'a> {
                     ),
                 }
             }
-            InterpBlockState::WritingPara(state) => state.handle_token(tok, self.data)?,
+            InterpBlockState::WritingPara(state) => {
+                state.handle_token(py, globals, tok, self.data)?
+            },
             InterpBlockState::BuildingBlockLevelCode {
                 code,
                 code_start,
@@ -253,9 +291,16 @@ impl<'interp, 'a> InterpState<'interp, 'a> {
                     *expected_n_hashes,
                 );
                 match code_span {
-                    Some(_code_span) => {
+                    Some(code_span) => {
                         // The code ended...
-                        let _eval_result = todo!("eval code and see if it's a block owner");
+                        // TODO PyErr -> InterpErr?
+                        let res = EvalBracketResult::eval(py, globals, code.as_str())?;
+                        let block_action = match res {
+                            EvalBracketResult::Block(b) => WaitToAttachBlockCode(b, code_span),
+                            EvalBracketResult::Inline(i) => StartParagraph(Some(InterpParaAction::WaitToAttachInlineCode(i, code_span))),
+                            EvalBracketResult::Other(s) => StartParagraph(Some(InterpParaAction::PushInlineContent(InlineNodeToCreate::UnescapedPyString(s)))),
+                        };
+                        (Some(block_action), None)
                         // if eval_result is a BlockScopeOwner, WaitToAttachBlockCode
                         // elif eval_result is an InlineScopeOwner, WaitToAttachInlineCode
                         // else stringify and PushInlineContent
@@ -279,6 +324,8 @@ impl<'interp, 'a> InterpState<'interp, 'a> {
     /// May recurse if StartParagraph(action)
     fn handle_action(
         &mut self,
+        py: Python,
+        globals: &PyDict,
         actions: (Option<InterpBlockAction>, Option<InterpSpecialAction>),
     ) -> anyhow::Result<()> {
         let (block_action, special_action) = actions;
@@ -302,15 +349,19 @@ impl<'interp, 'a> InterpState<'interp, 'a> {
                     S::ReadyForNewBlock | S::BuildingBlockLevelCode { .. },
                     A::StartParagraph(action),
                 ) => {
-                    let para_state: InterpParaState =
-                        todo!("New InterpParaState with LineStart as inl_state");
-                    let requested_action = para_state.handle_action(action, self.data);
-                    // TODO this should really only handle SpecialAction
-                    self.handle_action(actions);
+                    let mut para_state = InterpParaState::new(py)?;
+                    let (new_block_action, new_special_action) = para_state.handle_action(py, action)?;
+                    if new_block_action.is_some() {
+                        bail!("An inline action, initiated with the start of a paragraph, tried to initiate another block action. This is not allowed and should not be possible.")
+                    }
+                    self.handle_action(py, globals, (None, new_special_action))?;
                     S::WritingPara(para_state)
                 }
-                (S::WritingPara(para_state), A::EndParagraph) => {
-                    todo!("Push para_state.para onto the topmost entry in the block stack or the root");
+                (
+                    S::WritingPara(para_state),
+                    A::EndParagraph
+                ) => {
+                    self.push_to_topmost_block(py, para_state.para().as_ref(py))?;
                     S::ReadyForNewBlock
                 }
 
@@ -319,21 +370,25 @@ impl<'interp, 'a> InterpState<'interp, 'a> {
                     A::PushBlock(owner, scope_start, expected_n_hashes),
                 ) => {
                     self.block_stack.push(InterpBlockScopeState {
-                        node: todo!("Create python block node from owner"),
+                        scope: Py::new(py, BlockScope::new_rs(owner))?,
                         scope_start,
                         expected_n_hashes,
                     });
                     S::ReadyForNewBlock
                 }
-                (S::ReadyForNewBlock, A::PopBlock(scope_close_span)) => {
+                (
+                    S::ReadyForNewBlock,
+                    A::PopBlock(scope_close_span)
+                ) => {
                     let popped_scope = self.block_stack.pop();
                     match popped_scope {
                         Some(popped_scope) => {
-                            todo!("Insert popped_scope at the new topmost scope or in the document")
+                            self.push_to_topmost_block(py, popped_scope.scope.as_ref(py))?
                         }
                         // TODO specify *block* scope
                         None => bail!(InterpError::ScopeCloseOutsideScope(scope_close_span)),
                     }
+                    S::ReadyForNewBlock
                 }
                 (_, action) => bail!(
                     "Invalid block state/action pair encountered ({0:?}, {1:?})",
@@ -361,6 +416,15 @@ impl<'interp, 'a> InterpState<'interp, 'a> {
         }
 
         Ok(())
+    }
+
+    fn push_to_topmost_block(&self, py: Python, node: &PyAny) -> PyResult<()> {
+        let pyref = match self.block_stack.last() {
+            Some(b) => &b.scope,
+            None => &self.root,
+        };
+        let scope = &mut *pyref.borrow_mut(py);
+        scope.push_node(node)
     }
 }
 
