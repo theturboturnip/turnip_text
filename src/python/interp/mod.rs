@@ -241,6 +241,25 @@ impl<'a> InterpState<'a> {
         })
     }
 
+    pub fn finalize<'interp>(&mut self, ttpython: &TurnipTextPython<'interp>) -> InterpResult<()> {
+        ttpython.with_gil(|py, globals| {
+            let actions = match &mut self.block_state {
+                InterpBlockState::ReadyForNewBlock => {
+                    (None, None)
+                },
+                InterpBlockState::WritingPara(state) => state.finalize(py)?,
+                InterpBlockState::BuildingBlockLevelCode { code_start, .. } => return Err(InterpError::EndedInsideCode { code_start: *code_start }),
+                InterpBlockState::AttachingBlockLevelCode { code_span, .. } => return Err(InterpError::BlockOwnerCodeHasNoScope { code_span: *code_span }),
+            };
+
+            match self.block_stack.pop() {
+                // No open blocks on the stack => process the action
+                None => self.handle_action(py, globals, actions),
+                Some(InterpBlockScopeState{scope_start, ..}) => return Err(InterpError::EndedInsideScope { scope_start })
+            }
+        })
+    }
+
     /// Return (block action, special action) to be executed in the order (block action, special action)
     fn compute_action(
         &mut self,
@@ -380,6 +399,7 @@ impl<'a> InterpState<'a> {
         if let Some(action) = block_action {
             use InterpBlockAction as A;
             use InterpBlockState as S;
+
             let new_block_state = match (&self.block_state, action) {
                 (S::ReadyForNewBlock, A::StartBlockLevelCode(code_start, expected_n_hashes)) => {
                     S::BuildingBlockLevelCode {

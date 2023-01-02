@@ -90,9 +90,11 @@ pub(crate) enum InterpParaAction {
     /// See [InterpBlockAction::EndParagraph]
     ///
     /// Finish the paragraph and current sentence (raising an error if processing inline scopes)
+    /// 
+    /// Contains None if request was brought up by 
     ///
     /// - [InterpInlineState::LineStart] -> (other block state)
-    EndParagraph(ParseSpan),
+    EndParagraph(Option<ParseSpan>),
 
     /// - [InterpInlineState::LineStart], [InterpInlineState::MidLine] -> (comment mode) + [InterpInlineState::MidLine]
     ///
@@ -119,6 +121,19 @@ impl InterpParaState {
 
     pub(crate) fn para(&self) -> &Py<Paragraph> {
         &self.para
+    }
+
+    pub(crate) fn finalize(&mut self, py: Python) -> InterpResult<(Option<InterpBlockAction>, Option<InterpSpecialAction>)> {
+        match self.inl_state {
+            InterpInlineState::LineStart | InterpInlineState::MidLine => {
+                // This will automatically check if we're inside an inline scope
+                self.handle_action(py, Some(InterpParaAction::EndParagraph(None)))
+            }
+            // Error states
+            InterpInlineState::BuildingCode { code_start, .. } => return Err(InterpError::EndedInsideCode { code_start }),
+            InterpInlineState::AttachingInlineLevelCode { code_span, .. } => return Err(InterpError::InlineOwnerCodeHasNoScope { code_span }),
+            InterpInlineState::BuildingRawText { raw_start, .. } => return Err(InterpError::EndedInsideRawScope { raw_scope_start: raw_start }),
+        }     
     }
 
     pub(crate) fn handle_token(
@@ -218,12 +233,19 @@ impl InterpParaState {
                     (None, None),
                 ),
 
-                (S::LineStart, A::EndParagraph(end_para_span)) => {
+                (
+                    S::LineStart | S::MidLine,
+                    A::EndParagraph(end_para_span)
+                ) => {
                     if let Some(i) = self.inline_stack.last() {
-                        return Err(InterpError::ParaBreakInInlineScope {
-                            scope_start: i.scope_start,
-                            para_break: end_para_span
-                        })
+                        if let Some(para_break) = end_para_span {
+                            return Err(InterpError::ParaBreakInInlineScope {
+                                scope_start: i.scope_start,
+                                para_break
+                            })
+                        } else {
+                            return Err(InterpError::EndedInsideScope { scope_start: i.scope_start })
+                        }
                     }
                     // If the sentence has stuff in it, push it into the paragraph and make a new one
                     if self.sentence.borrow(py).__len__(py) > 0 {
@@ -259,7 +281,7 @@ impl InterpParaState {
 
         let action = match &mut self.inl_state {
             InterpInlineState::LineStart => match tok {
-                Newline(span) => Some(EndParagraph(span)),
+                Newline(span) => Some(EndParagraph(Some(span))),
                 Hashes(span, _) => Some(StartComment(span)),
 
                 CodeOpen(span, n) => Some(StartInlineLevelCode(span, n)),

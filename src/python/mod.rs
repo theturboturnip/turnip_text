@@ -74,5 +74,6 @@ pub fn interp_data(
         .map(|t| st.handle_token(ttpython, t))
         .collect();
     res?;
+    st.finalize(ttpython)?;
     Ok(st.root())
 } 

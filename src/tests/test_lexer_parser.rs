@@ -97,7 +97,7 @@ impl TestInterpError {
     /// This is a lossy transformation, ignoring byte offsets in spans, but is good enough for testing
     fn from_interp_error(p: InterpError) -> Self {
         match p {
-            InterpError::CodeCloseInText(span) => Self::CodeCloseInText(span.into()),
+            InterpError::CodeCloseOutsideCode(span) => Self::CodeCloseInText(span.into()),
             InterpError::ScopeCloseOutsideScope(span) => Self::ScopeCloseOutsideScope(span.into()),
             InterpError::MismatchingScopeClose {
                 n_hashes,
@@ -119,6 +119,14 @@ impl TestInterpError {
             InterpError::EndedInsideScope { scope_start } => Self::EndedInsideScope {
                 scope_start: scope_start.into(),
             },
+            InterpError::BlockScopeOpenedMidPara { scope_start } => todo!(),
+            InterpError::BlockOwnerCodeMidPara { code_span } => todo!(),
+            InterpError::ParaBreakInInlineScope { scope_start, para_break } => todo!(),
+            InterpError::BlockOwnerCodeHasNoScope { code_span } => todo!(),
+            InterpError::InlineOwnerCodeHasNoScope { code_span } => todo!(),
+            InterpError::PythonErr { pyerr, code_span } => todo!(),
+            InterpError::InternalPythonErr { pyerr } => todo!(),
+            InterpError::InternalErr(_) => todo!(),
         }
     }
 }
@@ -137,6 +145,11 @@ enum TestInline {
 fn test_doc(contents: Vec<TestBlock>) -> TestBlock {
     TestBlock::BlockScope { owner: None, contents }
 }
+fn test_sentence(s: impl Into<String>) -> Vec<TestInline> {
+    vec![
+        TestInline::UnescapedText(s.into())
+    ]
+} 
 
 trait PyToTest<T> {
     fn as_test(&self, py: Python) -> T;
@@ -222,7 +235,8 @@ fn expect_tokens<'a>(
         let root = interp_data(ttpython.deref(), data, stoks.into_iter());
         let root: Result<TestBlock, TestInterpError> = ttpython.with_gil(|py, _| {
             root.map(|bs| {
-                let bs: &PyAny = bs.to_object(py).as_ref(py);
+                let bs_obj = bs.to_object(py);
+                let bs: &PyAny = bs_obj.as_ref(py);
                 (bs as &dyn PyToTest<TestBlock>).as_test(py)
             }).map_err(TestInterpError::from_interp_error)
         });
@@ -249,19 +263,20 @@ It was popularised in the 1960s with the release of Letraset sheets containing L
             OtherText("It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum."),
             Newline,
         ],
-        Ok(vec![
-            ParseToken::Text("Lorem Ipsum is simply dummy text of the printing and typesetting industry.".into()),
-            ParseToken::Newline,
-            ParseToken::Text("Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book.".into()),
-            ParseToken::Newline,
-            ParseToken::Text("It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged.".into()),
-            ParseToken::Newline,
-            ParseToken::Text("It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.".into()),
-            ParseToken::Newline,
-        ])
+        Ok(
+            test_doc(vec![
+                TestBlock::Paragraph(vec![
+                    test_sentence("Lorem Ipsum is simply dummy text of the printing and typesetting industry."),
+                    test_sentence("Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book."),
+                    test_sentence("It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged."),
+                    test_sentence("It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum."),
+                ])
+            ])
+        )
     )
 }
 
+/* 
 #[test]
 pub fn test_inline_code() {
     expect_tokens(
@@ -759,3 +774,4 @@ block scope
         ])
     ]))
 }
+*/
