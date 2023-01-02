@@ -1,10 +1,11 @@
 use annotate_snippets::{display_list::DisplayList, snippet::*};
 use anyhow::bail;
 use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
+use pyo3::prelude::*;
 
 use crate::{
     lexer::{LexError, LexPosn, LexToken, Unit, units_to_tokens},
-    parser::{parse_simple_tokens, ParseToken, ParseError, ParseSpan},
+    parser::ParseSpan, python::{InterpError, interp_data, TurnipTextPython, interop::BlockScope},
 };
 
 pub trait GivesCliFeedback {
@@ -78,11 +79,11 @@ fn annotation_from_parse_span<'a>(
     }
 }
 
-impl GivesCliFeedback for ParseError {
+impl GivesCliFeedback for InterpError {
     fn get_snippet<'a>(&self, file_src: &'a str) -> Snippet<'a> {
-        use ParseError::*;
+        use InterpError::*;
         match self {
-            CodeCloseInText(span) => snippet_from_parse_span(
+            CodeCloseOutsideCode(span) => snippet_from_parse_span(
                 file_src,
                 "Code close token in text mode",
                 "",
@@ -98,7 +99,7 @@ impl GivesCliFeedback for ParseError {
             ),
             MismatchingScopeClose {
                 n_hashes: _,
-                expected_closing_hashes: _,
+                expected_n_hashes: _,
                 scope_open_span,
                 scope_close_span,
             } => Snippet {
@@ -153,6 +154,68 @@ impl GivesCliFeedback for ParseError {
                 AnnotationType::Error,
                 scope_start,
             ),
+            BlockScopeOpenedMidPara { scope_start } => snippet_from_parse_span(
+                file_src,
+                "Block scope (a scope directly followed by a newline) was opened inside a paragraph",
+                "Scope opened here",
+                AnnotationType::Error,
+                scope_start,
+            ),
+            BlockOwnerCodeMidPara { code_span } => snippet_from_parse_span(
+                file_src,
+                "A `BlockScopeOwner` was returned by inline code inside a paragraph",
+                "BlockScopeOwner returned by this",
+                AnnotationType::Error,
+                code_span,
+            ),
+            ParaBreakInInlineScope {
+                scope_start,
+                para_break
+            } => Snippet {
+                title: Some(Annotation {
+                    label: Some("Paragraph break found inside an inline scope"),
+                    id: None,
+                    annotation_type: AnnotationType::Error,
+                }),
+                footer: vec![Annotation {
+                    label: Some("An inline scope is for inline formatting only. Try removing the paragraph break, or moving the scope into its own block and putting a newline after the start to make it a block scope."),
+                    id: None,
+                    annotation_type: AnnotationType::Help
+                }],
+                slices: vec![Slice {
+                    source: file_src,
+                    line_start: 1,
+                    origin: None,
+                    fold: true,
+                    annotations: vec![
+                        annotation_from_parse_span(
+                            "Scope starts here",
+                            AnnotationType::Note,
+                            scope_start,
+                        ),
+                        annotation_from_parse_span(
+                            "Paragraph breal here",
+                            AnnotationType::Error,
+                            para_break,
+                        ),
+                    ],
+                }],
+                opt: Default::default(),
+            },
+            BlockOwnerCodeHasNoScope { code_span } => snippet_from_parse_span(
+                file_src,
+                "`BlockScopeOwner` returned by inline code has no corresponding block scope",
+                "BlockScopeOwner returned by this",
+                AnnotationType::Error,
+                code_span,
+            ),
+            InlineOwnerCodeHasNoScope { code_span } => snippet_from_parse_span(
+                file_src,
+                "`BlockScopeOwner` returned by inline code has no corresponding block scope",
+                "BlockScopeOwner returned by this",
+                AnnotationType::Error,
+                code_span,
+            ),
         }
     }
 }
@@ -161,7 +224,7 @@ fn display_cli_feedback<T: GivesCliFeedback>(data: &str, err: &T) {
     let dl = DisplayList::from(err.get_snippet(&data));
     eprintln!("{}", dl);
 }
-pub fn parse_file(path: &std::path::Path) -> anyhow::Result<Vec<ParseToken>> {
+pub fn parse_file(ttpython: &TurnipTextPython<'_>, path: &std::path::Path) -> anyhow::Result<Py<BlockScope>> {
     let data = std::fs::read_to_string(path)?;
 
     let mut units = vec![];
@@ -179,10 +242,13 @@ pub fn parse_file(path: &std::path::Path) -> anyhow::Result<Vec<ParseToken>> {
 
     let tokens = units_to_tokens(units);
 
-    match parse_simple_tokens(&data, Box::new(tokens.into_iter())) {
-        Ok(tokens) => Ok(tokens),
+    match interp_data(&ttpython, &data, tokens.into_iter()) {
+        Ok(root) => Ok(root),
         Err(err) => {
-            display_cli_feedback(&data, &err);
+            match err.downcast_ref::<InterpError>() {
+                Some(err) => display_cli_feedback(&data, err),
+                None => {}
+            }
             bail!(err)
         }
     }

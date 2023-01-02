@@ -23,6 +23,21 @@ pub struct InterpState<'a> {
     /// Raw text data
     data: &'a str,
 }
+impl<'a> InterpState<'a> {
+   pub fn new<'interp>(ttpython: &'a TurnipTextPython<'interp>, data: &'a str) -> PyResult<Self> {
+        let root = ttpython.with_gil(|py, _| Py::new(py, BlockScope::new(None)))?;
+        Ok(Self {
+            block_state: InterpBlockState::ReadyForNewBlock,
+            comment_state: None,
+            block_stack: vec![],
+            root,
+            data,
+        })
+    }
+    pub fn root(&self) -> Py<BlockScope> {
+        self.root.clone()
+    }
+}
 
 /// Block-level state for the interpreter
 #[derive(Debug)]
@@ -176,17 +191,6 @@ pub enum InterpError {
 }
 
 impl<'a> InterpState<'a> {
-    fn new<'interp>(ttpython: &'a mut TurnipTextPython<'interp>, data: &'a str) -> PyResult<Self> {
-        let root = ttpython.with_gil(|py, _| Py::new(py, BlockScope::new(None)))?;
-        Ok(Self {
-            block_state: InterpBlockState::ReadyForNewBlock,
-            comment_state: None,
-            block_stack: vec![],
-            root,
-            data,
-        })
-    }
-
     pub fn handle_token<'interp>(&mut self, ttpython: &TurnipTextPython<'interp>, tok: TTToken) -> anyhow::Result<()> {
         ttpython.with_gil(|py, globals| {
             let actions = self.compute_action(py, globals, tok)?;

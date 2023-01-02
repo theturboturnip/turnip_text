@@ -3,8 +3,12 @@ use std::ffi::CStr;
 use pyembed::{ExtensionModule, MainPythonInterpreter, OxidizedPythonInterpreterConfig};
 use pyo3::{prelude::*, types::PyDict};
 
-mod interop;
+pub mod interop;
 use interop::turnip_text;
+
+use crate::lexer::TTToken;
+
+use self::{interp::InterpState, interop::BlockScope};
 
 mod interp;
 
@@ -55,3 +59,13 @@ impl<'interp> TurnipTextPython<'interp> {
             .with_gil(|py| -> R { f(py, self.globals.as_ref(py)) })
     }
 }
+
+pub use interp::InterpError;
+pub fn interp_data(ttpython: &TurnipTextPython<'_>, data: &str, toks: impl Iterator<Item = TTToken>) -> anyhow::Result<Py<BlockScope>> {
+    let mut st = InterpState::new(ttpython, data)?;
+    let res: anyhow::Result<()> = toks
+        .map(|t| st.handle_token(ttpython, t))
+        .collect();
+    res?;
+    Ok(st.root())
+} 
