@@ -1,13 +1,24 @@
 use crate::lexer::{units_to_tokens, Unit};
-use crate::parser::parse_simple_tokens;
 
+use crate::python::{InterpError, TurnipTextPython, interp_data, InterpResult};
+use crate::python::interop::{BlockScope, BlockNode, Paragraph, Sentence, UnescapedText, RawText, InlineScope};
+use crate::python::typeclass::PyTcRef;
 use crate::{
     lexer::{Escapable, LexError, LexPosn, LexToken, TTToken},
-    parser::{ParseError, ParseSpan, ParseToken},
+    util::{ParseSpan},
 };
 use lexer_rs::{Lexer, LexerOfStr};
+use pyo3::prelude::*;
 
 type TextStream<'stream> = LexerOfStr<'stream, LexPosn, LexToken, LexError>;
+
+// Create a static Python instance
+use once_cell::sync::Lazy;
+use std::ops::Deref;
+use std::sync::Mutex;
+
+static TTPYTHON: Lazy<Mutex<TurnipTextPython>> = Lazy::new(|| Mutex::new(TurnipTextPython::new()));
+
 
 /// A type mimicking [TTToken] for test purposes
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,14 +70,14 @@ impl From<ParseSpan> for TestParserSpan {
     }
 }
 
-/// A type mimicking [ParseError] for test purposes
+/// A type mimicking [InterpError] for test purposes
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum TestParseError {
+enum TestInterpError {
     CodeCloseInText(TestParserSpan),
     ScopeCloseOutsideScope(TestParserSpan),
     MismatchingScopeClose {
         n_hashes: usize,
-        expected_closing_hashes: usize,
+        expected_n_hashes: usize,
         scope_open_span: TestParserSpan,
         scope_close_span: TestParserSpan,
     },
@@ -80,34 +91,103 @@ enum TestParseError {
         scope_start: TestParserSpan,
     },
 }
-impl TestParseError {
-    /// Convert [ParseError] to [TestParseError]
+impl TestInterpError {
+    /// Convert [InterpError] to [TestInterpError]
     ///
     /// This is a lossy transformation, ignoring byte offsets in spans, but is good enough for testing
-    fn from_parse_error(p: ParseError) -> Self {
+    fn from_interp_error(p: InterpError) -> Self {
         match p {
-            ParseError::CodeCloseInText(span) => Self::CodeCloseInText(span.into()),
-            ParseError::ScopeCloseOutsideScope(span) => Self::ScopeCloseOutsideScope(span.into()),
-            ParseError::MismatchingScopeClose {
+            InterpError::CodeCloseInText(span) => Self::CodeCloseInText(span.into()),
+            InterpError::ScopeCloseOutsideScope(span) => Self::ScopeCloseOutsideScope(span.into()),
+            InterpError::MismatchingScopeClose {
                 n_hashes,
-                expected_closing_hashes,
+                expected_n_hashes,
                 scope_open_span,
                 scope_close_span,
             } => Self::MismatchingScopeClose {
                 n_hashes,
-                expected_closing_hashes,
+                expected_n_hashes,
                 scope_open_span: scope_open_span.into(),
                 scope_close_span: scope_close_span.into(),
             },
-            ParseError::EndedInsideCode { code_start } => Self::EndedInsideCode {
+            InterpError::EndedInsideCode { code_start } => Self::EndedInsideCode {
                 code_start: code_start.into(),
             },
-            ParseError::EndedInsideRawScope { raw_scope_start } => Self::EndedInsideRawScope {
+            InterpError::EndedInsideRawScope { raw_scope_start } => Self::EndedInsideRawScope {
                 raw_scope_start: raw_scope_start.into(),
             },
-            ParseError::EndedInsideScope { scope_start } => Self::EndedInsideScope {
+            InterpError::EndedInsideScope { scope_start } => Self::EndedInsideScope {
                 scope_start: scope_start.into(),
             },
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum TestBlock {
+    BlockScope{owner: Option<String>, contents: Vec<TestBlock>},
+    Paragraph(Vec<Vec<TestInline>>)
+}
+#[derive(Debug, PartialEq, Eq)]
+enum TestInline {
+    InlineScope{owner: Option<String>, contents: Vec<TestInline>},
+    UnescapedText(String),
+    RawText(String)
+}
+fn test_doc(contents: Vec<TestBlock>) -> TestBlock {
+    TestBlock::BlockScope { owner: None, contents }
+}
+
+trait PyToTest<T> {
+    fn as_test(&self, py: Python) -> T;
+}
+impl PyToTest<TestBlock> for PyAny {
+    fn as_test(&self, py: Python) -> TestBlock {
+        if let Ok(block) = self.extract::<BlockScope>() {
+            TestBlock::BlockScope {
+                owner: block.owner.map(|x| x.as_ref(py).to_string()),
+                contents: block.children.list(py)
+                    .iter()
+                    .map(|obj| PyToTest::as_test(obj, py))
+                    .collect()
+            }
+        } else if let Ok(para) = self.extract::<Paragraph>() {
+            TestBlock::Paragraph(
+                para.0.list(py)
+                    .iter()
+                    .map(|obj| PyToTest::as_test(obj, py))
+                    .collect()
+            )
+        } else {
+            panic!("Python BlockNode-like is neither BlockScope or Paragraph")
+        }
+    }
+}
+impl PyToTest<Vec<TestInline>> for PyAny {
+    fn as_test(&self, py: Python) -> Vec<TestInline> {
+        if let Ok(sentence) = self.extract::<Sentence>() {
+            sentence.0.list(py).iter().map(|obj| PyToTest::as_test(obj, py)).collect()
+        } else {
+            panic!("Python Sentence-like is not Sentence")
+        }
+    }
+}
+impl PyToTest<TestInline> for PyAny {
+    fn as_test(&self, py: Python) -> TestInline {
+        if let Ok(inl) = self.extract::<InlineScope>() {
+            TestInline::InlineScope {
+                owner: inl.owner.map(|x| x.as_ref(py).to_string()),
+                contents: inl.children.list(py)
+                    .iter()
+                    .map(|obj| PyToTest::as_test(obj, py))
+                    .collect()
+            }
+        } else if let Ok(text) = self.extract::<UnescapedText>() {
+            TestInline::UnescapedText(text.0.as_ref(py).to_string())
+        } else if let Ok(text) = self.extract::<RawText>() {
+            TestInline::RawText(text.0.as_ref(py).to_string())
+        } else {
+            TestInline::UnescapedText(self.str().expect("Failed to stringify output Python object").to_string())
         }
     }
 }
@@ -115,7 +195,7 @@ impl TestParseError {
 fn expect_tokens<'a>(
     data: &str,
     expected_stok_types: Vec<TestTTToken<'a>>,
-    expected_parse: Result<Vec<ParseToken>, TestParseError>,
+    expected_parse: Result<TestBlock, TestInterpError>,
 ) {
     println!("{:?}", data);
 
@@ -137,11 +217,17 @@ fn expect_tokens<'a>(
     assert_eq!(stok_types, expected_stok_types);
 
     // Second step: parse
-    assert_eq!(
-        parse_simple_tokens(data, Box::new(stoks.into_iter()))
-            .map_err(TestParseError::from_parse_error),
-        expected_parse
-    );
+    {
+        let ttpython = TTPYTHON.lock().unwrap();
+        let root = interp_data(ttpython.deref(), data, stoks.into_iter());
+        let root: Result<TestBlock, TestInterpError> = ttpython.with_gil(|py, _| {
+            root.map(|bs| {
+                let bs: &PyAny = bs.to_object(py).as_ref(py);
+                (bs as &dyn PyToTest<TestBlock>).as_test(py)
+            }).map_err(TestInterpError::from_interp_error)
+        });
+        assert_eq!(root, expected_parse)
+    }
 }
 
 use TestTTToken::*;
@@ -454,7 +540,7 @@ pub fn test_uneven_code() {
     expect_tokens(
         r#"code with no open]"#,
         vec![OtherText("code with no open"), CodeClose(0)],
-        Err(TestParseError::CodeCloseInText(TestParserSpan {
+        Err(TestInterpError::CodeCloseInText(TestParserSpan {
             start: (1, 18),
             end: (1, 19),
         })),
@@ -466,7 +552,7 @@ pub fn test_uneven_scope() {
     expect_tokens(
         r#"scope with no open}"#,
         vec![OtherText("scope with no open"), ScopeClose(0)],
-        Err(TestParseError::ScopeCloseOutsideScope(TestParserSpan {
+        Err(TestInterpError::ScopeCloseOutsideScope(TestParserSpan {
             start: (1, 19),
             end: (1, 20),
         })),
@@ -569,7 +655,7 @@ pub fn test_code_close_in_text() {
             CodeClose(0),
             OtherText(" but closed code"),
         ],
-        Err(TestParseError::CodeCloseInText(TestParserSpan {
+        Err(TestInterpError::CodeCloseInText(TestParserSpan {
             start: (1, 10),
             end: (1, 11),
         })),
@@ -584,7 +670,7 @@ pub fn test_scope_close_outside_scope() {
             ScopeClose(0),
             OtherText(" but closed scope"),
         ],
-        Err(TestParseError::ScopeCloseOutsideScope(TestParserSpan {
+        Err(TestInterpError::ScopeCloseOutsideScope(TestParserSpan {
             start: (1, 16),
             end: (1, 17),
         })),
@@ -599,7 +685,7 @@ pub fn test_mismatching_scope_close() {
             OtherText(" text in a scope with a "),
             ScopeClose(1),
         ],
-        Err(TestParseError::MismatchingScopeClose {
+        Err(TestInterpError::MismatchingScopeClose {
             n_hashes: 1,
             expected_closing_hashes: 2,
             scope_open_span: TestParserSpan {
@@ -618,7 +704,7 @@ pub fn test_ended_inside_code() {
     expect_tokens(
         "text [code",
         vec![OtherText("text "), CodeOpen(0), OtherText("code")],
-        Err(TestParseError::EndedInsideCode {
+        Err(TestInterpError::EndedInsideCode {
             code_start: TestParserSpan {
                 start: (1, 6),
                 end: (1, 7),
@@ -631,7 +717,7 @@ pub fn test_ended_inside_raw_scope() {
     expect_tokens(
         "text r{#raw",
         vec![OtherText("text "), RawScopeOpen(1), OtherText("raw")],
-        Err(TestParseError::EndedInsideRawScope {
+        Err(TestInterpError::EndedInsideRawScope {
             raw_scope_start: TestParserSpan {
                 start: (1, 6),
                 end: (1, 9),
@@ -644,7 +730,7 @@ pub fn test_ended_inside_scope() {
     expect_tokens(
         "text {##scope",
         vec![OtherText("text "), InlineScopeOpen(2), OtherText("scope")],
-        Err(TestParseError::EndedInsideScope {
+        Err(TestInterpError::EndedInsideScope {
             scope_start: TestParserSpan {
                 start: (1, 6),
                 end: (1, 9),

@@ -75,7 +75,8 @@ impl PyTypeclass for InlineScopeOwner {
 ///
 /// Typically created by Rust while parsing input files.
 #[pyclass]
-pub struct UnescapedText(Py<PyString>);
+#[derive(Debug, Clone)]
+pub struct UnescapedText(pub Py<PyString>);
 impl UnescapedText {
     pub fn new_rs(py: Python, s: &str) -> Self {
         Self::new(PyString::new(py, s).into_py(py))
@@ -93,7 +94,8 @@ impl UnescapedText {
 ///
 /// Typically created by Rust while parsing input files.
 #[pyclass(sequence)]
-pub struct Sentence(PyTypeclassList<InlineNode>);
+#[derive(Debug, Clone)]
+pub struct Sentence(pub PyTypeclassList<InlineNode>);
 #[pymethods]
 impl Sentence {
     #[new]
@@ -117,7 +119,8 @@ impl Sentence {
 ///
 /// Typically created by Rust while parsing input files.
 #[pyclass(sequence)]
-pub struct Paragraph(PyInstanceList<Sentence>);
+#[derive(Debug, Clone)]
+pub struct Paragraph(pub PyInstanceList<Sentence>);
 #[pymethods]
 impl Paragraph {
     #[new]
@@ -141,7 +144,8 @@ impl Paragraph {
 ///
 /// Typically created by Rust while parsing input files.
 #[pyclass]
-pub struct RawText(Py<PyString>);
+#[derive(Debug, Clone)]
+pub struct RawText(pub Py<PyString>);
 impl RawText {
     pub fn new_rs(py: Python, s: &str) -> Self {
         Self::new(PyString::new(py, s).into_py(py))
@@ -165,9 +169,10 @@ impl RawText {
 ///     paragraph 2
 /// }```
 #[pyclass]
+#[derive(Debug, Clone)]
 pub struct BlockScope {
-    owner: Option<PyTcRef<BlockScopeOwner>>,
-    children: PyTypeclassList<BlockNode>,
+    pub owner: Option<PyTcRef<BlockScopeOwner>>,
+    pub children: PyTypeclassList<BlockNode>,
 }
 impl BlockScope {
     pub fn new_rs(py: Python, owner: Option<PyTcRef<BlockScopeOwner>>) -> Self {
@@ -201,9 +206,10 @@ impl BlockScope {
 ///
 /// e.g. `[code]{this_is_formatted_as_code}`
 #[pyclass]
+#[derive(Debug, Clone)]
 pub struct InlineScope {
-    owner: Option<PyTcRef<InlineScopeOwner>>,
-    children: PyTypeclassList<InlineNode>,
+    pub owner: Option<PyTcRef<InlineScopeOwner>>,
+    pub children: PyTypeclassList<InlineNode>,
 }
 impl InlineScope {
     pub fn new_rs(py: Python, owner: Option<PyTcRef<InlineScopeOwner>>) -> Self {

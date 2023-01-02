@@ -7,6 +7,7 @@ pub trait PyTypeclass {
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool>;
 }
 
+#[derive(Debug, Clone)]
 pub struct PyInstanceTypeclass<T: PyClass>(PhantomData<T>);
 impl<T: PyClass> PyTypeclass for PyInstanceTypeclass<T> {
     const NAME: &'static str = T::NAME;

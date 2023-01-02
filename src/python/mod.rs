@@ -3,21 +3,23 @@ use std::ffi::CStr;
 use pyembed::{ExtensionModule, MainPythonInterpreter, OxidizedPythonInterpreterConfig};
 use pyo3::{prelude::*, types::PyDict};
 
+use crate::lexer::TTToken;
+
 pub mod interop;
 use interop::turnip_text;
 
-use crate::lexer::TTToken;
-
-use self::{interp::{InterpState, InterpResult}, interop::BlockScope};
-
 mod interp;
-mod typeclass;
+use self::{interp::InterpState, interop::BlockScope};
+
+pub mod typeclass;
 
 /// Struct holding references to current Python state, including the relevant globals/locals.
 pub struct TurnipTextPython<'interp> {
     pub interp: MainPythonInterpreter<'interp, 'interp>,
     pub globals: Py<PyDict>,
 }
+// For testing purposes
+unsafe impl<'interp> Send for TurnipTextPython<'interp> {}
 
 fn interpreter_config<'a>() -> OxidizedPythonInterpreterConfig<'a> {
     let mut base_config = OxidizedPythonInterpreterConfig::default();
@@ -61,7 +63,7 @@ impl<'interp> TurnipTextPython<'interp> {
     }
 }
 
-pub use interp::InterpError;
+pub use interp::{InterpError, InterpResult};
 pub fn interp_data(
     ttpython: &TurnipTextPython<'_>,
     data: &str,

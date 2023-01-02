@@ -2,7 +2,7 @@ use lexer_rs::PosnInCharStream;
 use lexer_rs::SimpleParseError;
 use lexer_rs::{CharStream, Lexer, LexerParseResult};
 
-use crate::parser::{ParsePosn, ParseSpan};
+use crate::util::{ParsePosn, ParseSpan};
 
 /// Sequences that can define the start of a [SimpleToken]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 
 use crate::{
     lexer::{LexError, LexPosn, LexToken, Unit, units_to_tokens},
-    parser::ParseSpan, python::{InterpError, interp_data, TurnipTextPython, interop::BlockScope},
+    util::ParseSpan, python::{InterpError, interp_data, TurnipTextPython, interop::BlockScope},
 };
 
 pub trait GivesCliFeedback {

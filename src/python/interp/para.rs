@@ -1,6 +1,6 @@
 use pyo3::{prelude::*, types::PyDict};
 
-use crate::{lexer::TTToken, parser::ParseSpan, python::{interop::*, interp::{InterpError, compute_action_for_code_mode, MapInterpResult}, typeclass::PyTcRef}};
+use crate::{lexer::TTToken, util::ParseSpan, python::{interop::*, interp::{InterpError, compute_action_for_code_mode, MapInterpResult}, typeclass::PyTcRef}};
 
 use super::{InlineNodeToCreate, InterpBlockAction, InterpSpecialAction, InterpResult};
 

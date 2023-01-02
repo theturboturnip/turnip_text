@@ -3,12 +3,10 @@
 use thiserror::Error;
 use pyo3::{prelude::*, types::{PyString, PyDict}};
 
-use crate::{lexer::TTToken, parser::ParseSpan};
-use self::para::{InterpParaState, InterpParaAction};
-
-use super::{interop::*, TurnipTextPython, typeclass::PyTcRef};
+use crate::{lexer::TTToken, util::ParseSpan, python::{interop::*, TurnipTextPython, typeclass::PyTcRef}};
 
 mod para;
+use self::para::{InterpParaState, InterpParaAction};
 
 pub struct InterpState<'a> {
     /// FSM state
