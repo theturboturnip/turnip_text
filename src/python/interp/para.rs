@@ -1,9 +1,8 @@
-use anyhow::bail;
 use pyo3::{prelude::*, types::PyDict};
 
-use crate::{lexer::TTToken, parser::ParseSpan, python::{interop::*, interp::{InterpError, compute_action_for_code_mode}, typeclass::PyTcRef}};
+use crate::{lexer::TTToken, parser::ParseSpan, python::{interop::*, interp::{InterpError, compute_action_for_code_mode, MapInterpResult}, typeclass::PyTcRef}};
 
-use super::{InlineNodeToCreate, InterpBlockAction, InterpSpecialAction};
+use super::{InlineNodeToCreate, InterpBlockAction, InterpSpecialAction, InterpResult};
 
 #[derive(Debug)]
 pub(crate) struct InterpParaState {
@@ -128,7 +127,7 @@ impl InterpParaState {
         globals: &PyDict,
         tok: TTToken,
         data: &str,
-    ) -> anyhow::Result<(Option<InterpBlockAction>, Option<InterpSpecialAction>)> {
+    ) -> InterpResult<(Option<InterpBlockAction>, Option<InterpSpecialAction>)> {
         let actions = self.compute_action(py, globals, tok, data)?;
         self.handle_action(py, actions)
     }
@@ -136,7 +135,7 @@ impl InterpParaState {
         &mut self,
         py: Python,
         action: Option<InterpParaAction>,
-    ) -> anyhow::Result<(Option<InterpBlockAction>, Option<InterpSpecialAction>)> {
+    ) -> InterpResult<(Option<InterpBlockAction>, Option<InterpSpecialAction>)> {
         if let Some(action) = action {
             use InterpInlineState as S;
             use InterpParaAction as A;
@@ -151,14 +150,14 @@ impl InterpParaState {
                     A::PushInlineContent(content),
                 ) => {
                     let content = content.to_py(py)?;
-                    self.push_to_topmost_scope(py, content.as_ref(py))?;
+                    self.push_to_topmost_scope(py, content.as_ref(py)).err_as_interp_internal(py)?;
                     (S::MidLine, (None, None))
                 }
                 (S::MidLine, A::BreakSentence) => {
                     // If the sentence has stuff in it, push it into the paragraph and make a new one
                     if self.sentence.borrow(py).__len__(py) > 0 {
-                        self.para.borrow_mut(py).push_sentence(self.sentence.as_ref(py))?;
-                        self.sentence = Py::new(py, Sentence::new(py))?;
+                        self.para.borrow_mut(py).push_sentence(self.sentence.as_ref(py)).err_as_interp_internal(py)?;
+                        self.sentence = Py::new(py, Sentence::new(py)).err_as_interp_internal(py)?;
                     }
                     (S::LineStart, (None, None))
                 }
@@ -168,7 +167,7 @@ impl InterpParaState {
                     A::PushInlineScope(owner, span, n),
                 ) => {
                     let scope = InterpInlineScopeState {
-                        scope: Py::new(py, InlineScope::new_rs(py, owner))?,
+                        scope: Py::new(py, InlineScope::new_rs(py, owner)).err_as_interp_internal(py)?,
                         scope_start: span,
                         expected_n_hashes: n,
                     };
@@ -181,9 +180,9 @@ impl InterpParaState {
                 ) => {
                     let popped_scope = self.inline_stack.pop();
                     match popped_scope {
-                        Some(popped_scope) => self.push_to_topmost_scope(py, popped_scope.scope.as_ref(py))?,
+                        Some(popped_scope) => self.push_to_topmost_scope(py, popped_scope.scope.as_ref(py)).err_as_interp_internal(py)?,
                         // TODO should specify *inline* scope, not all scopes
-                        None => bail!(InterpError::ScopeCloseOutsideScope(scope_close_span))
+                        None => return Err(InterpError::ScopeCloseOutsideScope(scope_close_span))
                     };
                     (S::MidLine, (None, None))
                 }
@@ -221,24 +220,26 @@ impl InterpParaState {
 
                 (S::LineStart, A::EndParagraph(end_para_span)) => {
                     if let Some(i) = self.inline_stack.last() {
-                        bail!(InterpError::ParaBreakInInlineScope {
+                        return Err(InterpError::ParaBreakInInlineScope {
                             scope_start: i.scope_start,
                             para_break: end_para_span
                         })
                     }
                     // If the sentence has stuff in it, push it into the paragraph and make a new one
                     if self.sentence.borrow(py).__len__(py) > 0 {
-                        self.para.borrow_mut(py).push_sentence(self.sentence.as_ref(py))?;
-                        self.sentence = Py::new(py, Sentence::new(py))?;
+                        self.para.borrow_mut(py).push_sentence(self.sentence.as_ref(py)).err_as_interp_internal(py)?;
+                        self.sentence = Py::new(py, Sentence::new(py)).err_as_interp_internal(py)?;
                     }
                     (S::LineStart, (Some(InterpBlockAction::EndParagraph), None))
                 }
 
-                (_, action) => bail!(
-                    "Invalid inline state/action pair encountered ({0:?}, {1:?})",
-                    self.inl_state,
-                    action
-                ),
+                (_, action) => return Err(InterpError::InternalErr(
+                    format!(
+                        "Invalid inline state/action pair encountered ({0:?}, {1:?})",
+                        self.inl_state,
+                        action
+                    )
+                )),
             };
             self.inl_state = new_inl_state;
             Ok(actions)
@@ -252,7 +253,7 @@ impl InterpParaState {
         globals: &PyDict,
         tok: TTToken,
         data: &str,
-    ) -> anyhow::Result<Option<InterpParaAction>> {
+    ) -> InterpResult<Option<InterpParaAction>> {
         use InterpParaAction::*;
         use TTToken::*;
 
@@ -263,12 +264,12 @@ impl InterpParaState {
 
                 CodeOpen(span, n) => Some(StartInlineLevelCode(span, n)),
                 BlockScopeOpen(span, _) => {
-                    bail!(InterpError::BlockScopeOpenedMidPara { scope_start: span })
+                    return Err(InterpError::BlockScopeOpenedMidPara { scope_start: span })
                 }
                 InlineScopeOpen(span, n) => Some(PushInlineScope(None, span, n)),
                 RawScopeOpen(span, n) => Some(StartRawScope(span, n)),
 
-                CodeClose(span, _) => bail!(InterpError::CodeCloseOutsideCode(span)),
+                CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span)),
                 ScopeClose(span, n_hashes) => match self.inline_stack.last() {
                     Some(InterpInlineScopeState {
                         expected_n_hashes,
@@ -298,12 +299,12 @@ impl InterpParaState {
 
                 CodeOpen(span, n) => Some(StartInlineLevelCode(span, n)),
                 BlockScopeOpen(span, _) => {
-                    bail!(InterpError::BlockScopeOpenedMidPara { scope_start: span })
+                    return Err(InterpError::BlockScopeOpenedMidPara { scope_start: span })
                 }
                 InlineScopeOpen(span, n) => Some(PushInlineScope(None, span, n)),
                 RawScopeOpen(span, n) => Some(StartRawScope(span, n)),
 
-                CodeClose(span, _) => bail!(InterpError::CodeCloseOutsideCode(span)),
+                CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span)),
                 ScopeClose(span, n_hashes) => match self.inline_stack.last() {
                     Some(InterpInlineScopeState {
                         expected_n_hashes,
@@ -336,12 +337,16 @@ impl InterpParaState {
                 match code_span {
                     Some(code_span) => {
                         // The code ended...
-                        // TODO PyErr -> InterpErr?
-                        let res = EvalBracketResult::eval(py, globals, code.as_str())?;
+                        use EvalBracketResult::*;
+
+                        // The code ended...
+                        let res = EvalBracketResult::eval(
+                            py, globals, code.as_str()
+                        ).err_as_interp(py, code_span)?;
                         let inl_action = match res {
-                            EvalBracketResult::Block(_) => bail!(InterpError::BlockOwnerCodeMidPara { code_span }),
-                            EvalBracketResult::Inline(i) => WaitToAttachInlineCode(i, code_span),
-                            EvalBracketResult::Other(s) => PushInlineContent(InlineNodeToCreate::UnescapedPyString(s)),
+                            Block(_) => return Err(InterpError::BlockOwnerCodeMidPara { code_span }),
+                            Inline(i) => WaitToAttachInlineCode(i, code_span),
+                            Other(s) => PushInlineContent(InlineNodeToCreate::UnescapedPyString(s)),
                         };
                         Some(inl_action)
                         // if eval_result is a BlockScopeOwner, fail! can't have block scope inside inline text
@@ -355,7 +360,7 @@ impl InterpParaState {
                 InlineScopeOpen(span, n_hashes) => {
                     Some(PushInlineScope(Some(owner.clone()), span, n_hashes))
                 }
-                _ => bail!(InterpError::InlineOwnerCodeHasNoScope {
+                _ => return Err(InterpError::InlineOwnerCodeHasNoScope {
                     code_span: *code_span
                 }),
             },

@@ -8,7 +8,7 @@ use interop::turnip_text;
 
 use crate::lexer::TTToken;
 
-use self::{interp::InterpState, interop::BlockScope};
+use self::{interp::{InterpState, InterpResult}, interop::BlockScope};
 
 mod interp;
 mod typeclass;
@@ -62,9 +62,13 @@ impl<'interp> TurnipTextPython<'interp> {
 }
 
 pub use interp::InterpError;
-pub fn interp_data(ttpython: &TurnipTextPython<'_>, data: &str, toks: impl Iterator<Item = TTToken>) -> anyhow::Result<Py<BlockScope>> {
+pub fn interp_data(
+    ttpython: &TurnipTextPython<'_>,
+    data: &str,
+    toks: impl Iterator<Item = TTToken>
+) -> InterpResult<Py<BlockScope>> {
     let mut st = InterpState::new(ttpython, data)?;
-    let res: anyhow::Result<()> = toks
+    let res: InterpResult<()> = toks
         .map(|t| st.handle_token(ttpython, t))
         .collect();
     res?;

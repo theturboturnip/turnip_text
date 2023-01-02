@@ -9,10 +9,10 @@ use crate::{
 };
 
 pub trait GivesCliFeedback {
-    fn get_snippet<'a>(&self, file_src: &'a str) -> Snippet<'a>;
+    fn get_snippet<'a>(&'a self, file_src: &'a str) -> Snippet<'a>;
 }
 impl GivesCliFeedback for LexError {
-    fn get_snippet<'a>(&self, file_src: &'a str) -> Snippet<'a> {
+    fn get_snippet<'a>(&'a self, file_src: &'a str) -> Snippet<'a> {
         // TODO - in the event this breaks on non-ASCII/non-single-byte,
         // it would be nice to print the character somewhere
         Snippet {
@@ -80,7 +80,7 @@ fn annotation_from_parse_span<'a>(
 }
 
 impl GivesCliFeedback for InterpError {
-    fn get_snippet<'a>(&self, file_src: &'a str) -> Snippet<'a> {
+    fn get_snippet<'a>(&'a self, file_src: &'a str) -> Snippet<'a> {
         use InterpError::*;
         match self {
             CodeCloseOutsideCode(span) => snippet_from_parse_span(
@@ -216,6 +216,60 @@ impl GivesCliFeedback for InterpError {
                 AnnotationType::Error,
                 code_span,
             ),
+            PythonErr { pyerr, code_span } => Snippet {
+                title: Some(Annotation {
+                    label: Some("Error executing user-defined Python"),
+                    id: None,
+                    annotation_type: AnnotationType::Error
+                }),
+                footer: vec![Annotation{
+                    label: Some(pyerr.as_str()),
+                    id: None,
+                    annotation_type: AnnotationType::Error
+                }],
+                slices: vec![Slice {
+                    source: file_src,
+                    line_start: 1,
+                    origin: None,
+                    fold: true,
+                    annotations: vec![
+                        annotation_from_parse_span(
+                            "Code executed here",
+                            AnnotationType::Note,
+                            code_span,
+                        ),
+                    ],
+                }],
+                opt: Default::default()
+            },
+            InternalPythonErr { pyerr } => Snippet {
+                title: Some(Annotation {
+                    label: Some("Internal Python error"),
+                    id: None,
+                    annotation_type: AnnotationType::Error
+                }),
+                footer: vec![Annotation{
+                    label: Some(pyerr.as_str()),
+                    id: None,
+                    annotation_type: AnnotationType::Error
+                }],
+                slices: vec![],
+                opt: Default::default(),
+            },
+            InternalErr(err) => Snippet {
+                title: Some(Annotation {
+                    label: Some("Internal error"),
+                    id: None,
+                    annotation_type: AnnotationType::Error
+                }),
+                footer: vec![Annotation{
+                    label: Some(err.as_str()),
+                    id: None,
+                    annotation_type: AnnotationType::Error
+                }],
+                slices: vec![],
+                opt: Default::default(),
+            },
         }
     }
 }
@@ -245,10 +299,7 @@ pub fn parse_file(ttpython: &TurnipTextPython<'_>, path: &std::path::Path) -> an
     match interp_data(&ttpython, &data, tokens.into_iter()) {
         Ok(root) => Ok(root),
         Err(err) => {
-            match err.downcast_ref::<InterpError>() {
-                Some(err) => display_cli_feedback(&data, err),
-                None => {}
-            }
+            display_cli_feedback(&data, &err);
             bail!(err)
         }
     }
