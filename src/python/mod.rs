@@ -11,6 +11,7 @@ use crate::lexer::TTToken;
 use self::{interp::InterpState, interop::BlockScope};
 
 mod interp;
+mod typeclass;
 
 /// Struct holding references to current Python state, including the relevant globals/locals.
 pub struct TurnipTextPython<'interp> {

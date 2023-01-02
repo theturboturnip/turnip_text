@@ -7,7 +7,7 @@ use pyo3::{prelude::*, types::{PyString, PyDict}};
 use crate::{lexer::TTToken, parser::ParseSpan};
 use self::para::{InterpParaState, InterpParaAction};
 
-use super::{interop::*, TurnipTextPython};
+use super::{interop::*, TurnipTextPython, typeclass::PyTcRef};
 
 mod para;
 
@@ -25,7 +25,9 @@ pub struct InterpState<'a> {
 }
 impl<'a> InterpState<'a> {
    pub fn new<'interp>(ttpython: &'a TurnipTextPython<'interp>, data: &'a str) -> PyResult<Self> {
-        let root = ttpython.with_gil(|py, _| Py::new(py, BlockScope::new(None)))?;
+        let root = ttpython.with_gil(
+            |py, _| Py::new(py, BlockScope::new_rs(py, None))
+        )?;
         Ok(Self {
             block_state: InterpBlockState::ReadyForNewBlock,
             comment_state: None,
@@ -61,7 +63,7 @@ enum InterpBlockState {
     ///
     /// Transitions to [Self::ReadyForNewBlock]
     AttachingBlockLevelCode {
-        owner: Py<BlockScopeOwner>,
+        owner: PyTcRef<BlockScopeOwner>,
         code_span: ParseSpan,
     },
 }
@@ -91,7 +93,7 @@ pub(crate) enum InterpBlockAction {
     /// start a one-token wait for an inline scope to attach it to
     ///
     /// - [InterpBlockState::BuildingBlockLevelCode] -> [InterpBlockState::AttachingBlockLevelCode]
-    WaitToAttachBlockCode(Py<BlockScopeOwner>, ParseSpan),
+    WaitToAttachBlockCode(PyTcRef<BlockScopeOwner>, ParseSpan),
 
     /// Start a paragraph, optionally executing an action on the paragraph-level state machine
     ///
@@ -110,7 +112,7 @@ pub(crate) enum InterpBlockAction {
     ///
     /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::ReadyForNewBlock]
     /// - [InterpBlockState::AttachingBlockLevelCode] -> [InterpBlockState::ReadyForNewBlock]
-    PushBlock(Option<Py<BlockScopeOwner>>, ParseSpan, usize),
+    PushBlock(Option<PyTcRef<BlockScopeOwner>>, ParseSpan, usize),
 
     /// On encountering a scope close, pop the current block from the scope
     ///
@@ -134,19 +136,19 @@ pub(crate) enum InlineNodeToCreate {
     UnescapedPyString(Py<PyString>)
 }
 impl InlineNodeToCreate {
-    pub(crate) fn to_py(self, py: Python) -> PyResult<Py<InlineNode>> {
-        let node: Py<InlineNode> = match self {
+    pub(crate) fn to_py(self, py: Python) -> PyResult<PyTcRef<InlineNode>> {
+        let node: PyTcRef<InlineNode> = match self {
             InlineNodeToCreate::UnescapedText(s) => {
-                let u = Py::new(py, UnescapedText::new_rs(py, s.as_str()))?;
-                downcast_gil_ref(py, u)?
+                let val = Py::new(py, UnescapedText::new_rs(py, s.as_str()))?;
+                PyTcRef::of(val.as_ref(py))?
             }
             InlineNodeToCreate::RawText(s) => {
-                let r = Py::new(py, RawText::new_rs(py, s.as_str()))?;
-                downcast_gil_ref(py, r)?
+                let val = Py::new(py, RawText::new_rs(py, s.as_str()))?;
+                PyTcRef::of(val.as_ref(py))?
             }
             InlineNodeToCreate::UnescapedPyString(s) => {
-                let u = Py::new(py, UnescapedText::new(s))?;
-                downcast_gil_ref(py, u)?
+                let val = Py::new(py, UnescapedText::new(s))?;
+                PyTcRef::of(val.as_ref(py))?
             }
         };
         Ok(node)
@@ -374,7 +376,7 @@ impl<'a> InterpState<'a> {
                     A::PushBlock(owner, scope_start, expected_n_hashes),
                 ) => {
                     self.block_stack.push(InterpBlockScopeState {
-                        scope: Py::new(py, BlockScope::new_rs(owner))?,
+                        scope: Py::new(py, BlockScope::new_rs(py, owner))?,
                         scope_start,
                         expected_n_hashes,
                     });

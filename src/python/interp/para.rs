@@ -1,7 +1,7 @@
 use anyhow::bail;
 use pyo3::{prelude::*, types::PyDict};
 
-use crate::{lexer::TTToken, parser::ParseSpan, python::{interop::*, interp::{InterpError, compute_action_for_code_mode}}};
+use crate::{lexer::TTToken, parser::ParseSpan, python::{interop::*, interp::{InterpError, compute_action_for_code_mode}, typeclass::PyTcRef}};
 
 use super::{InlineNodeToCreate, InterpBlockAction, InterpSpecialAction};
 
@@ -35,7 +35,7 @@ enum InterpInlineState {
     },
     /// Having constructed some code which expects inline scope, expecting the next token to be an inline scope
     AttachingInlineLevelCode {
-        owner: Py<InlineScopeOwner>,
+        owner: PyTcRef<InlineScopeOwner>,
         code_span: ParseSpan,
     },
     /// When building raw text
@@ -67,7 +67,7 @@ pub(crate) enum InterpParaAction {
     /// - [InterpInlineState::LineStart] -> [InterpInlineState::MidLine]
     /// - [InterpInlineState::MidLine] -> [InterpInlineState::MidLine]
     /// - [InterpInlineState::AttachingInlineLevelCode] -> [InterpInlineState::MidLine]
-    PushInlineScope(Option<Py<InlineScopeOwner>>, ParseSpan, usize),
+    PushInlineScope(Option<PyTcRef<InlineScopeOwner>>, ParseSpan, usize),
 
     /// On encountering a scope close, pop the current inline scope off the stack
     /// (throwing an error if the stack is empty)
@@ -86,7 +86,7 @@ pub(crate) enum InterpParaAction {
     ///
     /// - [InterpInlineState::BuildingCode] -> [InterpInlineState::AttachingInlineLevelCode]
     /// - (other block state) -> [InterpInlineState::AttachingInlineLevelCode]
-    WaitToAttachInlineCode(Py<InlineScopeOwner>, ParseSpan),
+    WaitToAttachInlineCode(PyTcRef<InlineScopeOwner>, ParseSpan),
 
     /// See [InterpBlockAction::EndParagraph]
     ///
@@ -112,8 +112,8 @@ impl InterpParaState {
     pub(crate) fn new(py: Python) -> PyResult<Self> {
         Ok(Self {
             inl_state: InterpInlineState::LineStart,
-            para: Py::new(py, Paragraph::new())?,
-            sentence: Py::new(py, Sentence::new())?,
+            para: Py::new(py, Paragraph::new(py))?,
+            sentence: Py::new(py, Sentence::new(py))?,
             inline_stack: vec![],
         })
     }
@@ -156,9 +156,9 @@ impl InterpParaState {
                 }
                 (S::MidLine, A::BreakSentence) => {
                     // If the sentence has stuff in it, push it into the paragraph and make a new one
-                    if self.sentence.borrow(py).__len__() > 0 {
+                    if self.sentence.borrow(py).__len__(py) > 0 {
                         self.para.borrow_mut(py).push_sentence(self.sentence.as_ref(py))?;
-                        self.sentence = Py::new(py, Sentence::new())?;
+                        self.sentence = Py::new(py, Sentence::new(py))?;
                     }
                     (S::LineStart, (None, None))
                 }
@@ -168,7 +168,7 @@ impl InterpParaState {
                     A::PushInlineScope(owner, span, n),
                 ) => {
                     let scope = InterpInlineScopeState {
-                        scope: Py::new(py, InlineScope::new_rs(owner))?,
+                        scope: Py::new(py, InlineScope::new_rs(py, owner))?,
                         scope_start: span,
                         expected_n_hashes: n,
                     };
@@ -227,9 +227,9 @@ impl InterpParaState {
                         })
                     }
                     // If the sentence has stuff in it, push it into the paragraph and make a new one
-                    if self.sentence.borrow(py).__len__() > 0 {
+                    if self.sentence.borrow(py).__len__(py) > 0 {
                         self.para.borrow_mut(py).push_sentence(self.sentence.as_ref(py))?;
-                        self.sentence = Py::new(py, Sentence::new())?;
+                        self.sentence = Py::new(py, Sentence::new(py))?;
                     }
                     (S::LineStart, (Some(InterpBlockAction::EndParagraph), None))
                 }
