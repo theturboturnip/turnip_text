@@ -179,6 +179,10 @@ pub enum InterpError {
     BlockScopeOpenedMidPara { scope_start: ParseSpan },
     #[error("A Python `BlockScopeOwner` was returned by inline code inside a paragraph")]
     BlockOwnerCodeMidPara { code_span: ParseSpan },
+    #[error("Inline scope contained sentence break")]
+    SentenceBreakInInlineScope {
+        scope_start: ParseSpan
+    },
     #[error("Inline scope contained paragraph break")]
     ParaBreakInInlineScope {
         scope_start: ParseSpan,
@@ -333,9 +337,10 @@ impl<'a> InterpState<'a> {
                     Hashes(span, _) => (None, Some(InterpSpecialAction::StartComment(span))),
 
                     // Normal text - start a new paragraph
+                    // TODO Escaped(x) should only stringify x - introduce stringify_raw vs. stringify?
                     _ => (
-                        Some(StartParagraph(Some(InterpParaAction::PushInlineContent(
-                            InlineNodeToCreate::UnescapedText(tok.stringify(self.data).into()),
+                        Some(StartParagraph(Some(InterpParaAction::StartText(
+                            tok.stringify(self.data).into(),
                         )))),
                         None,
                     ),

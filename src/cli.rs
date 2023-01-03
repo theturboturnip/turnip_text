@@ -168,6 +168,13 @@ impl GivesCliFeedback for InterpError {
                 AnnotationType::Error,
                 code_span,
             ),
+            SentenceBreakInInlineScope { scope_start } => snippet_from_parse_span(
+                file_src, 
+                "Paragraph break found inside an inline scope",
+                "Inline scope opened here",
+                AnnotationType::Error,
+                scope_start
+            ),
             ParaBreakInInlineScope {
                 scope_start,
                 para_break
@@ -194,7 +201,7 @@ impl GivesCliFeedback for InterpError {
                             scope_start,
                         ),
                         annotation_from_parse_span(
-                            "Paragraph breal here",
+                            "Paragraph break here",
                             AnnotationType::Error,
                             para_break,
                         ),

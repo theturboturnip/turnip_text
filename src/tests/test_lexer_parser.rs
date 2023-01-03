@@ -96,6 +96,9 @@ enum TestInterpError {
     BlockOwnerCodeMidPara {
         code_span: TestParserSpan,
     },
+    SentenceBreakInInlineScope {
+        scope_start: TestParserSpan,
+    },
     ParaBreakInInlineScope {
         scope_start: TestParserSpan,
     },
@@ -144,6 +147,7 @@ impl TestInterpError {
             },
             InterpError::BlockScopeOpenedMidPara { scope_start } => Self::BlockScopeOpenedMidPara { scope_start: scope_start.into() },
             InterpError::BlockOwnerCodeMidPara { code_span } => Self::BlockOwnerCodeMidPara { code_span: code_span.into() },
+            InterpError::SentenceBreakInInlineScope { scope_start, .. } => Self::SentenceBreakInInlineScope { scope_start: scope_start.into() },
             InterpError::ParaBreakInInlineScope { scope_start, .. } => Self::ParaBreakInInlineScope { scope_start: scope_start.into() },
             InterpError::BlockOwnerCodeHasNoScope { code_span } => Self::BlockOwnerCodeHasNoScope { code_span: code_span.into() },
             InterpError::InlineOwnerCodeHasNoScope { code_span } => Self::InlineOwnerCodeHasNoScope { code_span: code_span.into() },

@@ -26,6 +26,8 @@ enum InterpInlineState {
     LineStart,
     /// When in the middle of a line, ready for any inline token
     MidLine,
+    /// After encountering text, allow further text to be merged in
+    BuildingText(String),
     /// When in code mode
     BuildingCode {
         code: String,
@@ -55,29 +57,38 @@ pub(crate) enum InterpParaAction {
     /// - [InterpInlineState::BuildingRawText] -> [InterpInlineState::MidLine]
     PushInlineContent(InlineNodeToCreate),
 
-    /// Break the current sentence within the paragraph
+    /// Break the current sentence within the paragraph.
+    /// Finishes the current BuildingText if in progress, and pushes it to the topmost scope (which should be the sentence)
+    /// Errors out if inline scopes are currently open - right now inline scopes must be entirely within a sentence.
     ///
     /// - [InterpInlineState::MidLine] -> [InterpInlineState::LineStart]
     BreakSentence,
 
     /// On encountering the start of an inline scope (i.e. an InlineScopeOpen optionally preceded by Python scope owner),
-    /// push an inline scope onto existing paragraph state (or create a new one)
+    /// push an inline scope onto existing paragraph state (or create a new one).
+    /// 
+    /// Finishes the current BuildingText if in progress, pushes it to topmost scope before creating new scope.
     ///
     /// - [InterpInlineState::LineStart] -> [InterpInlineState::MidLine]
     /// - [InterpInlineState::MidLine] -> [InterpInlineState::MidLine]
     /// - [InterpInlineState::AttachingInlineLevelCode] -> [InterpInlineState::MidLine]
+    /// - [InterpInlineState::BuildingText] -> [InterpInlineState::MidLine]
     PushInlineScope(Option<PyTcRef<InlineScopeOwner>>, ParseSpan, usize),
 
     /// On encountering a scope close, pop the current inline scope off the stack
+    /// (pushing the current BuildingText to that scope beforehand)
     /// (throwing an error if the stack is empty)
     /// - [InterpInlineState::LineStart] -> [InterpInlineState::MidLine]
     /// - [InterpInlineState::MidLine] -> [InterpInlineState::MidLine]
+    /// - [InterpInlineState::BuildingText] -> [InterpInlineState::MidLine]
     PopInlineScope(ParseSpan),
 
     /// On encountering code within a paragraph, end the current inline token and enter code mode.
+    /// (pushing the current BuildingText to that scope beforehand)
     ///
     /// - [InterpInlineState::LineStart] -> [InterpInlineState::BuildingCode]
     /// - [InterpInlineState::MidLine] -> [InterpInlineState::BuildingCode]
+    /// - [InterpInlineState::BuildingText] -> [InterpInlineState::BuildingCode]
     StartInlineLevelCode(ParseSpan, usize),
 
     /// Having finished a code close which evals to [InlineScopeOwner],
@@ -91,22 +102,35 @@ pub(crate) enum InterpParaAction {
     ///
     /// Finish the paragraph and current sentence (raising an error if processing inline scopes)
     /// 
-    /// Contains None if request was brought up by 
+    /// Contains None if request was brought up by EOF
     ///
     /// - [InterpInlineState::LineStart] -> (other block state)
     EndParagraph(Option<ParseSpan>),
 
-    /// - [InterpInlineState::LineStart], [InterpInlineState::MidLine] -> (comment mode) + [InterpInlineState::MidLine]
+    /// Finishes the current BuildingText if in progress, pushes it to topmost scope, enters comment mode
     ///
     /// TODO should this break the current sentence or no?
+    /// 
+    /// - [InterpInlineState::LineStart] -> (comment mode) + [InterpInlineState::MidLine]
+    /// - [InterpInlineState::MidLine] -> (comment mode) + [InterpInlineState::MidLine]
+    /// - [InterpInlineState::BuildingText] -> (comment mode) + [InterpInlineState::MidLine]
     StartComment(ParseSpan),
 
     /// On encountering a raw scope open, start processing a raw block of text.
+    /// Finishes the current BuildingText if in progress, pushes it to topmost scope.
     ///
     /// - [InterpInlineState::LineStart] -> [InterpInlineState::BuildingRawText]
     /// - [InterpInlineState::MidLine] -> [InterpInlineState::BuildingRawText]
+    /// - [InterpInlineState::BuildingText] -> [InterpInlineState::BuildingRawText]
     /// - (other block state) -> [InterpInlineState::BuildingRawText]
     StartRawScope(ParseSpan, usize),
+
+    /// On encountering inline text, start processing a string of text
+    /// 
+    /// - [InterpInlineState::LineStart] -> [InterpInlineState::BuildingText]
+    /// - [InterpInlineState::MidLine] -> [InterpInlineState::BuildingText]
+    /// - (other block state) -> [InterpInlineState::BuildingText]
+    StartText(String),
 }
 
 impl InterpParaState {
@@ -126,6 +150,11 @@ impl InterpParaState {
     pub(crate) fn finalize(&mut self, py: Python) -> InterpResult<(Option<InterpBlockAction>, Option<InterpSpecialAction>)> {
         match self.inl_state {
             InterpInlineState::LineStart | InterpInlineState::MidLine => {
+                // This will automatically check if we're inside an inline scope
+                self.handle_action(py, Some(InterpParaAction::EndParagraph(None)))
+            }
+            InterpInlineState::BuildingText(_) => {
+                self.handle_action(py, Some(InterpParaAction::BreakSentence))?;
                 // This will automatically check if we're inside an inline scope
                 self.handle_action(py, Some(InterpParaAction::EndParagraph(None)))
             }
@@ -154,21 +183,45 @@ impl InterpParaState {
         if let Some(action) = action {
             use InterpInlineState as S;
             use InterpParaAction as A;
+
+            // All actions interrupt the current Text token
+            if let S::BuildingText(text) = &self.inl_state {
+                // Finish the text-in-progress and push to topmost scope
+                self.push_built_text_to_topmost_scope(py, text)?;
+            }
+
             let (new_inl_state, actions) = match (&self.inl_state, action) {
-                (S::LineStart | S::MidLine, A::StartComment(span)) => (
+                (
+                    S::LineStart | S::MidLine | S::BuildingText(_),
+                    A::StartComment(span)
+                ) => (
                     S::MidLine,
                     (None, Some(InterpSpecialAction::StartComment(span))),
                 ),
+                
+                (
+                    S::LineStart | S::MidLine,
+                    A::StartText(text)
+                ) => {
+                    (S::BuildingText(text), (None, None))
+                }
 
                 (
-                    S::LineStart | S::MidLine | S::BuildingCode { .. } | S::BuildingRawText { .. },
+                    S::LineStart | S::MidLine | S::BuildingCode { .. } | S::BuildingRawText { .. } | S::BuildingText(_),
                     A::PushInlineContent(content),
                 ) => {
                     let content = content.to_py(py)?;
-                    self.push_to_topmost_scope(py, content.as_ref(py)).err_as_interp_internal(py)?;
+                    self.push_to_topmost_scope(py, content.as_ref(py))?;
                     (S::MidLine, (None, None))
                 }
-                (S::MidLine, A::BreakSentence) => {
+                (
+                    S::MidLine | S::BuildingText(_),
+                    A::BreakSentence
+                ) => {
+                    // Ensure we don't have any inline scopes
+                    self.check_inline_scopes_closed().map_err(
+                        |scope_start| InterpError::SentenceBreakInInlineScope { scope_start }
+                    )?;
                     // If the sentence has stuff in it, push it into the paragraph and make a new one
                     if self.sentence.borrow(py).__len__(py) > 0 {
                         self.para.borrow_mut(py).push_sentence(self.sentence.as_ref(py)).err_as_interp_internal(py)?;
@@ -178,7 +231,7 @@ impl InterpParaState {
                 }
 
                 (
-                    S::LineStart | S::MidLine | S::AttachingInlineLevelCode { .. },
+                    S::LineStart | S::MidLine | S::AttachingInlineLevelCode { .. } | S::BuildingText(_),
                     A::PushInlineScope(owner, span, n),
                 ) => {
                     let scope = InterpInlineScopeState {
@@ -190,20 +243,23 @@ impl InterpParaState {
                     (S::MidLine, (None, None))
                 }
                 (
-                    S::LineStart | S::MidLine,
+                    S::LineStart | S::MidLine | S::BuildingText(_),
                     A::PopInlineScope(scope_close_span)
                 ) => {
                     let popped_scope = self.inline_stack.pop();
                     match popped_scope {
-                        Some(popped_scope) => self.push_to_topmost_scope(py, popped_scope.scope.as_ref(py)).err_as_interp_internal(py)?,
+                        Some(popped_scope) => self.push_to_topmost_scope(py, popped_scope.scope.as_ref(py))?,
                         // TODO should specify *inline* scope, not all scopes
-                        None => return Err(InterpError::ScopeCloseOutsideScope(scope_close_span))
+                        None => {
+                            todo!("Should bubble up to the block level to check if those scopes need closing");
+                            return Err(InterpError::ScopeCloseOutsideScope(scope_close_span))
+                        }
                     };
                     (S::MidLine, (None, None))
                 }
 
                 (
-                    S::LineStart | S::MidLine, // or another block state, which would be inited as InitState
+                    S::LineStart | S::MidLine | S::BuildingText(_), // or another block state, which would be inited as InitState
                     A::StartRawScope(raw_start, expected_n_hashes),
                 ) => (
                     S::BuildingRawText {
@@ -215,7 +271,7 @@ impl InterpParaState {
                 ),
 
                 (
-                    S::LineStart | S::MidLine,
+                    S::LineStart | S::MidLine | S::BuildingText(_),
                     A::StartInlineLevelCode(code_start, expected_n_hashes),
                 ) => (
                     S::BuildingCode {
@@ -234,17 +290,17 @@ impl InterpParaState {
                 ),
 
                 (
-                    S::LineStart | S::MidLine,
-                    A::EndParagraph(end_para_span)
+                    S::LineStart | S::MidLine | S::BuildingText(_),
+                    A::EndParagraph(para_break)
                 ) => {
-                    if let Some(i) = self.inline_stack.last() {
-                        if let Some(para_break) = end_para_span {
+                    if let Err(scope_start) = self.check_inline_scopes_closed() {
+                        if let Some(para_break) = para_break {
                             return Err(InterpError::ParaBreakInInlineScope {
-                                scope_start: i.scope_start,
+                                scope_start,
                                 para_break
                             })
                         } else {
-                            return Err(InterpError::EndedInsideScope { scope_start: i.scope_start })
+                            return Err(InterpError::EndedInsideScope { scope_start })
                         }
                     }
                     // If the sentence has stuff in it, push it into the paragraph and make a new one
@@ -310,9 +366,9 @@ impl InterpParaState {
                     None => Err(InterpError::ScopeCloseOutsideScope(span))?,
                 },
 
-                _ => Some(PushInlineContent(InlineNodeToCreate::UnescapedText(
+                _ => Some(StartText(
                     tok.stringify(data).into(),
-                ))),
+                )),
             },
             InterpInlineState::MidLine => match tok {
                 // Newline => Sentence break (TODO this needs to be changed, we at least need to be able to escape it?)
@@ -345,9 +401,46 @@ impl InterpParaState {
                     None => Err(InterpError::ScopeCloseOutsideScope(span))?,
                 },
 
-                _ => Some(PushInlineContent(InlineNodeToCreate::UnescapedText(
+                _ => Some(StartText(
                     tok.stringify(data).into(),
-                ))),
+                )),
+            },
+            InterpInlineState::BuildingText (
+                text,
+            ) => match tok {
+                // Newline => Sentence break (TODO this needs to be changed, we at least need to be able to escape it?)
+                Newline(_) => Some(BreakSentence),
+                Hashes(span, _) => Some(StartComment(span)),
+
+                CodeOpen(span, n) => Some(StartInlineLevelCode(span, n)),
+                BlockScopeOpen(span, _) => {
+                    return Err(InterpError::BlockScopeOpenedMidPara { scope_start: span })
+                }
+                InlineScopeOpen(span, n) => Some(PushInlineScope(None, span, n)),
+                RawScopeOpen(span, n) => Some(StartRawScope(span, n)),
+
+                CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span)),
+                ScopeClose(span, n_hashes) => match self.inline_stack.last() {
+                    Some(InterpInlineScopeState {
+                        expected_n_hashes,
+                        ..
+                    }) if n_hashes == *expected_n_hashes => Some(PopInlineScope(span)),
+                    Some(InterpInlineScopeState {
+                        expected_n_hashes,
+                        scope_start,
+                        ..
+                    }) => Err(InterpError::MismatchingScopeClose {
+                        n_hashes,
+                        expected_n_hashes: *expected_n_hashes,
+                        scope_open_span: *scope_start,
+                        scope_close_span: span,
+                    })?,
+                    None => Err(InterpError::ScopeCloseOutsideScope(span))?,
+                },
+                _ => {
+                    text.push_str(tok.stringify(data));
+                    None
+                }
             },
             InterpInlineState::BuildingCode {
                 code,
@@ -403,10 +496,24 @@ impl InterpParaState {
         Ok(action)
     }
 
-    fn push_to_topmost_scope(&self, py: Python, node: &PyAny) -> PyResult<()> {
+    /// Check if all inline scopes are closed, returning [Err] of [ParseSpan] of the closest open inline scope if not.
+    fn check_inline_scopes_closed(&self) -> Result<(), ParseSpan> {
+        if let Some(i) = self.inline_stack.last() {
+            Err(i.scope_start)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn push_to_topmost_scope(&self, py: Python, node: &PyAny) -> InterpResult<()> {
         match self.inline_stack.last() {
             Some(i) => i.scope.borrow_mut(py).push_node(node),
             None => self.sentence.borrow_mut(py).push_node(node),
-        }
+        }.err_as_interp_internal(py)
+    }
+
+    fn push_built_text_to_topmost_scope(&self, py: Python, text: &String) -> InterpResult<()> {
+        let node = InlineNodeToCreate::UnescapedText(text.clone()).to_py(py)?;
+        self.push_to_topmost_scope(py, node.as_ref(py))
     }
 }
