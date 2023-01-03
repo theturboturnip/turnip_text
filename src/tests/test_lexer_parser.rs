@@ -1,8 +1,7 @@
 use crate::lexer::{units_to_tokens, Unit};
 
-use crate::python::{InterpError, TurnipTextPython, interp_data, InterpResult};
-use crate::python::interop::{BlockScope, BlockNode, Paragraph, Sentence, UnescapedText, RawText, InlineScope};
-use crate::python::typeclass::PyTcRef;
+use crate::python::{InterpError, TurnipTextPython, interp_data};
+use crate::python::interop::{BlockScope, Paragraph, Sentence, UnescapedText, RawText, InlineScope};
 use crate::{
     lexer::{Escapable, LexError, LexPosn, LexToken, TTToken},
     util::{ParseSpan},
@@ -15,6 +14,7 @@ type TextStream<'stream> = LexerOfStr<'stream, LexPosn, LexToken, LexError>;
 // Create a static Python instance
 use once_cell::sync::Lazy;
 use std::ops::Deref;
+use std::panic;
 use std::sync::Mutex;
 
 static TTPYTHON: Lazy<Mutex<TurnipTextPython>> = Lazy::new(|| Mutex::new(TurnipTextPython::new()));
@@ -73,7 +73,7 @@ impl From<ParseSpan> for TestParserSpan {
 /// A type mimicking [InterpError] for test purposes
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TestInterpError {
-    CodeCloseInText(TestParserSpan),
+    CodeCloseOutsideClose(TestParserSpan),
     ScopeCloseOutsideScope(TestParserSpan),
     MismatchingScopeClose {
         n_hashes: usize,
@@ -90,6 +90,29 @@ enum TestInterpError {
     EndedInsideScope {
         scope_start: TestParserSpan,
     },
+    BlockScopeOpenedMidPara {
+        scope_start: TestParserSpan,
+    },
+    BlockOwnerCodeMidPara {
+        code_span: TestParserSpan,
+    },
+    ParaBreakInInlineScope {
+        scope_start: TestParserSpan,
+    },
+    BlockOwnerCodeHasNoScope {
+        code_span: TestParserSpan,
+    },
+    InlineOwnerCodeHasNoScope {
+        code_span: TestParserSpan,
+    },
+    PythonErr {
+        pyerr: String,
+        code_span: TestParserSpan,
+    },
+    InternalPythonErr {
+        pyerr: String
+    },
+    InternalErr(String)
 }
 impl TestInterpError {
     /// Convert [InterpError] to [TestInterpError]
@@ -97,7 +120,7 @@ impl TestInterpError {
     /// This is a lossy transformation, ignoring byte offsets in spans, but is good enough for testing
     fn from_interp_error(p: InterpError) -> Self {
         match p {
-            InterpError::CodeCloseOutsideCode(span) => Self::CodeCloseInText(span.into()),
+            InterpError::CodeCloseOutsideCode(span) => Self::CodeCloseOutsideClose(span.into()),
             InterpError::ScopeCloseOutsideScope(span) => Self::ScopeCloseOutsideScope(span.into()),
             InterpError::MismatchingScopeClose {
                 n_hashes,
@@ -119,14 +142,14 @@ impl TestInterpError {
             InterpError::EndedInsideScope { scope_start } => Self::EndedInsideScope {
                 scope_start: scope_start.into(),
             },
-            InterpError::BlockScopeOpenedMidPara { scope_start } => todo!(),
-            InterpError::BlockOwnerCodeMidPara { code_span } => todo!(),
-            InterpError::ParaBreakInInlineScope { scope_start, para_break } => todo!(),
-            InterpError::BlockOwnerCodeHasNoScope { code_span } => todo!(),
-            InterpError::InlineOwnerCodeHasNoScope { code_span } => todo!(),
-            InterpError::PythonErr { pyerr, code_span } => todo!(),
-            InterpError::InternalPythonErr { pyerr } => todo!(),
-            InterpError::InternalErr(_) => todo!(),
+            InterpError::BlockScopeOpenedMidPara { scope_start } => Self::BlockScopeOpenedMidPara { scope_start: scope_start.into() },
+            InterpError::BlockOwnerCodeMidPara { code_span } => Self::BlockOwnerCodeMidPara { code_span: code_span.into() },
+            InterpError::ParaBreakInInlineScope { scope_start, .. } => Self::ParaBreakInInlineScope { scope_start: scope_start.into() },
+            InterpError::BlockOwnerCodeHasNoScope { code_span } => Self::BlockOwnerCodeHasNoScope { code_span: code_span.into() },
+            InterpError::InlineOwnerCodeHasNoScope { code_span } => Self::InlineOwnerCodeHasNoScope { code_span: code_span.into() },
+            InterpError::PythonErr { pyerr, code_span } => Self::PythonErr { pyerr, code_span: code_span.into() },
+            InterpError::InternalPythonErr { pyerr } => Self::InternalPythonErr { pyerr },
+            InterpError::InternalErr(s) => Self::InternalErr(s),
         }
     }
 }
@@ -149,7 +172,10 @@ fn test_sentence(s: impl Into<String>) -> Vec<TestInline> {
     vec![
         TestInline::UnescapedText(s.into())
     ]
-} 
+}
+fn test_text(s: impl Into<String>) -> TestInline {
+    TestInline::UnescapedText(s.into())
+}
 
 trait PyToTest<T> {
     fn as_test(&self, py: Python) -> T;
@@ -230,17 +256,29 @@ fn expect_tokens<'a>(
     assert_eq!(stok_types, expected_stok_types);
 
     // Second step: parse
-    {
+    // Need to do this safely so that we don't panic while the TTPYTHON mutex is taken - 
+    // that would poison the mutex and break subsequent tests.
+    let root: Result<Result<TestBlock, TestInterpError>, _> = {
+        // Lock mutex
         let ttpython = TTPYTHON.lock().unwrap();
-        let root = interp_data(ttpython.deref(), data, stoks.into_iter());
-        let root: Result<TestBlock, TestInterpError> = ttpython.with_gil(|py, _| {
-            root.map(|bs| {
-                let bs_obj = bs.to_object(py);
-                let bs: &PyAny = bs_obj.as_ref(py);
-                (bs as &dyn PyToTest<TestBlock>).as_test(py)
+        // Catch all non-abort panics while running the interpreter
+        // and handling the output
+        panic::catch_unwind(|| {
+            let root = interp_data(ttpython.deref(), data, stoks.into_iter());
+            ttpython.with_gil(|py, _| {
+                root.map(|bs| {
+                    let bs_obj = bs.to_object(py);
+                    let bs: &PyAny = bs_obj.as_ref(py);
+                    (bs as &dyn PyToTest<TestBlock>).as_test(py)
+                })
             }).map_err(TestInterpError::from_interp_error)
-        });
-        assert_eq!(root, expected_parse)
+        })
+        // Unlock mutex
+    };
+    // If any of the python-related code tried to panic, re-panic here now the mutex is unlocked
+    match root {
+        Ok(root) => assert_eq!(root, expected_parse),
+        Err(e) => panic!("{:?}", e)
     }
 }
 
@@ -276,7 +314,7 @@ It was popularised in the 1960s with the release of Letraset sheets containing L
     )
 }
 
-/* 
+
 #[test]
 pub fn test_inline_code() {
     expect_tokens(
@@ -287,10 +325,14 @@ pub fn test_inline_code() {
             OtherText("len((1,2,3))"),
             CodeClose(0),
         ],
-        Ok(vec![
-            ParseToken::Text("Number of values in (1,2,3): ".into()),
-            ParseToken::Code("len((1,2,3))".into()),
-        ]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                vec![
+                    test_text("Number of values in (1,2,3): "),
+                    test_text("3")
+                ]
+            ])
+        ])),
     )
 }
 
@@ -304,10 +346,14 @@ pub fn test_inline_code_with_extra_delimiter() {
             OtherText(" len((1,2,3)) "),
             CodeClose(1),
         ],
-        Ok(vec![
-            ParseToken::Text("Number of values in (1,2,3): ".into()),
-            ParseToken::Code(" len((1,2,3)) ".into()),
-        ]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                vec![
+                    test_text("Number of values in (1,2,3): "),
+                    test_text("3")
+                ]
+            ])
+        ])),
     )
 }
 
@@ -321,10 +367,14 @@ pub fn test_inline_code_with_long_extra_delimiter() {
             OtherText(" len((1,2,3)) "),
             CodeClose(4),
         ],
-        Ok(vec![
-            ParseToken::Text("Number of values in (1,2,3): ".into()),
-            ParseToken::Code(" len((1,2,3)) ".into()),
-        ]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                vec![
+                    test_text("Number of values in (1,2,3): "),
+                    test_text("3")
+                ]
+            ])
+        ])),
     )
 }
 
@@ -340,10 +390,14 @@ pub fn test_inline_code_with_escaped_extra_delimiter() {
             Escaped(Escapable::Hash),
             CodeClose(0),
         ],
-        Ok(vec![
-            ParseToken::Text("Number of values in (1,2,3): ".into()),
-            ParseToken::Code(r#"\# len((1,2,3)) \#"#.into()),
-        ]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                vec![
+                    test_text("Number of values in (1,2,3): "),
+                    test_text("")
+                ]
+            ])
+        ])),
     )
 }
 
@@ -359,9 +413,11 @@ pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
             Escaped(Escapable::Hash),
             Escaped(Escapable::SqrClose),
         ],
-        Ok(vec![ParseToken::Text(
-            "Number of values in (1,2,3): [# len((1,2,3)) #]".into(),
-        )]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence(r#"Number of values in (1,2,3): [# len((1,2,3)) #]"#)
+            ])
+        ])),
     )
 }
 
@@ -379,13 +435,18 @@ pub fn test_inline_list_with_extra_delimiter() {
             OtherText(") "),
             CodeClose(1),
         ],
-        Ok(vec![
-            ParseToken::Text("Number of values in (1,2,3): ".into()),
-            ParseToken::Code(" len([1,2,3]) ".into()),
-        ]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                vec![
+                    test_text("Number of values in (1,2,3): "),
+                    test_text("3")
+                ]
+            ])
+        ])),
     )
 }
 
+/*
 #[test]
 pub fn test_inline_scope() {
     expect_tokens(
