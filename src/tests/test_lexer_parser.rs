@@ -620,7 +620,7 @@ pub fn test_special_with_escaped_backslash() {
             OtherText("About to see a backslash! "),
             Escaped(Escapable::Backslash),
             CodeOpen(0),
-            OtherText("code"),
+            OtherText("None"),
             CodeClose(0),
         ],
         Ok(test_doc(vec![
@@ -874,7 +874,7 @@ pub fn test_ended_inside_scope() {
     expect_tokens(
         "text {##scope",
         vec![OtherText("text "), InlineScopeOpen(2), OtherText("scope")],
-        Err(TestInterpError::EndedInsideScope {
+        Err(TestInterpError::SentenceBreakInInlineScope {
             scope_start: TestParserSpan {
                 start: (1, 6),
                 end: (1, 9),

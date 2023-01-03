@@ -448,9 +448,17 @@ impl TTToken
         }
     }
 
-    pub fn stringify<'a>(&self, data: &'a str) -> &'a str {
+    /// Convert a token to a [str] representation, usable for a raw-scope representation
+    /// i.e. with no escaping.
+    /// 
+    /// Newlines are converted to \n everywhere.
+    pub fn stringify_raw<'a>(&self, data: &'a str) -> &'a str {
         use TTToken::*;
         match self {
+            Backslash(_) => "\\",
+            Newline(_) => "\n",
+            // Escaped(Newline) = Backslash() + Newline()
+            Escaped(_, Escapable::Newline) => "\\\n",
             Escaped(span, _)
             | RawScopeOpen(span, _)
             | CodeOpen(span, _)
@@ -460,8 +468,36 @@ impl TTToken
             | ScopeClose(span, _)
             | Hashes(span, _)
             | OtherText(span) => &data[span.byte_range()],
+        }
+    }
+    /// Convert a token to a [str] representation, usable for normal representation
+    /// i.e. with escaping.
+    /// 
+    /// Newlines are converted to \n everywhere.
+    pub fn stringify_escaped<'a>(&self, data: &'a str) -> &'a str {
+        use TTToken::*;
+        match self {
             Backslash(_) => "\\",
-            Newline(_) => "\n",
+            // This is an odd case - Newline should have semantic meaning and not be embedded in text
+            Newline(_) => "Newline should not be stringified",
+            Escaped(_, escaped) => match escaped {
+                // This is an odd case - Escaped(Newline) should have semantic meaning
+                Escapable::Newline => panic!("EscapedNewline should have semantic meaning and not be stringified"),
+                Escapable::Backslash => "\\",
+                Escapable::SqrOpen => "[",
+                Escapable::SqrClose => "]",
+                Escapable::SqgOpen => "{",
+                Escapable::SqgClose => "}",
+                Escapable::Hash => "#",
+            }
+            RawScopeOpen(span, _)
+            | CodeOpen(span, _)
+            | CodeClose(span, _)
+            | BlockScopeOpen(span, _)
+            | InlineScopeOpen(span, _)
+            | ScopeClose(span, _)
+            | Hashes(span, _)
+            | OtherText(span) => &data[span.byte_range()],
         }
     }
 }

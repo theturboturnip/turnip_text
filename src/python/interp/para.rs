@@ -367,7 +367,7 @@ impl InterpParaState {
                 },
 
                 _ => Some(StartText(
-                    tok.stringify(data).into(),
+                    tok.stringify_escaped(data).into(),
                 )),
             },
             InterpInlineState::MidLine => match tok {
@@ -402,7 +402,7 @@ impl InterpParaState {
                 },
 
                 _ => Some(StartText(
-                    tok.stringify(data).into(),
+                    tok.stringify_escaped(data).into(),
                 )),
             },
             InterpInlineState::BuildingText (
@@ -438,7 +438,7 @@ impl InterpParaState {
                     None => Err(InterpError::ScopeCloseOutsideScope(span))?,
                 },
                 _ => {
-                    text.push_str(tok.stringify(data));
+                    text.push_str(tok.stringify_escaped(data));
                     None
                 }
             },
@@ -488,7 +488,7 @@ impl InterpParaState {
                     Some(PushInlineContent(InlineNodeToCreate::RawText(text.clone())))
                 }
                 _ => {
-                    text.push_str(tok.stringify(data));
+                    text.push_str(tok.stringify_raw(data));
                     None
                 }
             },

@@ -337,10 +337,9 @@ impl<'a> InterpState<'a> {
                     Hashes(span, _) => (None, Some(InterpSpecialAction::StartComment(span))),
 
                     // Normal text - start a new paragraph
-                    // TODO Escaped(x) should only stringify x - introduce stringify_raw vs. stringify?
                     _ => (
                         Some(StartParagraph(Some(InterpParaAction::StartText(
-                            tok.stringify(self.data).into(),
+                            tok.stringify_escaped(self.data).into(),
                         )))),
                         None,
                     ),
@@ -526,7 +525,8 @@ fn compute_action_for_code_mode(
             end: close_span.end,
         }),
         _ => {
-            code.push_str(tok.stringify(data));
+            // Code blocks use raw stringification to avoid confusion between text written and text entered
+            code.push_str(tok.stringify_raw(data));
             None
         }
     }
