@@ -115,7 +115,10 @@ enum TestInterpError {
     InternalPythonErr {
         pyerr: String
     },
-    InternalErr(String)
+    InternalErr(String),
+    EscapedNewlineOutsideParagraph {
+        newline: TestParserSpan,
+    },
 }
 impl TestInterpError {
     /// Convert [InterpError] to [TestInterpError]
@@ -154,6 +157,7 @@ impl TestInterpError {
             InterpError::PythonErr { pyerr, code_span } => Self::PythonErr { pyerr, code_span: code_span.into() },
             InterpError::InternalPythonErr { pyerr } => Self::InternalPythonErr { pyerr },
             InterpError::InternalErr(s) => Self::InternalErr(s),
+            InterpError::EscapedNewlineOutsideParagraph { newline } => Self::EscapedNewlineOutsideParagraph { newline: newline.into() }
         }
     }
 }
@@ -688,14 +692,18 @@ pub fn test_escaped_notspecial() {
 
 #[test]
 pub fn test_escaped_cr() {
-    // '\' + '\r'
-    let s: String = ['\\', '\r'].iter().collect::<String>() + "content";
+    // '\' + '\r'&
+    let s: String = "sentence start, ".to_owned() + &['\\', '\r'].iter().collect::<String>() + "rest of sentence";
     expect_tokens(
         &s,
-        vec![Escaped(Escapable::Newline), OtherText("content")],
+        vec![
+            OtherText("sentence start, "),
+            Escaped(Escapable::Newline),
+            OtherText("rest of sentence")
+        ],
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![
-                test_sentence("content")
+                test_sentence("sentence start, rest of sentence")
             ])
         ])),
     )
@@ -703,13 +711,17 @@ pub fn test_escaped_cr() {
 #[test]
 pub fn test_escaped_lf() {
     // '\' + '\n'
-    let s: String = ['\\', '\n'].iter().collect::<String>() + "content";
+    let s: String = "sentence start, ".to_owned() + &['\\', '\n'].iter().collect::<String>() + "rest of sentence";
     expect_tokens(
         &s,
-        vec![Escaped(Escapable::Newline), OtherText("content")],
+        vec![
+            OtherText("sentence start, "),
+            Escaped(Escapable::Newline),
+            OtherText("rest of sentence")
+        ],
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![
-                test_sentence("content")
+                test_sentence("sentence start, rest of sentence")
             ])
         ])),
     )
@@ -717,13 +729,17 @@ pub fn test_escaped_lf() {
 #[test]
 pub fn test_escaped_crlf() {
     // '\' + '\r' + '\n'
-    let s: String = ['\\', '\r', '\n'].iter().collect::<String>() + "content";
+    let s: String = "sentence start, ".to_owned() + &['\\', '\r', '\n'].iter().collect::<String>() + "rest of sentence";
     expect_tokens(
         &s,
-        vec![Escaped(Escapable::Newline), OtherText("content")],
+        vec![
+            OtherText("sentence start, "),
+            Escaped(Escapable::Newline),
+            OtherText("rest of sentence")
+        ],
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![
-                test_sentence("content")
+                test_sentence("sentence start, rest of sentence")
             ])
         ])),
     )

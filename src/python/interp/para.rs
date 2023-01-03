@@ -1,6 +1,6 @@
 use pyo3::{prelude::*, types::PyDict};
 
-use crate::{lexer::TTToken, util::ParseSpan, python::{interop::*, interp::{InterpError, compute_action_for_code_mode, MapInterpResult}, typeclass::PyTcRef}};
+use crate::{lexer::{TTToken, Escapable}, util::ParseSpan, python::{interop::*, interp::{InterpError, compute_action_for_code_mode, MapInterpResult}, typeclass::PyTcRef}};
 
 use super::{InlineNodeToCreate, InterpBlockAction, InterpSpecialAction, InterpResult};
 
@@ -337,6 +337,10 @@ impl InterpParaState {
 
         let action = match &mut self.inl_state {
             InterpInlineState::LineStart => match tok {
+                // Escaped newline => "Continue sentence".
+                // at the start of a sentence, "Continue sentence" has no meaning
+                Escaped(_, Escapable::Newline) => None,
+                
                 Newline(span) => Some(EndParagraph(Some(span))),
                 Hashes(span, _) => Some(StartComment(span)),
 
@@ -371,7 +375,11 @@ impl InterpParaState {
                 )),
             },
             InterpInlineState::MidLine => match tok {
-                // Newline => Sentence break (TODO this needs to be changed, we at least need to be able to escape it?)
+                // Escaped newline => "Continue sentence" i.e. no sentence break
+                // mid-sentence, "Continue sentence" just means "do nothing"
+                Escaped(_, Escapable::Newline) => None,
+
+                // Newline => Sentence break
                 Newline(_) => Some(BreakSentence),
                 Hashes(span, _) => Some(StartComment(span)),
 
@@ -408,6 +416,10 @@ impl InterpParaState {
             InterpInlineState::BuildingText (
                 text,
             ) => match tok {
+                // Escaped newline => "Continue sentence".
+                // mid-sentence, "Continue sentence" has no meaning
+                Escaped(_, Escapable::Newline) => None,
+
                 // Newline => Sentence break (TODO this needs to be changed, we at least need to be able to escape it?)
                 Newline(_) => Some(BreakSentence),
                 Hashes(span, _) => Some(StartComment(span)),

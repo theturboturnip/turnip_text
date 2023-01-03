@@ -277,6 +277,13 @@ impl GivesCliFeedback for InterpError {
                 slices: vec![],
                 opt: Default::default(),
             },
+            EscapedNewlineOutsideParagraph { newline } => snippet_from_parse_span(
+                file_src,
+                "A backslash-escaped newline, which means 'continue the sentence', was found outside a paragraph with no sentence to continue.",
+                "Backslash-escaped newline here",
+                AnnotationType::Error,
+                newline
+            ),
         }
     }
 }

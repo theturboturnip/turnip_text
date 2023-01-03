@@ -3,7 +3,7 @@
 use thiserror::Error;
 use pyo3::{prelude::*, types::{PyString, PyDict}};
 
-use crate::{lexer::TTToken, util::ParseSpan, python::{interop::*, TurnipTextPython, typeclass::PyTcRef}};
+use crate::{lexer::{TTToken, Escapable}, util::ParseSpan, python::{interop::*, TurnipTextPython, typeclass::PyTcRef}};
 
 mod para;
 use self::para::{InterpParaState, InterpParaAction};
@@ -198,6 +198,10 @@ pub enum InterpError {
     InternalPythonErr { pyerr: String },
     #[error("Internal error: {0}")]
     InternalErr(String),
+    #[error("Escaped newline (used for sentence continuation) found outside paragraph")]
+    EscapedNewlineOutsideParagraph {
+        newline: ParseSpan
+    },
 }
 
 fn stringify_pyerr(py: Python, pyerr: &PyErr) -> String {
@@ -287,6 +291,10 @@ impl<'a> InterpState<'a> {
         let action = match &mut self.block_state {
             InterpBlockState::ReadyForNewBlock => {
                 match tok {
+                    Escaped(span, Escapable::Newline) => return Err(
+                        InterpError::EscapedNewlineOutsideParagraph { newline: span }
+                    ),
+
                     CodeOpen(span, n_hashes) => (Some(StartBlockLevelCode(span, n_hashes)), None),
 
                     // PushBlock with no code managing it
@@ -412,7 +420,10 @@ impl<'a> InterpState<'a> {
                         expected_n_hashes,
                     }
                 }
-                (S::BuildingBlockLevelCode { .. }, A::WaitToAttachBlockCode(owner, code_span)) => {
+                (
+                    S::BuildingBlockLevelCode { .. },
+                    A::WaitToAttachBlockCode(owner, code_span)
+                ) => {
                     S::AttachingBlockLevelCode { owner, code_span }
                 }
 
