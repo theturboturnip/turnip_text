@@ -73,7 +73,7 @@ impl From<ParseSpan> for TestParserSpan {
 /// A type mimicking [InterpError] for test purposes
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TestInterpError {
-    CodeCloseOutsideClose(TestParserSpan),
+    CodeCloseOutsideCode(TestParserSpan),
     ScopeCloseOutsideScope(TestParserSpan),
     MismatchingScopeClose {
         n_hashes: usize,
@@ -120,7 +120,7 @@ impl TestInterpError {
     /// This is a lossy transformation, ignoring byte offsets in spans, but is good enough for testing
     fn from_interp_error(p: InterpError) -> Self {
         match p {
-            InterpError::CodeCloseOutsideCode(span) => Self::CodeCloseOutsideClose(span.into()),
+            InterpError::CodeCloseOutsideCode(span) => Self::CodeCloseOutsideCode(span.into()),
             InterpError::ScopeCloseOutsideScope(span) => Self::ScopeCloseOutsideScope(span.into()),
             InterpError::MismatchingScopeClose {
                 n_hashes,
@@ -606,12 +606,12 @@ pub fn test_plain_hashes() {
         ])),
     )
 }
-/*
+
 
 #[test]
 pub fn test_special_with_escaped_backslash() {
     expect_tokens(
-        r#"About to see a backslash! \\[code]"#,
+        r#"About to see a backslash! \\[None]"#,
         vec![
             OtherText("About to see a backslash! "),
             Escaped(Escapable::Backslash),
@@ -619,10 +619,12 @@ pub fn test_special_with_escaped_backslash() {
             OtherText("code"),
             CodeClose(0),
         ],
-        Ok(vec![
-            ParseToken::Text(r#"About to see a backslash! \"#.into()),
-            ParseToken::Code("code".into()),
-        ]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![vec![
+                test_text(r#"About to see a backslash! \"#),
+                test_text("None")
+            ]])
+        ])),
     )
 }
 
@@ -636,9 +638,11 @@ pub fn test_escaped_special_with_escaped_backslash() {
             Escaped(Escapable::SqrOpen),
             OtherText(" that didn't open code!"),
         ],
-        Ok(vec![ParseToken::Text(
-            r#"About to see a backslash and square brace! \[ that didn't open code!"#.into(),
-        )]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence(r#"About to see a backslash and square brace! \[ that didn't open code!"#)
+            ])
+        ])),
     )
 }
 
@@ -647,7 +651,7 @@ pub fn test_uneven_code() {
     expect_tokens(
         r#"code with no open]"#,
         vec![OtherText("code with no open"), CodeClose(0)],
-        Err(TestInterpError::CodeCloseInText(TestParserSpan {
+        Err(TestInterpError::CodeCloseOutsideCode(TestParserSpan {
             start: (1, 18),
             end: (1, 19),
         })),
@@ -671,8 +675,11 @@ pub fn test_escaped_notspecial() {
     expect_tokens(
         r#"\a"#,
         vec![Backslash, OtherText("a")],
-        Ok(vec![ParseToken::Text(r#"\a"#.into())]),
-    )
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence(r#"\a"#)
+            ])
+        ])),    )
 }
 
 #[test]
@@ -682,7 +689,11 @@ pub fn test_escaped_cr() {
     expect_tokens(
         &s,
         vec![Escaped(Escapable::Newline), OtherText("content")],
-        Ok(vec![ParseToken::Text(r#"content"#.into())]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence("content")
+            ])
+        ])),
     )
 }
 #[test]
@@ -692,7 +703,11 @@ pub fn test_escaped_lf() {
     expect_tokens(
         &s,
         vec![Escaped(Escapable::Newline), OtherText("content")],
-        Ok(vec![ParseToken::Text(r#"content"#.into())]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence("content")
+            ])
+        ])),
     )
 }
 #[test]
@@ -702,7 +717,11 @@ pub fn test_escaped_crlf() {
     expect_tokens(
         &s,
         vec![Escaped(Escapable::Newline), OtherText("content")],
-        Ok(vec![ParseToken::Text(r#"content"#.into())]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence("content")
+            ])
+        ])),
     )
 }
 
@@ -713,7 +732,11 @@ pub fn test_cr() {
     expect_tokens(
         &s,
         vec![Newline, OtherText("content")],
-        Ok(vec![ParseToken::Newline, ParseToken::Text("content".into())]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence("content")
+            ])
+        ])),
     )
 }
 #[test]
@@ -723,7 +746,11 @@ pub fn test_lf() {
     expect_tokens(
         &s,
         vec![Newline, OtherText("content")],
-        Ok(vec![ParseToken::Newline, ParseToken::Text("content".into())]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence("content")
+            ])
+        ])),
     )
 }
 #[test]
@@ -733,24 +760,30 @@ pub fn test_crlf() {
     expect_tokens(
         &s,
         vec![Newline, OtherText("content")],
-        Ok(vec![ParseToken::Newline, ParseToken::Text("content".into())]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence("content")
+            ])
+        ])),
     )
 }
 
 #[test]
 pub fn test_newline_in_code() {
     expect_tokens(
-        "[code.do_something();\r\ncode.do_something_else()]",
+        "[len((1,\r\n2))]",
         vec![
             CodeOpen(0),
-            OtherText("code.do_something();"),
+            OtherText("len((1,"),
             Newline,
-            OtherText("code.do_something_else()"),
+            OtherText("2))"),
             CodeClose(0),
         ],
-        Ok(vec![
-            ParseToken::Code("code.do_something();\ncode.do_something_else()".into())
-        ]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence("2")
+            ])
+        ])),
     )
 }
 #[test]
@@ -762,7 +795,7 @@ pub fn test_code_close_in_text() {
             CodeClose(0),
             OtherText(" but closed code"),
         ],
-        Err(TestInterpError::CodeCloseInText(TestParserSpan {
+        Err(TestInterpError::CodeCloseOutsideCode(TestParserSpan {
             start: (1, 10),
             end: (1, 11),
         })),
@@ -794,7 +827,7 @@ pub fn test_mismatching_scope_close() {
         ],
         Err(TestInterpError::MismatchingScopeClose {
             n_hashes: 1,
-            expected_closing_hashes: 2,
+            expected_n_hashes: 2,
             scope_open_span: TestParserSpan {
                 start: (1, 1),
                 end: (1, 4),
@@ -852,18 +885,18 @@ pub fn test_block_scope_vs_inline_scope() {
         r#"{
 block scope
 }{inline scope}"#, 
-    vec![
-        BlockScopeOpen(0), OtherText("block scope"), Newline, ScopeClose(0),
-        InlineScopeOpen(0), OtherText("inline scope"), ScopeClose(0)
-    ],
-    Ok(vec![
-        ParseToken::Scope(vec![
-            ParseToken::Text("block scope".into()),
-            ParseToken::Newline,
-        ]),
-        ParseToken::Scope(vec![
-            ParseToken::Text("inline scope".into()),
-        ])
-    ]))
+        vec![
+            BlockScopeOpen(0), OtherText("block scope"), Newline, ScopeClose(0),
+            InlineScopeOpen(0), OtherText("inline scope"), ScopeClose(0)
+        ],
+        Ok(test_doc(vec![
+            TestBlock::BlockScope {
+                owner: None,
+                contents: vec![
+                    TestBlock::Paragraph(vec![test_sentence("block scope")])
+                ]
+            },
+            TestBlock::Paragraph(vec![test_sentence("inline scope")]),
+        ]))
+    )
 }
-*/
