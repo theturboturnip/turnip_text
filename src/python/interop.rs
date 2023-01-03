@@ -56,7 +56,8 @@ impl PyTypeclass for BlockScopeOwner {
     const NAME: &'static str = "BlockScopeOwner";
 
     fn fits_typeclass(_: &PyAny) -> PyResult<bool> {
-        Ok(true)
+        // TODO define the typeclass
+        Ok(false)
     }
 }
 
@@ -66,8 +67,9 @@ pub struct InlineScopeOwner {}
 impl PyTypeclass for InlineScopeOwner {
     const NAME: &'static str = "InlineScopeOwner";
 
-    fn fits_typeclass(_: &PyAny) -> PyResult<bool> {
-        Ok(true)
+    fn fits_typeclass(x: &PyAny) -> PyResult<bool> {
+        // TODO better define the typeclass
+        Ok(x.is_callable())
     }
 }
 
@@ -246,6 +248,8 @@ pub enum EvalBracketResult {
 }
 impl EvalBracketResult {
     pub fn eval(py: Python, globals: &PyDict, code: &str) -> PyResult<EvalBracketResult> {
+        // Python picks up leading whitespace as an incorrect indent
+        let code = code.trim();
         let raw_res = py.eval(code, Some(globals), None)?;
         let res = if let Ok(val) = PyTcRef::of(raw_res) {
             EvalBracketResult::Inline(val)
