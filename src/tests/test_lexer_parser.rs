@@ -176,6 +176,9 @@ fn test_sentence(s: impl Into<String>) -> Vec<TestInline> {
 fn test_text(s: impl Into<String>) -> TestInline {
     TestInline::UnescapedText(s.into())
 }
+fn test_raw_text(s: impl Into<String>) -> TestInline {
+    TestInline::RawText(s.into())
+}
 
 trait PyToTest<T> {
     fn as_test(&self, py: Python) -> T;
@@ -446,7 +449,7 @@ pub fn test_inline_list_with_extra_delimiter() {
     )
 }
 
-/*
+
 #[test]
 pub fn test_inline_scope() {
     expect_tokens(
@@ -457,10 +460,17 @@ pub fn test_inline_scope() {
             OtherText("inside the scope"),
             ScopeClose(0),
         ],
-        Ok(vec![
-            ParseToken::Text("Outside the scope ".into()),
-            ParseToken::Scope(vec![ParseToken::Text("inside the scope".into())]),
-        ]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![vec![
+                test_text("Outside the scope "),
+                TestInline::InlineScope{
+                    owner: None,
+                    contents: vec![
+                        test_text("inside the scope")
+                    ]
+                }
+            ]])
+        ])),
     )
 }
 
@@ -474,9 +484,11 @@ pub fn test_inline_escaped_scope() {
             OtherText("not inside a scope"),
             Escaped(Escapable::SqgClose),
         ],
-        Ok(vec![ParseToken::Text(
-            "Outside the scope {not inside a scope}".into(),
-        )]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence("Outside the scope {not inside a scope}")
+            ])
+        ])),
     )
 }
 
@@ -492,10 +504,12 @@ pub fn test_raw_scope_newlines() {
             Newline,
             ScopeClose(0),
         ],
-        Ok(vec![
-            ParseToken::Text("Outside the scope ".into()),
-            ParseToken::RawScope("\ninside the raw scope\n".into()),
-        ]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![vec![
+                test_text("Outside the scope "),
+                test_raw_text("\ninside the raw scope\n")
+            ]])
+        ])),
     )
 }
 
@@ -512,10 +526,14 @@ pub fn test_raw_scope_crlf_newlines() {
             Newline,
             ScopeClose(0),
         ],
-        Ok(vec![
-            ParseToken::Text("Outside the scope ".into()),
-            ParseToken::RawScope("\ninside the raw scope\n".into()),
-        ]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                vec![
+                    test_text("Outside the scope "),
+                    test_raw_text("\ninside the raw scope\n")
+                ]
+            ])
+        ])),
     )
 }
 
@@ -529,10 +547,14 @@ pub fn test_inline_raw_scope() {
             OtherText("inside the raw scope"),
             ScopeClose(0),
         ],
-        Ok(vec![
-            ParseToken::Text("Outside the scope ".into()),
-            ParseToken::RawScope("inside the raw scope".into()),
-        ]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                vec![
+                    test_text("Outside the scope "),
+                    test_raw_text("inside the raw scope")
+                ]
+            ])
+        ])),
     )
 }
 
@@ -546,9 +568,11 @@ pub fn test_inline_raw_escaped_scope() {
             OtherText("not inside a scope"),
             Escaped(Escapable::SqgClose),
         ],
-        Ok(vec![ParseToken::Text(
-            "Outside the scope r{not inside a scope}".into(),
-        )]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence("Outside the scope r{not inside a scope}")
+            ])
+        ])),
     )
 }
 
@@ -557,7 +581,11 @@ pub fn test_r_without_starting_raw_scope() {
     expect_tokens(
         r#" r doesn't always start a scope "#,
         vec![OtherText(" r doesn't always start a scope ")],
-        Ok(vec![ParseToken::Text(" r doesn't always start a scope ".into())]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence(" r doesn't always start a scope ")
+            ])
+        ])),
     )
 }
 
@@ -570,12 +598,15 @@ pub fn test_plain_hashes() {
             Hashes(7),
             OtherText(" hashes in the middle"),
         ],
-        Ok(vec![
-            ParseToken::Text("This has a string of ".into()),
-            // The first hash in the chain starts a comment!
-        ]),
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence("This has a string of ")
+                // The first hash in the chain starts a comment!
+            ])
+        ])),
     )
 }
+/*
 
 #[test]
 pub fn test_special_with_escaped_backslash() {
