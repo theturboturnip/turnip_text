@@ -344,7 +344,7 @@ impl TTToken
             (Unit::OtherText(s), _, _) => (TTToken::OtherText(*s), 1),
 
             // Code open and close
-            (Unit::CodeOpen(s_start), Some(Unit::Hashes(s_end, n)), _) => (
+            (Unit::Hashes(s_start, n), Some(Unit::CodeOpen(s_end)), _) => (
                 TTToken::CodeOpen(
                     ParseSpan::new(s_start.start, s_end.end),
                     *n,
@@ -372,16 +372,9 @@ impl TTToken
                 ),
                 1,
             ),
-            (Unit::Hashes(s_start, n), Some(Unit::CodeClose(s_end)), _) => (
-                TTToken::CodeClose(
-                    ParseSpan::new(s_start.start, s_end.end),
-                    *n,
-                ),
-                2,
-            ),
 
             // Block Scope Open
-            (Unit::ScopeOpen(s_start), Some(Unit::Hashes(_, n)), Some(Unit::Newline(s_end))) => (
+            (Unit::Hashes(s_start, n), Some(Unit::ScopeOpen(_)), Some(Unit::Newline(s_end))) => (
                 TTToken::BlockScopeOpen(
                     ParseSpan::new(s_start.start, s_end.end),
                     *n,
@@ -397,7 +390,7 @@ impl TTToken
             ),
 
             // Inline scope open
-            (Unit::ScopeOpen(s_start), Some(Unit::Hashes(s_end, n)), _) => (
+            (Unit::Hashes(s_start, n), Some(Unit::ScopeOpen(s_end)), _) => (
                 TTToken::InlineScopeOpen(
                     ParseSpan::new(s_start.start, s_end.end),
                     *n,
@@ -413,7 +406,7 @@ impl TTToken
             ),
 
             // Raw scope open
-            (Unit::RawScopeOpen(s_start), Some(Unit::Hashes(s_end, n)), _) => (
+            (Unit::Hashes(s_start, n), Some(Unit::RawScopeOpen(s_end)), _) => (
                 TTToken::RawScopeOpen(
                     ParseSpan::new(s_start.start, s_end.end),
                     *n,
@@ -429,7 +422,7 @@ impl TTToken
             ),
 
             // Scope close
-            (Unit::Hashes(s_start, n), Some(Unit::ScopeClose(s_end)), _) => (
+            (Unit::ScopeClose(s_start), Some(Unit::Hashes(s_end, n)), _) => (
                 TTToken::ScopeClose(
                     ParseSpan::new(s_start.start, s_end.end),
                     *n,

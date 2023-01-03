@@ -350,7 +350,7 @@ pub fn test_inline_code() {
 #[test]
 pub fn test_inline_code_with_extra_delimiter() {
     expect_tokens(
-        r#"Number of values in (1,2,3): [# len((1,2,3)) #]"#,
+        r#"Number of values in (1,2,3): #[ len((1,2,3)) ]#"#,
         vec![
             OtherText("Number of values in (1,2,3): "),
             CodeOpen(1),
@@ -371,7 +371,7 @@ pub fn test_inline_code_with_extra_delimiter() {
 #[test]
 pub fn test_inline_code_with_long_extra_delimiter() {
     expect_tokens(
-        r#"Number of values in (1,2,3): [#### len((1,2,3)) ####]"#,
+        r#"Number of values in (1,2,3): ####[ len((1,2,3)) ]####"#,
         vec![
             OtherText("Number of values in (1,2,3): "),
             CodeOpen(4),
@@ -392,20 +392,21 @@ pub fn test_inline_code_with_long_extra_delimiter() {
 #[test]
 pub fn test_inline_code_with_escaped_extra_delimiter() {
     expect_tokens(
-        r#"Number of values in (1,2,3): [\# len((1,2,3)) \#]"#,
+        r#"Number of values in (1,2,3): \#[ len((1,2,3)) ]\#"#,
         vec![
             OtherText("Number of values in (1,2,3): "),
+            Escaped(Escapable::Hash),
             CodeOpen(0),
-            Escaped(Escapable::Hash),
             OtherText(" len((1,2,3)) "),
-            Escaped(Escapable::Hash),
             CodeClose(0),
+            Escaped(Escapable::Hash),
         ],
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![
                 vec![
-                    test_text("Number of values in (1,2,3): "),
-                    test_text("")
+                    test_text("Number of values in (1,2,3): #"),
+                    test_text("3"),
+                    test_text("#")
                 ]
             ])
         ])),
@@ -415,18 +416,18 @@ pub fn test_inline_code_with_escaped_extra_delimiter() {
 #[test]
 pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
     expect_tokens(
-        r#"Number of values in (1,2,3): \[\# len((1,2,3)) \#\]"#,
+        r#"Number of values in (1,2,3): \#\[ len((1,2,3)) \]\#"#,
         vec![
             OtherText("Number of values in (1,2,3): "),
+            Escaped(Escapable::Hash),
             Escaped(Escapable::SqrOpen),
-            Escaped(Escapable::Hash),
             OtherText(" len((1,2,3)) "),
-            Escaped(Escapable::Hash),
             Escaped(Escapable::SqrClose),
+            Escaped(Escapable::Hash),
         ],
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![
-                test_sentence(r#"Number of values in (1,2,3): [# len((1,2,3)) #]"#)
+                test_sentence(r#"Number of values in (1,2,3): #[ len((1,2,3)) ]#"#)
             ])
         ])),
     )
@@ -435,7 +436,7 @@ pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
 #[test]
 pub fn test_inline_list_with_extra_delimiter() {
     expect_tokens(
-        r#"Number of values in (1,2,3): [# len([1,2,3]) #]"#,
+        r#"Number of values in (1,2,3): #[ len([1,2,3]) ]#"#,
         vec![
             OtherText("Number of values in (1,2,3): "),
             CodeOpen(1),
@@ -839,7 +840,7 @@ pub fn test_scope_close_outside_scope() {
 #[test]
 pub fn test_mismatching_scope_close() {
     expect_tokens(
-        "{## text in a scope with a #}",
+        "##{ text in a scope with a }#",
         vec![
             InlineScopeOpen(2),
             OtherText(" text in a scope with a "),
@@ -875,7 +876,7 @@ pub fn test_ended_inside_code() {
 #[test]
 pub fn test_ended_inside_raw_scope() {
     expect_tokens(
-        "text r{#raw",
+        "text #r{raw",
         vec![OtherText("text "), RawScopeOpen(1), OtherText("raw")],
         Err(TestInterpError::EndedInsideRawScope {
             raw_scope_start: TestParserSpan {
@@ -888,7 +889,7 @@ pub fn test_ended_inside_raw_scope() {
 #[test]
 pub fn test_ended_inside_scope() {
     expect_tokens(
-        "text {##scope",
+        "text ##{scope",
         vec![OtherText("text "), InlineScopeOpen(2), OtherText("scope")],
         Err(TestInterpError::SentenceBreakInInlineScope {
             scope_start: TestParserSpan {
