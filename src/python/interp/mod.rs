@@ -6,7 +6,7 @@ use pyo3::{prelude::*, types::{PyString, PyDict}};
 use crate::{lexer::{TTToken, Escapable}, util::ParseSpan, python::{interop::*, TurnipTextPython, typeclass::PyTcRef}};
 
 mod para;
-use self::para::{InterpParaState, InterpParaAction};
+use self::para::{InterpParaState, InterpParaTransition};
 
 pub struct InterpState<'a> {
     /// FSM state
@@ -79,7 +79,7 @@ struct InterpBlockScopeState {
 }
 
 #[derive(Debug)]
-pub(crate) enum InterpBlockAction {
+pub(crate) enum InterpBlockTransition {
     /// On encountering a CodeOpen at the start of a line, start gathering block level code
     ///
     /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::BuildingBlockLevelCode]
@@ -92,12 +92,12 @@ pub(crate) enum InterpBlockAction {
     /// - [InterpBlockState::BuildingBlockLevelCode] -> [InterpBlockState::AttachingBlockLevelCode]
     WaitToAttachBlockCode(PyTcRef<BlockScopeOwner>, ParseSpan),
 
-    /// Start a paragraph, optionally executing an action on the paragraph-level state machine
+    /// Start a paragraph, optionally executing a transition on the paragraph-level state machine
     ///
     /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::WritingPara]
     /// - [InterpBlockState::BuildingBlockLevelCode] -> [InterpBlockState::WritingPara]
     /// TODO dear god stop using Option here, its so verbose and actually unnecessary
-    StartParagraph(Option<InterpParaAction>),
+    StartParagraph(Option<InterpParaTransition>),
 
     /// On encountering a paragraph break (a blank line), add the paragraph to the document
     ///
@@ -124,7 +124,7 @@ pub(crate) enum InterpBlockAction {
 }
 
 #[derive(Debug)]
-pub(crate) enum InterpSpecialAction {
+pub(crate) enum InterpSpecialTransition {
     /// On encountering a comment starter, go into comment mode
     StartComment(ParseSpan),
 
@@ -250,14 +250,14 @@ impl<T> MapInterpResult<T> for PyResult<T> {
 impl<'a> InterpState<'a> {
     pub fn handle_token<'interp>(&mut self, ttpython: &TurnipTextPython<'interp>, tok: TTToken) -> InterpResult<()> {
         ttpython.with_gil(|py, globals| {
-            let actions = self.compute_action(py, globals, tok)?;
-            self.handle_action(py, globals, actions)
+            let transitions = self.mutate_and_find_transitions(py, globals, tok)?;
+            self.handle_transition(py, globals, transitions)
         })
     }
 
     pub fn finalize<'interp>(&mut self, ttpython: &TurnipTextPython<'interp>) -> InterpResult<()> {
         ttpython.with_gil(|py, globals| {
-            let actions = match &mut self.block_state {
+            let transitions = match &mut self.block_state {
                 InterpBlockState::ReadyForNewBlock => {
                     (None, None)
                 },
@@ -267,34 +267,34 @@ impl<'a> InterpState<'a> {
             };
 
             match self.block_stack.pop() {
-                // No open blocks on the stack => process the action
-                None => self.handle_action(py, globals, actions),
+                // No open blocks on the stack => process the transition
+                None => self.handle_transition(py, globals, transitions),
                 Some(InterpBlockScopeState{scope_start, ..}) => return Err(InterpError::EndedInsideScope { scope_start })
             }
         })
     }
 
-    /// Return (block action, special action) to be executed in the order (block action, special action)
-    fn compute_action(
+    /// Return (block transition, special transition) to be executed in the order (block transition, special transition)
+    fn mutate_and_find_transitions(
         &mut self,
         py: Python,
         globals: &PyDict,
         tok: TTToken,
-    ) -> InterpResult<(Option<InterpBlockAction>, Option<InterpSpecialAction>)> {
-        use InterpBlockAction::*;
+    ) -> InterpResult<(Option<InterpBlockTransition>, Option<InterpSpecialTransition>)> {
+        use InterpBlockTransition::*;
         use TTToken::*;
 
         // Handle comments separately
         if let Some(InterpCommentState { comment_start: _ }) = self.comment_state {
-            let action = match tok {
-                Newline(_) => Some(InterpSpecialAction::EndComment),
+            let transition = match tok {
+                Newline(_) => Some(InterpSpecialTransition::EndComment),
                 _ => None,
             };
-            // No change at the block level, potentially exit comment as a special action
-            return Ok((None, action));
+            // No change at the block level, potentially exit comment as a special transition
+            return Ok((None, transition));
         }
 
-        let action = match &mut self.block_state {
+        let transition = match &mut self.block_state {
             InterpBlockState::ReadyForNewBlock => {
                 match tok {
                     Escaped(span, Escapable::Newline) => return Err(
@@ -308,7 +308,7 @@ impl<'a> InterpState<'a> {
 
                     // PushInlineScope with no code managing it
                     InlineScopeOpen(span, n_hashes) => (
-                        Some(StartParagraph(Some(InterpParaAction::PushInlineScope(
+                        Some(StartParagraph(Some(InterpParaTransition::PushInlineScope(
                             None, span, n_hashes,
                         )))),
                         None,
@@ -316,7 +316,7 @@ impl<'a> InterpState<'a> {
 
                     // StartRawBlock
                     RawScopeOpen(span, n_hashes) => (
-                        Some(StartParagraph(Some(InterpParaAction::StartRawScope(
+                        Some(StartParagraph(Some(InterpParaTransition::StartRawScope(
                             span, n_hashes,
                         )))),
                         None,
@@ -348,11 +348,11 @@ impl<'a> InterpState<'a> {
                     Newline(_) => (None, None),
 
                     // Enter comment mode
-                    Hashes(span, _) => (None, Some(InterpSpecialAction::StartComment(span))),
+                    Hashes(span, _) => (None, Some(InterpSpecialTransition::StartComment(span))),
 
                     // Normal text - start a new paragraph
                     _ => (
-                        Some(StartParagraph(Some(InterpParaAction::StartText(
+                        Some(StartParagraph(Some(InterpParaTransition::StartText(
                             tok.stringify_escaped(self.data).into(),
                         )))),
                         None,
@@ -367,7 +367,7 @@ impl<'a> InterpState<'a> {
                 code_start,
                 expected_n_hashes,
             } => {
-                let code_span = compute_action_for_code_mode(
+                let code_span = handle_code_mode(
                     self.data,
                     tok,
                     code,
@@ -382,12 +382,12 @@ impl<'a> InterpState<'a> {
                         let res = EvalBracketResult::eval(
                             py, globals, code.as_str()
                         ).err_as_interp(py, code_span)?;
-                        let block_action = match res {
+                        let block_transition = match res {
                             Block(b) => WaitToAttachBlockCode(b, code_span),
-                            Inline(i) => StartParagraph(Some(InterpParaAction::WaitToAttachInlineCode(i, code_span))),
-                            Other(s) => StartParagraph(Some(InterpParaAction::PushInlineContent(InlineNodeToCreate::UnescapedPyString(s)))),
+                            Inline(i) => StartParagraph(Some(InterpParaTransition::WaitToAttachInlineCode(i, code_span))),
+                            Other(s) => StartParagraph(Some(InterpParaTransition::PushInlineContent(InlineNodeToCreate::UnescapedPyString(s)))),
                         };
-                        (Some(block_action), None)
+                        (Some(block_transition), None)
                     }
                     None => (None, None),
                 }
@@ -402,26 +402,24 @@ impl<'a> InterpState<'a> {
             },
         };
 
-        Ok(action)
+        Ok(transition)
     }
 
-    /// May recurse if StartParagraph(action)
-    fn handle_action(
+    /// May recurse if StartParagraph(transition)
+    fn handle_transition(
         &mut self,
         py: Python,
         globals: &PyDict,
-        actions: (Option<InterpBlockAction>, Option<InterpSpecialAction>),
+        transitions: (Option<InterpBlockTransition>, Option<InterpSpecialTransition>),
     ) -> InterpResult<()> {
-        let (block_action, special_action) = actions;
+        let (block_transition, special_transition) = transitions;
 
-        if let Some(action) = block_action {
-            use InterpBlockAction as A;
+        if let Some(transition) = block_transition {
             use InterpBlockState as S;
+            use InterpBlockTransition as T;
 
-            dbg!(&self.block_state, &action);
-
-            let new_block_state = match (&self.block_state, action) {
-                (S::ReadyForNewBlock, A::StartBlockLevelCode(code_start, expected_n_hashes)) => {
+            let new_block_state = match (&self.block_state, transition) {
+                (S::ReadyForNewBlock, T::StartBlockLevelCode(code_start, expected_n_hashes)) => {
                     S::BuildingBlockLevelCode {
                         code: "".into(),
                         code_start,
@@ -430,35 +428,35 @@ impl<'a> InterpState<'a> {
                 }
                 (
                     S::BuildingBlockLevelCode { .. },
-                    A::WaitToAttachBlockCode(owner, code_span)
+                    T::WaitToAttachBlockCode(owner, code_span)
                 ) => {
                     S::AttachingBlockLevelCode { owner, code_span }
                 }
 
                 (
                     S::ReadyForNewBlock | S::BuildingBlockLevelCode { .. },
-                    A::StartParagraph(action),
+                    T::StartParagraph(transition),
                 ) => {
                     let mut para_state = InterpParaState::new(py).err_as_interp_internal(py)?;
-                    let (new_block_action, new_special_action) = para_state.handle_action(py, action)?;
-                    if new_block_action.is_some() {
+                    let (new_block_transition, new_special_transition) = para_state.handle_transition(py, transition)?;
+                    if new_block_transition.is_some() {
                         return Err(InterpError::InternalErr(
-                            "An inline action, initiated with the start of a paragraph, tried to initiate another block action. This is not allowed and should not be possible.".into()
+                            "An inline transition, initiated with the start of a paragraph, tried to initiate another block transition. This is not allowed and should not be possible.".into()
                         ))
                     }
-                    self.handle_action(py, globals, (None, new_special_action))?;
+                    self.handle_transition(py, globals, (None, new_special_transition))?;
                     S::WritingPara(para_state)
                 }
                 (
                     S::WritingPara(para_state),
-                    A::EndParagraph
+                    T::EndParagraph
                 ) => {
                     self.push_to_topmost_block(py, para_state.para().as_ref(py))?;
                     S::ReadyForNewBlock
                 }
                 (
                     S::WritingPara(para_state),
-                    A::EndParagraphAndPopBlock(scope_close_span, n_hashes)
+                    T::EndParagraphAndPopBlock(scope_close_span, n_hashes)
                 ) => {
                     // End paragraph i.e. push paragraph onto topmost block
                     self.push_to_topmost_block(py, para_state.para().as_ref(py))?;
@@ -484,7 +482,7 @@ impl<'a> InterpState<'a> {
 
                 (
                     S::ReadyForNewBlock | S::AttachingBlockLevelCode { .. },
-                    A::PushBlock(owner, scope_start, expected_n_hashes),
+                    T::PushBlock(owner, scope_start, expected_n_hashes),
                 ) => {
                     self.block_stack.push(InterpBlockScopeState {
                         scope: Py::new(py, BlockScope::new_rs(py, owner)).err_as_interp_internal(py)?,
@@ -495,7 +493,7 @@ impl<'a> InterpState<'a> {
                 }
                 (
                     S::ReadyForNewBlock,
-                    A::PopBlock(scope_close_span)
+                    T::PopBlock(scope_close_span)
                 ) => {
                     let popped_scope = self.block_stack.pop();
                     match popped_scope {
@@ -506,12 +504,12 @@ impl<'a> InterpState<'a> {
                     }
                     S::ReadyForNewBlock
                 }
-                (_, action) => return Err(
+                (_, transition) => return Err(
                     InterpError::InternalErr(
                         format!(
-                            "Invalid block state/action pair encountered ({0:?}, {1:?})",
+                            "Invalid block state/transition pair encountered ({0:?}, {1:?})",
                             self.block_state,
-                            action
+                            transition
                         )
                     )
                 ),
@@ -519,20 +517,20 @@ impl<'a> InterpState<'a> {
             self.block_state = new_block_state;
         }
 
-        if let Some(action) = special_action {
-            match (&self.comment_state, action) {
-                (Some(_), InterpSpecialAction::EndComment) => {
+        if let Some(transition) = special_transition {
+            match (&self.comment_state, transition) {
+                (Some(_), InterpSpecialTransition::EndComment) => {
                     self.comment_state = None;
                 }
-                (None, InterpSpecialAction::StartComment(comment_start)) => {
+                (None, InterpSpecialTransition::StartComment(comment_start)) => {
                     self.comment_state = Some(InterpCommentState { comment_start })
                 }
-                (_, action) => return Err(
+                (_, transition) => return Err(
                     InterpError::InternalErr(
                         format!(
-                            "Invalid special state/action pair encountered ({0:?}, {1:?})",
+                            "Invalid special state/transition pair encountered ({0:?}, {1:?})",
                             self.comment_state,
-                            action
+                            transition
                         )
                     )
                 ),
@@ -555,7 +553,7 @@ impl<'a> InterpState<'a> {
 }
 
 /// Returns Some(code_span) once the code has been closed
-fn compute_action_for_code_mode(
+fn handle_code_mode(
     data: &str,
     tok: TTToken,
     code: &mut String,
