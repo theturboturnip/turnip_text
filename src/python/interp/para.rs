@@ -107,6 +107,14 @@ pub(crate) enum InterpParaAction {
     /// - [InterpInlineState::LineStart] -> (other block state)
     EndParagraph(Option<ParseSpan>),
 
+    /// See [InterpBlockAction::EndParagraphAndPopBlock]
+    ///
+    /// Finish the paragraph and current sentence (raising an error if processing inline scopes),
+    /// and pop the block
+    ///
+    /// - [InterpInlineState::LineStart] -> (other block state)
+    EndParagraphAndPopBlock(ParseSpan, usize),
+
     /// Finishes the current BuildingText if in progress, pushes it to topmost scope, enters comment mode
     ///
     /// TODO should this break the current sentence or no?
@@ -190,6 +198,8 @@ impl InterpParaState {
                 self.push_built_text_to_topmost_scope(py, text)?;
             }
 
+            dbg!(&self.inl_state, &self.inline_stack, &action);
+
             let (new_inl_state, actions) = match (&self.inl_state, action) {
                 (
                     S::LineStart | S::MidLine | S::BuildingText(_),
@@ -244,15 +254,13 @@ impl InterpParaState {
                 }
                 (
                     S::LineStart | S::MidLine | S::BuildingText(_),
-                    A::PopInlineScope(scope_close_span)
+                    A::PopInlineScope(_)
                 ) => {
                     let popped_scope = self.inline_stack.pop();
                     match popped_scope {
                         Some(popped_scope) => self.push_to_topmost_scope(py, popped_scope.scope.as_ref(py))?,
-                        // TODO should specify *inline* scope, not all scopes
                         None => {
-                            todo!("Should bubble up to the block level to check if those scopes need closing");
-                            return Err(InterpError::ScopeCloseOutsideScope(scope_close_span))
+                            return Err(InterpError::InternalErr("PopInlineScope attempted with no inline scopes - should use EndParagraphAndPopBlock in this case".into()))
                         }
                     };
                     (S::MidLine, (None, None))
@@ -311,6 +319,22 @@ impl InterpParaState {
                     (S::LineStart, (Some(InterpBlockAction::EndParagraph), None))
                 }
 
+                (
+                    S::LineStart | S::MidLine | S::BuildingText(_),
+                    A::EndParagraphAndPopBlock(scope_end_span, n_hashes)
+                ) => {
+                    // This is only called when all inline scopes are closed - just assert they are
+                    self.check_inline_scopes_closed().map_err(|_| {
+                        InterpError::InternalErr("paragraph EndParagraphAndPopBlock action invoked when inline scopes are still on the stack".into())
+                    })?;
+                    // If the sentence has stuff in it, push it into the paragraph and make a new one
+                    if self.sentence.borrow(py).__len__(py) > 0 {
+                        self.para.borrow_mut(py).push_sentence(self.sentence.as_ref(py)).err_as_interp_internal(py)?;
+                        self.sentence = Py::new(py, Sentence::new(py)).err_as_interp_internal(py)?;
+                    }
+                    (S::LineStart, (Some(InterpBlockAction::EndParagraphAndPopBlock(scope_end_span, n_hashes)), None))
+                }
+
                 (_, action) => return Err(InterpError::InternalErr(
                     format!(
                         "Invalid inline state/action pair encountered ({0:?}, {1:?})",
@@ -352,23 +376,7 @@ impl InterpParaState {
                 RawScopeOpen(span, n) => Some(StartRawScope(span, n)),
 
                 CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span)),
-                ScopeClose(span, n_hashes) => match self.inline_stack.last() {
-                    Some(InterpInlineScopeState {
-                        expected_n_hashes,
-                        ..
-                    }) if n_hashes == *expected_n_hashes => Some(PopInlineScope(span)),
-                    Some(InterpInlineScopeState {
-                        expected_n_hashes,
-                        scope_start,
-                        ..
-                    }) => Err(InterpError::MismatchingScopeClose {
-                        n_hashes,
-                        expected_n_hashes: *expected_n_hashes,
-                        scope_open_span: *scope_start,
-                        scope_close_span: span,
-                    })?,
-                    None => Err(InterpError::ScopeCloseOutsideScope(span))?,
-                },
+                ScopeClose(span, n_hashes) => Some(self.try_pop_scope(py, span, n_hashes)?),
 
                 _ => Some(StartText(
                     tok.stringify_escaped(data).into(),
@@ -391,23 +399,8 @@ impl InterpParaState {
                 RawScopeOpen(span, n) => Some(StartRawScope(span, n)),
 
                 CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span)),
-                ScopeClose(span, n_hashes) => match self.inline_stack.last() {
-                    Some(InterpInlineScopeState {
-                        expected_n_hashes,
-                        ..
-                    }) if n_hashes == *expected_n_hashes => Some(PopInlineScope(span)),
-                    Some(InterpInlineScopeState {
-                        expected_n_hashes,
-                        scope_start,
-                        ..
-                    }) => Err(InterpError::MismatchingScopeClose {
-                        n_hashes,
-                        expected_n_hashes: *expected_n_hashes,
-                        scope_open_span: *scope_start,
-                        scope_close_span: span,
-                    })?,
-                    None => Err(InterpError::ScopeCloseOutsideScope(span))?,
-                },
+                ScopeClose(span, n_hashes) => Some(self.try_pop_scope(py, span, n_hashes)?),
+
 
                 _ => Some(StartText(
                     tok.stringify_escaped(data).into(),
@@ -432,23 +425,8 @@ impl InterpParaState {
                 RawScopeOpen(span, n) => Some(StartRawScope(span, n)),
 
                 CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span)),
-                ScopeClose(span, n_hashes) => match self.inline_stack.last() {
-                    Some(InterpInlineScopeState {
-                        expected_n_hashes,
-                        ..
-                    }) if n_hashes == *expected_n_hashes => Some(PopInlineScope(span)),
-                    Some(InterpInlineScopeState {
-                        expected_n_hashes,
-                        scope_start,
-                        ..
-                    }) => Err(InterpError::MismatchingScopeClose {
-                        n_hashes,
-                        expected_n_hashes: *expected_n_hashes,
-                        scope_open_span: *scope_start,
-                        scope_close_span: span,
-                    })?,
-                    None => Err(InterpError::ScopeCloseOutsideScope(span))?,
-                },
+                ScopeClose(span, n_hashes) => Some(self.try_pop_scope(py, span, n_hashes)?),
+
                 _ => {
                     text.push_str(tok.stringify_escaped(data));
                     None
@@ -506,6 +484,35 @@ impl InterpParaState {
             },
         };
         Ok(action)
+    }
+
+    fn try_pop_scope(&mut self, py: Python, scope_close_span: ParseSpan, n_hashes: usize) -> InterpResult<InterpParaAction> {
+        match self.inline_stack.last() {
+            Some(InterpInlineScopeState {
+                expected_n_hashes,
+                scope_start,
+                ..
+            }) => if n_hashes == *expected_n_hashes {
+                Ok(InterpParaAction::PopInlineScope(scope_close_span))
+            } else {
+                Err(InterpError::MismatchingScopeClose {
+                    n_hashes,
+                    expected_n_hashes: *expected_n_hashes,
+                    scope_open_span: *scope_start,
+                    scope_close_span,
+                })
+            },
+            None => {
+                // If the sentence has stuff in it, push it into the paragraph and make a new one
+                if self.sentence.borrow(py).__len__(py) > 0 {
+                    self.para.borrow_mut(py).push_sentence(self.sentence.as_ref(py)).err_as_interp_internal(py)?;
+                    self.sentence = Py::new(py, Sentence::new(py)).err_as_interp_internal(py)?;
+                }
+                Ok(
+                    InterpParaAction::EndParagraphAndPopBlock(scope_close_span, n_hashes)
+                )
+            },
+        }
     }
 
     /// Check if all inline scopes are closed, returning [Err] of [ParseSpan] of the closest open inline scope if not.

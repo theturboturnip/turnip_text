@@ -224,6 +224,7 @@ impl PyToTest<Vec<TestInline>> for PyAny {
 }
 impl PyToTest<TestInline> for PyAny {
     fn as_test(&self, py: Python) -> TestInline {
+        dbg!(self);
         if let Ok(inl) = self.extract::<InlineScope>() {
             TestInline::InlineScope {
                 owner: inl.owner.map(|x| x.as_ref(py).to_string()),
@@ -917,7 +918,14 @@ block scope
                     TestBlock::Paragraph(vec![test_sentence("block scope")])
                 ]
             },
-            TestBlock::Paragraph(vec![test_sentence("inline scope")]),
+            TestBlock::Paragraph(vec![vec![
+                TestInline::InlineScope {
+                    owner: None,
+                    contents: vec![
+                        test_text("inline scope")
+                    ]
+                }
+            ]]),
         ]))
     )
 }

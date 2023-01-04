@@ -104,6 +104,12 @@ pub(crate) enum InterpBlockAction {
     /// - [InterpBlockState::WritingPara] -> [InterpBlockState::ReadyForNewBlock]
     EndParagraph,
 
+    /// On encountering a block scope close inside a paragraph,
+    /// add the paragraph and close the topmost scope
+    /// 
+    /// - [InterpBlockState::WritingPara] -> [InterpBlockState::ReadyForNewBlock]
+    EndParagraphAndPopBlock(ParseSpan, usize),
+
     /// On encountering block content (i.e. a BlockScopeOpen optionally preceded by a Python scope owner),
     /// push a block scope onto the current stack
     ///
@@ -354,7 +360,7 @@ impl<'a> InterpState<'a> {
                 }
             }
             InterpBlockState::WritingPara(state) => {
-                state.handle_token(py, globals, tok, self.data)?
+                dbg!(state.handle_token(py, globals, tok, self.data)?)
             },
             InterpBlockState::BuildingBlockLevelCode {
                 code,
@@ -412,6 +418,8 @@ impl<'a> InterpState<'a> {
             use InterpBlockAction as A;
             use InterpBlockState as S;
 
+            dbg!(&self.block_state, &action);
+
             let new_block_state = match (&self.block_state, action) {
                 (S::ReadyForNewBlock, A::StartBlockLevelCode(code_start, expected_n_hashes)) => {
                     S::BuildingBlockLevelCode {
@@ -448,6 +456,31 @@ impl<'a> InterpState<'a> {
                     self.push_to_topmost_block(py, para_state.para().as_ref(py))?;
                     S::ReadyForNewBlock
                 }
+                (
+                    S::WritingPara(para_state),
+                    A::EndParagraphAndPopBlock(scope_close_span, n_hashes)
+                ) => {
+                    // End paragraph i.e. push paragraph onto topmost block
+                    self.push_to_topmost_block(py, para_state.para().as_ref(py))?;
+                    // Pop block
+                    let popped_scope = self.block_stack.pop();
+                    match popped_scope {
+                        Some(InterpBlockScopeState {
+                            scope,
+                            scope_start: scope_open_span,
+                            expected_n_hashes,
+                        }) => {
+                            if n_hashes == expected_n_hashes {
+                                // Push popped block into new topmost block
+                                self.push_to_topmost_block(py, scope.as_ref(py))?
+                            } else {
+                                return Err(InterpError::MismatchingScopeClose { n_hashes, expected_n_hashes, scope_open_span, scope_close_span })
+                            }
+                        }
+                        None => return Err(InterpError::ScopeCloseOutsideScope(scope_close_span)),
+                    }
+                    S::ReadyForNewBlock
+                }
 
                 (
                     S::ReadyForNewBlock | S::AttachingBlockLevelCode { .. },
@@ -469,7 +502,6 @@ impl<'a> InterpState<'a> {
                         Some(popped_scope) => {
                             self.push_to_topmost_block(py, popped_scope.scope.as_ref(py))?
                         }
-                        // TODO specify *block* scope
                         None => return Err(InterpError::ScopeCloseOutsideScope(scope_close_span)),
                     }
                     S::ReadyForNewBlock
