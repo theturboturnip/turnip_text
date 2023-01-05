@@ -60,9 +60,10 @@ pub struct BlockScopeOwner {}
 impl PyTypeclass for BlockScopeOwner {
     const NAME: &'static str = "BlockScopeOwner";
 
-    fn fits_typeclass(_: &PyAny) -> PyResult<bool> {
+    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
         // TODO define the typeclass
-        Ok(false)
+        // TestBlockScope is really for testing only
+        Ok(obj.str()?.to_str()?.contains("TestBlockScope"))
     }
 }
 
@@ -72,9 +73,11 @@ pub struct InlineScopeOwner {}
 impl PyTypeclass for InlineScopeOwner {
     const NAME: &'static str = "InlineScopeOwner";
 
-    fn fits_typeclass(x: &PyAny) -> PyResult<bool> {
+    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
         // TODO better define the typeclass
-        Ok(x.is_callable())
+        Ok(obj.is_callable() ||
+            // For testing only
+            obj.str()?.to_str()?.contains("TestInlineScope"))
     }
 }
 
@@ -152,17 +155,27 @@ impl Paragraph {
 /// Typically created by Rust while parsing input files.
 #[pyclass]
 #[derive(Debug, Clone)]
-pub struct RawText(pub Py<PyString>);
+pub struct RawText {
+    pub owner: Option<PyTcRef<InlineScopeOwner>>,
+    pub contents: Py<PyString>,
+}
 impl RawText {
-    pub fn new_rs(py: Python, s: &str) -> Self {
-        Self::new(PyString::new(py, s).into_py(py))
+    pub fn new_rs(py: Python, owner: Option<PyTcRef<InlineScopeOwner>>, s: &str) -> Self {
+        Self {
+            owner,
+            contents: PyString::new(py, s).into_py(py),
+        }
     }
 }
 #[pymethods]
 impl RawText {
     #[new]
-    pub fn new(data: Py<PyString>) -> Self {
-        Self(data)
+    pub fn new(owner: Option<&PyAny>, contents: Py<PyString>) -> PyResult<Self> {
+        let o = match owner {
+            Some(o) => Some(PyTcRef::of(o)?),
+            None => None,
+        };
+        Ok(Self { owner: o, contents })
     }
 }
 

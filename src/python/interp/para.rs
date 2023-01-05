@@ -42,13 +42,15 @@ enum InterpSentenceState {
         code_start: ParseSpan,
         expected_n_hashes: usize,
     },
-    /// Having constructed some code which expects inline scope, expecting the next token to be an inline scope
+    /// Having constructed some code which expects inline scope,
+    /// expecting the next token to be an inline or raw scope
     AttachingInlineLevelCode {
         owner: PyTcRef<InlineScopeOwner>,
         code_span: ParseSpan,
     },
-    /// When building raw text
+    /// When building raw text, optionally attached to an InlineScopeOwner
     BuildingRawText {
+        owner: Option<PyTcRef<InlineScopeOwner>>,
         text: String,
         raw_start: ParseSpan,
         expected_n_hashes: usize,
@@ -100,7 +102,7 @@ pub(crate) enum InterpParaTransition {
     StartInlineLevelCode(ParseSpan, usize),
 
     /// Having finished a code close which evals to [InlineScopeOwner],
-    /// start a one-token wait for an inline scope to attach it to
+    /// start a one-token wait for an inline or raw scope to attach it to
     ///
     /// - [InterpSentenceState::BuildingCode] -> [InterpSentenceState::AttachingInlineLevelCode]
     /// - (other block state) -> [InterpSentenceState::AttachingInlineLevelCode]
@@ -138,8 +140,9 @@ pub(crate) enum InterpParaTransition {
     /// - [InterpSentenceState::SentenceStart] -> [InterpSentenceState::BuildingRawText]
     /// - [InterpSentenceState::MidSentence] -> [InterpSentenceState::BuildingRawText]
     /// - [InterpSentenceState::BuildingText] -> [InterpSentenceState::BuildingRawText]
+    /// - [InterpSentenceState::AttachingInlineLevelCode] -> [InterpSentenceState::BuildingRawText]
     /// - (other block state) -> [InterpSentenceState::BuildingRawText]
-    StartRawScope(ParseSpan, usize),
+    StartRawScope(Option<PyTcRef<InlineScopeOwner>>, ParseSpan, usize),
 
     /// On encountering inline text, start processing a string of text
     ///
@@ -295,10 +298,14 @@ impl InterpParaState {
                 }
 
                 (
-                    S::SentenceStart | S::MidSentence | S::BuildingText(_), // or another block state, which would be inited as InitState
-                    T::StartRawScope(raw_start, expected_n_hashes),
+                    S::SentenceStart
+                    | S::MidSentence
+                    | S::BuildingText(_)
+                    | S::AttachingInlineLevelCode { .. }, // or another block state, which would be inited as InitState
+                    T::StartRawScope(owner, raw_start, expected_n_hashes),
                 ) => (
                     S::BuildingRawText {
+                        owner,
                         text: "".into(),
                         raw_start,
                         expected_n_hashes,
@@ -420,7 +427,7 @@ impl InterpParaState {
                     return Err(InterpError::BlockScopeOpenedMidPara { scope_start: span })
                 }
                 InlineScopeOpen(span, n) => Some(PushInlineScope(None, span, n)),
-                RawScopeOpen(span, n) => Some(StartRawScope(span, n)),
+                RawScopeOpen(span, n) => Some(StartRawScope(None, span, n)),
 
                 CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span)),
                 ScopeClose(span, n_hashes) => Some(self.try_pop_scope(py, span, n_hashes)?),
@@ -441,7 +448,7 @@ impl InterpParaState {
                     return Err(InterpError::BlockScopeOpenedMidPara { scope_start: span })
                 }
                 InlineScopeOpen(span, n) => Some(PushInlineScope(None, span, n)),
-                RawScopeOpen(span, n) => Some(StartRawScope(span, n)),
+                RawScopeOpen(span, n) => Some(StartRawScope(None, span, n)),
 
                 CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span)),
                 ScopeClose(span, n_hashes) => Some(self.try_pop_scope(py, span, n_hashes)?),
@@ -462,7 +469,7 @@ impl InterpParaState {
                     return Err(InterpError::BlockScopeOpenedMidPara { scope_start: span })
                 }
                 InlineScopeOpen(span, n) => Some(PushInlineScope(None, span, n)),
-                RawScopeOpen(span, n) => Some(StartRawScope(span, n)),
+                RawScopeOpen(span, n) => Some(StartRawScope(None, span, n)),
 
                 CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span)),
                 ScopeClose(span, n_hashes) => Some(self.try_pop_scope(py, span, n_hashes)?),
@@ -505,6 +512,9 @@ impl InterpParaState {
                 InlineScopeOpen(span, n_hashes) => {
                     Some(PushInlineScope(Some(owner.clone()), span, n_hashes))
                 }
+                RawScopeOpen(span, n_hashes) => {
+                    Some(StartRawScope(Some(owner.clone()), span, n_hashes))
+                }
                 _ => {
                     return Err(InterpError::InlineOwnerCodeHasNoScope {
                         code_span: *code_span,
@@ -512,13 +522,14 @@ impl InterpParaState {
                 }
             },
             InterpSentenceState::BuildingRawText {
+                owner,
                 text,
                 expected_n_hashes,
                 ..
             } => match tok {
-                ScopeClose(_, n) if n == *expected_n_hashes => {
-                    Some(PushInlineContent(InlineNodeToCreate::RawText(text.clone())))
-                }
+                ScopeClose(_, n) if n == *expected_n_hashes => Some(PushInlineContent(
+                    InlineNodeToCreate::RawText(owner.clone(), text.clone()),
+                )),
                 _ => {
                     text.push_str(tok.stringify_raw(data));
                     None

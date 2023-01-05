@@ -201,7 +201,10 @@ enum TestInline {
         contents: Vec<TestInline>,
     },
     UnescapedText(String),
-    RawText(String),
+    RawText {
+        owner: Option<String>,
+        contents: String,
+    },
 }
 fn test_doc(contents: Vec<TestBlock>) -> TestBlock {
     TestBlock::BlockScope {
@@ -215,8 +218,11 @@ fn test_sentence(s: impl Into<String>) -> Vec<TestInline> {
 fn test_text(s: impl Into<String>) -> TestInline {
     TestInline::UnescapedText(s.into())
 }
-fn test_raw_text(s: impl Into<String>) -> TestInline {
-    TestInline::RawText(s.into())
+fn test_raw_text(owner: Option<String>, s: impl Into<String>) -> TestInline {
+    TestInline::RawText {
+        owner,
+        contents: s.into(),
+    }
 }
 
 trait PyToTest<T> {
@@ -277,7 +283,10 @@ impl PyToTest<TestInline> for PyAny {
         } else if let Ok(text) = self.extract::<UnescapedText>() {
             TestInline::UnescapedText(text.0.as_ref(py).to_string())
         } else if let Ok(text) = self.extract::<RawText>() {
-            TestInline::RawText(text.0.as_ref(py).to_string())
+            TestInline::RawText {
+                owner: text.owner.map(|x| x.as_ref(py).to_string()),
+                contents: text.contents.as_ref(py).to_string(),
+            }
         } else {
             TestInline::UnescapedText(
                 self.str()
@@ -481,6 +490,61 @@ pub fn test_inline_list_with_extra_delimiter() {
 }
 
 #[test]
+pub fn test_block_scope() {
+    expect_tokens(
+        r#"Outside the scope
+
+{
+Inside the scope
+
+Second paragraph inside the scope
+}"#,
+        vec![
+            OtherText("Outside the scope"),
+            Newline,
+            Newline,
+            BlockScopeOpen(0),
+            OtherText("Inside the scope"),
+            Newline,
+            Newline,
+            OtherText("Second paragraph inside the scope"),
+            Newline,
+            ScopeClose(0),
+        ],
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![test_sentence("Outside the scope")]),
+            TestBlock::BlockScope {
+                owner: None,
+                contents: vec![
+                    TestBlock::Paragraph(vec![test_sentence("Inside the scope")]),
+                    TestBlock::Paragraph(vec![test_sentence("Second paragraph inside the scope")]),
+                ],
+            },
+        ])),
+    )
+}
+
+#[test]
+pub fn test_raw_scope() {
+    expect_tokens(
+        "r{It's f&%#ing raw}",
+        vec![
+            RawScopeOpen(0),
+            OtherText("It's f&%"),
+            Hashes(1),
+            OtherText("ing raw"),
+            ScopeClose(0),
+        ],
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            TestInline::RawText {
+                owner: None,
+                contents: "It's f&%#ing raw".into(),
+            },
+        ]])])),
+    )
+}
+
+#[test]
 pub fn test_inline_scope() {
     expect_tokens(
         r#"Outside the scope {inside the scope}"#,
@@ -530,7 +594,7 @@ pub fn test_raw_scope_newlines() {
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Outside the scope "),
-            test_raw_text("\ninside the raw scope\n"),
+            test_raw_text(None, "\ninside the raw scope\n"),
         ]])])),
     )
 }
@@ -550,7 +614,7 @@ pub fn test_raw_scope_crlf_newlines() {
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Outside the scope "),
-            test_raw_text("\ninside the raw scope\n"),
+            test_raw_text(None, "\ninside the raw scope\n"),
         ]])])),
     )
 }
@@ -567,7 +631,7 @@ pub fn test_inline_raw_scope() {
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Outside the scope "),
-            test_raw_text("inside the raw scope"),
+            test_raw_text(None, "inside the raw scope"),
         ]])])),
     )
 }
@@ -909,5 +973,88 @@ block scope
                 contents: vec![test_text("inline scope")],
             }]]),
         ])),
+    )
+}
+
+#[test]
+pub fn test_owned_block_scope() {
+    expect_tokens(
+        r#"["TestBlockScope"]{
+It was the best of the times, it was the blurst of times
+}
+"#,
+        vec![
+            CodeOpen(0),
+            OtherText(r#""TestBlockScope""#),
+            CodeClose(0),
+            BlockScopeOpen(0),
+            OtherText("It was the best of the times, it was the blurst of times"),
+            Newline,
+            ScopeClose(0),
+            Newline,
+        ],
+        Ok(test_doc(vec![TestBlock::BlockScope {
+            owner: Some("TestBlockScope".into()),
+            contents: vec![TestBlock::Paragraph(vec![test_sentence(
+                "It was the best of the times, it was the blurst of times",
+            )])],
+        }])),
+    )
+}
+
+#[test]
+pub fn test_owned_inline_scope() {
+    expect_tokens(
+        r#"
+Some ["TestInlineScope"]{special} text
+"#,
+        vec![
+            Newline,
+            OtherText("Some "),
+            CodeOpen(0),
+            OtherText(r#""TestInlineScope""#),
+            CodeClose(0),
+            InlineScopeOpen(0),
+            OtherText("special"),
+            ScopeClose(0),
+            OtherText(" text"),
+            Newline,
+        ],
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Some "),
+            TestInline::InlineScope {
+                owner: Some("TestInlineScope".into()),
+                contents: vec![test_text("special")],
+            },
+            test_text(" text"),
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_owned_raw_scope() {
+    expect_tokens(
+        "[exec]r{
+import os
+}",
+        vec![
+            CodeOpen(0),
+            OtherText("exec"),
+            CodeClose(0),
+            RawScopeOpen(0),
+            Newline,
+            OtherText("import os"),
+            Newline,
+            ScopeClose(0),
+        ],
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            TestInline::RawText {
+                owner: Some("<built-in function exec>".into()),
+                contents: r#"
+import os
+"#
+                .into(),
+            },
+        ]])])),
     )
 }

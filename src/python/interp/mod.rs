@@ -144,7 +144,7 @@ pub(crate) enum InterpSpecialTransition {
 #[derive(Debug)]
 pub(crate) enum InlineNodeToCreate {
     UnescapedText(String),
-    RawText(String),
+    RawText(Option<PyTcRef<InlineScopeOwner>>, String),
     UnescapedPyString(Py<PyString>),
 }
 impl InlineNodeToCreate {
@@ -154,8 +154,8 @@ impl InlineNodeToCreate {
                 let val = Py::new(py, UnescapedText::new_rs(py, s.as_str()))?;
                 PyTcRef::of(val.as_ref(py))?
             }
-            InlineNodeToCreate::RawText(s) => {
-                let val = Py::new(py, RawText::new_rs(py, s.as_str()))?;
+            InlineNodeToCreate::RawText(owner, s) => {
+                let val = Py::new(py, RawText::new_rs(py, owner, s.as_str()))?;
                 PyTcRef::of(val.as_ref(py))?
             }
             InlineNodeToCreate::UnescapedPyString(s) => {
@@ -333,7 +333,7 @@ impl<'a> InterpState<'a> {
                     // StartRawBlock
                     RawScopeOpen(span, n_hashes) => (
                         Some(StartParagraph(Some(InterpParaTransition::StartRawScope(
-                            span, n_hashes,
+                            None, span, n_hashes,
                         )))),
                         None,
                     ),
