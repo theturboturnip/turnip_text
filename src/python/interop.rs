@@ -1,6 +1,9 @@
-use pyo3::{prelude::*, types::{PyString, PyDict, PyIterator}};
+use pyo3::{
+    prelude::*,
+    types::{PyDict, PyIterator, PyString},
+};
 
-use super::typeclass::{PyTypeclass, PyTypeclassList, PyInstanceList, PyTcRef};
+use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
 
 #[pymodule]
 pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
@@ -44,7 +47,9 @@ impl PyTypeclass for InlineNode {
     const NAME: &'static str = "InlineNode";
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
-        let x = obj.is_instance_of::<InlineScope>()? || obj.is_instance_of::<RawText>()? || obj.is_instance_of::<UnescapedText>()?;
+        let x = obj.is_instance_of::<InlineScope>()?
+            || obj.is_instance_of::<RawText>()?
+            || obj.is_instance_of::<UnescapedText>()?;
         Ok(x)
     }
 }
@@ -136,7 +141,7 @@ impl Paragraph {
     pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
         PyIterator::from_object(py, self.0.list(py))
     }
-    
+
     pub fn push_sentence(&mut self, node: &PyAny) -> PyResult<()> {
         self.0.append_checked(node)
     }
@@ -178,16 +183,19 @@ pub struct BlockScope {
 }
 impl BlockScope {
     pub fn new_rs(py: Python, owner: Option<PyTcRef<BlockScopeOwner>>) -> Self {
-        Self { owner, children: PyTypeclassList::new(py) }
+        Self {
+            owner,
+            children: PyTypeclassList::new(py),
+        }
     }
 }
 #[pymethods]
 impl BlockScope {
     #[new]
     pub fn new(py: Python, owner: Option<&PyAny>) -> PyResult<Self> {
-        let o = match owner{
+        let o = match owner {
             Some(o) => Some(PyTcRef::of(o)?),
-            None => None
+            None => None,
         };
         Ok(Self::new_rs(py, o))
     }
@@ -215,16 +223,19 @@ pub struct InlineScope {
 }
 impl InlineScope {
     pub fn new_rs(py: Python, owner: Option<PyTcRef<InlineScopeOwner>>) -> Self {
-        Self { owner, children: PyTypeclassList::new(py) }
+        Self {
+            owner,
+            children: PyTypeclassList::new(py),
+        }
     }
 }
 #[pymethods]
 impl InlineScope {
     #[new]
     pub fn new(py: Python, owner: Option<&PyAny>) -> PyResult<Self> {
-        let o = match owner{
+        let o = match owner {
             Some(o) => Some(PyTcRef::of(o)?),
-            None => None
+            None => None,
         };
         Ok(Self::new_rs(py, o))
     }

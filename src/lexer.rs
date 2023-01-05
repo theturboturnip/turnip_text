@@ -123,8 +123,7 @@ pub type LexToken = Unit;
 pub type LexError = SimpleParseError<LexPosn>;
 
 #[derive(Debug, Copy, Clone)]
-pub enum Unit
-{
+pub enum Unit {
     /// `\r\n`, `\n`, or `\r`, supports all for windows compatability
     ///
     /// Note that these are not the literal sequences e.g. ('\\', 'n') - they are the single characters.
@@ -165,8 +164,7 @@ pub enum Unit
     // /// `%` character not preceded by a backslash
     // Percent(P),
 }
-impl Unit
-{
+impl Unit {
     fn parse_hashes<L>(stream: &L, state: L::State) -> LexerParseResult<LexPosn, usize, L::Error>
     where
         L: CharStream<LexPosn>,
@@ -288,8 +286,7 @@ impl Unit
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum TTToken
-{
+pub enum TTToken {
     /// See [Unit::Newline]
     Newline(ParseSpan),
     /// See [Unit::Escaped]
@@ -324,8 +321,16 @@ pub fn units_to_tokens(units: Vec<Unit>) -> Vec<TTToken> {
     while i < units.len() {
         let (tok, n_consumed) = TTToken::units_to_token((
             &units[i],
-            if i + 1 < units.len() { Some(&units[i+1]) } else { None },
-            if i + 2 < units.len() { Some(&units[i+2]) } else { None },
+            if i + 1 < units.len() {
+                Some(&units[i + 1])
+            } else {
+                None
+            },
+            if i + 2 < units.len() {
+                Some(&units[i + 2])
+            } else {
+                None
+            },
         ));
         assert!(n_consumed > 0);
         toks.push(tok);
@@ -334,8 +339,7 @@ pub fn units_to_tokens(units: Vec<Unit>) -> Vec<TTToken> {
     toks
 }
 
-impl TTToken
-{
+impl TTToken {
     fn units_to_token(units: (&Unit, Option<&Unit>, Option<&Unit>)) -> (Self, usize) {
         match units {
             (Unit::Newline(s), _, _) => (TTToken::Newline(*s), 1),
@@ -345,97 +349,46 @@ impl TTToken
 
             // Code open and close
             (Unit::Hashes(s_start, n), Some(Unit::CodeOpen(s_end)), _) => (
-                TTToken::CodeOpen(
-                    ParseSpan::new(s_start.start, s_end.end),
-                    *n,
-                ),
+                TTToken::CodeOpen(ParseSpan::new(s_start.start, s_end.end), *n),
                 2,
             ),
             (Unit::CodeClose(s_start), Some(Unit::Hashes(s_end, n)), _) => (
-                TTToken::CodeClose(
-                    ParseSpan::new(s_start.start, s_end.end),
-                    *n,
-                ),
+                TTToken::CodeClose(ParseSpan::new(s_start.start, s_end.end), *n),
                 2,
             ),
-            (Unit::CodeOpen(s), _, _) => (
-                TTToken::CodeOpen(
-                    *s,
-                    0,
-                ),
-                1,
-            ),
-            (Unit::CodeClose(s), _, _) => (
-                TTToken::CodeClose(
-                   *s,
-                    0,
-                ),
-                1,
-            ),
+            (Unit::CodeOpen(s), _, _) => (TTToken::CodeOpen(*s, 0), 1),
+            (Unit::CodeClose(s), _, _) => (TTToken::CodeClose(*s, 0), 1),
 
             // Block Scope Open
             (Unit::Hashes(s_start, n), Some(Unit::ScopeOpen(_)), Some(Unit::Newline(s_end))) => (
-                TTToken::BlockScopeOpen(
-                    ParseSpan::new(s_start.start, s_end.end),
-                    *n,
-                ),
+                TTToken::BlockScopeOpen(ParseSpan::new(s_start.start, s_end.end), *n),
                 3,
             ),
             (Unit::ScopeOpen(s_start), Some(Unit::Newline(s_end)), _) => (
-                TTToken::BlockScopeOpen(
-                    ParseSpan::new(s_start.start, s_end.end),
-                    0,
-                ),
+                TTToken::BlockScopeOpen(ParseSpan::new(s_start.start, s_end.end), 0),
                 2,
             ),
 
             // Inline scope open
             (Unit::Hashes(s_start, n), Some(Unit::ScopeOpen(s_end)), _) => (
-                TTToken::InlineScopeOpen(
-                    ParseSpan::new(s_start.start, s_end.end),
-                    *n,
-                ),
+                TTToken::InlineScopeOpen(ParseSpan::new(s_start.start, s_end.end), *n),
                 2,
             ),
-            (Unit::ScopeOpen(s), _, _) => (
-                TTToken::InlineScopeOpen(
-                    *s,
-                    0,
-                ),
-                1,
-            ),
+            (Unit::ScopeOpen(s), _, _) => (TTToken::InlineScopeOpen(*s, 0), 1),
 
             // Raw scope open
             (Unit::Hashes(s_start, n), Some(Unit::RawScopeOpen(s_end)), _) => (
-                TTToken::RawScopeOpen(
-                    ParseSpan::new(s_start.start, s_end.end),
-                    *n,
-                ),
+                TTToken::RawScopeOpen(ParseSpan::new(s_start.start, s_end.end), *n),
                 2,
             ),
-            (Unit::RawScopeOpen(s), _, _) => (
-                TTToken::RawScopeOpen(
-                    *s,
-                    0,
-                ),
-                1,
-            ),
+            (Unit::RawScopeOpen(s), _, _) => (TTToken::RawScopeOpen(*s, 0), 1),
 
             // Scope close
             (Unit::ScopeClose(s_start), Some(Unit::Hashes(s_end, n)), _) => (
-                TTToken::ScopeClose(
-                    ParseSpan::new(s_start.start, s_end.end),
-                    *n,
-                ),
+                TTToken::ScopeClose(ParseSpan::new(s_start.start, s_end.end), *n),
                 2,
             ),
-            (Unit::ScopeClose(s), _, _) => (
-                TTToken::ScopeClose(
-                    *s,
-                    0,
-                ),
-                1,
-            ),
+            (Unit::ScopeClose(s), _, _) => (TTToken::ScopeClose(*s, 0), 1),
 
             (Unit::Hashes(s, n), _, _) => (TTToken::Hashes(*s, *n), 1),
         }
@@ -443,7 +396,7 @@ impl TTToken
 
     /// Convert a token to a [str] representation, usable for a raw-scope representation
     /// i.e. with no escaping.
-    /// 
+    ///
     /// Newlines are converted to \n everywhere.
     pub fn stringify_raw<'a>(&self, data: &'a str) -> &'a str {
         use TTToken::*;
@@ -465,7 +418,7 @@ impl TTToken
     }
     /// Convert a token to a [str] representation, usable for normal representation
     /// i.e. with escaping.
-    /// 
+    ///
     /// Newlines are converted to \n everywhere.
     pub fn stringify_escaped<'a>(&self, data: &'a str) -> &'a str {
         use TTToken::*;
@@ -475,14 +428,16 @@ impl TTToken
             Newline(_) => "Newline should not be stringified",
             Escaped(_, escaped) => match escaped {
                 // This is an odd case - Escaped(Newline) should have semantic meaning
-                Escapable::Newline => panic!("EscapedNewline should have semantic meaning and not be stringified"),
+                Escapable::Newline => {
+                    panic!("EscapedNewline should have semantic meaning and not be stringified")
+                }
                 Escapable::Backslash => "\\",
                 Escapable::SqrOpen => "[",
                 Escapable::SqrClose => "]",
                 Escapable::SqgOpen => "{",
                 Escapable::SqgClose => "}",
                 Escapable::Hash => "#",
-            }
+            },
             RawScopeOpen(span, _)
             | CodeOpen(span, _)
             | CodeClose(span, _)

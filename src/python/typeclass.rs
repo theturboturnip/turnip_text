@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use pyo3::{prelude::*, types::PyList, exceptions::PyTypeError, PyClass};
+use pyo3::{exceptions::PyTypeError, prelude::*, types::PyList, PyClass};
 
 pub trait PyTypeclass {
     const NAME: &'static str;
@@ -18,19 +18,17 @@ impl<T: PyClass> PyTypeclass for PyInstanceTypeclass<T> {
 }
 
 #[derive(Debug, Clone)]
-pub struct PyTcRef<T: PyTypeclass> (PyObject, PhantomData<T>);
+pub struct PyTcRef<T: PyTypeclass>(PyObject, PhantomData<T>);
 impl<T: PyTypeclass> PyTcRef<T> {
     pub fn of(val: &PyAny) -> PyResult<Self> {
         if T::fits_typeclass(val)? {
             Ok(Self(val.into(), PhantomData::default()))
         } else {
             // TODO stringify obj
-            Err(PyTypeError::new_err(
-                format!(
-                    "Expected object fitting typeclass {}, didn't get it",
-                    T::NAME
-                )
-            ))
+            Err(PyTypeError::new_err(format!(
+                "Expected object fitting typeclass {}, didn't get it",
+                T::NAME
+            )))
         }
     }
 
@@ -45,10 +43,7 @@ impl<T: PyTypeclass> PyTcRef<T> {
 pub struct PyTypeclassList<T: PyTypeclass>(Py<PyList>, PhantomData<T>);
 impl<T: PyTypeclass> PyTypeclassList<T> {
     pub fn new(py: Python) -> Self {
-        Self(
-            PyList::empty(py).into(),
-            PhantomData::default()
-        )
+        Self(PyList::empty(py).into(), PhantomData::default())
     }
 
     pub fn append_checked(&self, val: &PyAny) -> PyResult<()> {
@@ -57,12 +52,10 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
             Ok(())
         } else {
             // TODO stringify obj
-            Err(PyTypeError::new_err(
-                format!(
-                    "Expected object fitting typeclass {}, didn't get it",
-                    T::NAME
-                )
-            ))
+            Err(PyTypeError::new_err(format!(
+                "Expected object fitting typeclass {}, didn't get it",
+                T::NAME
+            )))
         }
     }
 

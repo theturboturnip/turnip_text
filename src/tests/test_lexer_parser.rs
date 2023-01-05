@@ -1,10 +1,12 @@
 use crate::lexer::{units_to_tokens, Unit};
 
-use crate::python::{InterpError, TurnipTextPython, interp_data};
-use crate::python::interop::{BlockScope, Paragraph, Sentence, UnescapedText, RawText, InlineScope};
+use crate::python::interop::{
+    BlockScope, InlineScope, Paragraph, RawText, Sentence, UnescapedText,
+};
+use crate::python::{interp_data, InterpError, TurnipTextPython};
 use crate::{
     lexer::{Escapable, LexError, LexPosn, LexToken, TTToken},
-    util::{ParseSpan},
+    util::ParseSpan,
 };
 use lexer_rs::{Lexer, LexerOfStr};
 use pyo3::prelude::*;
@@ -18,7 +20,6 @@ use std::panic;
 use std::sync::Mutex;
 
 static TTPYTHON: Lazy<Mutex<TurnipTextPython>> = Lazy::new(|| Mutex::new(TurnipTextPython::new()));
-
 
 /// A type mimicking [TTToken] for test purposes
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,9 +49,7 @@ impl<'a> TestTTToken<'a> {
             TTToken::RawScopeOpen(_, n) => Self::RawScopeOpen(n),
             TTToken::ScopeClose(_, n) => Self::ScopeClose(n),
             TTToken::Hashes(_, n) => Self::Hashes(n),
-            TTToken::OtherText(span) => {
-                Self::OtherText(data[span.byte_range()].into())
-            }
+            TTToken::OtherText(span) => Self::OtherText(data[span.byte_range()].into()),
         }
     }
 }
@@ -113,7 +112,7 @@ enum TestInterpError {
         code_span: TestParserSpan,
     },
     InternalPythonErr {
-        pyerr: String
+        pyerr: String,
     },
     InternalErr(String),
     EscapedNewlineOutsideParagraph {
@@ -148,38 +147,70 @@ impl TestInterpError {
             InterpError::EndedInsideScope { scope_start } => Self::EndedInsideScope {
                 scope_start: scope_start.into(),
             },
-            InterpError::BlockScopeOpenedMidPara { scope_start } => Self::BlockScopeOpenedMidPara { scope_start: scope_start.into() },
-            InterpError::BlockOwnerCodeMidPara { code_span } => Self::BlockOwnerCodeMidPara { code_span: code_span.into() },
-            InterpError::SentenceBreakInInlineScope { scope_start, .. } => Self::SentenceBreakInInlineScope { scope_start: scope_start.into() },
-            InterpError::ParaBreakInInlineScope { scope_start, .. } => Self::ParaBreakInInlineScope { scope_start: scope_start.into() },
-            InterpError::BlockOwnerCodeHasNoScope { code_span } => Self::BlockOwnerCodeHasNoScope { code_span: code_span.into() },
-            InterpError::InlineOwnerCodeHasNoScope { code_span } => Self::InlineOwnerCodeHasNoScope { code_span: code_span.into() },
-            InterpError::PythonErr { pyerr, code_span } => Self::PythonErr { pyerr, code_span: code_span.into() },
+            InterpError::BlockScopeOpenedMidPara { scope_start } => Self::BlockScopeOpenedMidPara {
+                scope_start: scope_start.into(),
+            },
+            InterpError::BlockOwnerCodeMidPara { code_span } => Self::BlockOwnerCodeMidPara {
+                code_span: code_span.into(),
+            },
+            InterpError::SentenceBreakInInlineScope { scope_start, .. } => {
+                Self::SentenceBreakInInlineScope {
+                    scope_start: scope_start.into(),
+                }
+            }
+            InterpError::ParaBreakInInlineScope { scope_start, .. } => {
+                Self::ParaBreakInInlineScope {
+                    scope_start: scope_start.into(),
+                }
+            }
+            InterpError::BlockOwnerCodeHasNoScope { code_span } => Self::BlockOwnerCodeHasNoScope {
+                code_span: code_span.into(),
+            },
+            InterpError::InlineOwnerCodeHasNoScope { code_span } => {
+                Self::InlineOwnerCodeHasNoScope {
+                    code_span: code_span.into(),
+                }
+            }
+            InterpError::PythonErr { pyerr, code_span } => Self::PythonErr {
+                pyerr,
+                code_span: code_span.into(),
+            },
             InterpError::InternalPythonErr { pyerr } => Self::InternalPythonErr { pyerr },
             InterpError::InternalErr(s) => Self::InternalErr(s),
-            InterpError::EscapedNewlineOutsideParagraph { newline } => Self::EscapedNewlineOutsideParagraph { newline: newline.into() }
+            InterpError::EscapedNewlineOutsideParagraph { newline } => {
+                Self::EscapedNewlineOutsideParagraph {
+                    newline: newline.into(),
+                }
+            }
         }
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum TestBlock {
-    BlockScope{owner: Option<String>, contents: Vec<TestBlock>},
-    Paragraph(Vec<Vec<TestInline>>)
+    BlockScope {
+        owner: Option<String>,
+        contents: Vec<TestBlock>,
+    },
+    Paragraph(Vec<Vec<TestInline>>),
 }
 #[derive(Debug, PartialEq, Eq)]
 enum TestInline {
-    InlineScope{owner: Option<String>, contents: Vec<TestInline>},
+    InlineScope {
+        owner: Option<String>,
+        contents: Vec<TestInline>,
+    },
     UnescapedText(String),
-    RawText(String)
+    RawText(String),
 }
 fn test_doc(contents: Vec<TestBlock>) -> TestBlock {
-    TestBlock::BlockScope { owner: None, contents }
+    TestBlock::BlockScope {
+        owner: None,
+        contents,
+    }
 }
 fn test_sentence(s: impl Into<String>) -> Vec<TestInline> {
-    vec![
-        TestInline::UnescapedText(s.into())
-    ]
+    vec![TestInline::UnescapedText(s.into())]
 }
 fn test_text(s: impl Into<String>) -> TestInline {
     TestInline::UnescapedText(s.into())
@@ -196,17 +227,20 @@ impl PyToTest<TestBlock> for PyAny {
         if let Ok(block) = self.extract::<BlockScope>() {
             TestBlock::BlockScope {
                 owner: block.owner.map(|x| x.as_ref(py).to_string()),
-                contents: block.children.list(py)
+                contents: block
+                    .children
+                    .list(py)
                     .iter()
                     .map(|obj| PyToTest::as_test(obj, py))
-                    .collect()
+                    .collect(),
             }
         } else if let Ok(para) = self.extract::<Paragraph>() {
             TestBlock::Paragraph(
-                para.0.list(py)
+                para.0
+                    .list(py)
                     .iter()
                     .map(|obj| PyToTest::as_test(obj, py))
-                    .collect()
+                    .collect(),
             )
         } else {
             panic!("Python BlockNode-like is neither BlockScope or Paragraph")
@@ -216,7 +250,12 @@ impl PyToTest<TestBlock> for PyAny {
 impl PyToTest<Vec<TestInline>> for PyAny {
     fn as_test(&self, py: Python) -> Vec<TestInline> {
         if let Ok(sentence) = self.extract::<Sentence>() {
-            sentence.0.list(py).iter().map(|obj| PyToTest::as_test(obj, py)).collect()
+            sentence
+                .0
+                .list(py)
+                .iter()
+                .map(|obj| PyToTest::as_test(obj, py))
+                .collect()
         } else {
             panic!("Python Sentence-like is not Sentence")
         }
@@ -228,17 +267,23 @@ impl PyToTest<TestInline> for PyAny {
         if let Ok(inl) = self.extract::<InlineScope>() {
             TestInline::InlineScope {
                 owner: inl.owner.map(|x| x.as_ref(py).to_string()),
-                contents: inl.children.list(py)
+                contents: inl
+                    .children
+                    .list(py)
                     .iter()
                     .map(|obj| PyToTest::as_test(obj, py))
-                    .collect()
+                    .collect(),
             }
         } else if let Ok(text) = self.extract::<UnescapedText>() {
             TestInline::UnescapedText(text.0.as_ref(py).to_string())
         } else if let Ok(text) = self.extract::<RawText>() {
             TestInline::RawText(text.0.as_ref(py).to_string())
         } else {
-            TestInline::UnescapedText(self.str().expect("Failed to stringify output Python object").to_string())
+            TestInline::UnescapedText(
+                self.str()
+                    .expect("Failed to stringify output Python object")
+                    .to_string(),
+            )
         }
     }
 }
@@ -253,10 +298,7 @@ fn expect_tokens<'a>(
     // First step: lex
     let l = TextStream::new(data);
     let units: Vec<Unit> = l
-        .iter(&[
-            Box::new(Unit::parse_special),
-            Box::new(Unit::parse_other),
-        ])
+        .iter(&[Box::new(Unit::parse_special), Box::new(Unit::parse_other)])
         .scan((), |_, x| x.ok())
         .collect();
     let stoks = units_to_tokens(units);
@@ -268,7 +310,7 @@ fn expect_tokens<'a>(
     assert_eq!(stok_types, expected_stok_types);
 
     // Second step: parse
-    // Need to do this safely so that we don't panic while the TTPYTHON mutex is taken - 
+    // Need to do this safely so that we don't panic while the TTPYTHON mutex is taken -
     // that would poison the mutex and break subsequent tests.
     let root: Result<Result<TestBlock, TestInterpError>, _> = {
         // Lock mutex
@@ -277,20 +319,22 @@ fn expect_tokens<'a>(
         // and handling the output
         panic::catch_unwind(|| {
             let root = interp_data(ttpython.deref(), data, stoks.into_iter());
-            ttpython.with_gil(|py, _| {
-                root.map(|bs| {
-                    let bs_obj = bs.to_object(py);
-                    let bs: &PyAny = bs_obj.as_ref(py);
-                    (bs as &dyn PyToTest<TestBlock>).as_test(py)
+            ttpython
+                .with_gil(|py, _| {
+                    root.map(|bs| {
+                        let bs_obj = bs.to_object(py);
+                        let bs: &PyAny = bs_obj.as_ref(py);
+                        (bs as &dyn PyToTest<TestBlock>).as_test(py)
+                    })
                 })
-            }).map_err(TestInterpError::from_interp_error)
+                .map_err(TestInterpError::from_interp_error)
         })
         // Unlock mutex
     };
     // If any of the python-related code tried to panic, re-panic here now the mutex is unlocked
     match root {
         Ok(root) => assert_eq!(root, expected_parse),
-        Err(e) => panic!("{:?}", e)
+        Err(e) => panic!("{:?}", e),
     }
 }
 
@@ -326,7 +370,6 @@ It was popularised in the 1960s with the release of Letraset sheets containing L
     )
 }
 
-
 #[test]
 pub fn test_inline_code() {
     expect_tokens(
@@ -337,14 +380,10 @@ pub fn test_inline_code() {
             OtherText("len((1,2,3))"),
             CodeClose(0),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                vec![
-                    test_text("Number of values in (1,2,3): "),
-                    test_text("3")
-                ]
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Number of values in (1,2,3): "),
+            test_text("3"),
+        ]])])),
     )
 }
 
@@ -358,14 +397,10 @@ pub fn test_inline_code_with_extra_delimiter() {
             OtherText(" len((1,2,3)) "),
             CodeClose(1),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                vec![
-                    test_text("Number of values in (1,2,3): "),
-                    test_text("3")
-                ]
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Number of values in (1,2,3): "),
+            test_text("3"),
+        ]])])),
     )
 }
 
@@ -379,14 +414,10 @@ pub fn test_inline_code_with_long_extra_delimiter() {
             OtherText(" len((1,2,3)) "),
             CodeClose(4),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                vec![
-                    test_text("Number of values in (1,2,3): "),
-                    test_text("3")
-                ]
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Number of values in (1,2,3): "),
+            test_text("3"),
+        ]])])),
     )
 }
 
@@ -402,15 +433,11 @@ pub fn test_inline_code_with_escaped_extra_delimiter() {
             CodeClose(0),
             Escaped(Escapable::Hash),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                vec![
-                    test_text("Number of values in (1,2,3): #"),
-                    test_text("3"),
-                    test_text("#")
-                ]
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Number of values in (1,2,3): #"),
+            test_text("3"),
+            test_text("#"),
+        ]])])),
     )
 }
 
@@ -426,11 +453,9 @@ pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
             Escaped(Escapable::SqrClose),
             Escaped(Escapable::Hash),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                test_sentence(r#"Number of values in (1,2,3): #[ len((1,2,3)) ]#"#)
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            r#"Number of values in (1,2,3): #[ len((1,2,3)) ]#"#,
+        )])])),
     )
 }
 
@@ -448,17 +473,12 @@ pub fn test_inline_list_with_extra_delimiter() {
             OtherText(") "),
             CodeClose(1),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                vec![
-                    test_text("Number of values in (1,2,3): "),
-                    test_text("3")
-                ]
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Number of values in (1,2,3): "),
+            test_text("3"),
+        ]])])),
     )
 }
-
 
 #[test]
 pub fn test_inline_scope() {
@@ -470,17 +490,13 @@ pub fn test_inline_scope() {
             OtherText("inside the scope"),
             ScopeClose(0),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![vec![
-                test_text("Outside the scope "),
-                TestInline::InlineScope{
-                    owner: None,
-                    contents: vec![
-                        test_text("inside the scope")
-                    ]
-                }
-            ]])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Outside the scope "),
+            TestInline::InlineScope {
+                owner: None,
+                contents: vec![test_text("inside the scope")],
+            },
+        ]])])),
     )
 }
 
@@ -494,11 +510,9 @@ pub fn test_inline_escaped_scope() {
             OtherText("not inside a scope"),
             Escaped(Escapable::SqgClose),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                test_sentence("Outside the scope {not inside a scope}")
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "Outside the scope {not inside a scope}",
+        )])])),
     )
 }
 
@@ -514,12 +528,10 @@ pub fn test_raw_scope_newlines() {
             Newline,
             ScopeClose(0),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![vec![
-                test_text("Outside the scope "),
-                test_raw_text("\ninside the raw scope\n")
-            ]])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Outside the scope "),
+            test_raw_text("\ninside the raw scope\n"),
+        ]])])),
     )
 }
 
@@ -536,14 +548,10 @@ pub fn test_raw_scope_crlf_newlines() {
             Newline,
             ScopeClose(0),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                vec![
-                    test_text("Outside the scope "),
-                    test_raw_text("\ninside the raw scope\n")
-                ]
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Outside the scope "),
+            test_raw_text("\ninside the raw scope\n"),
+        ]])])),
     )
 }
 
@@ -557,14 +565,10 @@ pub fn test_inline_raw_scope() {
             OtherText("inside the raw scope"),
             ScopeClose(0),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                vec![
-                    test_text("Outside the scope "),
-                    test_raw_text("inside the raw scope")
-                ]
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Outside the scope "),
+            test_raw_text("inside the raw scope"),
+        ]])])),
     )
 }
 
@@ -578,11 +582,9 @@ pub fn test_inline_raw_escaped_scope() {
             OtherText("not inside a scope"),
             Escaped(Escapable::SqgClose),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                test_sentence("Outside the scope r{not inside a scope}")
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "Outside the scope r{not inside a scope}",
+        )])])),
     )
 }
 
@@ -591,11 +593,9 @@ pub fn test_r_without_starting_raw_scope() {
     expect_tokens(
         r#" r doesn't always start a scope "#,
         vec![OtherText(" r doesn't always start a scope ")],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                test_sentence(" r doesn't always start a scope ")
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            " r doesn't always start a scope ",
+        )])])),
     )
 }
 
@@ -608,15 +608,11 @@ pub fn test_plain_hashes() {
             Hashes(7),
             OtherText(" hashes in the middle"),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                test_sentence("This has a string of ")
-                // The first hash in the chain starts a comment!
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![
+            test_sentence("This has a string of "), // The first hash in the chain starts a comment!
+        ])])),
     )
 }
-
 
 #[test]
 pub fn test_special_with_escaped_backslash() {
@@ -629,12 +625,10 @@ pub fn test_special_with_escaped_backslash() {
             OtherText("None"),
             CodeClose(0),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![vec![
-                test_text(r#"About to see a backslash! \"#),
-                test_text("None")
-            ]])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text(r#"About to see a backslash! \"#),
+            test_text("None"),
+        ]])])),
     )
 }
 
@@ -648,11 +642,9 @@ pub fn test_escaped_special_with_escaped_backslash() {
             Escaped(Escapable::SqrOpen),
             OtherText(" that didn't open code!"),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                test_sentence(r#"About to see a backslash and square brace! \[ that didn't open code!"#)
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            r#"About to see a backslash and square brace! \[ that didn't open code!"#,
+        )])])),
     )
 }
 
@@ -685,65 +677,64 @@ pub fn test_escaped_notspecial() {
     expect_tokens(
         r#"\a"#,
         vec![Backslash, OtherText("a")],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                test_sentence(r#"\a"#)
-            ])
-        ])),    )
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            r#"\a"#,
+        )])])),
+    )
 }
 
 #[test]
 pub fn test_escaped_cr() {
     // '\' + '\r'&
-    let s: String = "sentence start, ".to_owned() + &['\\', '\r'].iter().collect::<String>() + "rest of sentence";
+    let s: String = "sentence start, ".to_owned()
+        + &['\\', '\r'].iter().collect::<String>()
+        + "rest of sentence";
     expect_tokens(
         &s,
         vec![
             OtherText("sentence start, "),
             Escaped(Escapable::Newline),
-            OtherText("rest of sentence")
+            OtherText("rest of sentence"),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                test_sentence("sentence start, rest of sentence")
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "sentence start, rest of sentence",
+        )])])),
     )
 }
 #[test]
 pub fn test_escaped_lf() {
     // '\' + '\n'
-    let s: String = "sentence start, ".to_owned() + &['\\', '\n'].iter().collect::<String>() + "rest of sentence";
+    let s: String = "sentence start, ".to_owned()
+        + &['\\', '\n'].iter().collect::<String>()
+        + "rest of sentence";
     expect_tokens(
         &s,
         vec![
             OtherText("sentence start, "),
             Escaped(Escapable::Newline),
-            OtherText("rest of sentence")
+            OtherText("rest of sentence"),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                test_sentence("sentence start, rest of sentence")
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "sentence start, rest of sentence",
+        )])])),
     )
 }
 #[test]
 pub fn test_escaped_crlf() {
     // '\' + '\r' + '\n'
-    let s: String = "sentence start, ".to_owned() + &['\\', '\r', '\n'].iter().collect::<String>() + "rest of sentence";
+    let s: String = "sentence start, ".to_owned()
+        + &['\\', '\r', '\n'].iter().collect::<String>()
+        + "rest of sentence";
     expect_tokens(
         &s,
         vec![
             OtherText("sentence start, "),
             Escaped(Escapable::Newline),
-            OtherText("rest of sentence")
+            OtherText("rest of sentence"),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                test_sentence("sentence start, rest of sentence")
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "sentence start, rest of sentence",
+        )])])),
     )
 }
 
@@ -754,11 +745,9 @@ pub fn test_cr() {
     expect_tokens(
         &s,
         vec![Newline, OtherText("content")],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                test_sentence("content")
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "content",
+        )])])),
     )
 }
 #[test]
@@ -768,11 +757,9 @@ pub fn test_lf() {
     expect_tokens(
         &s,
         vec![Newline, OtherText("content")],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                test_sentence("content")
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "content",
+        )])])),
     )
 }
 #[test]
@@ -782,11 +769,9 @@ pub fn test_crlf() {
     expect_tokens(
         &s,
         vec![Newline, OtherText("content")],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                test_sentence("content")
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "content",
+        )])])),
     )
 }
 
@@ -801,11 +786,9 @@ pub fn test_newline_in_code() {
             OtherText("2))"),
             CodeClose(0),
         ],
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
-                test_sentence("2")
-            ])
-        ])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "2",
+        )])])),
     )
 }
 #[test]
@@ -906,26 +889,25 @@ pub fn test_block_scope_vs_inline_scope() {
     expect_tokens(
         r#"{
 block scope
-}{inline scope}"#, 
+}{inline scope}"#,
         vec![
-            BlockScopeOpen(0), OtherText("block scope"), Newline, ScopeClose(0),
-            InlineScopeOpen(0), OtherText("inline scope"), ScopeClose(0)
+            BlockScopeOpen(0),
+            OtherText("block scope"),
+            Newline,
+            ScopeClose(0),
+            InlineScopeOpen(0),
+            OtherText("inline scope"),
+            ScopeClose(0),
         ],
         Ok(test_doc(vec![
             TestBlock::BlockScope {
                 owner: None,
-                contents: vec![
-                    TestBlock::Paragraph(vec![test_sentence("block scope")])
-                ]
+                contents: vec![TestBlock::Paragraph(vec![test_sentence("block scope")])],
             },
-            TestBlock::Paragraph(vec![vec![
-                TestInline::InlineScope {
-                    owner: None,
-                    contents: vec![
-                        test_text("inline scope")
-                    ]
-                }
-            ]]),
-        ]))
+            TestBlock::Paragraph(vec![vec![TestInline::InlineScope {
+                owner: None,
+                contents: vec![test_text("inline scope")],
+            }]]),
+        ])),
     )
 }

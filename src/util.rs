@@ -33,16 +33,13 @@ impl ParseSpan {
     pub fn from_lex(start: LexPosn, end: LexPosn) -> Self {
         Self {
             start: start.into(),
-            end: end.into()
+            end: end.into(),
         }
     }
     pub fn new(start: ParsePosn, end: ParsePosn) -> Self {
-        Self {
-            start,
-            end
-        }
+        Self { start, end }
     }
     pub fn byte_range(&self) -> Range<usize> {
         self.start.byte_ofs..self.end.byte_ofs
-    } 
+    }
 }

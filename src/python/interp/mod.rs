@@ -1,9 +1,16 @@
 #![allow(dead_code)]
 
+use pyo3::{
+    prelude::*,
+    types::{PyDict, PyString},
+};
 use thiserror::Error;
-use pyo3::{prelude::*, types::{PyString, PyDict}};
 
-use crate::{lexer::{TTToken, Escapable}, util::ParseSpan, python::{interop::*, TurnipTextPython, typeclass::PyTcRef}};
+use crate::{
+    lexer::{Escapable, TTToken},
+    python::{interop::*, typeclass::PyTcRef, TurnipTextPython},
+    util::ParseSpan,
+};
 
 mod para;
 use self::para::{InterpParaState, InterpParaTransition};
@@ -21,10 +28,13 @@ pub struct InterpState<'a> {
     data: &'a str,
 }
 impl<'a> InterpState<'a> {
-   pub fn new<'interp>(ttpython: &'a TurnipTextPython<'interp>, data: &'a str) -> InterpResult<Self> {
-        let root = ttpython.with_gil(
-            |py, _| Py::new(py, BlockScope::new_rs(py, None)).err_as_interp_internal(py)
-        )?;
+    pub fn new<'interp>(
+        ttpython: &'a TurnipTextPython<'interp>,
+        data: &'a str,
+    ) -> InterpResult<Self> {
+        let root = ttpython.with_gil(|py, _| {
+            Py::new(py, BlockScope::new_rs(py, None)).err_as_interp_internal(py)
+        })?;
         Ok(Self {
             block_state: InterpBlockState::ReadyForNewBlock,
             comment_state: None,
@@ -64,7 +74,6 @@ enum InterpBlockState {
         code_span: ParseSpan,
     },
 }
-
 
 #[derive(Debug)]
 struct InterpCommentState {
@@ -106,7 +115,7 @@ pub(crate) enum InterpBlockTransition {
 
     /// On encountering a block scope close inside a paragraph,
     /// add the paragraph and close the topmost scope
-    /// 
+    ///
     /// - [InterpBlockState::WritingPara] -> [InterpBlockState::ReadyForNewBlock]
     EndParagraphAndPopBlock(ParseSpan, usize),
 
@@ -136,7 +145,7 @@ pub(crate) enum InterpSpecialTransition {
 pub(crate) enum InlineNodeToCreate {
     UnescapedText(String),
     RawText(String),
-    UnescapedPyString(Py<PyString>)
+    UnescapedPyString(Py<PyString>),
 }
 impl InlineNodeToCreate {
     fn to_py_intern(self, py: Python) -> PyResult<PyTcRef<InlineNode>> {
@@ -186,9 +195,7 @@ pub enum InterpError {
     #[error("A Python `BlockScopeOwner` was returned by inline code inside a paragraph")]
     BlockOwnerCodeMidPara { code_span: ParseSpan },
     #[error("Inline scope contained sentence break")]
-    SentenceBreakInInlineScope {
-        scope_start: ParseSpan
-    },
+    SentenceBreakInInlineScope { scope_start: ParseSpan },
     #[error("Inline scope contained paragraph break")]
     ParaBreakInInlineScope {
         scope_start: ParseSpan,
@@ -205,16 +212,14 @@ pub enum InterpError {
     #[error("Internal error: {0}")]
     InternalErr(String),
     #[error("Escaped newline (used for sentence continuation) found outside paragraph")]
-    EscapedNewlineOutsideParagraph {
-        newline: ParseSpan
-    },
+    EscapedNewlineOutsideParagraph { newline: ParseSpan },
 }
 
 fn stringify_pyerr(py: Python, pyerr: &PyErr) -> String {
     let value = pyerr.value(py);
     let type_name = match value.get_type().name() {
         Ok(name) => name,
-        Err(_) => "Unknown Type"
+        Err(_) => "Unknown Type",
     };
     if let Ok(s) = value.str() {
         format!("{0} : {1}", type_name, &s.to_string_lossy())
@@ -231,24 +236,24 @@ trait MapInterpResult<T> {
 }
 impl<T> MapInterpResult<T> for PyResult<T> {
     fn err_as_interp(self, py: Python, code_span: ParseSpan) -> InterpResult<T> {
-        self.map_err(|pyerr| {
-            InterpError::PythonErr{
-                pyerr: stringify_pyerr(py, &pyerr),
-                code_span
-            }
+        self.map_err(|pyerr| InterpError::PythonErr {
+            pyerr: stringify_pyerr(py, &pyerr),
+            code_span,
         })
     }
     fn err_as_interp_internal(self, py: Python) -> InterpResult<T> {
-        self.map_err(|pyerr| {
-            InterpError::InternalPythonErr {
-                pyerr: stringify_pyerr(py, &pyerr),
-            }
+        self.map_err(|pyerr| InterpError::InternalPythonErr {
+            pyerr: stringify_pyerr(py, &pyerr),
         })
     }
 }
 
 impl<'a> InterpState<'a> {
-    pub fn handle_token<'interp>(&mut self, ttpython: &TurnipTextPython<'interp>, tok: TTToken) -> InterpResult<()> {
+    pub fn handle_token<'interp>(
+        &mut self,
+        ttpython: &TurnipTextPython<'interp>,
+        tok: TTToken,
+    ) -> InterpResult<()> {
         ttpython.with_gil(|py, globals| {
             let transitions = self.mutate_and_find_transitions(py, globals, tok)?;
             self.handle_transition(py, globals, transitions)
@@ -258,18 +263,26 @@ impl<'a> InterpState<'a> {
     pub fn finalize<'interp>(&mut self, ttpython: &TurnipTextPython<'interp>) -> InterpResult<()> {
         ttpython.with_gil(|py, globals| {
             let transitions = match &mut self.block_state {
-                InterpBlockState::ReadyForNewBlock => {
-                    (None, None)
-                },
+                InterpBlockState::ReadyForNewBlock => (None, None),
                 InterpBlockState::WritingPara(state) => state.finalize(py)?,
-                InterpBlockState::BuildingBlockLevelCode { code_start, .. } => return Err(InterpError::EndedInsideCode { code_start: *code_start }),
-                InterpBlockState::AttachingBlockLevelCode { code_span, .. } => return Err(InterpError::BlockOwnerCodeHasNoScope { code_span: *code_span }),
+                InterpBlockState::BuildingBlockLevelCode { code_start, .. } => {
+                    return Err(InterpError::EndedInsideCode {
+                        code_start: *code_start,
+                    })
+                }
+                InterpBlockState::AttachingBlockLevelCode { code_span, .. } => {
+                    return Err(InterpError::BlockOwnerCodeHasNoScope {
+                        code_span: *code_span,
+                    })
+                }
             };
 
             match self.block_stack.pop() {
                 // No open blocks on the stack => process the transition
                 None => self.handle_transition(py, globals, transitions),
-                Some(InterpBlockScopeState{scope_start, ..}) => return Err(InterpError::EndedInsideScope { scope_start })
+                Some(InterpBlockScopeState { scope_start, .. }) => {
+                    return Err(InterpError::EndedInsideScope { scope_start })
+                }
             }
         })
     }
@@ -280,7 +293,10 @@ impl<'a> InterpState<'a> {
         py: Python,
         globals: &PyDict,
         tok: TTToken,
-    ) -> InterpResult<(Option<InterpBlockTransition>, Option<InterpSpecialTransition>)> {
+    ) -> InterpResult<(
+        Option<InterpBlockTransition>,
+        Option<InterpSpecialTransition>,
+    )> {
         use InterpBlockTransition::*;
         use TTToken::*;
 
@@ -297,9 +313,9 @@ impl<'a> InterpState<'a> {
         let transition = match &mut self.block_state {
             InterpBlockState::ReadyForNewBlock => {
                 match tok {
-                    Escaped(span, Escapable::Newline) => return Err(
-                        InterpError::EscapedNewlineOutsideParagraph { newline: span }
-                    ),
+                    Escaped(span, Escapable::Newline) => {
+                        return Err(InterpError::EscapedNewlineOutsideParagraph { newline: span })
+                    }
 
                     CodeOpen(span, n_hashes) => (Some(StartBlockLevelCode(span, n_hashes)), None),
 
@@ -325,8 +341,7 @@ impl<'a> InterpState<'a> {
                     // Try a scope close
                     ScopeClose(span, n_hashes) => match self.block_stack.last() {
                         Some(InterpBlockScopeState {
-                            expected_n_hashes,
-                            ..
+                            expected_n_hashes, ..
                         }) if n_hashes == *expected_n_hashes => (Some(PopBlock(span)), None),
                         Some(InterpBlockScopeState {
                             expected_n_hashes,
@@ -361,31 +376,31 @@ impl<'a> InterpState<'a> {
             }
             InterpBlockState::WritingPara(state) => {
                 dbg!(state.handle_token(py, globals, tok, self.data)?)
-            },
+            }
             InterpBlockState::BuildingBlockLevelCode {
                 code,
                 code_start,
                 expected_n_hashes,
             } => {
-                let code_span = handle_code_mode(
-                    self.data,
-                    tok,
-                    code,
-                    code_start,
-                    *expected_n_hashes,
-                );
+                let code_span =
+                    handle_code_mode(self.data, tok, code, code_start, *expected_n_hashes);
                 match code_span {
                     Some(code_span) => {
                         use EvalBracketResult::*;
 
                         // The code ended...
-                        let res = EvalBracketResult::eval(
-                            py, globals, code.as_str()
-                        ).err_as_interp(py, code_span)?;
+                        let res = EvalBracketResult::eval(py, globals, code.as_str())
+                            .err_as_interp(py, code_span)?;
                         let block_transition = match res {
                             Block(b) => WaitToAttachBlockCode(b, code_span),
-                            Inline(i) => StartParagraph(Some(InterpParaTransition::WaitToAttachInlineCode(i, code_span))),
-                            Other(s) => StartParagraph(Some(InterpParaTransition::PushInlineContent(InlineNodeToCreate::UnescapedPyString(s)))),
+                            Inline(i) => StartParagraph(Some(
+                                InterpParaTransition::WaitToAttachInlineCode(i, code_span),
+                            )),
+                            Other(s) => {
+                                StartParagraph(Some(InterpParaTransition::PushInlineContent(
+                                    InlineNodeToCreate::UnescapedPyString(s),
+                                )))
+                            }
                         };
                         (Some(block_transition), None)
                     }
@@ -396,9 +411,11 @@ impl<'a> InterpState<'a> {
                 BlockScopeOpen(span, n_hashes) => {
                     (Some(PushBlock(Some(owner.clone()), span, n_hashes)), None)
                 }
-                _ => return Err(InterpError::BlockOwnerCodeHasNoScope {
-                    code_span: *code_span
-                }),
+                _ => {
+                    return Err(InterpError::BlockOwnerCodeHasNoScope {
+                        code_span: *code_span,
+                    })
+                }
             },
         };
 
@@ -410,7 +427,10 @@ impl<'a> InterpState<'a> {
         &mut self,
         py: Python,
         globals: &PyDict,
-        transitions: (Option<InterpBlockTransition>, Option<InterpSpecialTransition>),
+        transitions: (
+            Option<InterpBlockTransition>,
+            Option<InterpSpecialTransition>,
+        ),
     ) -> InterpResult<()> {
         let (block_transition, special_transition) = transitions;
 
@@ -426,10 +446,7 @@ impl<'a> InterpState<'a> {
                         expected_n_hashes,
                     }
                 }
-                (
-                    S::BuildingBlockLevelCode { .. },
-                    T::WaitToAttachBlockCode(owner, code_span)
-                ) => {
+                (S::BuildingBlockLevelCode { .. }, T::WaitToAttachBlockCode(owner, code_span)) => {
                     S::AttachingBlockLevelCode { owner, code_span }
                 }
 
@@ -438,25 +455,23 @@ impl<'a> InterpState<'a> {
                     T::StartParagraph(transition),
                 ) => {
                     let mut para_state = InterpParaState::new(py).err_as_interp_internal(py)?;
-                    let (new_block_transition, new_special_transition) = para_state.handle_transition(py, transition)?;
+                    let (new_block_transition, new_special_transition) =
+                        para_state.handle_transition(py, transition)?;
                     if new_block_transition.is_some() {
                         return Err(InterpError::InternalErr(
                             "An inline transition, initiated with the start of a paragraph, tried to initiate another block transition. This is not allowed and should not be possible.".into()
-                        ))
+                        ));
                     }
                     self.handle_transition(py, globals, (None, new_special_transition))?;
                     S::WritingPara(para_state)
                 }
-                (
-                    S::WritingPara(para_state),
-                    T::EndParagraph
-                ) => {
+                (S::WritingPara(para_state), T::EndParagraph) => {
                     self.push_to_topmost_block(py, para_state.para().as_ref(py))?;
                     S::ReadyForNewBlock
                 }
                 (
                     S::WritingPara(para_state),
-                    T::EndParagraphAndPopBlock(scope_close_span, n_hashes)
+                    T::EndParagraphAndPopBlock(scope_close_span, n_hashes),
                 ) => {
                     // End paragraph i.e. push paragraph onto topmost block
                     self.push_to_topmost_block(py, para_state.para().as_ref(py))?;
@@ -472,7 +487,12 @@ impl<'a> InterpState<'a> {
                                 // Push popped block into new topmost block
                                 self.push_to_topmost_block(py, scope.as_ref(py))?
                             } else {
-                                return Err(InterpError::MismatchingScopeClose { n_hashes, expected_n_hashes, scope_open_span, scope_close_span })
+                                return Err(InterpError::MismatchingScopeClose {
+                                    n_hashes,
+                                    expected_n_hashes,
+                                    scope_open_span,
+                                    scope_close_span,
+                                });
                             }
                         }
                         None => return Err(InterpError::ScopeCloseOutsideScope(scope_close_span)),
@@ -485,16 +505,14 @@ impl<'a> InterpState<'a> {
                     T::PushBlock(owner, scope_start, expected_n_hashes),
                 ) => {
                     self.block_stack.push(InterpBlockScopeState {
-                        scope: Py::new(py, BlockScope::new_rs(py, owner)).err_as_interp_internal(py)?,
+                        scope: Py::new(py, BlockScope::new_rs(py, owner))
+                            .err_as_interp_internal(py)?,
                         scope_start,
                         expected_n_hashes,
                     });
                     S::ReadyForNewBlock
                 }
-                (
-                    S::ReadyForNewBlock,
-                    T::PopBlock(scope_close_span)
-                ) => {
+                (S::ReadyForNewBlock, T::PopBlock(scope_close_span)) => {
                     let popped_scope = self.block_stack.pop();
                     match popped_scope {
                         Some(popped_scope) => {
@@ -504,15 +522,12 @@ impl<'a> InterpState<'a> {
                     }
                     S::ReadyForNewBlock
                 }
-                (_, transition) => return Err(
-                    InterpError::InternalErr(
-                        format!(
-                            "Invalid block state/transition pair encountered ({0:?}, {1:?})",
-                            self.block_state,
-                            transition
-                        )
-                    )
-                ),
+                (_, transition) => {
+                    return Err(InterpError::InternalErr(format!(
+                        "Invalid block state/transition pair encountered ({0:?}, {1:?})",
+                        self.block_state, transition
+                    )))
+                }
             };
             self.block_state = new_block_state;
         }
@@ -525,15 +540,12 @@ impl<'a> InterpState<'a> {
                 (None, InterpSpecialTransition::StartComment(comment_start)) => {
                     self.comment_state = Some(InterpCommentState { comment_start })
                 }
-                (_, transition) => return Err(
-                    InterpError::InternalErr(
-                        format!(
-                            "Invalid special state/transition pair encountered ({0:?}, {1:?})",
-                            self.comment_state,
-                            transition
-                        )
-                    )
-                ),
+                (_, transition) => {
+                    return Err(InterpError::InternalErr(format!(
+                        "Invalid special state/transition pair encountered ({0:?}, {1:?})",
+                        self.comment_state, transition
+                    )))
+                }
             }
         }
 
@@ -548,7 +560,8 @@ impl<'a> InterpState<'a> {
             };
             let scope = &mut *pyref.borrow_mut(py);
             scope.push_node(node)
-        }.err_as_interp_internal(py)
+        }
+        .err_as_interp_internal(py)
     }
 }
 

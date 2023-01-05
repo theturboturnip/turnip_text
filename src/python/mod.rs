@@ -9,7 +9,7 @@ pub mod interop;
 use interop::turnip_text;
 
 mod interp;
-use self::{interp::InterpState, interop::BlockScope};
+use self::{interop::BlockScope, interp::InterpState};
 
 pub mod typeclass;
 
@@ -67,13 +67,11 @@ pub use interp::{InterpError, InterpResult};
 pub fn interp_data(
     ttpython: &TurnipTextPython<'_>,
     data: &str,
-    toks: impl Iterator<Item = TTToken>
+    toks: impl Iterator<Item = TTToken>,
 ) -> InterpResult<Py<BlockScope>> {
     let mut st = InterpState::new(ttpython, data)?;
-    let res: InterpResult<()> = toks
-        .map(|t| st.handle_token(ttpython, t))
-        .collect();
+    let res: InterpResult<()> = toks.map(|t| st.handle_token(ttpython, t)).collect();
     res?;
     st.finalize(ttpython)?;
     Ok(st.root())
-} 
+}
