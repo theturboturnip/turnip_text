@@ -6,21 +6,18 @@ fn main() {
 
     let ttpy = TurnipTextPython::new();
     eprintln!("Created TurnipTextPython");
-    let res = ttpy.with_gil(|py, globals| -> PyResult<usize> {
+    let res = ttpy.with_gil(|py| -> PyResult<()> {
         eprintln!("interpreter got GIL");
 
         let locals = PyDict::new(py);
-        py.eval("5+7", Some(&globals), Some(&locals)).unwrap();
+        py.eval("5+7", None, Some(&locals)).unwrap();
         eprintln!("eval 5+7 success");
 
-        py.run("import json", Some(&globals), Some(&locals))
-            .unwrap();
+        py.run("import json", None, Some(&locals)).unwrap();
         eprintln!("run import json success");
 
-        let code = "experiment()";
-        let experiment_val: usize = py.eval(code, Some(&globals), Some(&locals))?.extract()?;
-        eprintln!("eval experiment() success");
-        Ok(experiment_val)
+        py.run("import turniptext", None, Some(&locals)).unwrap();
+        eprintln!("run import turniptext success");
+        Ok(())
     });
-    assert_eq!(res.unwrap(), 42);
 }

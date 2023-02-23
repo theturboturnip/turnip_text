@@ -13,10 +13,9 @@ use self::{interop::BlockScope, interp::InterpState};
 
 pub mod typeclass;
 
-/// Struct holding references to current Python state, including the relevant globals/locals.
+/// Utility struct for custom interpreter
 pub struct TurnipTextPython<'interp> {
     pub interp: MainPythonInterpreter<'interp, 'interp>,
-    pub globals: Py<PyDict>,
 }
 // For testing purposes
 unsafe impl<'interp> Send for TurnipTextPython<'interp> {}
@@ -34,44 +33,39 @@ fn interpreter_config<'a>() -> OxidizedPythonInterpreterConfig<'a> {
     // "If this is false, the default path configuration built into libpython is used."
     // This avoids a `init_fs_encoding` error message, where python tries to import the standard library and fails because we've told it the stdlib is installed relative to the executable
     base_config.set_missing_path_configuration = false;
+    base_config.origin = None;
     base_config
 }
 
 impl<'interp> TurnipTextPython<'interp> {
     pub fn new() -> TurnipTextPython<'interp> {
+        // TODO can use append_to_inittab to get past all of this!!!!!
         let interp = MainPythonInterpreter::new(interpreter_config())
             .expect("Couldn't create python interpreter");
 
         pyo3::prepare_freethreaded_python();
-        let globals = interp
-            .with_gil(|py| -> PyResult<Py<PyDict>> {
-                let globals = PyDict::new(py);
-                py.run("from turnip_text import *", Some(globals), None)?;
-                Ok(globals.into())
-            })
-            .unwrap();
 
-        Self { interp, globals }
+        Self { interp }
     }
 
     pub fn with_gil<F, R>(&self, f: F) -> R
     where
-        F: for<'py> FnOnce(Python<'py>, &'py PyDict) -> R,
+        F: for<'py> FnOnce(Python<'py>) -> R,
     {
-        self.interp
-            .with_gil(|py| -> R { f(py, self.globals.as_ref(py)) })
+        self.interp.with_gil(f)
     }
 }
 
 pub use interp::{InterpError, InterpResult};
 pub fn interp_data(
-    ttpython: &TurnipTextPython<'_>,
+    py: Python,
+    globals: &PyDict,
     data: &str,
     toks: impl Iterator<Item = TTToken>,
 ) -> InterpResult<Py<BlockScope>> {
-    let mut st = InterpState::new(ttpython, data)?;
-    let res: InterpResult<()> = toks.map(|t| st.handle_token(ttpython, t)).collect();
+    let mut st = InterpState::new(py, data)?;
+    let res: InterpResult<()> = toks.map(|t| st.handle_token(py, globals, t)).collect();
     res?;
-    st.finalize(ttpython)?;
+    st.finalize(py, globals)?;
     Ok(st.root())
 }

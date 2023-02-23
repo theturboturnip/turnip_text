@@ -1,4 +1,7 @@
+use std::path::Path;
+
 use pyo3::{
+    exceptions::PyRuntimeError,
     prelude::*,
     types::{PyDict, PyIterator, PyString},
 };
@@ -7,7 +10,7 @@ use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
 
 #[pymodule]
 pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(experiment, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_file, m)?)?;
 
     // Primitives
     m.add_class::<UnescapedText>()?;
@@ -22,10 +25,21 @@ pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     Ok(())
 }
 
+/// Given a file path, calls [crate::cli::parse_file] (includes parsing, checking for syntax errors, evaluating python)
 #[pyfunction]
-fn experiment() -> PyResult<usize> {
-    eprintln!("called experiment");
-    Ok(42)
+fn parse_file(py: Python<'_>, path: &str, locals: Option<&PyDict>) -> PyResult<Py<BlockScope>> {
+    // crate::cli::parse_file already surfaces the error to the user - we can just return a generic error
+    crate::cli::parse_file(
+        py,
+        locals.unwrap_or_else(|| PyDict::new(py)),
+        Path::new(path),
+    )
+    .map_err(|_| {
+        eprintln!("Whoops! creating error");
+        let err = PyRuntimeError::new_err("parse failed");
+        dbg!(&err);
+        err // TODO returning a PyErr causes a segfault lol
+    })
 }
 
 /// Typeclass for block elements within the document tree e.g. paragraphs, block scopes.

@@ -1,11 +1,11 @@
 use annotate_snippets::{display_list::DisplayList, snippet::*};
 use anyhow::bail;
 use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
-use pyo3::prelude::*;
+use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
     lexer::{LexError, LexPosn, LexToken, Unit, units_to_tokens},
-    util::ParseSpan, python::{InterpError, interp_data, TurnipTextPython, interop::BlockScope},
+    util::ParseSpan, python::{InterpError, interp_data, interop::BlockScope},
 };
 
 pub trait GivesCliFeedback {
@@ -292,7 +292,7 @@ fn display_cli_feedback<T: GivesCliFeedback>(data: &str, err: &T) {
     let dl = DisplayList::from(err.get_snippet(&data));
     eprintln!("{}", dl);
 }
-pub fn parse_file(ttpython: &TurnipTextPython<'_>, path: &std::path::Path) -> anyhow::Result<Py<BlockScope>> {
+pub fn parse_file(py: Python, globals: &PyDict, path: &std::path::Path) -> anyhow::Result<Py<BlockScope>> {
     let data = std::fs::read_to_string(path)?;
 
     let mut units = vec![];
@@ -310,7 +310,7 @@ pub fn parse_file(ttpython: &TurnipTextPython<'_>, path: &std::path::Path) -> an
 
     let tokens = units_to_tokens(units);
 
-    match interp_data(&ttpython, &data, tokens.into_iter()) {
+    match interp_data(py, globals, &data, tokens.into_iter()) {
         Ok(root) => Ok(root),
         Err(err) => {
             display_cli_feedback(&data, &err);

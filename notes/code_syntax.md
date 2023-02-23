@@ -1,14 +1,65 @@
 # Code-in-text
 
-## Syntax
+## Current syntax
 
-no backslashes - confuses with character escaping
+Code exists in two contexts: block-level and inline-level.
+If an eval-bracket `[]` is opened outside of a paragraph, the contents are evaluated and two checks are performed:
+  - if the result fits the `BlockScopeOwner` typeclass, it is expected that the eval brackets will be followed by a block scope (opened with squiggly brace + newline). The eval-result will be called with the contents of that scope (TODO when the block scope is closed), and *that* result will be `render()`-ed in the finalization phase.
+  
+  ```
+  [test_block_owner]{
+    Paragraph one!
 
-rust macro syntax is nice
+    Paragraph two!
+  }
 
-`[x = blah()]`
+  =>
+  
+  test_block_owner.render_block([Paragraph("Paragraph one!"), Paragraph("Paragraph two!")])
+  ```
+  - if the result fits the `InlineScopeOwner` typeclass, it is treated as the start of a new paragraph. it is expected the eval brackets will be followed by an inline scope (opened with squiggly brace w/out newline). The eval-result will be called with the contents of that scope (TODO when the inline scope is closed), and *that* result will be `render()`-ed in the finalization phase.
+  
+  ```
+  [test_inline]{inline text to annotate}
 
-TODO port notes over from my tablet
+  =>
+
+  test_inline.render_inline(["inline text to annotate"])
+  ```
+  - otherwise the result is treated as the start of a new paragraph. The python object is placed directly into the sentence, and will be stringified in the finalization phase.
+
+  ```
+  [5+7]
+
+  =>
+
+  str(12)
+  ```
+When an eval-bracket is opened inside a paragraph, it can be either an `InlineScopeOwner` or a plain object. A block scope may not be opened mid-paragraph.
+
+Code is evaluated in THREE phases.
+1. While the document tree is being built, the code inside eval-brackets is evaluated immediately i.e. in the order they are encountered in the document.
+   1. if the eval-bracket-result is a scope owner, it is invoked with the contents of its scope once the scope is closed.
+2. Once the document tree is finished, Python is invoked on the completed tree to render the document out, which may involve invoking methods on the eval-bracket-results.
+
+### Original idea
+
+No backslashes - confuses with character escaping
+
+Rust macro syntax is nice
+
+`[textbf(text to boldface)]`?
+
+Problem with above - would need to implicitly convert "text to boldface" to a string literal, the heuristics for that seem hairy and limiting
+
+Could try
+1. ```[textbf { text to boldface }]``` - use a separate syntax for "env" types
+   1. But it has ambiguity with python dicts
+   2. How could you supply optional args?
+2. ```[textbf(option) { text to boldface }]``` - add optional args
+   1. Still has ambiguity with python
+3. ```[textbf(option)]{ text to boldface }``` - move squiggle braces outside of the code brackets
+   1. Ambiguity resolved, because the python code stops at the square bracket
 
 ## Language Choice
 
@@ -36,9 +87,8 @@ Ways to embed python
 - [PyO3](https://github.com/pyo3/pyo3)
   - manual ffi [pyo3-ffi](https://crates.io/crates/pyo3-ffi/0.16.5)
   - build a shared lib as a "native python module" [maturin](https://github.com/PyO3/maturin) NOT WHAT WE WANT
-  - TODO test if the macros for adding python modules etc works when embedding, not just with maturin
 - entirely manual [https://docs.python.org/3/extending/embedding.html]
-- [RustPython](https://rustpython.github.io/) (reimplemetation in python)
+- [RustPython](https://rustpython.github.io/) (reimplemetation of python in rust)
   - seems unstable and not ready
 - [pyembed](https://docs.rs/pyembed/latest/pyembed/index.html)
   - lots of options for the allocator, not so much for adding new functions
@@ -80,6 +130,8 @@ function bold()
     end
 end
 ```
+
+I don't know Lua as well as I do Python, and Python has better syntax for some of the stuff I want to do (e.g. classes?)
 
 ## Lifecycle
 

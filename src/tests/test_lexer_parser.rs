@@ -15,7 +15,7 @@ type TextStream<'stream> = LexerOfStr<'stream, LexPosn, LexToken, LexError>;
 
 // Create a static Python instance
 use once_cell::sync::Lazy;
-use std::ops::Deref;
+use pyo3::types::PyDict;
 use std::panic;
 use std::sync::Mutex;
 
@@ -327,9 +327,10 @@ fn expect_tokens<'a>(
         // Catch all non-abort panics while running the interpreter
         // and handling the output
         panic::catch_unwind(|| {
-            let root = interp_data(ttpython.deref(), data, stoks.into_iter());
             ttpython
-                .with_gil(|py, _| {
+                .with_gil(|py| {
+                    let globals = PyDict::new(py);
+                    let root = interp_data(py, globals, data, stoks.into_iter());
                     root.map(|bs| {
                         let bs_obj = bs.to_object(py);
                         let bs: &PyAny = bs_obj.as_ref(py);

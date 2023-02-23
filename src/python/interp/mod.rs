@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::{
     lexer::{Escapable, TTToken},
-    python::{interop::*, typeclass::PyTcRef, TurnipTextPython},
+    python::{interop::*, typeclass::PyTcRef},
     util::ParseSpan,
 };
 
@@ -28,13 +28,8 @@ pub struct InterpState<'a> {
     data: &'a str,
 }
 impl<'a> InterpState<'a> {
-    pub fn new<'interp>(
-        ttpython: &'a TurnipTextPython<'interp>,
-        data: &'a str,
-    ) -> InterpResult<Self> {
-        let root = ttpython.with_gil(|py, _| {
-            Py::new(py, BlockScope::new_rs(py, None)).err_as_interp_internal(py)
-        })?;
+    pub fn new<'interp>(py: Python<'interp>, data: &'a str) -> InterpResult<Self> {
+        let root = Py::new(py, BlockScope::new_rs(py, None)).err_as_interp_internal(py)?;
         Ok(Self {
             block_state: InterpBlockState::ReadyForNewBlock,
             comment_state: None,
@@ -251,40 +246,41 @@ impl<T> MapInterpResult<T> for PyResult<T> {
 impl<'a> InterpState<'a> {
     pub fn handle_token<'interp>(
         &mut self,
-        ttpython: &TurnipTextPython<'interp>,
+        py: Python<'interp>,
+        globals: &'interp PyDict,
         tok: TTToken,
     ) -> InterpResult<()> {
-        ttpython.with_gil(|py, globals| {
-            let transitions = self.mutate_and_find_transitions(py, globals, tok)?;
-            self.handle_transition(py, globals, transitions)
-        })
+        let transitions = self.mutate_and_find_transitions(py, globals, tok)?;
+        self.handle_transition(py, globals, transitions)
     }
 
-    pub fn finalize<'interp>(&mut self, ttpython: &TurnipTextPython<'interp>) -> InterpResult<()> {
-        ttpython.with_gil(|py, globals| {
-            let transitions = match &mut self.block_state {
-                InterpBlockState::ReadyForNewBlock => (None, None),
-                InterpBlockState::WritingPara(state) => state.finalize(py)?,
-                InterpBlockState::BuildingBlockLevelCode { code_start, .. } => {
-                    return Err(InterpError::EndedInsideCode {
-                        code_start: *code_start,
-                    })
-                }
-                InterpBlockState::AttachingBlockLevelCode { code_span, .. } => {
-                    return Err(InterpError::BlockOwnerCodeHasNoScope {
-                        code_span: *code_span,
-                    })
-                }
-            };
-
-            match self.block_stack.pop() {
-                // No open blocks on the stack => process the transition
-                None => self.handle_transition(py, globals, transitions),
-                Some(InterpBlockScopeState { scope_start, .. }) => {
-                    return Err(InterpError::EndedInsideScope { scope_start })
-                }
+    pub fn finalize<'interp>(
+        &mut self,
+        py: Python<'interp>,
+        globals: &'interp PyDict,
+    ) -> InterpResult<()> {
+        let transitions = match &mut self.block_state {
+            InterpBlockState::ReadyForNewBlock => (None, None),
+            InterpBlockState::WritingPara(state) => state.finalize(py)?,
+            InterpBlockState::BuildingBlockLevelCode { code_start, .. } => {
+                return Err(InterpError::EndedInsideCode {
+                    code_start: *code_start,
+                })
             }
-        })
+            InterpBlockState::AttachingBlockLevelCode { code_span, .. } => {
+                return Err(InterpError::BlockOwnerCodeHasNoScope {
+                    code_span: *code_span,
+                })
+            }
+        };
+
+        match self.block_stack.pop() {
+            // No open blocks on the stack => process the transition
+            None => self.handle_transition(py, globals, transitions),
+            Some(InterpBlockScopeState { scope_start, .. }) => {
+                return Err(InterpError::EndedInsideScope { scope_start })
+            }
+        }
     }
 
     /// Return (block transition, special transition) to be executed in the order (block transition, special transition)

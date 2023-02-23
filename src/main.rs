@@ -1,5 +1,6 @@
 use argh::FromArgs;
-use turnip_text::{cli::parse_file, python::TurnipTextPython};
+use pyo3::{types::PyModule, PyResult};
+use turnip_text::python::TurnipTextPython;
 
 #[derive(FromArgs)]
 #[argh(description = "")]
@@ -10,8 +11,11 @@ struct ParseCmd {
 
 fn main() -> anyhow::Result<()> {
     let args: ParseCmd = argh::from_env();
+    let py_file = std::fs::read_to_string(args.path)?;
     let ttpython = TurnipTextPython::new();
-    let root = parse_file(&ttpython, &args.path)?;
-    ttpython.with_gil(|py, _| todo!("Print document"));
+    ttpython.with_gil(|py| -> PyResult<()> {
+        PyModule::from_code(py, &py_file, "", "__main__")?;
+        Ok(())
+    })?;
     Ok(())
 }
