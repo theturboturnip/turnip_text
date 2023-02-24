@@ -154,6 +154,7 @@ impl GivesCliFeedback for InterpError {
                 AnnotationType::Error,
                 scope_start,
             ),
+            // TODO improve this error in the case that there was preceding code that meant to be a block scope/inline scope but wasn't.
             BlockScopeOpenedMidPara { scope_start } => snippet_from_parse_span(
                 file_src,
                 "Block scope (a scope directly followed by a newline) was opened inside a paragraph",
@@ -218,7 +219,7 @@ impl GivesCliFeedback for InterpError {
             ),
             InlineOwnerCodeHasNoScope { code_span } => snippet_from_parse_span(
                 file_src,
-                "`InlineScopeOwner` returned by inline code has no corresponding block scope",
+                "`InlineScopeOwner` returned by inline code has no corresponding inline scope",
                 "InlineScopeOwner returned by this",
                 AnnotationType::Error,
                 code_span,
