@@ -167,7 +167,20 @@ def enquote():
         return ["``"] + sentence + ["''"]
     return inner
 
+import json
+class CustomEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, (BlockScope, InlineScope, Paragraph, Sentence)):
+            return list(o)
+        if isinstance(o, UnescapedText):
+            return o.text
+        if isinstance(o, RawText):
+            return o.contents
+        return str(o)
+
+
 if __name__ == '__main__':
     CITATIONS = {} # load_cites("phdprop.bibtex")
     doc_block = parse_file("./examples/phdprop.ttxt", locals=locals())
 
+    print(json.dumps(doc_block, indent=4, cls=CustomEncoder))

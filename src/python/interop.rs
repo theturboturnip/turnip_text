@@ -2,9 +2,9 @@ use std::path::Path;
 
 use pyo3::{
     exceptions::PyRuntimeError,
-    intern,
+    ffi::getter,
     prelude::*,
-    types::{PyBool, PyDict, PyIterator, PyString, PyTuple},
+    types::{PyDict, PyIterator, PyString, PyTuple},
 };
 
 use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
@@ -203,6 +203,10 @@ impl UnescapedText {
     pub fn new(data: Py<PyString>) -> Self {
         Self(data)
     }
+    #[getter]
+    pub fn text(&self) -> PyResult<Py<PyString>> {
+        Ok(self.0.clone())
+    }
 }
 
 /// A sequence of [InlineNode] that represents a single sentence.
@@ -281,6 +285,10 @@ impl RawText {
             None => None,
         };
         Ok(Self { owner: o, contents })
+    }
+    #[getter]
+    pub fn contents(&self) -> PyResult<Py<PyString>> {
+        Ok(self.contents.clone())
     }
 }
 
