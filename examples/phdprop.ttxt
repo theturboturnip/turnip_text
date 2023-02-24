@@ -25,11 +25,13 @@ However, as the next section will show, CHERI's CPU-centric capabilities may nee
 #----------------------
 [subsection("Problem Definition", num=False)]{
 Current systems that use CHERI capabilities make a few basic assumptions:
-[enumerate]{
-    [item]{Capabilities hold memory addresses that are controlled by the Operating System (OS) from the CPU}
-    [item]{Capabilities have the same format}
-    [item]{Capabilities can be used in the same way from anywhere}
+
+[enumerate()]{
+[item()]{Capabilities hold memory addresses that are controlled by the Operating System (OS) from the CPU}
+[item()]{Capabilities have the same format}
+[item()]{Capabilities can be used in the same way from anywhere}
 }
+
 This is reasonable for homogeneous multi-CPU systems, where memory is used in the same way by all elements, or systems where main memory is shared between the CPUs and GPUs.
 However, high-performance external GPUs tend to use memory differently than CPUs, and could benefit from handling capabilities differently.
 This would create two distinct `capability domains': that of the CPU and of the GPU.
