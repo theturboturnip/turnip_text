@@ -218,8 +218,8 @@ impl GivesCliFeedback for InterpError {
             ),
             InlineOwnerCodeHasNoScope { code_span } => snippet_from_parse_span(
                 file_src,
-                "`BlockScopeOwner` returned by inline code has no corresponding block scope",
-                "BlockScopeOwner returned by this",
+                "`InlineScopeOwner` returned by inline code has no corresponding block scope",
+                "InlineScopeOwner returned by this",
                 AnnotationType::Error,
                 code_span,
             ),
