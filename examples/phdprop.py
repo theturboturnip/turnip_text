@@ -100,10 +100,14 @@ class Citation:
 def cite(*labels: List[Union[str, Tuple[str, Optional[str]]]]):
     # Convert ["label"] to [("label", None)] so Citation has a consistent format
     adapted_labels = [
-        (label, None) if isinstance(str, label) else label
+        (label, None) if isinstance(label, str) else label
         for label in labels
     ]
     return Citation(adapted_labels)
+
+# TODO make this output \citeauthor
+def citeauthor(label: str):
+    return Citation([(label, None)])
 
 @dataclass(frozen=True)
 class Url:
@@ -135,8 +139,33 @@ def enumerate():
     return handle_block_contents
 
 @inline_scope_owner
-def item(sentence: List[UnescapedText]):
-    return Paragraph([sentence])
+def item():
+    # TODO I feel iffy about an inline scope owner returning "paragraph"
+    # Should put something in the inline_scope_owner decorator to check?
+    def inner(sentence):
+        return Paragraph(sentence)
+    return inner
+
+@dataclass
+class Formatted:
+    format_type: str # e.g. "emph"
+    items: List
+
+    def render(self):
+        # TODO return "\" + self.format_type + "{" + render(self.items) + "}"
+        raise NotImplementedError()
+
+@inline_scope_owner
+def emph():
+    def inner(sentence):
+        return Formatted("emph", sentence)
+    return inner
+
+@inline_scope_owner
+def enquote():
+    def inner(sentence):
+        return ["``"] + sentence + ["''"]
+    return inner
 
 if __name__ == '__main__':
     CITATIONS = {} # load_cites("phdprop.bibtex")
