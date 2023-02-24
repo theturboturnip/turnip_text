@@ -155,17 +155,15 @@ class Formatted:
         # TODO return "\" + self.format_type + "{" + render(self.items) + "}"
         raise NotImplementedError()
 
-@inline_scope_owner
-def emph():
-    def inner(sentence):
-        return Formatted("emph", sentence)
-    return inner
+# Because we want to use this like [emph]
+# mark it as "owns_inline_scope" manually
+def emph(sentence):
+    return Formatted("emph", sentence)
+emph.owns_inline_scope = True
 
-@inline_scope_owner
-def enquote():
-    def inner(sentence):
-        return ["``"] + sentence + ["''"]
-    return inner
+def enquote(sentence):
+    return ["``"] + sentence + ["''"]
+enquote.owns_inline_scope = True
 
 import json
 class CustomEncoder(json.JSONEncoder):
