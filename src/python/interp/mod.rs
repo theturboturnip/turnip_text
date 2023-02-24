@@ -361,6 +361,8 @@ impl<'a> InterpState<'a> {
                     // Enter comment mode
                     Hashes(span, _) => (None, Some(InterpSpecialTransition::StartComment(span))),
 
+                    // TODO! Ignore whitespace at the start of a new paragraph
+
                     // Normal text - start a new paragraph
                     _ => (
                         Some(StartParagraph(Some(InterpParaTransition::StartText(
