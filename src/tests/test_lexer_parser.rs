@@ -269,7 +269,6 @@ impl PyToTest<Vec<TestInline>> for PyAny {
 }
 impl PyToTest<TestInline> for PyAny {
     fn as_test(&self, py: Python) -> TestInline {
-        dbg!(self);
         if let Ok(inl) = self.extract::<InlineScope>() {
             TestInline::InlineScope {
                 owner: inl.owner.map(|x| x.as_ref(py).to_string()),

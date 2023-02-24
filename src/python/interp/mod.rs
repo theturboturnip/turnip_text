@@ -371,7 +371,7 @@ impl<'a> InterpState<'a> {
                 }
             }
             InterpBlockState::WritingPara(state) => {
-                dbg!(state.handle_token(py, globals, tok, self.data)?)
+                state.handle_token(py, globals, tok, self.data)?
             }
             InterpBlockState::BuildingBlockLevelCode {
                 code,
