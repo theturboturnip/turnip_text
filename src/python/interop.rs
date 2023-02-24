@@ -38,12 +38,7 @@ fn parse_file(py: Python<'_>, path: &str, locals: Option<&PyDict>) -> PyResult<P
         locals.unwrap_or_else(|| PyDict::new(py)),
         Path::new(path),
     )
-    .map_err(|_| {
-        eprintln!("Whoops! creating error");
-        let err = PyRuntimeError::new_err("parse failed");
-        dbg!(&err);
-        err // TODO returning a PyErr causes a segfault lol
-    })
+    .map_err(|_| PyRuntimeError::new_err("parse failed, see stdout"))
 }
 
 /// Typeclass for block elements within the document tree e.g. paragraphs, block scopes.

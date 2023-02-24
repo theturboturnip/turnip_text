@@ -1,3 +1,4 @@
+use anyhow::bail;
 use argh::FromArgs;
 use pyo3::{types::PyModule, PyResult};
 use turnip_text::python::TurnipTextPython;
@@ -13,9 +14,14 @@ fn main() -> anyhow::Result<()> {
     let args: ParseCmd = argh::from_env();
     let py_file = std::fs::read_to_string(args.path)?;
     let ttpython = TurnipTextPython::new();
-    ttpython.with_gil(|py| -> PyResult<()> {
+    let res = ttpython.with_gil(|py| -> PyResult<()> {
         PyModule::from_code(py, &py_file, "", "__main__")?;
         Ok(())
-    })?;
-    Ok(())
+    });
+    match res {
+        Err(py_err) => {
+            bail!(py_err.to_string())
+        }
+        _ => Ok(()),
+    }
 }
