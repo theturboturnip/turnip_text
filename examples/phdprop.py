@@ -20,7 +20,7 @@ class FootnoteAnchor:
 def footnote(label: str) -> FootnoteAnchor:
     return FootnoteAnchor(label)
 
-# TODO @inline_scope_owner
+@inline_scope_owner
 def footnote_text(label: str):
     # Return a callable which is invoked with the contents of the following inline scope
     # Example usage:
@@ -48,7 +48,7 @@ class Header:
             s_head += r"\label{" + self.label + "}"
         return s_head
 
-# TODO @block_scope_owner
+@block_scope_owner
 def section(name: str, label: Optional[str]=None, num: bool=True) -> Header:
     def handle_block_contents(contents: List):
         return Header(
@@ -60,7 +60,7 @@ def section(name: str, label: Optional[str]=None, num: bool=True) -> Header:
         )
     return handle_block_contents
 
-# TODO @block_scope_owner
+@block_scope_owner
 def subsection(name: str, label: Optional[str]=None, num: bool=True) -> Header:
     def handle_block_contents(contents: List):
         return Header(
@@ -72,7 +72,7 @@ def subsection(name: str, label: Optional[str]=None, num: bool=True) -> Header:
         )
     return handle_block_contents
 
-# TODO @block_scope_owner
+@block_scope_owner
 def subsubsection(name: str, label: Optional[str]=None, num: bool=True) -> Header:
     def handle_block_contents(contents: List):
         return Header(
@@ -128,13 +128,13 @@ class DisplayList:
         raise NotImplementedError()
 
 
-# TODO @block_scope_owner
+@block_scope_owner
 def enumerate():
     def handle_block_contents(contents: List):
         return DisplayList(mode="enumerate", items=contents)
     return handle_block_contents
 
-# TODO @inline_scope_owner
+@inline_scope_owner
 def item(sentence: List[UnescapedText]):
     return Paragraph([sentence])
 

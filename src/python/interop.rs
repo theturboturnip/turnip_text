@@ -2,8 +2,9 @@ use std::path::Path;
 
 use pyo3::{
     exceptions::PyRuntimeError,
+    intern,
     prelude::*,
-    types::{PyDict, PyIterator, PyString},
+    types::{PyBool, PyDict, PyIterator, PyString, PyTuple},
 };
 
 use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
@@ -21,6 +22,9 @@ pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     // Scopes
     m.add_class::<BlockScope>()?;
     m.add_class::<InlineScope>()?;
+
+    m.add_class::<BlockScopeOwnerDecorator>()?;
+    m.add_class::<InlineScopeOwnerDecorator>()?;
 
     Ok(())
 }
@@ -75,9 +79,57 @@ impl PyTypeclass for BlockScopeOwner {
     const NAME: &'static str = "BlockScopeOwner";
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
-        // TODO define the typeclass
-        // TestBlockScope is really for testing only
-        Ok(obj.str()?.to_str()?.contains("TestBlockScope"))
+        // TODO intern!() here
+        let marked_as_block = obj.hasattr("owns_block_scope")?;
+        let marked_as_inline = obj.hasattr("owns_inline_scope")?;
+
+        if marked_as_block && marked_as_inline {
+            return Err(PyRuntimeError::new_err("Item marked as block scope owner and inline scope owner at the same time! That shouldn't be."));
+        }
+
+        let mut fits = obj.is_callable() && marked_as_block;
+        #[cfg(test)]
+        {
+            let is_test_str = obj.str()?.to_str()?.contains("TestBlockScope");
+            fits = fits || is_test_str
+        }
+
+        Ok(fits)
+    }
+}
+
+/// Decorator which allows functions-returning-functions to fit the BlockScopeOwner typeclass.
+///
+/// e.g. one could define a function
+/// ```python
+/// @block_scope_owner
+/// def block(name=""):
+///     def inner(items):
+///         return items
+///     return inner
+/// ```
+/// which allows turnip-text as so:
+/// ```!text
+/// [block(name="greg")]{
+/// The contents of greg
+/// }
+/// ```
+#[pyclass(name = "block_scope_owner")]
+struct BlockScopeOwnerDecorator {
+    inner: Py<PyAny>,
+}
+#[pymethods]
+impl BlockScopeOwnerDecorator {
+    #[new]
+    fn __new__(inner: Py<PyAny>) -> Self {
+        Self { inner }
+    }
+
+    #[args(args = "*", kwargs = "**")]
+    fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
+        let obj = self.inner.call(py, args, kwargs)?;
+        obj.setattr(py, "owns_block_scope", true)?;
+        Ok(obj)
     }
 }
 
@@ -88,10 +140,54 @@ impl PyTypeclass for InlineScopeOwner {
     const NAME: &'static str = "InlineScopeOwner";
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
-        // TODO better define the typeclass
-        Ok(obj.is_callable() ||
-            // For testing only
-            obj.str()?.to_str()?.contains("TestInlineScope"))
+        // TODO intern!() here
+        let marked_as_block = obj.hasattr("owns_block_scope")?;
+        let marked_as_inline = obj.hasattr("owns_inline_scope")?;
+
+        if marked_as_block && marked_as_inline {
+            return Err(PyRuntimeError::new_err("Item marked as block scope owner and inline scope owner at the same time! That shouldn't be."));
+        }
+
+        let mut fits = obj.is_callable() && marked_as_inline;
+        #[cfg(test)]
+        {
+            let is_test_str = obj.str()?.to_str()?.contains("TestInlineScope");
+            fits = fits || is_test_str
+        }
+
+        Ok(fits)
+    }
+}
+/// Decorator which ensures functions fit the InlineScopeOwner typeclass
+///
+/// e.g. one could define a function
+/// ```python
+/// @inline_scope_owner
+/// def inline(postfix = ""):
+///     def inner(items):
+///         return items + [postfix]
+///     return inner
+/// ```
+/// which allows turnip-text as so:
+/// ```!text
+/// [inline("!"))]{surprise}
+/// ```
+#[pyclass(name = "inline_scope_owner")]
+struct InlineScopeOwnerDecorator {
+    inner: Py<PyAny>,
+}
+#[pymethods]
+impl InlineScopeOwnerDecorator {
+    #[new]
+    fn __new__(inner: Py<PyAny>) -> Self {
+        Self { inner }
+    }
+
+    #[args(args = "*", kwargs = "**")]
+    fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
+        let obj = self.inner.call(py, args, kwargs)?;
+        obj.setattr(py, "owns_inline_scope", true)?;
+        Ok(obj)
     }
 }
 
