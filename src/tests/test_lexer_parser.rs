@@ -1033,14 +1033,14 @@ Some ["TestInlineScope"]{special} text
 }
 
 #[test]
-pub fn test_owned_raw_scope() {
+pub fn test_owned_inline_raw_scope() {
     expect_tokens(
-        "[exec]r{
+        r#"["TestInlineScope"]r{
 import os
-}",
+}"#,
         vec![
             CodeOpen(0),
-            OtherText("exec"),
+            OtherText("\"TestInlineScope\""),
             CodeClose(0),
             RawScopeOpen(0),
             Newline,
@@ -1050,12 +1050,38 @@ import os
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             TestInline::RawText {
-                owner: Some("<built-in function exec>".into()),
+                owner: Some("TestInlineScope".into()),
                 contents: r#"
 import os
 "#
                 .into(),
             },
         ]])])),
+    )
+}
+
+// TODO should this change? How does raw text interact with a block scope owner?
+#[test]
+pub fn test_owned_block_raw_scope() {
+    expect_tokens(
+        r#"["TestBlockScope"]r{
+import os
+}"#,
+        vec![
+            CodeOpen(0),
+            OtherText("\"TestBlockScope\""),
+            CodeClose(0),
+            RawScopeOpen(0),
+            Newline,
+            OtherText("import os"),
+            Newline,
+            ScopeClose(0),
+        ],
+        Err(TestInterpError::BlockOwnerCodeHasNoScope {
+            code_span: TestParserSpan {
+                start: (1, 1),
+                end: (1, 19),
+            },
+        }),
     )
 }
