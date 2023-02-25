@@ -322,3 +322,100 @@ fn expect_parse<'a>(data: &str, expected_parse: Result<TestBlock, TestInterpErro
         Err(e) => panic!("{:?}", e),
     }
 }
+
+#[test]
+pub fn test_owned_block_scope() {
+    expect_parse(
+        r#"[TEST_BLOCK_OWNER]{
+It was the best of the times, it was the blurst of times
+}
+"#,
+        Ok(test_doc(vec![TestBlock::BlockScope {
+            owner: Some("TEST_BLOCK_OWNER".into()),
+            contents: vec![TestBlock::Paragraph(vec![test_sentence(
+                "It was the best of the times, it was the blurst of times",
+            )])],
+        }])),
+    )
+}
+
+#[test]
+pub fn test_owned_block_scope_with_non_block_owner() {
+    expect_parse(
+        r#"[None]{
+It was the best of the times, it was the blurst of times
+}
+"#,
+        Err(TestInterpError::PythonErr {
+            pyerr: "TypeError : Expected object fitting typeclass BlockScopeOwner, didn't get it"
+                .into(),
+            code_span: TestParserSpan {
+                start: (1, 1),
+                end: (2, 1),
+            },
+        }),
+    )
+}
+
+#[test]
+pub fn test_owned_inline_scope() {
+    expect_parse(
+        r"[TEST_INLINE_OWNER]{special text}",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            TestInline::InlineScope {
+                owner: Some("TEST_INLINE_OWNER".into()),
+                contents: vec![test_text("special text")],
+            },
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_owned_inline_scope_with_non_inline_owner() {
+    expect_parse(
+        r"[None]{special text}",
+        Err(TestInterpError::PythonErr {
+            pyerr: "TypeError : Expected object fitting typeclass InlineScopeOwner, didn't get it"
+                .into(),
+            code_span: TestParserSpan {
+                start: (1, 1),
+                end: (1, 8),
+            },
+        }),
+    )
+}
+
+#[test]
+pub fn test_owned_inline_raw_scope_with_newline() {
+    expect_parse(
+        r#"[TEST_RAW_OWNER]#{
+import os
+}#"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            TestInline::RawText {
+                owner: Some("TEST_RAW_OWNER".into()),
+                contents: r#"
+import os
+"#
+                .into(),
+            },
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_owned_inline_raw_scope_with_non_raw_owner() {
+    expect_parse(
+        r#"[None]#{
+import os
+}#"#,
+        Err(TestInterpError::PythonErr {
+            pyerr: "TypeError : Expected object fitting typeclass RawScopeOwner, didn't get it"
+                .into(),
+            code_span: TestParserSpan {
+                start: (1, 1),
+                end: (1, 9),
+            },
+        }),
+    )
+}
