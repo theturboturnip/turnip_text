@@ -66,3 +66,58 @@ fn expect_lex<'a>(data: &str, expected_stok_types: Vec<TestTTToken<'a>>) {
 
     assert_eq!(stok_types, expected_stok_types);
 }
+
+use TestTTToken::*;
+
+#[test]
+pub fn test_escaped_cr() {
+    // '\' + '\r'&
+    expect_lex(
+        "sentence start, \\\rrest of sentence",
+        vec![
+            OtherText("sentence start, "),
+            Escaped(Escapable::Newline),
+            OtherText("rest of sentence"),
+        ],
+    )
+}
+#[test]
+pub fn test_escaped_lf() {
+    // '\' + '\n'
+    expect_lex(
+        "sentence start, \\\nrest of sentence",
+        vec![
+            OtherText("sentence start, "),
+            Escaped(Escapable::Newline),
+            OtherText("rest of sentence"),
+        ],
+    )
+}
+#[test]
+pub fn test_escaped_crlf() {
+    // '\' + '\r' + '\n'
+    expect_lex(
+        "sentence start, \\\r\nrest of sentence",
+        vec![
+            OtherText("sentence start, "),
+            Escaped(Escapable::Newline),
+            OtherText("rest of sentence"),
+        ],
+    )
+}
+
+#[test]
+pub fn test_cr() {
+    // '\r'
+    expect_lex("\rcontent", vec![Newline, OtherText("content")])
+}
+#[test]
+pub fn test_lf() {
+    // '\n'
+    expect_lex("\ncontent", vec![Newline, OtherText("content")])
+}
+#[test]
+pub fn test_crlf() {
+    // '\r' + '\n'
+    expect_lex("\r\ncontent", vec![Newline, OtherText("content")])
+}

@@ -464,93 +464,17 @@ pub fn test_escaped_notspecial() {
 }
 
 #[test]
-pub fn test_escaped_cr() {
-    // '\' + '\r'&
-    let s: String = "sentence start, ".to_owned()
-        + &['\\', '\r'].iter().collect::<String>()
-        + "rest of sentence";
+pub fn test_escaped_newline() {
     expect_lex_parse(
-        &s,
+        r#"escaped \
+newline"#,
         vec![
-            OtherText("sentence start, "),
+            OtherText("escaped "),
             Escaped(Escapable::Newline),
-            OtherText("rest of sentence"),
+            OtherText("newline"),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
-            "sentence start, rest of sentence",
-        )])])),
-    )
-}
-#[test]
-pub fn test_escaped_lf() {
-    // '\' + '\n'
-    let s: String = "sentence start, ".to_owned()
-        + &['\\', '\n'].iter().collect::<String>()
-        + "rest of sentence";
-    expect_lex_parse(
-        &s,
-        vec![
-            OtherText("sentence start, "),
-            Escaped(Escapable::Newline),
-            OtherText("rest of sentence"),
-        ],
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
-            "sentence start, rest of sentence",
-        )])])),
-    )
-}
-#[test]
-pub fn test_escaped_crlf() {
-    // '\' + '\r' + '\n'
-    let s: String = "sentence start, ".to_owned()
-        + &['\\', '\r', '\n'].iter().collect::<String>()
-        + "rest of sentence";
-    expect_lex_parse(
-        &s,
-        vec![
-            OtherText("sentence start, "),
-            Escaped(Escapable::Newline),
-            OtherText("rest of sentence"),
-        ],
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
-            "sentence start, rest of sentence",
-        )])])),
-    )
-}
-
-#[test]
-pub fn test_cr() {
-    // '\r'
-    let s: String = ['\r'].iter().collect::<String>() + "content";
-    expect_lex_parse(
-        &s,
-        vec![Newline, OtherText("content")],
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
-            "content",
-        )])])),
-    )
-}
-#[test]
-pub fn test_lf() {
-    // '\n'
-    let s: String = ['\n'].iter().collect::<String>() + "content";
-    expect_lex_parse(
-        &s,
-        vec![Newline, OtherText("content")],
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
-            "content",
-        )])])),
-    )
-}
-#[test]
-pub fn test_crlf() {
-    // '\r' + '\n'
-    let s: String = ['\r', '\n'].iter().collect::<String>() + "content";
-    expect_lex_parse(
-        &s,
-        vec![Newline, OtherText("content")],
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
-            "content",
+            "escaped newline",
         )])])),
     )
 }
