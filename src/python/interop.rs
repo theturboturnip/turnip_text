@@ -74,13 +74,7 @@ impl PyTypeclass for BlockScopeOwner {
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
         // TODO intern!() here
-        let mut fits = obj.is_callable() && obj.hasattr("owns_block_scope")?;
-        #[cfg(test)]
-        {
-            let is_test_str = obj.str()?.to_str()?.contains("TestBlockScope");
-            fits = fits || is_test_str
-        }
-
+        let fits = obj.is_callable() && obj.hasattr("owns_block_scope")?;
         Ok(fits)
     }
 }
@@ -128,13 +122,7 @@ impl PyTypeclass for InlineScopeOwner {
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
         // TODO intern!() here
-        let mut fits = obj.is_callable() && obj.hasattr("owns_inline_scope")?;
-        #[cfg(test)]
-        {
-            let is_test_str = obj.str()?.to_str()?.contains("TestInlineScope");
-            fits = fits || is_test_str
-        }
-
+        let fits = obj.is_callable() && obj.hasattr("owns_inline_scope")?;
         Ok(fits)
     }
 }
@@ -179,13 +167,7 @@ impl PyTypeclass for RawScopeOwner {
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
         // TODO intern!() here
-        let mut fits = obj.is_callable() && obj.hasattr("owns_raw_scope")?;
-        #[cfg(test)]
-        {
-            let is_test_str = obj.str()?.to_str()?.contains("TestRawScope");
-            fits = fits || is_test_str
-        }
-
+        let fits = obj.is_callable() && obj.hasattr("owns_raw_scope")?;
         Ok(fits)
     }
 }

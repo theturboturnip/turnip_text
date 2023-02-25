@@ -293,6 +293,39 @@ impl PyToTest<TestInline> for PyAny {
     }
 }
 
+/// Generate a set of local Python variables used in each test case
+///
+/// Provides `TEST_BLOCK_OWNER`, `TEST_INLINE_OWNER`, `TEST_RAW_OWNER` objects
+/// that can own block, inline, and raw scopes respectively.
+fn generate_globals<'interp>(py: Python<'interp>) -> PyResult<&'interp PyDict> {
+    let globals = PyDict::new(py);
+
+    py.run(
+        r#"
+class TestOwner:
+    def __init__(self, name):
+        self.name = name
+    def __str__(self):
+        return self.name
+    def __call__(self, x):
+        return str(x)
+
+TEST_BLOCK_OWNER = TestOwner("TEST_BLOCK_OWNER")
+TEST_BLOCK_OWNER.owns_block_scope = True
+
+TEST_INLINE_OWNER = TestOwner("TEST_INLINE_OWNER")
+TEST_INLINE_OWNER.owns_inline_scope = True
+
+TEST_RAW_OWNER = TestOwner("TEST_RAW_OWNER")
+TEST_RAW_OWNER.owns_raw_scope = True
+"#,
+        None,
+        Some(globals),
+    )?;
+
+    Ok(globals)
+}
+
 fn expect_tokens<'a>(
     data: &str,
     expected_stok_types: Vec<TestTTToken<'a>>,
@@ -325,7 +358,7 @@ fn expect_tokens<'a>(
         panic::catch_unwind(|| {
             ttpython
                 .with_gil(|py| {
-                    let globals = PyDict::new(py);
+                    let globals = generate_globals(py).expect("Couldn't generate globals dict");
                     let root = interp_data(py, globals, data, stoks.into_iter());
                     root.map(|bs| {
                         let bs_obj = bs.to_object(py);
@@ -970,13 +1003,13 @@ block scope
 #[test]
 pub fn test_owned_block_scope() {
     expect_tokens(
-        r#"["TestBlockScope"]{
+        r#"[TEST_BLOCK_OWNER]{
 It was the best of the times, it was the blurst of times
 }
 "#,
         vec![
             CodeOpen(1),
-            OtherText(r#""TestBlockScope""#),
+            OtherText("TEST_BLOCK_OWNER"),
             CodeCloseOwningBlock(1),
             OtherText("It was the best of the times, it was the blurst of times"),
             Newline,
@@ -984,7 +1017,7 @@ It was the best of the times, it was the blurst of times
             Newline,
         ],
         Ok(test_doc(vec![TestBlock::BlockScope {
-            owner: Some("TestBlockScope".into()),
+            owner: Some("TEST_BLOCK_OWNER".into()),
             contents: vec![TestBlock::Paragraph(vec![test_sentence(
                 "It was the best of the times, it was the blurst of times",
             )])],
@@ -996,13 +1029,13 @@ It was the best of the times, it was the blurst of times
 pub fn test_owned_inline_scope() {
     expect_tokens(
         r#"
-Some ["TestInlineScope"]{special} text
+Some [TEST_INLINE_OWNER]{special} text
 "#,
         vec![
             Newline,
             OtherText("Some "),
             CodeOpen(1),
-            OtherText(r#""TestInlineScope""#),
+            OtherText("TEST_INLINE_OWNER"),
             CodeCloseOwningInline(1),
             OtherText("special"),
             ScopeClose,
@@ -1012,7 +1045,7 @@ Some ["TestInlineScope"]{special} text
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Some "),
             TestInline::InlineScope {
-                owner: Some("TestInlineScope".into()),
+                owner: Some("TEST_INLINE_OWNER".into()),
                 contents: vec![test_text("special")],
             },
             test_text(" text"),
@@ -1023,12 +1056,12 @@ Some ["TestInlineScope"]{special} text
 #[test]
 pub fn test_owned_inline_raw_scope_with_newline() {
     expect_tokens(
-        r#"["TestRawScope"]#{
+        r#"[TEST_RAW_OWNER]#{
 import os
 }#"#,
         vec![
             CodeOpen(1),
-            OtherText("\"TestRawScope\""),
+            OtherText("TEST_RAW_OWNER"),
             CodeCloseOwningRaw(1, 1),
             Newline,
             OtherText("import os"),
@@ -1037,7 +1070,7 @@ import os
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             TestInline::RawText {
-                owner: Some("TestRawScope".into()),
+                owner: Some("TEST_RAW_OWNER".into()),
                 contents: r#"
 import os
 "#
