@@ -97,42 +97,13 @@ impl GivesCliFeedback for InterpError {
                 AnnotationType::Error,
                 span,
             ),
-            MismatchingScopeClose {
-                n_hashes: _,
-                expected_n_hashes: _,
-                scope_open_span,
-                scope_close_span,
-            } => Snippet {
-                title: Some(Annotation {
-                    label: Some("Scope close with mismatching hash length"),
-                    id: None,
-                    annotation_type: AnnotationType::Error,
-                }),
-                footer: vec![Annotation {
-                    label: Some("If you intended to close the scope, make the number of hashes match.\nOtherwise, try backslash-escaping the squiggly ending brace."),
-                    id: None,
-                    annotation_type: AnnotationType::Help
-                }],
-                slices: vec![Slice {
-                    source: file_src,
-                    line_start: 1,
-                    origin: None,
-                    fold: true,
-                    annotations: vec![
-                        annotation_from_parse_span(
-                            "Scope starts here",
-                            AnnotationType::Note,
-                            scope_open_span,
-                        ),
-                        annotation_from_parse_span(
-                            "Scope close here",
-                            AnnotationType::Error,
-                            scope_close_span,
-                        ),
-                    ],
-                }],
-                opt: Default::default(),
-            },
+            RawScopeCloseOutsideRawScope(span) => snippet_from_parse_span(
+                file_src,
+                "Raw scope close token when outside scope",
+                "",
+                AnnotationType::Error,
+                span,
+            ),
             EndedInsideCode { code_start } => snippet_from_parse_span(
                 file_src,
                 "File ended inside code block",

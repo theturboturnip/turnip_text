@@ -15,6 +15,9 @@ use crate::{
 mod para;
 use self::para::{InterpParaState, InterpParaTransition};
 
+// TODO Make it an error to do [x]{content} when x is not an InlineScopeOwner or a BlockScopeOwner. Force some character between the code and the brace
+// TODO ignore whitespace at the start and end of lines
+
 pub struct InterpState<'a> {
     /// FSM state
     block_state: InterpBlockState,
@@ -79,7 +82,6 @@ struct InterpCommentState {
 struct InterpBlockScopeState {
     scope: Py<BlockScope>,
     scope_start: ParseSpan,
-    expected_n_hashes: usize,
 }
 
 #[derive(Debug)]
@@ -112,14 +114,14 @@ pub(crate) enum InterpBlockTransition {
     /// add the paragraph and close the topmost scope
     ///
     /// - [InterpBlockState::WritingPara] -> [InterpBlockState::ReadyForNewBlock]
-    EndParagraphAndPopBlock(ParseSpan, usize),
+    EndParagraphAndPopBlock(ParseSpan),
 
     /// On encountering block content (i.e. a BlockScopeOpen optionally preceded by a Python scope owner),
     /// push a block scope onto the current stack
     ///
     /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::ReadyForNewBlock]
     /// - [InterpBlockState::AttachingBlockLevelCode] -> [InterpBlockState::ReadyForNewBlock]
-    PushBlock(Option<PyTcRef<BlockScopeOwner>>, ParseSpan, usize),
+    PushBlock(Option<PyTcRef<BlockScopeOwner>>, ParseSpan),
 
     /// On encountering a scope close, pop the current block from the scope
     ///
@@ -172,13 +174,8 @@ pub enum InterpError {
     CodeCloseOutsideCode(ParseSpan),
     #[error("Scope close encountered with no matching scope open")]
     ScopeCloseOutsideScope(ParseSpan),
-    #[error("Scope close with {n_hashes} hashes encountered when closest scope open has {expected_n_hashes}")]
-    MismatchingScopeClose {
-        n_hashes: usize,
-        expected_n_hashes: usize,
-        scope_open_span: ParseSpan,
-        scope_close_span: ParseSpan,
-    },
+    #[error("Raw scope close when not in a raw scope")]
+    RawScopeCloseOutsideRawScope(ParseSpan),
     #[error("File ended inside code block")]
     EndedInsideCode { code_start: ParseSpan },
     #[error("File ended inside raw scope")]
@@ -316,12 +313,12 @@ impl<'a> InterpState<'a> {
                     CodeOpen(span, n_hashes) => (Some(StartBlockLevelCode(span, n_hashes)), None),
 
                     // PushBlock with no code managing it
-                    BlockScopeOpen(span, n_hashes) => (Some(PushBlock(None, span, n_hashes)), None),
+                    BlockScopeOpen(span) => (Some(PushBlock(None, span)), None),
 
                     // PushInlineScope with no code managing it
-                    InlineScopeOpen(span, n_hashes) => (
+                    InlineScopeOpen(span) => (
                         Some(StartParagraph(Some(InterpParaTransition::PushInlineScope(
-                            None, span, n_hashes,
+                            None, span,
                         )))),
                         None,
                     ),
@@ -333,22 +330,11 @@ impl<'a> InterpState<'a> {
                         )))),
                         None,
                     ),
+                    RawScopeClose(span, _) => Err(InterpError::RawScopeCloseOutsideRawScope(span))?,
 
                     // Try a scope close
-                    ScopeClose(span, n_hashes) => match self.block_stack.last() {
-                        Some(InterpBlockScopeState {
-                            expected_n_hashes, ..
-                        }) if n_hashes == *expected_n_hashes => (Some(PopBlock(span)), None),
-                        Some(InterpBlockScopeState {
-                            expected_n_hashes,
-                            scope_start,
-                            ..
-                        }) => Err(InterpError::MismatchingScopeClose {
-                            n_hashes,
-                            expected_n_hashes: *expected_n_hashes,
-                            scope_open_span: *scope_start,
-                            scope_close_span: span,
-                        })?,
+                    ScopeClose(span) => match self.block_stack.last() {
+                        Some(_) => (Some(PopBlock(span)), None),
                         None => Err(InterpError::ScopeCloseOutsideScope(span))?,
                     },
 
@@ -406,9 +392,7 @@ impl<'a> InterpState<'a> {
                 }
             }
             InterpBlockState::AttachingBlockLevelCode { owner, code_span } => match tok {
-                BlockScopeOpen(span, n_hashes) => {
-                    (Some(PushBlock(Some(owner.clone()), span, n_hashes)), None)
-                }
+                BlockScopeOpen(span) => (Some(PushBlock(Some(owner.clone()), span)), None),
                 _ => {
                     return Err(InterpError::BlockOwnerCodeHasNoScope {
                         code_span: *code_span,
@@ -467,31 +451,14 @@ impl<'a> InterpState<'a> {
                     self.push_to_topmost_block(py, para_state.para().as_ref(py))?;
                     S::ReadyForNewBlock
                 }
-                (
-                    S::WritingPara(para_state),
-                    T::EndParagraphAndPopBlock(scope_close_span, n_hashes),
-                ) => {
+                (S::WritingPara(para_state), T::EndParagraphAndPopBlock(scope_close_span)) => {
                     // End paragraph i.e. push paragraph onto topmost block
                     self.push_to_topmost_block(py, para_state.para().as_ref(py))?;
                     // Pop block
                     let popped_scope = self.block_stack.pop();
                     match popped_scope {
-                        Some(InterpBlockScopeState {
-                            scope,
-                            scope_start: scope_open_span,
-                            expected_n_hashes,
-                        }) => {
-                            if n_hashes == expected_n_hashes {
-                                // Push popped block into new topmost block
-                                self.push_to_topmost_block(py, scope.as_ref(py))?
-                            } else {
-                                return Err(InterpError::MismatchingScopeClose {
-                                    n_hashes,
-                                    expected_n_hashes,
-                                    scope_open_span,
-                                    scope_close_span,
-                                });
-                            }
+                        Some(InterpBlockScopeState { scope, .. }) => {
+                            self.push_to_topmost_block(py, scope.as_ref(py))?
                         }
                         None => return Err(InterpError::ScopeCloseOutsideScope(scope_close_span)),
                     }
@@ -500,13 +467,12 @@ impl<'a> InterpState<'a> {
 
                 (
                     S::ReadyForNewBlock | S::AttachingBlockLevelCode { .. },
-                    T::PushBlock(owner, scope_start, expected_n_hashes),
+                    T::PushBlock(owner, scope_start),
                 ) => {
                     self.block_stack.push(InterpBlockScopeState {
                         scope: Py::new(py, BlockScope::new_rs(py, owner))
                             .err_as_interp_internal(py)?,
                         scope_start,
-                        expected_n_hashes,
                     });
                     S::ReadyForNewBlock
                 }

@@ -29,10 +29,11 @@ pub enum TestTTToken<'a> {
     Backslash,
     CodeOpen(usize),
     CodeClose(usize),
-    InlineScopeOpen(usize),
-    BlockScopeOpen(usize),
+    InlineScopeOpen,
+    BlockScopeOpen,
     RawScopeOpen(usize),
-    ScopeClose(usize),
+    RawScopeClose(usize),
+    ScopeClose,
     Hashes(usize),
     OtherText(&'a str),
 }
@@ -44,10 +45,11 @@ impl<'a> TestTTToken<'a> {
             TTToken::Backslash(_) => Self::Backslash,
             TTToken::CodeOpen(_, n) => Self::CodeOpen(n),
             TTToken::CodeClose(_, n) => Self::CodeClose(n),
-            TTToken::InlineScopeOpen(_, n) => Self::InlineScopeOpen(n),
-            TTToken::BlockScopeOpen(_, n) => Self::BlockScopeOpen(n),
+            TTToken::InlineScopeOpen(_) => Self::InlineScopeOpen,
+            TTToken::BlockScopeOpen(_) => Self::BlockScopeOpen,
             TTToken::RawScopeOpen(_, n) => Self::RawScopeOpen(n),
-            TTToken::ScopeClose(_, n) => Self::ScopeClose(n),
+            TTToken::RawScopeClose(_, n) => Self::RawScopeClose(n),
+            TTToken::ScopeClose(_) => Self::ScopeClose,
             TTToken::Hashes(_, n) => Self::Hashes(n),
             TTToken::OtherText(span) => Self::OtherText(data[span.byte_range()].into()),
         }
@@ -74,12 +76,7 @@ impl From<ParseSpan> for TestParserSpan {
 enum TestInterpError {
     CodeCloseOutsideCode(TestParserSpan),
     ScopeCloseOutsideScope(TestParserSpan),
-    MismatchingScopeClose {
-        n_hashes: usize,
-        expected_n_hashes: usize,
-        scope_open_span: TestParserSpan,
-        scope_close_span: TestParserSpan,
-    },
+    RawScopeCloseOutsideRawScope(TestParserSpan),
     EndedInsideCode {
         code_start: TestParserSpan,
     },
@@ -127,17 +124,9 @@ impl TestInterpError {
         match p {
             InterpError::CodeCloseOutsideCode(span) => Self::CodeCloseOutsideCode(span.into()),
             InterpError::ScopeCloseOutsideScope(span) => Self::ScopeCloseOutsideScope(span.into()),
-            InterpError::MismatchingScopeClose {
-                n_hashes,
-                expected_n_hashes,
-                scope_open_span,
-                scope_close_span,
-            } => Self::MismatchingScopeClose {
-                n_hashes,
-                expected_n_hashes,
-                scope_open_span: scope_open_span.into(),
-                scope_close_span: scope_close_span.into(),
-            },
+            InterpError::RawScopeCloseOutsideRawScope(span) => {
+                Self::RawScopeCloseOutsideRawScope(span.into())
+            }
             InterpError::EndedInsideCode { code_start } => Self::EndedInsideCode {
                 code_start: code_start.into(),
             },
@@ -385,9 +374,9 @@ pub fn test_inline_code() {
         r#"Number of values in (1,2,3): [len((1,2,3))]"#,
         vec![
             OtherText("Number of values in (1,2,3): "),
-            CodeOpen(0),
+            CodeOpen(1),
             OtherText("len((1,2,3))"),
-            CodeClose(0),
+            CodeClose(1),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
@@ -399,12 +388,12 @@ pub fn test_inline_code() {
 #[test]
 pub fn test_inline_code_with_extra_delimiter() {
     expect_tokens(
-        r#"Number of values in (1,2,3): #[ len((1,2,3)) ]#"#,
+        r#"Number of values in (1,2,3): [[ len((1,2,3)) ]]"#,
         vec![
             OtherText("Number of values in (1,2,3): "),
-            CodeOpen(1),
+            CodeOpen(2),
             OtherText(" len((1,2,3)) "),
-            CodeClose(1),
+            CodeClose(2),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
@@ -416,12 +405,12 @@ pub fn test_inline_code_with_extra_delimiter() {
 #[test]
 pub fn test_inline_code_with_long_extra_delimiter() {
     expect_tokens(
-        r#"Number of values in (1,2,3): ####[ len((1,2,3)) ]####"#,
+        r#"Number of values in (1,2,3): [[[[[ len((1,2,3)) ]]]]]"#,
         vec![
             OtherText("Number of values in (1,2,3): "),
-            CodeOpen(4),
+            CodeOpen(5),
             OtherText(" len((1,2,3)) "),
-            CodeClose(4),
+            CodeClose(5),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
@@ -433,19 +422,19 @@ pub fn test_inline_code_with_long_extra_delimiter() {
 #[test]
 pub fn test_inline_code_with_escaped_extra_delimiter() {
     expect_tokens(
-        r#"Number of values in (1,2,3): \#[ len((1,2,3)) ]\#"#,
+        r#"Number of values in (1,2,3): \[[ len((1,2,3)) ]\]"#,
         vec![
             OtherText("Number of values in (1,2,3): "),
-            Escaped(Escapable::Hash),
-            CodeOpen(0),
+            Escaped(Escapable::SqrOpen),
+            CodeOpen(1),
             OtherText(" len((1,2,3)) "),
-            CodeClose(0),
-            Escaped(Escapable::Hash),
+            CodeClose(1),
+            Escaped(Escapable::SqrClose),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            test_text("Number of values in (1,2,3): #"),
+            test_text("Number of values in (1,2,3): ["),
             test_text("3"),
-            test_text("#"),
+            test_text("]"),
         ]])])),
     )
 }
@@ -453,17 +442,17 @@ pub fn test_inline_code_with_escaped_extra_delimiter() {
 #[test]
 pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
     expect_tokens(
-        r#"Number of values in (1,2,3): \#\[ len((1,2,3)) \]\#"#,
+        r#"Number of values in (1,2,3): \[\[ len((1,2,3)) \]\]"#,
         vec![
             OtherText("Number of values in (1,2,3): "),
-            Escaped(Escapable::Hash),
+            Escaped(Escapable::SqrOpen),
             Escaped(Escapable::SqrOpen),
             OtherText(" len((1,2,3)) "),
             Escaped(Escapable::SqrClose),
-            Escaped(Escapable::Hash),
+            Escaped(Escapable::SqrClose),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
-            r#"Number of values in (1,2,3): #[ len((1,2,3)) ]#"#,
+            r#"Number of values in (1,2,3): [[ len((1,2,3)) ]]"#,
         )])])),
     )
 }
@@ -471,16 +460,16 @@ pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
 #[test]
 pub fn test_inline_list_with_extra_delimiter() {
     expect_tokens(
-        r#"Number of values in (1,2,3): #[ len([1,2,3]) ]#"#,
+        r#"Number of values in (1,2,3): [[ len([1,2,3]) ]]"#,
         vec![
             OtherText("Number of values in (1,2,3): "),
-            CodeOpen(1),
+            CodeOpen(2),
             OtherText(" len("),
-            CodeOpen(0),
+            CodeOpen(1),
             OtherText("1,2,3"),
-            CodeClose(0),
-            OtherText(") "),
             CodeClose(1),
+            OtherText(") "),
+            CodeClose(2),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
@@ -503,13 +492,13 @@ Second paragraph inside the scope
             OtherText("Outside the scope"),
             Newline,
             Newline,
-            BlockScopeOpen(0),
+            BlockScopeOpen,
             OtherText("Inside the scope"),
             Newline,
             Newline,
             OtherText("Second paragraph inside the scope"),
             Newline,
-            ScopeClose(0),
+            ScopeClose,
         ],
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![test_sentence("Outside the scope")]),
@@ -527,13 +516,13 @@ Second paragraph inside the scope
 #[test]
 pub fn test_raw_scope() {
     expect_tokens(
-        "r{It's f&%#ing raw}",
+        "#{It's f&%#ing raw}#",
         vec![
-            RawScopeOpen(0),
+            RawScopeOpen(1),
             OtherText("It's f&%"),
             Hashes(1),
             OtherText("ing raw"),
-            ScopeClose(0),
+            RawScopeClose(1),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             TestInline::RawText {
@@ -550,9 +539,9 @@ pub fn test_inline_scope() {
         r#"Outside the scope {inside the scope}"#,
         vec![
             OtherText("Outside the scope "),
-            InlineScopeOpen(0),
+            InlineScopeOpen,
             OtherText("inside the scope"),
-            ScopeClose(0),
+            ScopeClose,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Outside the scope "),
@@ -583,14 +572,14 @@ pub fn test_inline_escaped_scope() {
 #[test]
 pub fn test_raw_scope_newlines() {
     expect_tokens(
-        "Outside the scope r{\ninside the raw scope\n}",
+        "Outside the scope #{\ninside the raw scope\n}#",
         vec![
             OtherText("Outside the scope "),
-            RawScopeOpen(0),
+            RawScopeOpen(1),
             Newline,
             OtherText("inside the raw scope"),
             Newline,
-            ScopeClose(0),
+            RawScopeClose(1),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Outside the scope "),
@@ -603,14 +592,14 @@ pub fn test_raw_scope_newlines() {
 #[test]
 pub fn test_raw_scope_crlf_newlines() {
     expect_tokens(
-        "Outside the scope r{\r\ninside the raw scope\r\n}",
+        "Outside the scope #{\r\ninside the raw scope\r\n}#",
         vec![
             OtherText("Outside the scope "),
-            RawScopeOpen(0),
+            RawScopeOpen(1),
             Newline,
             OtherText("inside the raw scope"),
             Newline,
-            ScopeClose(0),
+            RawScopeClose(1),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Outside the scope "),
@@ -622,12 +611,12 @@ pub fn test_raw_scope_crlf_newlines() {
 #[test]
 pub fn test_inline_raw_scope() {
     expect_tokens(
-        r#"Outside the scope r{inside the raw scope}"#,
+        r#"Outside the scope #{inside the raw scope}#"#,
         vec![
             OtherText("Outside the scope "),
-            RawScopeOpen(0),
+            RawScopeOpen(1),
             OtherText("inside the raw scope"),
-            ScopeClose(0),
+            RawScopeClose(1),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Outside the scope "),
@@ -685,9 +674,9 @@ pub fn test_special_with_escaped_backslash() {
         vec![
             OtherText("About to see a backslash! "),
             Escaped(Escapable::Backslash),
-            CodeOpen(0),
+            CodeOpen(1),
             OtherText("None"),
-            CodeClose(0),
+            CodeClose(1),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text(r#"About to see a backslash! \"#),
@@ -716,7 +705,7 @@ pub fn test_escaped_special_with_escaped_backslash() {
 pub fn test_uneven_code() {
     expect_tokens(
         r#"code with no open]"#,
-        vec![OtherText("code with no open"), CodeClose(0)],
+        vec![OtherText("code with no open"), CodeClose(1)],
         Err(TestInterpError::CodeCloseOutsideCode(TestParserSpan {
             start: (1, 18),
             end: (1, 19),
@@ -728,7 +717,7 @@ pub fn test_uneven_code() {
 pub fn test_uneven_scope() {
     expect_tokens(
         r#"scope with no open}"#,
-        vec![OtherText("scope with no open"), ScopeClose(0)],
+        vec![OtherText("scope with no open"), ScopeClose],
         Err(TestInterpError::ScopeCloseOutsideScope(TestParserSpan {
             start: (1, 19),
             end: (1, 20),
@@ -844,11 +833,11 @@ pub fn test_newline_in_code() {
     expect_tokens(
         "[len((1,\r\n2))]",
         vec![
-            CodeOpen(0),
+            CodeOpen(1),
             OtherText("len((1,"),
             Newline,
             OtherText("2))"),
-            CodeClose(0),
+            CodeClose(1),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
             "2",
@@ -861,7 +850,7 @@ pub fn test_code_close_in_text() {
         "not code ] but closed code",
         vec![
             OtherText("not code "),
-            CodeClose(0),
+            CodeClose(1),
             OtherText(" but closed code"),
         ],
         Err(TestInterpError::CodeCloseOutsideCode(TestParserSpan {
@@ -876,7 +865,7 @@ pub fn test_scope_close_outside_scope() {
         "not in a scope } but closed scope",
         vec![
             OtherText("not in a scope "),
-            ScopeClose(0),
+            ScopeClose,
             OtherText(" but closed scope"),
         ],
         Err(TestInterpError::ScopeCloseOutsideScope(TestParserSpan {
@@ -886,24 +875,18 @@ pub fn test_scope_close_outside_scope() {
     )
 }
 #[test]
-pub fn test_mismatching_scope_close() {
+pub fn test_mismatching_raw_scope_close() {
     expect_tokens(
         "##{ text in a scope with a }#",
         vec![
-            InlineScopeOpen(2),
+            RawScopeOpen(2),
             OtherText(" text in a scope with a "),
-            ScopeClose(1),
+            RawScopeClose(1),
         ],
-        Err(TestInterpError::MismatchingScopeClose {
-            n_hashes: 1,
-            expected_n_hashes: 2,
-            scope_open_span: TestParserSpan {
+        Err(TestInterpError::EndedInsideRawScope {
+            raw_scope_start: TestParserSpan {
                 start: (1, 1),
-                end: (1, 4),
-            },
-            scope_close_span: TestParserSpan {
-                start: (1, 28),
-                end: (1, 30),
+                end: (1, 3),
             },
         }),
     )
@@ -912,7 +895,7 @@ pub fn test_mismatching_scope_close() {
 pub fn test_ended_inside_code() {
     expect_tokens(
         "text [code",
-        vec![OtherText("text "), CodeOpen(0), OtherText("code")],
+        vec![OtherText("text "), CodeOpen(1), OtherText("code")],
         Err(TestInterpError::EndedInsideCode {
             code_start: TestParserSpan {
                 start: (1, 6),
@@ -924,12 +907,12 @@ pub fn test_ended_inside_code() {
 #[test]
 pub fn test_ended_inside_raw_scope() {
     expect_tokens(
-        "text #r{raw",
+        "text #{raw",
         vec![OtherText("text "), RawScopeOpen(1), OtherText("raw")],
         Err(TestInterpError::EndedInsideRawScope {
             raw_scope_start: TestParserSpan {
                 start: (1, 6),
-                end: (1, 9),
+                end: (1, 8),
             },
         }),
     )
@@ -937,8 +920,8 @@ pub fn test_ended_inside_raw_scope() {
 #[test]
 pub fn test_ended_inside_scope() {
     expect_tokens(
-        "text ##{scope",
-        vec![OtherText("text "), InlineScopeOpen(2), OtherText("scope")],
+        "text {scope",
+        vec![OtherText("text "), InlineScopeOpen, OtherText("scope")],
         Err(TestInterpError::SentenceBreakInInlineScope {
             scope_start: TestParserSpan {
                 start: (1, 6),
@@ -955,13 +938,13 @@ pub fn test_block_scope_vs_inline_scope() {
 block scope
 }{inline scope}"#,
         vec![
-            BlockScopeOpen(0),
+            BlockScopeOpen,
             OtherText("block scope"),
             Newline,
-            ScopeClose(0),
-            InlineScopeOpen(0),
+            ScopeClose,
+            InlineScopeOpen,
             OtherText("inline scope"),
-            ScopeClose(0),
+            ScopeClose,
         ],
         Ok(test_doc(vec![
             TestBlock::BlockScope {
@@ -984,13 +967,13 @@ It was the best of the times, it was the blurst of times
 }
 "#,
         vec![
-            CodeOpen(0),
+            CodeOpen(1),
             OtherText(r#""TestBlockScope""#),
-            CodeClose(0),
-            BlockScopeOpen(0),
+            CodeClose(1),
+            BlockScopeOpen,
             OtherText("It was the best of the times, it was the blurst of times"),
             Newline,
-            ScopeClose(0),
+            ScopeClose,
             Newline,
         ],
         Ok(test_doc(vec![TestBlock::BlockScope {
@@ -1011,12 +994,12 @@ Some ["TestInlineScope"]{special} text
         vec![
             Newline,
             OtherText("Some "),
-            CodeOpen(0),
+            CodeOpen(1),
             OtherText(r#""TestInlineScope""#),
-            CodeClose(0),
-            InlineScopeOpen(0),
+            CodeClose(1),
+            InlineScopeOpen,
             OtherText("special"),
-            ScopeClose(0),
+            ScopeClose,
             OtherText(" text"),
             Newline,
         ],
@@ -1034,18 +1017,18 @@ Some ["TestInlineScope"]{special} text
 #[test]
 pub fn test_owned_inline_raw_scope() {
     expect_tokens(
-        r#"["TestInlineScope"]r{
+        r#"["TestInlineScope"]#{
 import os
-}"#,
+}#"#,
         vec![
-            CodeOpen(0),
+            CodeOpen(1),
             OtherText("\"TestInlineScope\""),
-            CodeClose(0),
-            RawScopeOpen(0),
+            CodeClose(1),
+            RawScopeOpen(1),
             Newline,
             OtherText("import os"),
             Newline,
-            ScopeClose(0),
+            RawScopeClose(1),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             TestInline::RawText {
@@ -1063,18 +1046,18 @@ import os
 #[test]
 pub fn test_owned_block_raw_scope() {
     expect_tokens(
-        r#"["TestBlockScope"]r{
+        r#"["TestBlockScope"]#{
 import os
-}"#,
+}#"#,
         vec![
-            CodeOpen(0),
+            CodeOpen(1),
             OtherText("\"TestBlockScope\""),
-            CodeClose(0),
-            RawScopeOpen(0),
+            CodeClose(1),
+            RawScopeOpen(1),
             Newline,
             OtherText("import os"),
             Newline,
-            ScopeClose(0),
+            RawScopeClose(1),
         ],
         Err(TestInterpError::BlockOwnerCodeHasNoScope {
             code_span: TestParserSpan {

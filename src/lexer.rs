@@ -25,8 +25,6 @@ pub enum LexerPrefixSeq {
     SqgClose,
     /// `#`
     Hash,
-    /// `r{`
-    RSqgOpen,
 }
 impl LexerPrefixSeq {
     pub fn try_from_char2(ch: char, ch2: Option<char>) -> Option<(Self, usize)> {
@@ -43,10 +41,6 @@ impl LexerPrefixSeq {
             '{' => Some((SqgOpen, 1)),
             '}' => Some((SqgClose, 1)),
             '#' => Some((Hash, 1)),
-            'r' => match ch2 {
-                Some('{') => Some((RSqgOpen, 2)),
-                _ => None,
-            },
             _ => None,
         }
     }
@@ -144,19 +138,15 @@ pub enum Unit {
     ///
     /// TODO - A LaTeX-output backend could choose to disallow plain backslashes, as they would interact with LaTeX in potentially unexpected ways.
     Backslash(ParsePosn),
-    /// `[` character not preceded by a backslash
-    CodeOpen(ParseSpan),
-    /// `]` character not preceded by a backslash
-    CodeClose(ParseSpan),
+    /// N `[` characters not preceded by a backslash
+    CodeOpen(ParseSpan, usize),
+    /// N `]` characters not preceded by a backslash
+    CodeClose(ParseSpan, usize),
     /// `{` character not preceded by a backslash
     ScopeOpen(ParseSpan),
-    /// `r{` sequence
-    ///
-    /// Escaped by escaping the SqgOpen - `r\{`
-    RawScopeOpen(ParseSpan),
     /// `}` character not preceded by a backslash
     ScopeClose(ParseSpan),
-    /// String of N `#` characters not preceded by a backslash
+    /// N `#` characters not preceded by a backslash
     Hashes(ParseSpan, usize),
     /// Span of characters not included in [LexerPrefixSeq]
     OtherText(ParseSpan),
@@ -165,13 +155,17 @@ pub enum Unit {
     // Percent(P),
 }
 impl Unit {
-    fn parse_hashes<L>(stream: &L, state: L::State) -> LexerParseResult<LexPosn, usize, L::Error>
+    fn parse_n_chars<L>(
+        stream: &L,
+        state: L::State,
+        target_ch: char,
+    ) -> LexerParseResult<LexPosn, usize, L::Error>
     where
         L: CharStream<LexPosn>,
         L: Lexer<Token = Self, State = LexPosn>,
     {
         if let Some(ch) = stream.peek_at(&state) {
-            match stream.do_while(state, ch, &|_, ch| ch == '#') {
+            match stream.do_while(state, ch, &|_, ch| ch == target_ch) {
                 (end, Some((_, n))) => Ok(Some((end, n))),
                 _ => Ok(None),
             }
@@ -210,21 +204,35 @@ impl Unit {
                 | LexerPrefixSeq::CarriageReturn
                 | LexerPrefixSeq::LineFeed => Ok(Some((state_after_seq, Self::Newline(seq_span)))),
                 // SqrOpen => CodeOpen()
-                LexerPrefixSeq::SqrOpen => Ok(Some((state_after_seq, Self::CodeOpen(seq_span)))),
-                // SqrOpen => ScopeOpen()
-                LexerPrefixSeq::SqgOpen => Ok(Some((state_after_seq, Self::ScopeOpen(seq_span)))),
-                // 'r{' => RawScopeOpen()
-                LexerPrefixSeq::RSqgOpen => {
-                    Ok(Some((state_after_seq, Self::RawScopeOpen(seq_span))))
+                LexerPrefixSeq::SqrOpen => {
+                    // Run will have at least one [, because it's starting with this character.
+                    match Self::parse_n_chars(stream, state, '[')? {
+                        Some((hash_end, n)) => Ok(Some((
+                            hash_end,
+                            Self::CodeOpen(ParseSpan::from_lex(start, hash_end), n),
+                        ))),
+                        None => unreachable!(),
+                    }
                 }
                 // SqrClose => CodeClose
-                LexerPrefixSeq::SqrClose => Ok(Some((state_after_seq, Self::CodeClose(seq_span)))),
+                LexerPrefixSeq::SqrClose => {
+                    // Run will have at least one hash, because it's starting with this character.
+                    match Self::parse_n_chars(stream, state, ']')? {
+                        Some((hash_end, n)) => Ok(Some((
+                            hash_end,
+                            Self::CodeClose(ParseSpan::from_lex(start, hash_end), n),
+                        ))),
+                        None => unreachable!(),
+                    }
+                }
+                // SqrOpen => ScopeOpen()
+                LexerPrefixSeq::SqgOpen => Ok(Some((state_after_seq, Self::ScopeOpen(seq_span)))),
                 // SqgClose => ScopeClose
                 LexerPrefixSeq::SqgClose => Ok(Some((state_after_seq, Self::ScopeClose(seq_span)))),
-                // Hash => Hashes or CodeClose or ScopeClose
+                // Hash => Hash
                 LexerPrefixSeq::Hash => {
-                    // Run will have at least one hash, because it's starting with this character.
-                    match Self::parse_hashes(stream, state)? {
+                    // Run will have at least one #, because it's starting with this character.
+                    match Self::parse_n_chars(stream, state, '#')? {
                         Some((hash_end, n)) => Ok(Some((
                             hash_end,
                             Self::Hashes(ParseSpan::from_lex(start, hash_end), n),
@@ -293,20 +301,20 @@ pub enum TTToken {
     Escaped(ParseSpan, Escapable),
     /// See [Unit::Backslash]
     Backslash(ParsePosn),
-    /// `[` character not preceded by a backslash plus N # characters
+    /// N `[` characters not preceded by a backslash
     CodeOpen(ParseSpan, usize),
-    /// `]` character not preceded by a backslash, preceded by N # characters
+    /// N `]` characters not preceded by a backslash
     CodeClose(ParseSpan, usize),
-    /// `{` character not preceded by a backslash plus N # characters, not followed by newline
-    InlineScopeOpen(ParseSpan, usize),
-    /// `{` character not preceded by a backslash plus N # characters, followed by newline
-    BlockScopeOpen(ParseSpan, usize),
-    /// `r{` sequence plus N # characters
-    ///
-    /// Escaped by escaping the SqgOpen - `r\{`
+    /// `{` character not preceded by a backslash, not followed by newline
+    InlineScopeOpen(ParseSpan),
+    /// `{` character not preceded by a backslash, followed by newline
+    BlockScopeOpen(ParseSpan),
+    /// `}` character not preceded by a backslash
+    ScopeClose(ParseSpan),
+    /// N hashes followed by `{` not preceded by a backslash
     RawScopeOpen(ParseSpan, usize),
-    /// `}` character not preceded by a backslash, preceded by N # characters
-    ScopeClose(ParseSpan, usize),
+    /// `}` character followed by N hashes not preceded by backslash
+    RawScopeClose(ParseSpan, usize),
     /// See [Unit::Hashes]
     Hashes(ParseSpan, usize),
     /// See [Unit::OtherText]
@@ -348,48 +356,44 @@ impl TTToken {
             (Unit::OtherText(s), _, _) => (TTToken::OtherText(*s), 1),
 
             // Code open and close
-            (Unit::Hashes(s_start, n), Some(Unit::CodeOpen(s_end)), _) => (
-                TTToken::CodeOpen(ParseSpan::new(s_start.start, s_end.end), *n),
-                2,
-            ),
-            (Unit::CodeClose(s_start), Some(Unit::Hashes(s_end, n)), _) => (
-                TTToken::CodeClose(ParseSpan::new(s_start.start, s_end.end), *n),
-                2,
-            ),
-            (Unit::CodeOpen(s), _, _) => (TTToken::CodeOpen(*s, 0), 1),
-            (Unit::CodeClose(s), _, _) => (TTToken::CodeClose(*s, 0), 1),
+            (Unit::CodeClose(span, n), _, _) => (TTToken::CodeClose(*span, *n), 1),
+            (Unit::CodeOpen(s, n), _, _) => (TTToken::CodeOpen(*s, *n), 1),
 
             // Block Scope Open
-            (Unit::Hashes(s_start, n), Some(Unit::ScopeOpen(_)), Some(Unit::Newline(s_end))) => (
-                TTToken::BlockScopeOpen(ParseSpan::new(s_start.start, s_end.end), *n),
-                3,
-            ),
             (Unit::ScopeOpen(s_start), Some(Unit::Newline(s_end)), _) => (
-                TTToken::BlockScopeOpen(ParseSpan::new(s_start.start, s_end.end), 0),
+                TTToken::BlockScopeOpen(ParseSpan::new(s_start.start, s_end.end)),
                 2,
             ),
 
             // Inline scope open
-            (Unit::Hashes(s_start, n), Some(Unit::ScopeOpen(s_end)), _) => (
-                TTToken::InlineScopeOpen(ParseSpan::new(s_start.start, s_end.end), *n),
-                2,
-            ),
-            (Unit::ScopeOpen(s), _, _) => (TTToken::InlineScopeOpen(*s, 0), 1),
+            (Unit::ScopeOpen(s), _, _) => (TTToken::InlineScopeOpen(*s), 1),
 
             // Raw scope open
-            (Unit::Hashes(s_start, n), Some(Unit::RawScopeOpen(s_end)), _) => (
-                TTToken::RawScopeOpen(ParseSpan::new(s_start.start, s_end.end), *n),
+            (Unit::Hashes(s_start, n), Some(Unit::ScopeOpen(s_end)), _) => (
+                TTToken::RawScopeOpen(
+                    ParseSpan {
+                        start: s_start.start,
+                        end: s_end.end,
+                    },
+                    *n,
+                ),
                 2,
             ),
-            (Unit::RawScopeOpen(s), _, _) => (TTToken::RawScopeOpen(*s, 0), 1),
 
             // Scope close
             (Unit::ScopeClose(s_start), Some(Unit::Hashes(s_end, n)), _) => (
-                TTToken::ScopeClose(ParseSpan::new(s_start.start, s_end.end), *n),
+                TTToken::RawScopeClose(
+                    ParseSpan {
+                        start: s_start.start,
+                        end: s_end.end,
+                    },
+                    *n,
+                ),
                 2,
             ),
-            (Unit::ScopeClose(s), _, _) => (TTToken::ScopeClose(*s, 0), 1),
+            (Unit::ScopeClose(s), _, _) => (TTToken::ScopeClose(*s), 1),
 
+            // Raw scope close
             (Unit::Hashes(s, n), _, _) => (TTToken::Hashes(*s, *n), 1),
         }
     }
@@ -407,11 +411,12 @@ impl TTToken {
             Escaped(_, Escapable::Newline) => "\\\n",
             Escaped(span, _)
             | RawScopeOpen(span, _)
+            | RawScopeClose(span, _)
             | CodeOpen(span, _)
             | CodeClose(span, _)
-            | BlockScopeOpen(span, _)
-            | InlineScopeOpen(span, _)
-            | ScopeClose(span, _)
+            | BlockScopeOpen(span)
+            | InlineScopeOpen(span)
+            | ScopeClose(span)
             | Hashes(span, _)
             | OtherText(span) => &data[span.byte_range()],
         }
@@ -439,11 +444,12 @@ impl TTToken {
                 Escapable::Hash => "#",
             },
             RawScopeOpen(span, _)
+            | RawScopeClose(span, _)
             | CodeOpen(span, _)
             | CodeClose(span, _)
-            | BlockScopeOpen(span, _)
-            | InlineScopeOpen(span, _)
-            | ScopeClose(span, _)
+            | BlockScopeOpen(span)
+            | InlineScopeOpen(span)
+            | ScopeClose(span)
             | Hashes(span, _)
             | OtherText(span) => &data[span.byte_range()],
         }
