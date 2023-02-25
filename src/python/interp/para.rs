@@ -4,7 +4,7 @@ use crate::{
     lexer::{Escapable, TTToken},
     python::{
         interop::*,
-        interp::{handle_code_mode, InterpError, MapInterpResult},
+        interp::{handle_code_mode, EvalBracketResult, InterpError, MapInterpResult},
         typeclass::PyTcRef,
     },
     util::ParseSpan,
@@ -41,15 +41,9 @@ enum InterpSentenceState {
         code_start: ParseSpan,
         expected_n_hashes: usize,
     },
-    /// Having constructed some code which expects inline scope,
-    /// expecting the next token to be an inline or raw scope
-    AttachingInlineLevelCode {
-        owner: PyTcRef<InlineScopeOwner>,
-        code_span: ParseSpan,
-    },
     /// When building raw text, optionally attached to an InlineScopeOwner
     BuildingRawText {
-        owner: Option<PyTcRef<InlineScopeOwner>>,
+        owner: Option<PyTcRef<RawScopeOwner>>,
         text: String,
         raw_start: ParseSpan,
         expected_n_hashes: usize,
@@ -80,7 +74,7 @@ pub(crate) enum InterpParaTransition {
     ///
     /// - [InterpSentenceState::SentenceStart] -> [InterpSentenceState::MidSentence]
     /// - [InterpSentenceState::MidSentence] -> [InterpSentenceState::MidSentence]
-    /// - [InterpSentenceState::AttachingInlineLevelCode] -> [InterpSentenceState::MidSentence]
+    /// - [InterpSentenceState::BuildingCode] -> [InterpSentenceState::MidSentence]
     /// - [InterpSentenceState::BuildingText] -> [InterpSentenceState::MidSentence]
     PushInlineScope(Option<PyTcRef<InlineScopeOwner>>, ParseSpan),
 
@@ -99,13 +93,6 @@ pub(crate) enum InterpParaTransition {
     /// - [InterpSentenceState::MidSentence] -> [InterpSentenceState::BuildingCode]
     /// - [InterpSentenceState::BuildingText] -> [InterpSentenceState::BuildingCode]
     StartInlineLevelCode(ParseSpan, usize),
-
-    /// Having finished a code close which evals to [InlineScopeOwner],
-    /// start a one-token wait for an inline or raw scope to attach it to
-    ///
-    /// - [InterpSentenceState::BuildingCode] -> [InterpSentenceState::AttachingInlineLevelCode]
-    /// - (other block state) -> [InterpSentenceState::AttachingInlineLevelCode]
-    WaitToAttachInlineCode(PyTcRef<InlineScopeOwner>, ParseSpan),
 
     /// See [InterpBlockTransition::EndParagraph]
     ///
@@ -139,9 +126,8 @@ pub(crate) enum InterpParaTransition {
     /// - [InterpSentenceState::SentenceStart] -> [InterpSentenceState::BuildingRawText]
     /// - [InterpSentenceState::MidSentence] -> [InterpSentenceState::BuildingRawText]
     /// - [InterpSentenceState::BuildingText] -> [InterpSentenceState::BuildingRawText]
-    /// - [InterpSentenceState::AttachingInlineLevelCode] -> [InterpSentenceState::BuildingRawText]
     /// - (other block state) -> [InterpSentenceState::BuildingRawText]
-    StartRawScope(Option<PyTcRef<InlineScopeOwner>>, ParseSpan, usize),
+    StartRawScope(Option<PyTcRef<RawScopeOwner>>, ParseSpan, usize),
 
     /// On encountering inline text, start processing a string of text
     ///
@@ -185,9 +171,6 @@ impl InterpParaState {
             // Error states
             InterpSentenceState::BuildingCode { code_start, .. } => {
                 return Err(InterpError::EndedInsideCode { code_start })
-            }
-            InterpSentenceState::AttachingInlineLevelCode { code_span, .. } => {
-                return Err(InterpError::InlineOwnerCodeHasNoScope { code_span })
             }
             InterpSentenceState::BuildingRawText { raw_start, .. } => {
                 return Err(InterpError::EndedInsideRawScope {
@@ -270,10 +253,7 @@ impl InterpParaState {
                 }
 
                 (
-                    S::SentenceStart
-                    | S::MidSentence
-                    | S::AttachingInlineLevelCode { .. }
-                    | S::BuildingText(_),
+                    S::SentenceStart | S::MidSentence | S::BuildingCode { .. } | S::BuildingText(_),
                     T::PushInlineScope(owner, span),
                 ) => {
                     let scope = InterpInlineScopeState {
@@ -296,10 +276,7 @@ impl InterpParaState {
                 }
 
                 (
-                    S::SentenceStart
-                    | S::MidSentence
-                    | S::BuildingText(_)
-                    | S::AttachingInlineLevelCode { .. }, // or another block state, which would be inited as InitState
+                    S::SentenceStart | S::MidSentence | S::BuildingText(_) | S::BuildingCode { .. },
                     T::StartRawScope(owner, raw_start, expected_n_hashes),
                 ) => (
                     S::BuildingRawText {
@@ -320,13 +297,6 @@ impl InterpParaState {
                         code_start,
                         expected_n_hashes,
                     },
-                    (None, None),
-                ),
-                (
-                    S::SentenceStart | S::BuildingCode { .. },
-                    T::WaitToAttachInlineCode(owner, code_span),
-                ) => (
-                    S::AttachingInlineLevelCode { owner, code_span },
                     (None, None),
                 ),
 
@@ -490,41 +460,32 @@ impl InterpParaState {
                 code_start,
                 expected_n_hashes,
             } => {
-                let code_span = handle_code_mode(data, tok, code, code_start, *expected_n_hashes);
-                match code_span {
-                    Some(code_span) => {
+                match handle_code_mode(
+                    data,
+                    tok,
+                    code,
+                    code_start,
+                    *expected_n_hashes,
+                    py,
+                    globals,
+                )? {
+                    Some((res, code_span)) => {
                         // The code ended...
                         use EvalBracketResult::*;
 
-                        // The code ended...
-                        let res = EvalBracketResult::eval(py, globals, code.as_str())
-                            .err_as_interp(py, code_span)?;
                         let inl_transition = match res {
                             Block(_) => {
                                 return Err(InterpError::BlockOwnerCodeMidPara { code_span })
                             }
-                            Inline(i) => WaitToAttachInlineCode(i, code_span),
+                            Inline(i) => PushInlineScope(Some(i), code_span),
+                            Raw(r, n_hashes) => StartRawScope(Some(r), code_span, n_hashes),
                             Other(s) => PushInlineContent(InlineNodeToCreate::UnescapedPyString(s)),
                         };
                         Some(inl_transition)
-                        // if eval_result is a BlockScopeOwner, fail! can't have block scope inside inline text
-                        // elif eval_result is an InlineScopeOwner, WaitToAttachInlineCode
-                        // else stringify and PushInlineContent
                     }
                     None => None,
                 }
             }
-            InterpSentenceState::AttachingInlineLevelCode { owner, code_span } => match tok {
-                InlineScopeOpen(span) => Some(PushInlineScope(Some(owner.clone()), span)),
-                RawScopeOpen(span, n_hashes) => {
-                    Some(StartRawScope(Some(owner.clone()), span, n_hashes))
-                }
-                _ => {
-                    return Err(InterpError::InlineOwnerCodeHasNoScope {
-                        code_span: *code_span,
-                    })
-                }
-            },
             InterpSentenceState::BuildingRawText {
                 owner,
                 text,

@@ -2,7 +2,6 @@ use std::path::Path;
 
 use pyo3::{
     exceptions::PyRuntimeError,
-    ffi::getter,
     prelude::*,
     types::{PyDict, PyIterator, PyString, PyTuple},
 };
@@ -67,7 +66,7 @@ impl PyTypeclass for InlineNode {
     }
 }
 
-/// Typeclass representing the "owner" of a scope, which may modify how that scope is rendered.
+/// Typeclass representing the "owner" of a block scope, which may modify how that scope is rendered.
 #[derive(Debug, Clone)]
 pub struct BlockScopeOwner {}
 impl PyTypeclass for BlockScopeOwner {
@@ -75,14 +74,7 @@ impl PyTypeclass for BlockScopeOwner {
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
         // TODO intern!() here
-        let marked_as_block = obj.hasattr("owns_block_scope")?;
-        let marked_as_inline = obj.hasattr("owns_inline_scope")?;
-
-        if marked_as_block && marked_as_inline {
-            return Err(PyRuntimeError::new_err("Item marked as block scope owner and inline scope owner at the same time! That shouldn't be."));
-        }
-
-        let mut fits = obj.is_callable() && marked_as_block;
+        let mut fits = obj.is_callable() && obj.hasattr("owns_block_scope")?;
         #[cfg(test)]
         {
             let is_test_str = obj.str()?.to_str()?.contains("TestBlockScope");
@@ -128,7 +120,7 @@ impl BlockScopeOwnerDecorator {
     }
 }
 
-/// Typeclass representing the "owner" of a scope, which may modify how that scope is rendered.
+/// Typeclass representing the "owner" of an inline scope, which may modify how that scope is rendered.
 #[derive(Debug, Clone)]
 pub struct InlineScopeOwner {}
 impl PyTypeclass for InlineScopeOwner {
@@ -136,14 +128,7 @@ impl PyTypeclass for InlineScopeOwner {
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
         // TODO intern!() here
-        let marked_as_block = obj.hasattr("owns_block_scope")?;
-        let marked_as_inline = obj.hasattr("owns_inline_scope")?;
-
-        if marked_as_block && marked_as_inline {
-            return Err(PyRuntimeError::new_err("Item marked as block scope owner and inline scope owner at the same time! That shouldn't be."));
-        }
-
-        let mut fits = obj.is_callable() && marked_as_inline;
+        let mut fits = obj.is_callable() && obj.hasattr("owns_inline_scope")?;
         #[cfg(test)]
         {
             let is_test_str = obj.str()?.to_str()?.contains("TestInlineScope");
@@ -182,6 +167,58 @@ impl InlineScopeOwnerDecorator {
     fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
         let obj = self.inner.call(py, args, kwargs)?;
         obj.setattr(py, "owns_inline_scope", true)?;
+        Ok(obj)
+    }
+}
+
+/// Typeclass representing the "owner" of a raw scope, which interprets how that scope is rendered
+#[derive(Debug, Clone)]
+pub struct RawScopeOwner {}
+impl PyTypeclass for RawScopeOwner {
+    const NAME: &'static str = "RawScopeOwner";
+
+    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
+        // TODO intern!() here
+        let mut fits = obj.is_callable() && obj.hasattr("owns_raw_scope")?;
+        #[cfg(test)]
+        {
+            let is_test_str = obj.str()?.to_str()?.contains("TestRawScope");
+            fits = fits || is_test_str
+        }
+
+        Ok(fits)
+    }
+}
+
+/// Decorator which allows functions-returning-functions to fit the RawScopeOwner typeclass.
+///
+/// e.g. one could define a function
+/// ```python
+/// @raw_scope_owner
+/// def math(name=""):
+///     def inner(raw_text):
+///         return ...
+///     return inner
+/// ```
+/// which allows turnip-text as so:
+/// ```!text
+/// [math()]#{\sin\(x\)}#
+/// ```
+#[pyclass(name = "raw_scope_owner")]
+struct RawScopeOwnerDecorator {
+    inner: Py<PyAny>,
+}
+#[pymethods]
+impl RawScopeOwnerDecorator {
+    #[new]
+    fn __new__(inner: Py<PyAny>) -> Self {
+        Self { inner }
+    }
+
+    #[args(args = "*", kwargs = "**")]
+    fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
+        let obj = self.inner.call(py, args, kwargs)?;
+        obj.setattr(py, "owns_raw_scope", true)?;
         Ok(obj)
     }
 }
@@ -265,11 +302,11 @@ impl Paragraph {
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct RawText {
-    pub owner: Option<PyTcRef<InlineScopeOwner>>,
+    pub owner: Option<PyTcRef<RawScopeOwner>>,
     pub contents: Py<PyString>,
 }
 impl RawText {
-    pub fn new_rs(py: Python, owner: Option<PyTcRef<InlineScopeOwner>>, s: &str) -> Self {
+    pub fn new_rs(py: Python, owner: Option<PyTcRef<RawScopeOwner>>, s: &str) -> Self {
         Self {
             owner,
             contents: PyString::new(py, s).into_py(py),
@@ -375,26 +412,5 @@ impl InlineScope {
 
     pub fn push_node(&mut self, node: &PyAny) -> PyResult<()> {
         self.children.append_checked(node)
-    }
-}
-
-pub enum EvalBracketResult {
-    Block(PyTcRef<BlockScopeOwner>),
-    Inline(PyTcRef<InlineScopeOwner>),
-    Other(Py<PyString>),
-}
-impl EvalBracketResult {
-    pub fn eval(py: Python, globals: &PyDict, code: &str) -> PyResult<EvalBracketResult> {
-        // Python picks up leading whitespace as an incorrect indent
-        let code = code.trim();
-        let raw_res = py.eval(code, Some(globals), None)?;
-        let res = if let Ok(val) = PyTcRef::of(raw_res) {
-            EvalBracketResult::Inline(val)
-        } else if let Ok(val) = PyTcRef::of(raw_res) {
-            EvalBracketResult::Block(val)
-        } else {
-            EvalBracketResult::Other(raw_res.str()?.into_py(py))
-        };
-        Ok(res)
     }
 }

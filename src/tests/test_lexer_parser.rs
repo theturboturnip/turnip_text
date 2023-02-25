@@ -29,6 +29,9 @@ pub enum TestTTToken<'a> {
     Backslash,
     CodeOpen(usize),
     CodeClose(usize),
+    CodeCloseOwningBlock(usize),
+    CodeCloseOwningInline(usize),
+    CodeCloseOwningRaw(usize, usize),
     InlineScopeOpen,
     BlockScopeOpen,
     RawScopeOpen(usize),
@@ -45,6 +48,11 @@ impl<'a> TestTTToken<'a> {
             TTToken::Backslash(_) => Self::Backslash,
             TTToken::CodeOpen(_, n) => Self::CodeOpen(n),
             TTToken::CodeClose(_, n) => Self::CodeClose(n),
+            TTToken::CodeCloseOwningBlock(_, n) => Self::CodeCloseOwningBlock(n),
+            TTToken::CodeCloseOwningInline(_, n) => Self::CodeCloseOwningInline(n),
+            TTToken::CodeCloseOwningRaw(_, n_code, n_hashes) => {
+                Self::CodeCloseOwningRaw(n_code, n_hashes)
+            }
             TTToken::InlineScopeOpen(_) => Self::InlineScopeOpen,
             TTToken::BlockScopeOpen(_) => Self::BlockScopeOpen,
             TTToken::RawScopeOpen(_, n) => Self::RawScopeOpen(n),
@@ -886,7 +894,7 @@ pub fn test_mismatching_raw_scope_close() {
         Err(TestInterpError::EndedInsideRawScope {
             raw_scope_start: TestParserSpan {
                 start: (1, 1),
-                end: (1, 3),
+                end: (1, 4),
             },
         }),
     )
@@ -925,7 +933,7 @@ pub fn test_ended_inside_scope() {
         Err(TestInterpError::SentenceBreakInInlineScope {
             scope_start: TestParserSpan {
                 start: (1, 6),
-                end: (1, 9),
+                end: (1, 7),
             },
         }),
     )
@@ -969,8 +977,7 @@ It was the best of the times, it was the blurst of times
         vec![
             CodeOpen(1),
             OtherText(r#""TestBlockScope""#),
-            CodeClose(1),
-            BlockScopeOpen,
+            CodeCloseOwningBlock(1),
             OtherText("It was the best of the times, it was the blurst of times"),
             Newline,
             ScopeClose,
@@ -996,8 +1003,7 @@ Some ["TestInlineScope"]{special} text
             OtherText("Some "),
             CodeOpen(1),
             OtherText(r#""TestInlineScope""#),
-            CodeClose(1),
-            InlineScopeOpen,
+            CodeCloseOwningInline(1),
             OtherText("special"),
             ScopeClose,
             OtherText(" text"),
@@ -1015,16 +1021,15 @@ Some ["TestInlineScope"]{special} text
 }
 
 #[test]
-pub fn test_owned_inline_raw_scope() {
+pub fn test_owned_inline_raw_scope_with_newline() {
     expect_tokens(
-        r#"["TestInlineScope"]#{
+        r#"["TestRawScope"]#{
 import os
 }#"#,
         vec![
             CodeOpen(1),
-            OtherText("\"TestInlineScope\""),
-            CodeClose(1),
-            RawScopeOpen(1),
+            OtherText("\"TestRawScope\""),
+            CodeCloseOwningRaw(1, 1),
             Newline,
             OtherText("import os"),
             Newline,
@@ -1032,38 +1037,12 @@ import os
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             TestInline::RawText {
-                owner: Some("TestInlineScope".into()),
+                owner: Some("TestRawScope".into()),
                 contents: r#"
 import os
 "#
                 .into(),
             },
         ]])])),
-    )
-}
-
-// TODO should this change? How does raw text interact with a block scope owner?
-#[test]
-pub fn test_owned_block_raw_scope() {
-    expect_tokens(
-        r#"["TestBlockScope"]#{
-import os
-}#"#,
-        vec![
-            CodeOpen(1),
-            OtherText("\"TestBlockScope\""),
-            CodeClose(1),
-            RawScopeOpen(1),
-            Newline,
-            OtherText("import os"),
-            Newline,
-            RawScopeClose(1),
-        ],
-        Err(TestInterpError::BlockOwnerCodeHasNoScope {
-            code_span: TestParserSpan {
-                start: (1, 1),
-                end: (1, 19),
-            },
-        }),
     )
 }

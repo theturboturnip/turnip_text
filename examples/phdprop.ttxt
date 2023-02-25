@@ -9,14 +9,14 @@
 # topic to research.
 
 
-CHERI[footnote]{[url]{https://www.cl.cam.ac.uk/research/security/ctsrd/cheri/}} is a project within the Cambridge Computer Lab which adds fine-grained memory security to computer architecture.
+CHERI[footnote()]{[url("https://www.cl.cam.ac.uk/research/security/ctsrd/cheri/")]} is a project within the Cambridge Computer Lab which adds fine-grained memory security to computer architecture.
 Instead of allowing programs to access arbitrary memory locations, which malicious code can exploit to access data it shouldn't, CHERI requires that memory is accessed through unforgeable `capabilities'.
 The computer hardware enforces that if a program receives a capability referring to a specific area of memory, the program cannot manipulate the capability to point outside that range.
 When a capability is `dereferenced', e.g. the memory it points to is accessed, one can be sure that it points to valid memory the program is allowed to access.
 This feature can resolve many security issues and bugs in modern programs, and industry seems to agree that CHERI is worthwhile. 
 Arm Ltd have developed a test chip using these capabilities in collaboration with Cambridge, and CHERI overall is aiming for wide adoption.
 
-CHERI initially focused on Central Processing Units (CPUs), the core elements of modern computers, and the CAPcelerate[footnote]{[url]{https://gow.epsrc.ukri.org/NGBOViewGrant.aspx?GrantRef=EP/V000381/1}} sub-project (also at Cambridge) is now investigating capabilities for hardware accelerators such as Graphics Processing Units (GPUs).
+CHERI initially focused on Central Processing Units (CPUs), the core elements of modern computers, and the CAPcelerate[footnote()]{[url("https://gow.epsrc.ukri.org/NGBOViewGrant.aspx?GrantRef=EP/V000381/1")]} sub-project (also at Cambridge) is now investigating capabilities for hardware accelerators such as Graphics Processing Units (GPUs).
 While a modern computer may have eight to sixteen CPUs, which are flexible, GPUs have thousands of small less-flexible cores.
 While GPUs were initially used for graphics, their high degree of parallelism is also useful for large-scale data processing such as Machine Learning (ML) in the cloud.
 GPUs can hold data that's sensitive at small-scale (e.g. data for displaying personalized web pages) and at large-scale (e.g. audio data used for training speech recognition), and adding capabilities to GPUs help protect this data from attackers.
@@ -47,7 +47,7 @@ Overall, it's clear the GPU can benefit from not relying on the OS to do e.g. me
 Unlike CPU programs, which can run for a long time, GPU tasks are often ephemeral.
 Rendering (generating an image of a 3D scene) is split into many short-lived tasks, and ML inference (evaluating a model to make decisions about data) typically doesn't take very long.
 This means the capabilities they hold only need to be valid for short amounts of time, and in some cases data itself can be short-lived.
-This could inform a new approach to capability [emph]{revocation}, a complex problem on the CPU[footnote]{[url]{https://www.cl.cam.ac.uk/research/security/ctsrd/pdfs/2020oakland-cornucopia.pdf}}, where capabilities could have a fixed lifetime instead of remaining valid forever.
+This could inform a new approach to capability [emph]{revocation}, a complex problem on the CPU[footnote()]{[url("https://www.cl.cam.ac.uk/research/security/ctsrd/pdfs/2020oakland-cornucopia.pdf")]}, where capabilities could have a fixed lifetime instead of remaining valid forever.
 Graphics tasks in particular expose simple units of lifetime, such as the number of frames rendered onscreen - a capability could only be valid for a fixed number of frames.
 To exploit this for revocation, GPUs would need a unique representation of capabilities that may not be compatible with existing CPU representations.
 
@@ -92,7 +92,7 @@ Linux does the latter by parsing a SoC-specific device tree file at boot time[ci
 Peripherals will store larger datasets, such as decoded Bluetooth audio signals, in their own internal buffers (essentially a separate [emph]{domain} to the rest of the system).
 To access this data, the main CPU has to request a Direct Memory Access (DMA) from this buffer into main memory.
 
-DMAs are performed by setting registers in a DMA Controller (DMAC) peripheral[footnote]{One such example is the Arm AMBA DMA-330 [cite("armltdAMBADMAController2009")]}, including the base address in the source and destination domains.
+DMAs are performed by setting registers in a DMA Controller (DMAC) peripheral[footnote()]{One such example is the Arm AMBA DMA-330 [cite("armltdAMBADMAController2009")]}, including the base address in the source and destination domains.
 For a peripheral-to-memory transfer, the source address will be in the peripheral domain, and the destination address could be a physical address.
 The DMAC then pulls data from the peripheral domain and writes it out to the physical main memory domain, pulling data across the domain boundary.
 This is a very simple example of domain crossing for physically separated hardware domains, but it isn't enough for dynamic software domains.
@@ -106,7 +106,7 @@ AMD[cite("amdAMDIOVirtualizationTechnology2021")], Arm[cite("armltdArmSMMUVer3")
 Each device is assigned a page table, and devices can optionally be split into different domains with different tables.
 The IOMMU can reuse page tables from the MMU, effectively granting peripherals the same permissions and address space as a specific process or VM.
 
-Unfortunately, IOMMUs are only as secure as their configuration[footnote]{[cite("morganIOMMUProtectionAttacks2018","markuzeTrueIOMMUProtection2016")] are examples of IOMMU attacks relying on windows of misconfigured protection} can have high overheads.
+Unfortunately, IOMMUs are only as secure as their configuration[footnote()]{[cite("morganIOMMUProtectionAttacks2018","markuzeTrueIOMMUProtection2016")] are examples of IOMMU attacks relying on windows of misconfigured protection} can have high overheads.
 An I/O TLB is essential to avoid walking the page table on every DMA operation, but it may not be large enough to handle high VM counts.
 PCIe's Address Translation Service (ATS) takes a different approach, effectively distributing the IOTLB across PCIe devices[cite("pcisigAddressTranslationServices2009")].
 The PCIe device consults the ATS for guest-to-host address translations, and stores them in an internal cache.
@@ -141,14 +141,14 @@ This means page tables on CUDA devices track the [enquote]{Aperture} of each pag
 Not content with this, Nvidia and AMD are pushing for more granular coherence and increasing memory sharing.
 
 In the HPC space, some systems connect the CPU and GPU using Nvidia's proprietary NVLINK connection standard, rather than PCIe [cite("ibmpower9nputeamFunctionalityPerformanceNVLink2018")].
-These connections have much higher bandwidth, and allow for coherence at the cache-line granularity on SVM [cite("nvidiacorporationCUDAProgrammingGuide")]{N.1.7} and directly accessing CPU page tables from the GPU [cite("nvidiacorporationCUDAProgrammingGuide")]{N.1.6}.
+These connections have much higher bandwidth, and allow for coherence at the cache-line granularity on SVM [cite(("nvidiacorporationCUDAProgrammingGuide", "N.1.7"))] and directly accessing CPU page tables from the GPU [cite(("nvidiacorporationCUDAProgrammingGuide", "N.1.6"))].
 The latter is only available on IBM Power9 systems, but expands SVM to [emph]{all memory in the system}, not just memory specifically allocated by CUDA.
 On more conventional PCIe based systems, this isn't yet possible, and drivers have to manually synchronize the GPU and CPU MMUs.
 Linux has introduced a Heterogeneous Memory Management kernel module[cite("linuxkernelHeterogeneousMemoryManagement","hubbardGPUsHMMHeterogeneous2017")] to make this process easier, and it's currently used by the unofficial Nouveau drivers for Nvidia GPUs[cite("larabelMesa20Nouveau2020")] and the official AMD ROCm drivers[cite("larabelRadeonROCmReleased2021")].
 
 Nvidia's Arm-based Tegra SoCs take a different approach where both the CPU and GPU use the same System MMU and DRAM[cite("nvidiacorporationNVIDIAJetsonTX22017")].
 This is also done on SoCs with Arm GPUs[cite("armltdMemoryManagementEmbedded2013")].
-On Tegra, GPUs can also snoop the CPU cache without using NVLink[cite("nvidiacorporationS8868CUDAXavier2018")]{Slide~24}, which they call I/O Coherency.
+On Tegra, GPUs can also snoop the CPU cache without using NVLink[cite(("nvidiacorporationS8868CUDAXavier2018", r"Slide~24"))], which they call I/O Coherency.
 
 The computing industry as a whole is leaning towards unifying device-attached memory with processor memory.
 CXL[cite("cxlconsortiumComputeExpressLink2021")] is a standardized protocol from Intel built on PCIe which uses three sub-protocols (CXL.io, CXL.cache, CXL.memory) to allow fine-grained coherence between device and host memory.
@@ -156,7 +156,7 @@ CXL[cite("cxlconsortiumComputeExpressLink2021")] is a standardized protocol from
 This is a promising protocol, and it has the backing of Nvidia, AMD, and Arm.
 It may become more relevant for GPUs in the future, but for now at least Nvidia has no reason to move away from NVLink.
 It also hasn't yet been widely implemented.
-The first Intel CPUs to support it (Sapphire Rapids microarchitecture [cite("intelAcceleratingPossibilitiesHPC2021")]{Slide~16}) are due to come out in 2022 [cite("intelUpdatesIntelNextGen2021")].
+The first Intel CPUs to support it (Sapphire Rapids microarchitecture [cite(("intelAcceleratingPossibilitiesHPC2021", r"Slide~16"))]) are due to come out in 2022 [cite("intelUpdatesIntelNextGen2021")].
 
 The idea of a coherent, unified address space and view of memory across all devices is compelling, especially given the convenience it affords some software.
 However, if not applied with care, it could compromise security and performance.

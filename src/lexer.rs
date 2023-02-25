@@ -303,11 +303,17 @@ pub enum TTToken {
     Backslash(ParsePosn),
     /// N `[` characters not preceded by a backslash
     CodeOpen(ParseSpan, usize),
-    /// N `]` characters not preceded by a backslash
+    /// N `]` characters not preceded by a backslash, not followed by a scope open
     CodeClose(ParseSpan, usize),
-    /// `{` character not preceded by a backslash, not followed by newline
+    /// N `]` characters followed by inline scope open (`{` not followed by newline)
+    CodeCloseOwningInline(ParseSpan, usize),
+    /// N `]` characters followed by raw scope open (N' hashes followed by `{`)
+    CodeCloseOwningRaw(ParseSpan, usize, usize),
+    /// N `]` characters followed by block scope open (`{` followed by newline)
+    CodeCloseOwningBlock(ParseSpan, usize),
+    /// `{` character not preceded by a backslash or code, not followed by newline
     InlineScopeOpen(ParseSpan),
-    /// `{` character not preceded by a backslash, followed by newline
+    /// `{` character not preceded by a backslash or code, followed by newline
     BlockScopeOpen(ParseSpan),
     /// `}` character not preceded by a backslash
     ScopeClose(ParseSpan),
@@ -356,8 +362,30 @@ impl TTToken {
             (Unit::OtherText(s), _, _) => (TTToken::OtherText(*s), 1),
 
             // Code open and close
-            (Unit::CodeClose(span, n), _, _) => (TTToken::CodeClose(*span, *n), 1),
             (Unit::CodeOpen(s, n), _, _) => (TTToken::CodeOpen(*s, *n), 1),
+            (Unit::CodeClose(s_start, n), Some(Unit::ScopeOpen(_)), Some(Unit::Newline(s_end))) => {
+                (
+                    TTToken::CodeCloseOwningBlock(ParseSpan::new(s_start.start, s_end.end), *n),
+                    3,
+                )
+            }
+            (
+                Unit::CodeClose(s_start, n),
+                Some(Unit::Hashes(_, n_hashes)),
+                Some(Unit::ScopeOpen(s_end)),
+            ) => (
+                TTToken::CodeCloseOwningRaw(
+                    ParseSpan::new(s_start.start, s_end.end),
+                    *n,
+                    *n_hashes,
+                ),
+                3,
+            ),
+            (Unit::CodeClose(s_start, n), Some(Unit::ScopeOpen(s_end)), _) => (
+                TTToken::CodeCloseOwningInline(ParseSpan::new(s_start.start, s_end.end), *n),
+                2,
+            ),
+            (Unit::CodeClose(span, n), _, _) => (TTToken::CodeClose(*span, *n), 1),
 
             // Block Scope Open
             (Unit::ScopeOpen(s_start), Some(Unit::Newline(s_end)), _) => (
@@ -414,6 +442,9 @@ impl TTToken {
             | RawScopeClose(span, _)
             | CodeOpen(span, _)
             | CodeClose(span, _)
+            | CodeCloseOwningBlock(span, _)
+            | CodeCloseOwningInline(span, _)
+            | CodeCloseOwningRaw(span, _, _)
             | BlockScopeOpen(span)
             | InlineScopeOpen(span)
             | ScopeClose(span)
@@ -447,6 +478,9 @@ impl TTToken {
             | RawScopeClose(span, _)
             | CodeOpen(span, _)
             | CodeClose(span, _)
+            | CodeCloseOwningBlock(span, _)
+            | CodeCloseOwningInline(span, _)
+            | CodeCloseOwningRaw(span, _, _)
             | BlockScopeOpen(span)
             | InlineScopeOpen(span)
             | ScopeClose(span)

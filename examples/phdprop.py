@@ -1,6 +1,7 @@
-from typing import List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from turnip_text import *
 from dataclasses import dataclass
+import uuid
 
 # TODO - move this logic into a Python-implemented LaTeX renderer library
 
@@ -8,16 +9,24 @@ def latex_escape(text: UnescapedText):
     # TODO
     return str(text)
 
-FOOTNOTE_TEXT = {}
+FOOTNOTE_TEXT: Dict[str, UnescapedText] = {}
 @dataclass(frozen=True)
 class FootnoteAnchor:
     label: str
+    # Can be used as an inline scope owner
+    owns_inline_scope = True
+    # If used as an inline scope owner, automatically set FOOTNOTE_TEXT and return self
+    def __call__(self, contents: UnescapedText) -> 'FootnoteAnchor':
+        FOOTNOTE_TEXT[self.label] = contents
+        return self
 
     def render(self):
         # TODO maybe have the footnote_text define the text there?
         return r"\footnote{" + latex_escape(FOOTNOTE_TEXT[self.label]) + "}"
 
-def footnote(label: str) -> FootnoteAnchor:
+def footnote(label: Optional[str]=None) -> FootnoteAnchor:
+    if label is None:
+        label = str(uuid.uuid4())
     return FootnoteAnchor(label)
 
 @inline_scope_owner
