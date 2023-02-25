@@ -6,7 +6,7 @@ fn main() {
 
     let ttpy = TurnipTextPython::new();
     eprintln!("Created TurnipTextPython");
-    let res = ttpy.with_gil(|py| -> PyResult<()> {
+    ttpy.with_gil(|py| -> PyResult<()> {
         eprintln!("interpreter got GIL");
 
         let locals = PyDict::new(py);
@@ -19,5 +19,6 @@ fn main() {
         py.run("import turniptext", None, Some(&locals)).unwrap();
         eprintln!("run import turniptext success");
         Ok(())
-    });
+    })
+    .unwrap();
 }
