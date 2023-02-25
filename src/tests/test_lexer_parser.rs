@@ -1026,30 +1026,71 @@ It was the best of the times, it was the blurst of times
 }
 
 #[test]
-pub fn test_owned_inline_scope() {
+pub fn test_owned_block_scope_with_non_block_owner() {
     expect_tokens(
-        r#"
-Some [TEST_INLINE_OWNER]{special} text
+        r#"[None]{
+It was the best of the times, it was the blurst of times
+}
 "#,
         vec![
+            CodeOpen(1),
+            OtherText("None"),
+            CodeCloseOwningBlock(1),
+            OtherText("It was the best of the times, it was the blurst of times"),
             Newline,
-            OtherText("Some "),
+            ScopeClose,
+            Newline,
+        ],
+        Err(TestInterpError::PythonErr {
+            pyerr: "TypeError : Expected object fitting typeclass BlockScopeOwner, didn't get it"
+                .into(),
+            code_span: TestParserSpan {
+                start: (1, 1),
+                end: (2, 1),
+            },
+        }),
+    )
+}
+
+#[test]
+pub fn test_owned_inline_scope() {
+    expect_tokens(
+        r"[TEST_INLINE_OWNER]{special text}",
+        vec![
             CodeOpen(1),
             OtherText("TEST_INLINE_OWNER"),
             CodeCloseOwningInline(1),
-            OtherText("special"),
+            OtherText("special text"),
             ScopeClose,
-            OtherText(" text"),
-            Newline,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            test_text("Some "),
             TestInline::InlineScope {
                 owner: Some("TEST_INLINE_OWNER".into()),
-                contents: vec![test_text("special")],
+                contents: vec![test_text("special text")],
             },
-            test_text(" text"),
         ]])])),
+    )
+}
+
+#[test]
+pub fn test_owned_inline_scope_with_non_inline_owner() {
+    expect_tokens(
+        r"[None]{special text}",
+        vec![
+            CodeOpen(1),
+            OtherText("None"),
+            CodeCloseOwningInline(1),
+            OtherText("special text"),
+            ScopeClose,
+        ],
+        Err(TestInterpError::PythonErr {
+            pyerr: "TypeError : Expected object fitting typeclass InlineScopeOwner, didn't get it"
+                .into(),
+            code_span: TestParserSpan {
+                start: (1, 1),
+                end: (1, 8),
+            },
+        }),
     )
 }
 
@@ -1077,5 +1118,31 @@ import os
                 .into(),
             },
         ]])])),
+    )
+}
+
+#[test]
+pub fn test_owned_inline_raw_scope_with_non_raw_owner() {
+    expect_tokens(
+        r#"[None]#{
+import os
+}#"#,
+        vec![
+            CodeOpen(1),
+            OtherText("None"),
+            CodeCloseOwningRaw(1, 1),
+            Newline,
+            OtherText("import os"),
+            Newline,
+            RawScopeClose(1),
+        ],
+        Err(TestInterpError::PythonErr {
+            pyerr: "TypeError : Expected object fitting typeclass RawScopeOwner, didn't get it"
+                .into(),
+            code_span: TestParserSpan {
+                start: (1, 1),
+                end: (1, 9),
+            },
+        }),
     )
 }
