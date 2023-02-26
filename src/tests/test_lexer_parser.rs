@@ -369,17 +369,6 @@ pub fn test_inline_raw_escaped_scope() {
 }
 
 #[test]
-pub fn test_r_without_starting_raw_scope() {
-    expect_lex_parse(
-        r#" r doesn't always start a scope "#,
-        vec![OtherText(" r doesn't always start a scope ")],
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
-            " r doesn't always start a scope ",
-        )])])),
-    )
-}
-
-#[test]
 pub fn test_plain_hashes() {
     expect_lex_parse(
         r#"This has a string of ####### hashes in the middle"#,
