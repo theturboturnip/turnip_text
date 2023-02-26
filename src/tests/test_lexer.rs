@@ -192,7 +192,18 @@ pub fn test_newline() {
 
 #[test]
 pub fn test_whitespace_newline_chain() {
-    expect_lex("      \n", vec![Whitespace("      "), Newline])
+    expect_lex(
+        "    \n    \r    \r\n    ",
+        vec![
+            Whitespace("    "),
+            Newline,
+            Whitespace("    "),
+            Newline,
+            Whitespace("    "),
+            Newline,
+            Whitespace("    "),
+        ],
+    )
 }
 
 /// Test escaped things
