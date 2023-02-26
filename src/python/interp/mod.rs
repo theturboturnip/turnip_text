@@ -321,11 +321,11 @@ impl<'a> InterpState<'a> {
 
                     // Do nothing - we're still ready to receive a new block
                     Newline(_) => (None, None),
+                    // Ignore whitespace at the start of a paragraph
+                    Whitespace(_) => (None, None),
 
                     // Enter comment mode
                     Hashes(span, _) => (None, Some(InterpSpecialTransition::StartComment(span))),
-
-                    // TODO! Ignore whitespace at the start of a new paragraph
 
                     // Normal text - start a new paragraph
                     _ => (

@@ -385,6 +385,8 @@ impl InterpParaState {
                 // Escaped newline => "Continue sentence".
                 // at the start of a sentence, "Continue sentence" has no meaning
                 Escaped(_, Escapable::Newline) => None,
+                // Ignore whitespace at the start of lines
+                Whitespace(_) => None,
 
                 Newline(span) => Some(EndParagraph(Some(span))),
                 Hashes(span, _) => Some(StartComment(span)),
@@ -426,14 +428,15 @@ impl InterpParaState {
                     return Err(InterpError::RawScopeCloseOutsideRawScope(span))
                 }
 
-                _ => Some(StartText(tok.stringify_escaped(data).into())),
+                // Whitespace is included in text
+                Whitespace(_) | _ => Some(StartText(tok.stringify_escaped(data).into())),
             },
             InterpSentenceState::BuildingText(text) => match tok {
                 // Escaped newline => "Continue sentence".
                 // mid-sentence, "Continue sentence" has no meaning
                 Escaped(_, Escapable::Newline) => None,
 
-                // Newline => Sentence break (TODO this needs to be changed, we at least need to be able to escape it?)
+                // Newline => Sentence break
                 Newline(_) => Some(BreakSentence),
                 Hashes(span, _) => Some(StartComment(span)),
 
@@ -450,7 +453,8 @@ impl InterpParaState {
                     return Err(InterpError::RawScopeCloseOutsideRawScope(span))
                 }
 
-                _ => {
+                // Whitespace is included in text
+                Whitespace(_) | _ => {
                     text.push_str(tok.stringify_escaped(data));
                     None
                 }
