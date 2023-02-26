@@ -34,7 +34,14 @@ enum InterpSentenceState {
     /// When in the middle of a sentence, ready for any inline token
     MidSentence,
     /// After encountering text, allow further text to be merged in
-    BuildingText(String),
+    BuildingText {
+        text: String,
+        /// pending_whitespace is appended to `text` before new text is added, but can be ignored in certain scenarios.
+        ///
+        /// e.g. "the" + Whitespace(" ") => ("the", " ") - when the next token is "apple", becomes "the" + " " + "apple"
+        /// but for "the" + Whitespace(" ") + Newline, the pending_whitespace is dropped.
+        pending_whitespace: Option<String>,
+    },
     /// When in code mode
     BuildingCode {
         code: String,
@@ -113,7 +120,7 @@ pub(crate) enum InterpParaTransition {
 
     /// Finishes the current BuildingText if in progress, pushes it to topmost scope, enters comment mode
     ///
-    /// TODO should this break the current sentence or no?
+    /// Breaks the current sentence
     ///
     /// - [InterpSentenceState::SentenceStart] -> (comment mode) + [InterpSentenceState::MidSentence]
     /// - [InterpSentenceState::MidSentence] -> (comment mode) + [InterpSentenceState::MidSentence]
@@ -163,7 +170,7 @@ impl InterpParaState {
                 // This will automatically check if we're inside an inline scope
                 self.handle_transition(py, Some(InterpParaTransition::EndParagraph(None)))
             }
-            InterpSentenceState::BuildingText(_) => {
+            InterpSentenceState::BuildingText { .. } => {
                 self.handle_transition(py, Some(InterpParaTransition::BreakSentence))?;
                 // This will automatically check if we're inside an inline scope
                 self.handle_transition(py, Some(InterpParaTransition::EndParagraph(None)))
@@ -206,54 +213,79 @@ impl InterpParaState {
             use InterpSentenceState as S;
 
             // All transitions interrupt the current Text token
-            if let S::BuildingText(text) = &self.sentence_state {
+            if let S::BuildingText {
+                text,
+                pending_whitespace,
+            } = &mut self.sentence_state
+            {
+                if let Some(pw) = pending_whitespace {
+                    // Decide if we want to push the pending_whitespace
+                    let combine_whitespace = match &transition {
+                        T::BreakSentence
+                        | T::EndParagraph(_)
+                        | T::EndParagraphAndPopBlock(_)
+                        | T::StartComment(_) => false,
+                        _ => true,
+                    };
+                    if combine_whitespace {
+                        text.push_str(pw);
+                        *pending_whitespace = None;
+                    }
+                }
                 // Finish the text-in-progress and push to topmost scope
-                self.push_built_text_to_topmost_scope(py, text)?;
+                let node = InlineNodeToCreate::UnescapedText(text.clone()).to_py(py)?;
+                self.push_to_topmost_scope(py, node.as_ref(py))?;
             }
 
             let (new_inl_state, transitions) = match (&self.sentence_state, transition) {
-                (S::SentenceStart | S::MidSentence | S::BuildingText(_), T::StartComment(span)) => {
-                    (
-                        S::MidSentence,
-                        (None, Some(InterpSpecialTransition::StartComment(span))),
-                    )
-                }
-
-                (S::SentenceStart | S::MidSentence, T::StartText(text)) => {
-                    (S::BuildingText(text), (None, None))
-                }
+                (S::SentenceStart | S::MidSentence, T::StartText(text)) => (
+                    S::BuildingText {
+                        text,
+                        pending_whitespace: None,
+                    },
+                    (None, None),
+                ),
 
                 (
                     S::SentenceStart
                     | S::MidSentence
                     | S::BuildingCode { .. }
                     | S::BuildingRawText { .. }
-                    | S::BuildingText(_),
+                    | S::BuildingText { .. },
                     T::PushInlineContent(content),
                 ) => {
                     let content = content.to_py(py)?;
                     self.push_to_topmost_scope(py, content.as_ref(py))?;
                     (S::MidSentence, (None, None))
                 }
-                (S::MidSentence | S::BuildingText(_), T::BreakSentence) => {
+                (S::MidSentence | S::BuildingText { .. }, T::BreakSentence) => {
                     // Ensure we don't have any inline scopes
                     self.check_inline_scopes_closed().map_err(|scope_start| {
                         InterpError::SentenceBreakInInlineScope { scope_start }
                     })?;
-                    // If the sentence has stuff in it, push it into the paragraph and make a new one
-                    if self.sentence.borrow(py).__len__(py) > 0 {
-                        self.para
-                            .borrow_mut(py)
-                            .push_sentence(self.sentence.as_ref(py))
-                            .err_as_interp_internal(py)?;
-                        self.sentence =
-                            Py::new(py, Sentence::new(py)).err_as_interp_internal(py)?;
-                    }
+                    self.break_sentence(py)?;
                     (S::SentenceStart, (None, None))
+                }
+                (
+                    S::SentenceStart | S::MidSentence | S::BuildingText { .. },
+                    T::StartComment(span),
+                ) => {
+                    // Ensure we don't have any inline scopes
+                    self.check_inline_scopes_closed().map_err(|scope_start| {
+                        InterpError::SentenceBreakInInlineScope { scope_start }
+                    })?;
+                    self.break_sentence(py)?;
+                    (
+                        S::SentenceStart,
+                        (None, Some(InterpSpecialTransition::StartComment(span))),
+                    )
                 }
 
                 (
-                    S::SentenceStart | S::MidSentence | S::BuildingCode { .. } | S::BuildingText(_),
+                    S::SentenceStart
+                    | S::MidSentence
+                    | S::BuildingCode { .. }
+                    | S::BuildingText { .. },
                     T::PushInlineScope(owner, span),
                 ) => {
                     let scope = InterpInlineScopeState {
@@ -264,7 +296,10 @@ impl InterpParaState {
                     self.inline_stack.push(scope);
                     (S::MidSentence, (None, None))
                 }
-                (S::SentenceStart | S::MidSentence | S::BuildingText(_), T::PopInlineScope(_)) => {
+                (
+                    S::SentenceStart | S::MidSentence | S::BuildingText { .. },
+                    T::PopInlineScope(_),
+                ) => {
                     let popped_scope = self.inline_stack.pop();
                     match popped_scope {
                         Some(popped_scope) => self.push_to_topmost_scope(py, popped_scope.scope.as_ref(py))?,
@@ -276,7 +311,10 @@ impl InterpParaState {
                 }
 
                 (
-                    S::SentenceStart | S::MidSentence | S::BuildingText(_) | S::BuildingCode { .. },
+                    S::SentenceStart
+                    | S::MidSentence
+                    | S::BuildingText { .. }
+                    | S::BuildingCode { .. },
                     T::StartRawScope(owner, raw_start, expected_n_hashes),
                 ) => (
                     S::BuildingRawText {
@@ -289,7 +327,7 @@ impl InterpParaState {
                 ),
 
                 (
-                    S::SentenceStart | S::MidSentence | S::BuildingText(_),
+                    S::SentenceStart | S::MidSentence | S::BuildingText { .. },
                     T::StartInlineLevelCode(code_start, expected_n_hashes),
                 ) => (
                     S::BuildingCode {
@@ -301,7 +339,7 @@ impl InterpParaState {
                 ),
 
                 (
-                    S::SentenceStart | S::MidSentence | S::BuildingText(_),
+                    S::SentenceStart | S::MidSentence | S::BuildingText { .. },
                     T::EndParagraph(para_break),
                 ) => {
                     if let Err(scope_start) = self.check_inline_scopes_closed() {
@@ -314,15 +352,7 @@ impl InterpParaState {
                             return Err(InterpError::EndedInsideScope { scope_start });
                         }
                     }
-                    // If the sentence has stuff in it, push it into the paragraph and make a new one
-                    if self.sentence.borrow(py).__len__(py) > 0 {
-                        self.para
-                            .borrow_mut(py)
-                            .push_sentence(self.sentence.as_ref(py))
-                            .err_as_interp_internal(py)?;
-                        self.sentence =
-                            Py::new(py, Sentence::new(py)).err_as_interp_internal(py)?;
-                    }
+                    self.break_sentence(py)?;
                     (
                         S::SentenceStart,
                         (Some(InterpBlockTransition::EndParagraph), None),
@@ -330,22 +360,14 @@ impl InterpParaState {
                 }
 
                 (
-                    S::SentenceStart | S::MidSentence | S::BuildingText(_),
+                    S::SentenceStart | S::MidSentence | S::BuildingText { .. },
                     T::EndParagraphAndPopBlock(scope_end_span),
                 ) => {
                     // This is only called when all inline scopes are closed - just assert they are
                     self.check_inline_scopes_closed().map_err(|_| {
                         InterpError::InternalErr("paragraph EndParagraphAndPopBlock transition invoked when inline scopes are still on the stack".into())
                     })?;
-                    // If the sentence has stuff in it, push it into the paragraph and make a new one
-                    if self.sentence.borrow(py).__len__(py) > 0 {
-                        self.para
-                            .borrow_mut(py)
-                            .push_sentence(self.sentence.as_ref(py))
-                            .err_as_interp_internal(py)?;
-                        self.sentence =
-                            Py::new(py, Sentence::new(py)).err_as_interp_internal(py)?;
-                    }
+                    self.break_sentence(py)?;
                     (
                         S::SentenceStart,
                         (
@@ -370,6 +392,19 @@ impl InterpParaState {
             Ok((None, None))
         }
     }
+    /// Helper function
+    fn break_sentence(&mut self, py: Python) -> InterpResult<()> {
+        // If the sentence has stuff in it, push it into the paragraph and make a new one
+        if self.sentence.borrow(py).__len__(py) > 0 {
+            self.para
+                .borrow_mut(py)
+                .push_sentence(self.sentence.as_ref(py))
+                .err_as_interp_internal(py)?;
+            self.sentence = Py::new(py, Sentence::new(py)).err_as_interp_internal(py)?;
+        }
+        Ok(())
+    }
+
     fn mutate_state_and_find_transition(
         &mut self,
         py: Python,
@@ -431,7 +466,10 @@ impl InterpParaState {
                 // Whitespace is included in text
                 Whitespace(_) | _ => Some(StartText(tok.stringify_escaped(data).into())),
             },
-            InterpSentenceState::BuildingText(text) => match tok {
+            InterpSentenceState::BuildingText {
+                text,
+                pending_whitespace,
+            } => match tok {
                 // Escaped newline => "Continue sentence".
                 // mid-sentence, "Continue sentence" has no meaning
                 Escaped(_, Escapable::Newline) => None,
@@ -453,8 +491,20 @@ impl InterpParaState {
                     return Err(InterpError::RawScopeCloseOutsideRawScope(span))
                 }
 
-                // Whitespace is included in text
-                Whitespace(_) | _ => {
+                // Whitespace is pushed to pending_whitespace, and no transition takes place.
+                Whitespace(_) => {
+                    match pending_whitespace {
+                        Some(pw) => pw.push_str(tok.stringify_escaped(data)),
+                        None => *pending_whitespace = Some(tok.stringify_escaped(data).into()),
+                    };
+                    None
+                }
+                // Pushing normal text pushes (and zeroes) pending_whitespace if present, then pushes the text itself
+                _ => {
+                    if let Some(pw) = pending_whitespace {
+                        text.push_str(pw);
+                        *pending_whitespace = None;
+                    }
                     text.push_str(tok.stringify_escaped(data));
                     None
                 }
@@ -548,10 +598,5 @@ impl InterpParaState {
             None => self.sentence.borrow_mut(py).push_node(node),
         }
         .err_as_interp_internal(py)
-    }
-
-    fn push_built_text_to_topmost_scope(&self, py: Python, text: &String) -> InterpResult<()> {
-        let node = InlineNodeToCreate::UnescapedText(text.clone()).to_py(py)?;
-        self.push_to_topmost_scope(py, node.as_ref(py))
     }
 }

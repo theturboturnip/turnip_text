@@ -371,7 +371,7 @@ pub fn test_plain_hashes() {
             OtherText("after"),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![
-            test_sentence("before "), // The first hash in the chain starts a comment!
+            test_sentence("before"), // The first hash in the chain starts a comment, and trailing whitespace is ignored
         ])])),
     )
 }

@@ -616,7 +616,7 @@ pub fn test_plain_hashes() {
     expect_parse(
         r#"This has a string of ####### hashes in the middle"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![
-            test_sentence("This has a string of "), // The first hash in the chain starts a comment!
+            test_sentence("This has a string of"), // The first hash in the chain starts a comment, and trailing whitespace is ignored
         ])])),
     )
 }
@@ -624,11 +624,11 @@ pub fn test_plain_hashes() {
 #[test]
 pub fn test_comments() {
     expect_parse(
-        r#"It was the best of times, # but...
-it was the blurst of times"#,
+        r#"It was the best of times. # but...
+It was the blurst of times."#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![
-            test_sentence("It was the best of times, "),
-            test_sentence("it was the blurst of times"),
+            test_sentence("It was the best of times."),
+            test_sentence("it was the blurst of times."),
         ])])),
     )
 }
