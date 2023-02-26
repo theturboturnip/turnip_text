@@ -144,7 +144,7 @@ pub enum Unit {
     Hashes(ParseSpan, usize),
     /// Span of characters not included in [LexerPrefixSeq]
     OtherText(ParseSpan),
-    /// String of non-escaped whitespace characters.
+    /// String of non-escaped, whitespace, non-[Self::Newline] characters.
     /// The definition of whitespace comes from [char::is_whitespace], i.e. from Unicode
     Whitespace(ParseSpan),
     // TODO
@@ -239,7 +239,10 @@ impl Unit {
                 }
                 // Whitespace => Whitespace
                 LexerPrefixSeq::Whitespace => {
-                    match stream.do_while(state, ch, &|_, ch| ch.is_whitespace()) {
+                    // Match all whitespace except newlines
+                    match stream.do_while(state, ch, &|_, ch| {
+                        ch.is_whitespace() && ch != '\n' && ch != '\r'
+                    }) {
                         // We peeked a Whitespace prefix, so there must be at least one whitespace char
                         (end, Some(_)) => Ok(Some((
                             end,
