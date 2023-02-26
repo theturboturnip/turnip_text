@@ -15,9 +15,6 @@ use crate::{
 mod para;
 use self::para::{InterpParaState, InterpParaTransition};
 
-// TODO Make it an error to do [x]{content} when x is not an InlineScopeOwner or a BlockScopeOwner. Force some character between the code and the brace
-// TODO ignore whitespace at the start and end of lines
-
 pub struct InterpState<'a> {
     /// FSM state
     block_state: InterpBlockState,

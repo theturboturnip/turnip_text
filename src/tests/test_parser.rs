@@ -622,6 +622,18 @@ pub fn test_plain_hashes() {
 }
 
 #[test]
+pub fn test_comments() {
+    expect_parse(
+        r#"It was the best of times, # but...
+it was the blurst of times"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![
+            test_sentence("It was the best of times, "),
+            test_sentence("it was the blurst of times"),
+        ])])),
+    )
+}
+
+#[test]
 pub fn test_special_with_escaped_backslash() {
     expect_parse(
         r#"About to see a backslash! \\[None]"#,
@@ -757,5 +769,62 @@ block scope
                 contents: vec![test_text("inline scope")],
             }]]),
         ])),
+    )
+}
+
+#[test]
+pub fn test_strip_leading_whitespace() {
+    expect_parse(
+        r#"
+        Boy I sure hope this isn't indented!
+        It would be bad!
+        The test would be broken!"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![
+            test_sentence("Boy I sure hope this isn't indented!"),
+            test_sentence("It would be bad!"),
+            test_sentence("The test would be broken!"),
+        ])])),
+    )
+}
+
+#[test]
+pub fn test_strip_trailing_whitespace() {
+    expect_parse(
+        concat!(
+            r#"No whitespace allowed after this! 
+"#,
+            r#"I mean it!                        "#
+        ),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![
+            test_sentence("No whitespace allowed after this!"),
+            test_sentence("I mean it!"),
+        ])])),
+    )
+}
+
+#[test]
+pub fn test_strip_trailing_whitespace_before_comment() {
+    expect_parse(
+        concat!(
+            r#"No whitespace allowed after this!   # commented text doesn't prevent that 
+"#,
+            r#"I mean it!                          # it really doesn't! "#
+        ),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![
+            test_sentence("No whitespace allowed after this!"),
+            test_sentence("I mean it!"),
+        ])])),
+    )
+}
+
+#[test]
+pub fn test_not_strip_trailing_whitespace_before_escaped_newline() {
+    expect_parse(
+        r#"
+Whitespace is allowed after this \
+because you may need it to split up words in sentences."#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![
+            test_sentence("Whitespace is allowed after this because you may need it to split up words in sentences."),
+        ])])),
     )
 }
