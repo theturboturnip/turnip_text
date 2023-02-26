@@ -70,6 +70,353 @@ fn expect_lex<'a>(data: &str, expected_stok_types: Vec<TestTTToken<'a>>) {
 use TestTTToken::*;
 
 #[test]
+pub fn integration_test() {
+    expect_lex(
+        r#"[quote]{
+According to all [paren]{known} laws of aviation, there is {no way} a bee should be able to fly. \
+The bee, of course, [code]###{flies} anyway because bees [[[emph]]]{don't} care what humans think is [["impossible"]].
+}"#,
+        vec![
+            CodeOpen(1),
+            OtherText("quote"),
+            CodeCloseOwningBlock(1),
+            OtherText("According to all "),
+            CodeOpen(1),
+            OtherText("paren"),
+            CodeCloseOwningInline(1),
+            OtherText("known"),
+            ScopeClose,
+            OtherText(" laws of aviation, there is "),
+            InlineScopeOpen,
+            OtherText("no way"),
+            ScopeClose,
+            OtherText(" a bee should be able to fly. "),
+            Escaped(Escapable::Newline),
+            OtherText("The bee, of course, "),
+            CodeOpen(1),
+            OtherText("code"),
+            CodeCloseOwningRaw(1, 3),
+            OtherText("flies"),
+            ScopeClose,
+            OtherText(" anyway because bees "),
+            CodeOpen(3),
+            OtherText("emph"),
+            CodeCloseOwningInline(3),
+            OtherText("don't"),
+            ScopeClose,
+            OtherText(" care what humans think is "),
+            CodeOpen(2),
+            OtherText("\"impossible\""),
+            CodeClose(2),
+            OtherText("."),
+            Newline,
+            ScopeClose,
+        ],
+    )
+}
+
+/// Test \n, \r, \r\n
+#[test]
+pub fn test_newline() {
+    expect_lex(
+        "a\nb\rc\r\n",
+        vec![
+            OtherText("a"),
+            Newline,
+            OtherText("b"),
+            Newline,
+            OtherText("c"),
+            Newline,
+        ],
+    )
+}
+
+/// Test escaped things
+#[test]
+pub fn test_escaped() {
+    expect_lex(
+        r#"
+\
+
+\\
+\[
+\]
+\{
+\}
+\#
+"#,
+        vec![
+            Newline,
+            Escaped(Escapable::Newline),
+            Newline,
+            Escaped(Escapable::Backslash),
+            Newline,
+            Escaped(Escapable::SqrOpen),
+            Newline,
+            Escaped(Escapable::SqrClose),
+            Newline,
+            Escaped(Escapable::SqgOpen),
+            Newline,
+            Escaped(Escapable::SqgClose),
+            Newline,
+            Escaped(Escapable::Hash),
+            Newline,
+        ],
+    )
+}
+
+/// Test backslashes when they don't escape anything
+///
+/// e.g. \a, \b, \c
+#[test]
+pub fn test_backslash() {
+    expect_lex(
+        r#"\a\b\c"#,
+        vec![
+            Backslash,
+            OtherText("a"),
+            Backslash,
+            OtherText("b"),
+            Backslash,
+            OtherText("c"),
+        ],
+    )
+}
+
+#[test]
+pub fn test_code_open() {
+    expect_lex(
+        r#"
+[
+[[
+[[[
+[[[[[[[
+"#,
+        vec![
+            Newline,
+            CodeOpen(1),
+            Newline,
+            CodeOpen(2),
+            Newline,
+            CodeOpen(3),
+            Newline,
+            CodeOpen(7),
+            Newline,
+        ],
+    )
+}
+
+#[test]
+pub fn test_code_close() {
+    expect_lex(
+        r#"
+]
+]]
+]]]
+]]]]]]]
+"#,
+        vec![
+            Newline,
+            CodeClose(1),
+            Newline,
+            CodeClose(2),
+            Newline,
+            CodeClose(3),
+            Newline,
+            CodeClose(7),
+            Newline,
+        ],
+    )
+}
+
+#[test]
+pub fn test_code_close_owning_inline() {
+    expect_lex(
+        r#"
+]{}
+]]{}
+]]]{}
+]]]]]]]{}
+"#,
+        vec![
+            Newline,
+            CodeCloseOwningInline(1),
+            ScopeClose,
+            Newline,
+            CodeCloseOwningInline(2),
+            ScopeClose,
+            Newline,
+            CodeCloseOwningInline(3),
+            ScopeClose,
+            Newline,
+            CodeCloseOwningInline(7),
+            ScopeClose,
+            Newline,
+        ],
+    )
+}
+
+#[test]
+pub fn test_code_close_owning_raw() {
+    expect_lex(
+        r#"
+]#{
+]]#{
+]]]#{
+]]]]]]]#{
+]####{
+]]####{
+]]]####{
+]]]]]]]####{
+"#,
+        vec![
+            Newline,
+            CodeCloseOwningRaw(1, 1),
+            Newline,
+            CodeCloseOwningRaw(2, 1),
+            Newline,
+            CodeCloseOwningRaw(3, 1),
+            Newline,
+            CodeCloseOwningRaw(7, 1),
+            Newline,
+            CodeCloseOwningRaw(1, 4),
+            Newline,
+            CodeCloseOwningRaw(2, 4),
+            Newline,
+            CodeCloseOwningRaw(3, 4),
+            Newline,
+            CodeCloseOwningRaw(7, 4),
+            Newline,
+        ],
+    )
+}
+
+#[test]
+pub fn test_code_close_owning_block() {
+    expect_lex(
+        r#"
+]{
+
+]]{
+
+]]]{
+
+]]]]]]]{
+
+"#,
+        vec![
+            Newline,
+            CodeCloseOwningBlock(1),
+            Newline,
+            CodeCloseOwningBlock(2),
+            Newline,
+            CodeCloseOwningBlock(3),
+            Newline,
+            CodeCloseOwningBlock(7),
+            Newline,
+        ],
+    )
+}
+
+#[test]
+pub fn test_inline_scope_open() {
+    expect_lex(
+        r#" { "#,
+        vec![OtherText(" "), InlineScopeOpen, OtherText(" ")],
+    )
+}
+
+#[test]
+pub fn test_block_scope_open() {
+    expect_lex(
+        r#"
+{
+
+"#,
+        vec![Newline, BlockScopeOpen, Newline],
+    )
+}
+
+#[test]
+pub fn test_scope_close() {
+    expect_lex(
+        r#"
+}
+"#,
+        vec![Newline, ScopeClose, Newline],
+    )
+}
+
+#[test]
+pub fn test_raw_scope_open() {
+    expect_lex(
+        r#"
+#{
+##{
+###{
+#######{
+"#,
+        vec![
+            Newline,
+            RawScopeOpen(1),
+            Newline,
+            RawScopeOpen(2),
+            Newline,
+            RawScopeOpen(3),
+            Newline,
+            RawScopeOpen(7),
+            Newline,
+        ],
+    )
+}
+
+#[test]
+pub fn test_raw_scope_close() {
+    expect_lex(
+        r#"
+}#
+}##
+}###
+}#######
+"#,
+        vec![
+            Newline,
+            RawScopeClose(1),
+            Newline,
+            RawScopeClose(2),
+            Newline,
+            RawScopeClose(3),
+            Newline,
+            RawScopeClose(7),
+            Newline,
+        ],
+    )
+}
+
+#[test]
+pub fn test_hashes() {
+    expect_lex(
+        r#"
+#
+##
+###
+#######
+"#,
+        vec![
+            Newline,
+            Hashes(1),
+            Newline,
+            Hashes(2),
+            Newline,
+            Hashes(3),
+            Newline,
+            Hashes(7),
+            Newline,
+        ],
+    )
+}
+
+#[test]
 pub fn test_escaped_cr() {
     // '\' + '\r'&
     expect_lex(
