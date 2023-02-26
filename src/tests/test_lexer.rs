@@ -6,7 +6,7 @@ use lexer_rs::{Lexer, LexerOfStr};
 pub type TextStream<'stream> = LexerOfStr<'stream, LexPosn, LexToken, LexError>;
 
 /// A type mimicking [TTToken] for test purposes
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum TestTTToken<'a> {
     Newline,
     Escaped(Escapable),
@@ -23,6 +23,7 @@ pub enum TestTTToken<'a> {
     ScopeClose,
     Hashes(usize),
     OtherText(&'a str),
+    Whitespace(&'a str),
 }
 impl<'a> TestTTToken<'a> {
     pub fn from_str_tok(data: &'a str, t: TTToken) -> Self {
@@ -44,6 +45,7 @@ impl<'a> TestTTToken<'a> {
             TTToken::ScopeClose(_) => Self::ScopeClose,
             TTToken::Hashes(_, n) => Self::Hashes(n),
             TTToken::OtherText(span) => Self::OtherText(data[span.byte_range()].into()),
+            TTToken::Whitespace(span) => Self::Whitespace(data[span.byte_range()].into()),
         }
     }
 }
@@ -71,6 +73,9 @@ use TestTTToken::*;
 
 #[test]
 pub fn integration_test() {
+    let sp = Whitespace(" ");
+    let txt = OtherText;
+
     expect_lex(
         r#"[quote]{
 According to all [paren]{known} laws of aviation, there is {no way} a bee should be able to fly. \
@@ -78,37 +83,91 @@ The bee, of course, [code]###{flies} anyway because bees [[[emph]]]{don't} care 
 }"#,
         vec![
             CodeOpen(1),
-            OtherText("quote"),
+            txt("quote"),
             CodeCloseOwningBlock(1),
-            OtherText("According to all "),
+            txt("According"),
+            sp,
+            txt("to"),
+            sp,
+            txt("all"),
+            sp,
             CodeOpen(1),
-            OtherText("paren"),
+            txt("paren"),
             CodeCloseOwningInline(1),
-            OtherText("known"),
+            txt("known"),
             ScopeClose,
-            OtherText(" laws of aviation, there is "),
+            sp,
+            txt("laws"),
+            sp,
+            txt("of"),
+            sp,
+            txt("aviation,"),
+            sp,
+            txt("there"),
+            sp,
+            txt("is"),
+            sp,
             InlineScopeOpen,
-            OtherText("no way"),
+            txt("no"),
+            sp,
+            txt("way"),
             ScopeClose,
-            OtherText(" a bee should be able to fly. "),
+            sp,
+            txt("a"),
+            sp,
+            txt("bee"),
+            sp,
+            txt("should"),
+            sp,
+            txt("be"),
+            sp,
+            txt("able"),
+            sp,
+            txt("to"),
+            sp,
+            txt("fly."),
+            sp,
             Escaped(Escapable::Newline),
-            OtherText("The bee, of course, "),
+            txt("The"),
+            sp,
+            txt("bee,"),
+            sp,
+            txt("of"),
+            sp,
+            txt("course,"),
+            sp,
             CodeOpen(1),
-            OtherText("code"),
+            txt("code"),
             CodeCloseOwningRaw(1, 3),
-            OtherText("flies"),
+            txt("flies"),
             ScopeClose,
-            OtherText(" anyway because bees "),
+            sp,
+            txt("anyway"),
+            sp,
+            txt("because"),
+            sp,
+            txt("bees"),
+            sp,
             CodeOpen(3),
-            OtherText("emph"),
+            txt("emph"),
             CodeCloseOwningInline(3),
-            OtherText("don't"),
+            txt("don't"),
             ScopeClose,
-            OtherText(" care what humans think is "),
+            sp,
+            txt("care"),
+            sp,
+            txt("what"),
+            sp,
+            txt("humans"),
+            sp,
+            txt("think"),
+            sp,
+            txt("is"),
+            sp,
             CodeOpen(2),
-            OtherText("\"impossible\""),
+            txt("\"impossible\""),
             CodeClose(2),
-            OtherText("."),
+            txt("."),
             Newline,
             ScopeClose,
         ],
@@ -322,7 +381,7 @@ pub fn test_code_close_owning_block() {
 pub fn test_inline_scope_open() {
     expect_lex(
         r#" { "#,
-        vec![OtherText(" "), InlineScopeOpen, OtherText(" ")],
+        vec![Whitespace(" "), InlineScopeOpen, Whitespace(" ")],
     )
 }
 
@@ -420,11 +479,11 @@ pub fn test_hashes() {
 pub fn test_escaped_cr() {
     // '\' + '\r'&
     expect_lex(
-        "sentence start, \\\rrest of sentence",
+        "before\\\rafter",
         vec![
-            OtherText("sentence start, "),
+            OtherText("before"),
             Escaped(Escapable::Newline),
-            OtherText("rest of sentence"),
+            OtherText("after"),
         ],
     )
 }
@@ -432,11 +491,11 @@ pub fn test_escaped_cr() {
 pub fn test_escaped_lf() {
     // '\' + '\n'
     expect_lex(
-        "sentence start, \\\nrest of sentence",
+        "before\\\nafter",
         vec![
-            OtherText("sentence start, "),
+            OtherText("before"),
             Escaped(Escapable::Newline),
-            OtherText("rest of sentence"),
+            OtherText("after"),
         ],
     )
 }
@@ -444,11 +503,11 @@ pub fn test_escaped_lf() {
 pub fn test_escaped_crlf() {
     // '\' + '\r' + '\n'
     expect_lex(
-        "sentence start, \\\r\nrest of sentence",
+        "before\\\r\nafter",
         vec![
-            OtherText("sentence start, "),
+            OtherText("before"),
             Escaped(Escapable::Newline),
-            OtherText("rest of sentence"),
+            OtherText("after"),
         ],
     )
 }

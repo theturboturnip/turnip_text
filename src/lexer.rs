@@ -13,6 +13,8 @@ pub enum LexerPrefixSeq {
     LineFeed,
     /// `\r\n`,
     CRLF,
+    /// Characters that are not `\r` or `\n` but are otherwise whitespace
+    Whitespace,
     /// `\`
     Backslash,
     /// `[`
@@ -41,6 +43,7 @@ impl LexerPrefixSeq {
             '{' => Some((SqgOpen, 1)),
             '}' => Some((SqgClose, 1)),
             '#' => Some((Hash, 1)),
+            x if x.is_whitespace() => Some((Whitespace, 1)),
             _ => None,
         }
     }
@@ -74,6 +77,8 @@ pub enum Escapable {
     SqgClose,
     /// `#`
     Hash,
+    /// Some non-[Self::Newline] whitespace character. When escaped, always resolves to " ".
+    Whitespace(char),
 }
 impl Escapable {
     pub fn try_extract<L, P>(stream: &L, state_of_escapee: L::State) -> Option<(Self, usize)>
@@ -95,19 +100,8 @@ impl Escapable {
             '{' => Some((SqgOpen, 1)),
             '}' => Some((SqgClose, 1)),
             '#' => Some((Hash, 1)),
+            x if x.is_whitespace() => Some((Whitespace(x), 1)),
             _ => None,
-        }
-    }
-    pub fn stringify(self) -> &'static str {
-        match self {
-            // An escaped newline = no newline
-            Escapable::Newline => "",
-            Escapable::Backslash => "\\",
-            Escapable::SqrOpen => "[",
-            Escapable::SqrClose => "]",
-            Escapable::SqgOpen => "{",
-            Escapable::SqgClose => "}",
-            Escapable::Hash => "#",
         }
     }
 }
@@ -150,6 +144,9 @@ pub enum Unit {
     Hashes(ParseSpan, usize),
     /// Span of characters not included in [LexerPrefixSeq]
     OtherText(ParseSpan),
+    /// String of non-escaped whitespace characters.
+    /// The definition of whitespace comes from [char::is_whitespace], i.e. from Unicode
+    Whitespace(ParseSpan),
     // TODO
     // /// `%` character not preceded by a backslash
     // Percent(P),
@@ -240,6 +237,17 @@ impl Unit {
                         None => unreachable!(),
                     }
                 }
+                // Whitespace => Whitespace
+                LexerPrefixSeq::Whitespace => {
+                    match stream.do_while(state, ch, &|_, ch| ch.is_whitespace()) {
+                        // We peeked a Whitespace prefix, so there must be at least one whitespace char
+                        (end, Some(_)) => Ok(Some((
+                            end,
+                            Self::Whitespace(ParseSpan::from_lex(start, end)),
+                        ))),
+                        _ => unreachable!(),
+                    }
+                }
             }
         } else {
             Ok(None)
@@ -325,6 +333,8 @@ pub enum TTToken {
     Hashes(ParseSpan, usize),
     /// See [Unit::OtherText]
     OtherText(ParseSpan),
+    /// See [Unit::Whitespace]
+    Whitespace(ParseSpan),
     // TODO
     // /// `%` character not preceded by a backslash
     // Percent(P),
@@ -360,6 +370,7 @@ impl TTToken {
             (Unit::Escaped(s, e), _, _) => (TTToken::Escaped(*s, *e), 1),
             (Unit::Backslash(p), _, _) => (TTToken::Backslash(*p), 1),
             (Unit::OtherText(s), _, _) => (TTToken::OtherText(*s), 1),
+            (Unit::Whitespace(s), _, _) => (TTToken::Whitespace(*s), 1),
 
             // Code open and close
             (Unit::CodeOpen(s, n), _, _) => (TTToken::CodeOpen(*s, *n), 1),
@@ -435,7 +446,7 @@ impl TTToken {
         match self {
             Backslash(_) => "\\",
             Newline(_) => "\n",
-            // Escaped(Newline) = Backslash() + Newline()
+            // Escaped(Newline) = Backslash() + Newline(), which is always \n
             Escaped(_, Escapable::Newline) => "\\\n",
             Escaped(span, _)
             | RawScopeOpen(span, _)
@@ -449,6 +460,7 @@ impl TTToken {
             | InlineScopeOpen(span)
             | ScopeClose(span)
             | Hashes(span, _)
+            | Whitespace(span)
             | OtherText(span) => &data[span.byte_range()],
         }
     }
@@ -473,6 +485,7 @@ impl TTToken {
                 Escapable::SqgOpen => "{",
                 Escapable::SqgClose => "}",
                 Escapable::Hash => "#",
+                Escapable::Whitespace(_) => " ",
             },
             RawScopeOpen(span, _)
             | RawScopeClose(span, _)
@@ -485,6 +498,7 @@ impl TTToken {
             | InlineScopeOpen(span)
             | ScopeClose(span)
             | Hashes(span, _)
+            | Whitespace(span)
             | OtherText(span) => &data[span.byte_range()],
         }
     }
