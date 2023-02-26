@@ -324,6 +324,187 @@ fn expect_parse<'a>(data: &str, expected_parse: Result<TestBlock, TestInterpErro
 }
 
 #[test]
+pub fn test_basic_text() {
+    expect_parse(
+        r#"Lorem Ipsum is simply dummy text of the printing and typesetting industry.
+Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book.
+It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged.
+It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.
+"#,
+        Ok(
+            test_doc(vec![
+                TestBlock::Paragraph(vec![
+                    test_sentence("Lorem Ipsum is simply dummy text of the printing and typesetting industry."),
+                    test_sentence("Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book."),
+                    test_sentence("It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged."),
+                    test_sentence("It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum."),
+                ])
+            ])
+        )
+    )
+}
+
+#[test]
+pub fn test_inline_code() {
+    expect_parse(
+        r#"Number of values in (1,2,3): [len((1,2,3))]"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Number of values in (1,2,3): "),
+            test_text("3"),
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_inline_code_with_extra_delimiter() {
+    expect_parse(
+        r#"Number of values in (1,2,3): [[ len((1,2,3)) ]]"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Number of values in (1,2,3): "),
+            test_text("3"),
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_inline_code_with_long_extra_delimiter() {
+    expect_parse(
+        r#"Number of values in (1,2,3): [[[[[ len((1,2,3)) ]]]]]"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Number of values in (1,2,3): "),
+            test_text("3"),
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_inline_code_with_escaped_extra_delimiter() {
+    expect_parse(
+        r#"Number of values in (1,2,3): \[[ len((1,2,3)) ]\]"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Number of values in (1,2,3): ["),
+            test_text("3"),
+            test_text("]"),
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
+    expect_parse(
+        r#"Number of values in (1,2,3): \[\[ len((1,2,3)) \]\]"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            r#"Number of values in (1,2,3): [[ len((1,2,3)) ]]"#,
+        )])])),
+    )
+}
+
+#[test]
+pub fn test_inline_list_with_extra_delimiter() {
+    expect_parse(
+        r#"Number of values in (1,2,3): [[ len([1,2,3]) ]]"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Number of values in (1,2,3): "),
+            test_text("3"),
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_block_scope() {
+    expect_parse(
+        r#"Outside the scope
+
+{
+Inside the scope
+
+Second paragraph inside the scope
+}"#,
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![test_sentence("Outside the scope")]),
+            TestBlock::BlockScope {
+                owner: None,
+                contents: vec![
+                    TestBlock::Paragraph(vec![test_sentence("Inside the scope")]),
+                    TestBlock::Paragraph(vec![test_sentence("Second paragraph inside the scope")]),
+                ],
+            },
+        ])),
+    )
+}
+
+#[test]
+pub fn test_raw_scope() {
+    expect_parse(
+        "#{It's f&%#ing raw}#",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            TestInline::RawText {
+                owner: None,
+                contents: "It's f&%#ing raw".into(),
+            },
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_inline_scope() {
+    expect_parse(
+        r#"Outside the scope {inside the scope}"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Outside the scope "),
+            TestInline::InlineScope {
+                owner: None,
+                contents: vec![test_text("inside the scope")],
+            },
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_inline_escaped_scope() {
+    expect_parse(
+        r#"Outside the scope \{not inside a scope\}"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "Outside the scope {not inside a scope}",
+        )])])),
+    )
+}
+
+#[test]
+pub fn test_raw_scope_newlines() {
+    expect_parse(
+        "Outside the scope #{\ninside the raw scope\n}#",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Outside the scope "),
+            test_raw_text(None, "\ninside the raw scope\n"),
+        ]])])),
+    )
+}
+
+/// newlines are converted to \n in all cases in the second tokenization phase, for convenience
+#[test]
+pub fn test_raw_scope_crlf_newlines() {
+    expect_parse(
+        "Outside the scope #{\r\ninside the raw scope\r\n}#",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Outside the scope "),
+            test_raw_text(None, "\ninside the raw scope\n"),
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_inline_raw_scope() {
+    expect_parse(
+        r#"Outside the scope #{inside the raw scope}#"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Outside the scope "),
+            test_raw_text(None, "inside the raw scope"),
+        ]])])),
+    )
+}
+
+#[test]
 pub fn test_owned_block_scope() {
     expect_parse(
         r#"[TEST_BLOCK_OWNER]{
@@ -417,5 +598,164 @@ import os
                 end: (1, 9),
             },
         }),
+    )
+}
+
+#[test]
+pub fn test_inline_raw_escaped_scope() {
+    expect_parse(
+        r#"Outside the scope \#\{not inside a scope\}"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "Outside the scope #{not inside a scope}",
+        )])])),
+    )
+}
+
+#[test]
+pub fn test_plain_hashes() {
+    expect_parse(
+        r#"This has a string of ####### hashes in the middle"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![
+            test_sentence("This has a string of "), // The first hash in the chain starts a comment!
+        ])])),
+    )
+}
+
+#[test]
+pub fn test_special_with_escaped_backslash() {
+    expect_parse(
+        r#"About to see a backslash! \\[None]"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text(r#"About to see a backslash! \"#),
+            test_text("None"),
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_escaped_special_with_escaped_backslash() {
+    expect_parse(
+        r#"About to see a backslash and square brace! \\\[ that didn't open code!"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            r#"About to see a backslash and square brace! \[ that didn't open code!"#,
+        )])])),
+    )
+}
+
+#[test]
+pub fn test_escaped_notspecial() {
+    expect_parse(
+        r#"\a"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            r#"\a"#,
+        )])])),
+    )
+}
+
+#[test]
+pub fn test_escaped_newline() {
+    expect_parse(
+        r#"escaped \
+newline"#,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "escaped newline",
+        )])])),
+    )
+}
+
+#[test]
+pub fn test_newline_in_code() {
+    expect_parse(
+        "[len((1,\r\n2))]",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "2",
+        )])])),
+    )
+}
+#[test]
+pub fn test_code_close_in_text() {
+    expect_parse(
+        "not code ] but closed code",
+        Err(TestInterpError::CodeCloseOutsideCode(TestParserSpan {
+            start: (1, 10),
+            end: (1, 11),
+        })),
+    )
+}
+#[test]
+pub fn test_scope_close_outside_scope() {
+    expect_parse(
+        "not in a scope } but closed scope",
+        Err(TestInterpError::ScopeCloseOutsideScope(TestParserSpan {
+            start: (1, 16),
+            end: (1, 17),
+        })),
+    )
+}
+#[test]
+pub fn test_mismatching_raw_scope_close() {
+    expect_parse(
+        "##{ text in a scope with a }#",
+        Err(TestInterpError::EndedInsideRawScope {
+            raw_scope_start: TestParserSpan {
+                start: (1, 1),
+                end: (1, 4),
+            },
+        }),
+    )
+}
+#[test]
+pub fn test_ended_inside_code() {
+    expect_parse(
+        "text [code",
+        Err(TestInterpError::EndedInsideCode {
+            code_start: TestParserSpan {
+                start: (1, 6),
+                end: (1, 7),
+            },
+        }),
+    )
+}
+#[test]
+pub fn test_ended_inside_raw_scope() {
+    expect_parse(
+        "text #{raw",
+        Err(TestInterpError::EndedInsideRawScope {
+            raw_scope_start: TestParserSpan {
+                start: (1, 6),
+                end: (1, 8),
+            },
+        }),
+    )
+}
+#[test]
+pub fn test_ended_inside_scope() {
+    expect_parse(
+        "text {scope",
+        Err(TestInterpError::SentenceBreakInInlineScope {
+            scope_start: TestParserSpan {
+                start: (1, 6),
+                end: (1, 7),
+            },
+        }),
+    )
+}
+
+#[test]
+pub fn test_block_scope_vs_inline_scope() {
+    expect_parse(
+        r#"{
+block scope
+}{inline scope}"#,
+        Ok(test_doc(vec![
+            TestBlock::BlockScope {
+                owner: None,
+                contents: vec![TestBlock::Paragraph(vec![test_sentence("block scope")])],
+            },
+            TestBlock::Paragraph(vec![vec![TestInline::InlineScope {
+                owner: None,
+                contents: vec![test_text("inline scope")],
+            }]]),
+        ])),
     )
 }
