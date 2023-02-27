@@ -22,7 +22,7 @@ pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<BlockScope>()?;
     m.add_class::<InlineScope>()?;
 
-    m.add_class::<BlockScopeOwnerGeneratorDecorator>()?;
+    m.add_class::<BlockScopeOwnerDecorator>()?;
     m.add_class::<InlineScopeOwnerGeneratorDecorator>()?;
 
     Ok(())
@@ -96,17 +96,17 @@ impl PyTypeclass for BlockScopeOwner {
 /// }
 /// ```
 #[pyclass(name = "block_scope_owner_generator")]
-struct BlockScopeOwnerGeneratorDecorator {
+struct BlockScopeOwnerDecorator {
     inner: Py<PyAny>,
 }
 #[pymethods]
-impl BlockScopeOwnerGeneratorDecorator {
+impl BlockScopeOwnerDecorator {
     #[new]
     fn __new__(inner: Py<PyAny>) -> Self {
         Self { inner }
     }
 
-    #[args(args = "*", kwargs = "**")]
+    #[pyo3(signature = (*args, **kwargs))]
     fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
         let obj = self.inner.call(py, args, kwargs)?;
         obj.setattr(py, "owns_block_scope", true)?;
@@ -151,7 +151,7 @@ impl InlineScopeOwnerGeneratorDecorator {
         Self { inner }
     }
 
-    #[args(args = "*", kwargs = "**")]
+    #[pyo3(signature = (*args, **kwargs))]
     fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
         let obj = self.inner.call(py, args, kwargs)?;
         obj.setattr(py, "owns_inline_scope", true)?;
@@ -197,7 +197,7 @@ impl RawScopeOwnerGeneratorDecorator {
         Self { inner }
     }
 
-    #[args(args = "*", kwargs = "**")]
+    #[pyo3(signature = (*args, **kwargs))]
     fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
         let obj = self.inner.call(py, args, kwargs)?;
         obj.setattr(py, "owns_raw_scope", true)?;
@@ -298,6 +298,7 @@ impl RawText {
 #[pymethods]
 impl RawText {
     #[new]
+    #[pyo3(signature = (owner, contents))]
     pub fn new(owner: Option<&PyAny>, contents: Py<PyString>) -> PyResult<Self> {
         let o = match owner {
             Some(o) => Some(PyTcRef::of(o)?),
