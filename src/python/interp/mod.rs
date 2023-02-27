@@ -1,9 +1,6 @@
 #![allow(dead_code)]
 
-use pyo3::{
-    prelude::*,
-    types::{PyDict, PyString},
-};
+use pyo3::{prelude::*, types::PyDict};
 use thiserror::Error;
 
 use crate::{
@@ -125,27 +122,22 @@ pub(crate) enum InterpSpecialTransition {
 pub(crate) enum InlineNodeToCreate {
     UnescapedText(String),
     RawText(Option<PyTcRef<RawScopeOwner>>, String),
-    UnescapedPyString(Py<PyString>),
+    PythonObject(PyObject),
 }
 impl InlineNodeToCreate {
-    fn to_py_intern(self, py: Python) -> PyResult<PyTcRef<InlineNode>> {
+    fn to_py_intern(self, py: Python) -> PyResult<PyObject> {
         let node = match self {
             InlineNodeToCreate::UnescapedText(s) => {
-                let val = Py::new(py, UnescapedText::new_rs(py, s.as_str()))?;
-                PyTcRef::of(val.as_ref(py))?
+                Py::new(py, UnescapedText::new_rs(py, s.as_str()))?.to_object(py)
             }
             InlineNodeToCreate::RawText(owner, s) => {
-                let val = Py::new(py, RawText::new_rs(py, owner, s.as_str()))?;
-                PyTcRef::of(val.as_ref(py))?
+                Py::new(py, RawText::new_rs(py, owner, s.as_str()))?.to_object(py)
             }
-            InlineNodeToCreate::UnescapedPyString(s) => {
-                let val = Py::new(py, UnescapedText::new(s))?;
-                PyTcRef::of(val.as_ref(py))?
-            }
+            InlineNodeToCreate::PythonObject(obj) => obj,
         };
         Ok(node)
     }
-    pub(crate) fn to_py(self, py: Python) -> InterpResult<PyTcRef<InlineNode>> {
+    pub(crate) fn to_py(self, py: Python) -> InterpResult<PyObject> {
         self.to_py_intern(py).err_as_interp_internal(py)
     }
 }
@@ -366,7 +358,7 @@ impl<'a> InterpState<'a> {
                             )),
                             Other(s) => {
                                 StartParagraph(Some(InterpParaTransition::PushInlineContent(
-                                    InlineNodeToCreate::UnescapedPyString(s),
+                                    InlineNodeToCreate::PythonObject(s),
                                 )))
                             }
                         };
@@ -543,7 +535,7 @@ pub enum EvalBracketResult {
     Block(PyTcRef<BlockScopeOwner>),
     Inline(PyTcRef<InlineScopeOwner>),
     Raw(PyTcRef<RawScopeOwner>, usize),
-    Other(Py<PyString>),
+    Other(PyObject),
 }
 impl EvalBracketResult {
     pub fn eval_in_correct_ctx(
@@ -563,7 +555,7 @@ impl EvalBracketResult {
             TTToken::CodeCloseOwningRaw(_, _, n_hashes) => {
                 EvalBracketResult::Raw(PyTcRef::of(raw_res)?, n_hashes)
             }
-            TTToken::CodeClose(_, _) => EvalBracketResult::Other(raw_res.str()?.into_py(py)), // TODO error handling
+            TTToken::CodeClose(_, _) => EvalBracketResult::Other(raw_res.to_object(py)),
             _ => unreachable!(),
         };
         Ok(res)

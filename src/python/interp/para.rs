@@ -533,7 +533,7 @@ impl InterpParaState {
                             }
                             Inline(i) => PushInlineScope(Some(i), code_span),
                             Raw(r, n_hashes) => StartRawScope(Some(r), code_span, n_hashes),
-                            Other(s) => PushInlineContent(InlineNodeToCreate::UnescapedPyString(s)),
+                            Other(s) => PushInlineContent(InlineNodeToCreate::PythonObject(s)),
                         };
                         Some(inl_transition)
                     }
@@ -594,8 +594,8 @@ impl InterpParaState {
 
     fn push_to_topmost_scope(&self, py: Python, node: &PyAny) -> InterpResult<()> {
         match self.inline_stack.last() {
-            Some(i) => i.scope.borrow_mut(py).push_node(node),
-            None => self.sentence.borrow_mut(py).push_node(node),
+            Some(i) => i.scope.borrow_mut(py).push_node(py, node),
+            None => self.sentence.borrow_mut(py).push_node(py, node),
         }
         .err_as_interp_internal(py)
     }

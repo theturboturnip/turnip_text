@@ -3,7 +3,7 @@ use std::path::Path;
 use pyo3::{
     exceptions::PyRuntimeError,
     prelude::*,
-    types::{PyDict, PyIterator, PyString, PyTuple},
+    types::{PyDict, PyIterator, PyList, PyString, PyTuple},
 };
 
 use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
@@ -228,28 +228,28 @@ impl UnescapedText {
     }
 }
 
-/// A sequence of [InlineNode] that represents a single sentence.
+/// A sequence of objects that represents a single sentence.
 ///
 /// Typically created by Rust while parsing input files.
 #[pyclass(sequence)]
 #[derive(Debug, Clone)]
-pub struct Sentence(pub PyTypeclassList<InlineNode>);
+pub struct Sentence(pub Py<PyList>);
 #[pymethods]
 impl Sentence {
     #[new]
     pub fn new(py: Python) -> Self {
-        Self(PyTypeclassList::new(py))
+        Self(PyList::empty(py).into())
     }
 
     pub fn __len__(&self, py: Python) -> usize {
-        self.0.list(py).len()
+        self.0.as_ref(py).len()
     }
     pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
-        PyIterator::from_object(py, self.0.list(py))
+        PyIterator::from_object(py, &self.0)
     }
 
-    pub fn push_node(&mut self, node: &PyAny) -> PyResult<()> {
-        self.0.append_checked(node)
+    pub fn push_node(&mut self, py: Python, node: &PyAny) -> PyResult<()> {
+        self.0.as_ref(py).append(node)
     }
 }
 
@@ -365,13 +365,13 @@ impl BlockScope {
 #[derive(Debug, Clone)]
 pub struct InlineScope {
     pub owner: Option<PyTcRef<InlineScopeOwner>>,
-    pub children: PyTypeclassList<InlineNode>,
+    pub children: Py<PyList>,
 }
 impl InlineScope {
     pub fn new_rs(py: Python, owner: Option<PyTcRef<InlineScopeOwner>>) -> Self {
         Self {
             owner,
-            children: PyTypeclassList::new(py),
+            children: PyList::empty(py).into(),
         }
     }
 }
@@ -387,13 +387,13 @@ impl InlineScope {
     }
 
     pub fn __len__(&self, py: Python) -> usize {
-        self.children.list(py).len()
+        self.children.as_ref(py).len()
     }
     pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
-        PyIterator::from_object(py, self.children.list(py))
+        PyIterator::from_object(py, self.children.as_ref(py))
     }
 
-    pub fn push_node(&mut self, node: &PyAny) -> PyResult<()> {
-        self.children.append_checked(node)
+    pub fn push_node(&mut self, py: Python, node: &PyAny) -> PyResult<()> {
+        self.children.as_ref(py).append(node)
     }
 }

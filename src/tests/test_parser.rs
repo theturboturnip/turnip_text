@@ -208,7 +208,7 @@ impl PyToTest<Vec<TestInline>> for PyAny {
         if let Ok(sentence) = self.extract::<Sentence>() {
             sentence
                 .0
-                .list(py)
+                .as_ref(py)
                 .iter()
                 .map(|obj| PyToTest::as_test(obj, py))
                 .collect()
@@ -224,7 +224,7 @@ impl PyToTest<TestInline> for PyAny {
                 owner: inl.owner.map(|x| x.as_ref(py).to_string()),
                 contents: inl
                     .children
-                    .list(py)
+                    .as_ref(py)
                     .iter()
                     .map(|obj| PyToTest::as_test(obj, py))
                     .collect(),
