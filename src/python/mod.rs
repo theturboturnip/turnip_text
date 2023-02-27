@@ -10,22 +10,9 @@ use self::{interop::BlockScope, interp::InterpState};
 
 pub mod typeclass;
 
-pub struct TurnipTextPython {}
-
-impl TurnipTextPython {
-    pub fn new() -> Self {
-        pyo3::append_to_inittab!(turnip_text);
-        pyo3::prepare_freethreaded_python();
-
-        Self {}
-    }
-
-    pub fn with_gil<F, R>(&self, f: F) -> R
-    where
-        F: for<'py> FnOnce(Python<'py>) -> R,
-    {
-        Python::with_gil(f)
-    }
+pub fn prepare_freethreaded_turniptext_python() {
+    pyo3::append_to_inittab!(turnip_text);
+    pyo3::prepare_freethreaded_python();
 }
 
 pub use interp::{InterpError, InterpResult};

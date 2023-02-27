@@ -289,7 +289,6 @@ dependencies = [
  "anyhow",
  "argh",
  "lexer-rs",
- "once_cell",
  "pyo3",
  "thiserror",
 ]

@@ -1,7 +1,7 @@
 use anyhow::bail;
 use argh::FromArgs;
-use pyo3::{types::PyModule, PyResult};
-use turnip_text::python::TurnipTextPython;
+use pyo3::{types::PyModule, PyResult, Python};
+use turnip_text::python::prepare_freethreaded_turniptext_python;
 
 #[derive(FromArgs)]
 #[argh(description = "")]
@@ -13,8 +13,8 @@ struct ParseCmd {
 fn main() -> anyhow::Result<()> {
     let args: ParseCmd = argh::from_env();
     let py_file = std::fs::read_to_string(args.path)?;
-    let ttpython = TurnipTextPython::new();
-    let res = ttpython.with_gil(|py| -> PyResult<()> {
+    prepare_freethreaded_turniptext_python();
+    let res = Python::with_gil(|py| -> PyResult<()> {
         PyModule::from_code(py, &py_file, "", "__main__")?;
         Ok(())
     });

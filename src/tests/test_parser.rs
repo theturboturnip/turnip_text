@@ -1,4 +1,4 @@
-use crate::lexer::{units_to_tokens, Unit};
+use crate::lexer::{units_to_tokens, TTToken, Unit};
 use crate::tests::test_lexer::TextStream;
 
 use lexer_rs::Lexer;
@@ -6,18 +6,16 @@ use lexer_rs::Lexer;
 use crate::python::interop::{
     BlockScope, InlineScope, Paragraph, RawText, Sentence, UnescapedText,
 };
-use crate::python::{interp_data, InterpError, TurnipTextPython};
+use crate::python::{interp_data, prepare_freethreaded_turniptext_python, InterpError};
 use crate::util::ParseSpan;
 
-// Create a static Python instance
-use once_cell::sync::Lazy;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use std::panic;
-use std::sync::Mutex;
 
-pub static TTPYTHON: Lazy<Mutex<TurnipTextPython>> =
-    Lazy::new(|| Mutex::new(TurnipTextPython::new()));
+use std::panic;
+// We need to initialize Python the first time we test
+use std::sync::Once;
+static INIT_PYTHON: Once = Once::new();
 
 /// A type mimicking [ParserSpan] for test purposes
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -293,26 +291,34 @@ fn expect_parse<'a>(data: &str, expected_parse: Result<TestBlock, TestInterpErro
         .collect();
     let stoks = units_to_tokens(units);
 
+    expect_parse_tokens(data, stoks, expected_parse)
+}
+
+pub fn expect_parse_tokens(
+    data: &str,
+    stoks: Vec<TTToken>,
+    expected_parse: Result<TestBlock, TestInterpError>,
+) {
+    // Make sure Python has been set up
+    INIT_PYTHON.call_once(prepare_freethreaded_turniptext_python);
+
     // Second step: parse
-    // Need to do this safely so that we don't panic while the TTPYTHON mutex is taken -
-    // that would poison the mutex and break subsequent tests.
+    // Need to do this safely so that we don't panic inside Python::with_gil.
+    // I'm not 100% sure but I'm afraid it will poison the GIL and break subsequent tests.
     let root: Result<Result<TestBlock, TestInterpError>, _> = {
-        // Lock mutex
-        let ttpython = TTPYTHON.lock().unwrap();
         // Catch all non-abort panics while running the interpreter
         // and handling the output
         panic::catch_unwind(|| {
-            ttpython
-                .with_gil(|py| {
-                    let globals = generate_globals(py).expect("Couldn't generate globals dict");
-                    let root = interp_data(py, globals, data, stoks.into_iter());
-                    root.map(|bs| {
-                        let bs_obj = bs.to_object(py);
-                        let bs: &PyAny = bs_obj.as_ref(py);
-                        (bs as &dyn PyToTest<TestBlock>).as_test(py)
-                    })
+            Python::with_gil(|py| {
+                let globals = generate_globals(py).expect("Couldn't generate globals dict");
+                let root = interp_data(py, globals, data, stoks.into_iter());
+                root.map(|bs| {
+                    let bs_obj = bs.to_object(py);
+                    let bs: &PyAny = bs_obj.as_ref(py);
+                    (bs as &dyn PyToTest<TestBlock>).as_test(py)
                 })
-                .map_err(TestInterpError::from_interp_error)
+            })
+            .map_err(TestInterpError::from_interp_error)
         })
         // Unlock mutex
     };

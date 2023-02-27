@@ -12,6 +12,3 @@ annotate-snippets = "0.9.1"
 anyhow = "1.0.66"
 thiserror = "1.0.37"
 argh = "0.1.9"
-
-[dev-dependencies]
-once_cell = "1.17.0"

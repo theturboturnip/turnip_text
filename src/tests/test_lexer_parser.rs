@@ -1,12 +1,7 @@
-use std::panic;
-
 use crate::lexer::{units_to_tokens, Unit};
 
 use crate::lexer::Escapable;
-use crate::python::interp_data;
 use lexer_rs::Lexer;
-
-use pyo3::prelude::*;
 
 use super::test_lexer::*;
 use super::test_parser::*;
@@ -33,34 +28,7 @@ fn expect_lex_parse<'a>(
 
     assert_eq!(stok_types, expected_stok_types);
 
-    // Second step: parse
-    // Need to do this safely so that we don't panic while the TTPYTHON mutex is taken -
-    // that would poison the mutex and break subsequent tests.
-    let root: Result<Result<TestBlock, TestInterpError>, _> = {
-        // Lock mutex
-        let ttpython = TTPYTHON.lock().unwrap();
-        // Catch all non-abort panics while running the interpreter
-        // and handling the output
-        panic::catch_unwind(|| {
-            ttpython
-                .with_gil(|py| {
-                    let globals = generate_globals(py).expect("Couldn't generate globals dict");
-                    let root = interp_data(py, globals, data, stoks.into_iter());
-                    root.map(|bs| {
-                        let bs_obj = bs.to_object(py);
-                        let bs: &PyAny = bs_obj.as_ref(py);
-                        (bs as &dyn PyToTest<TestBlock>).as_test(py)
-                    })
-                })
-                .map_err(TestInterpError::from_interp_error)
-        })
-        // Unlock mutex
-    };
-    // If any of the python-related code tried to panic, re-panic here now the mutex is unlocked
-    match root {
-        Ok(root) => assert_eq!(root, expected_parse),
-        Err(e) => panic!("{:?}", e),
-    }
+    expect_parse_tokens(data, stoks, expected_parse)
 }
 
 use TestTTToken::*;

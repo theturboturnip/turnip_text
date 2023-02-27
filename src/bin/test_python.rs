@@ -1,12 +1,12 @@
-use pyo3::{types::PyDict, PyResult};
-use turnip_text::python::TurnipTextPython;
+use pyo3::{types::PyDict, PyResult, Python};
+use turnip_text::python::prepare_freethreaded_turniptext_python;
 
 fn main() {
     eprintln!("Started test!!!");
 
-    let ttpy = TurnipTextPython::new();
-    eprintln!("Created TurnipTextPython");
-    ttpy.with_gil(|py| -> PyResult<()> {
+    prepare_freethreaded_turniptext_python();
+    eprintln!("Inited Python with turnip_text");
+    Python::with_gil(|py| -> PyResult<()> {
         eprintln!("interpreter got GIL");
 
         let locals = PyDict::new(py);
