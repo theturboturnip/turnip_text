@@ -346,6 +346,15 @@ impl BlockScope {
         Ok(Self::new_rs(py, o))
     }
 
+    #[getter]
+    pub fn owner<'py>(&'py self, py: Python<'py>) -> Option<&'py PyAny> {
+        self.owner.as_ref().map(|tc| tc.as_ref(py))
+    }
+    #[getter]
+    pub fn children<'py>(&'py self, py: Python<'py>) -> &'py PyList {
+        self.children.list(py)
+    }
+
     pub fn __len__(&self, py: Python) -> usize {
         self.children.list(py).len()
     }
@@ -384,6 +393,15 @@ impl InlineScope {
             None => None,
         };
         Ok(Self::new_rs(py, o))
+    }
+
+    #[getter]
+    pub fn owner<'py>(&'py self, py: Python<'py>) -> Option<&'py PyAny> {
+        self.owner.as_ref().map(|tc| tc.as_ref(py))
+    }
+    #[getter]
+    pub fn children<'py>(&'py self, py: Python<'py>) -> &'py PyList {
+        self.children.as_ref(py)
     }
 
     pub fn __len__(&self, py: Python) -> usize {

@@ -177,12 +177,21 @@ enquote.owns_inline_scope = True
 import json
 class CustomEncoder(json.JSONEncoder):
     def default(self, o):
-        if isinstance(o, (BlockScope, InlineScope, Paragraph, Sentence)):
+        if isinstance(o, (BlockScope, InlineScope)):
+            return {
+                "owner": o.owner,
+                "children": o.children,
+            }
+        if isinstance(o, (Paragraph, Sentence)):
             return list(o)
         if isinstance(o, UnescapedText):
             return o.text
         if isinstance(o, RawText):
             return o.contents
+        if hasattr(o, "__dict__"):
+            d = vars(o)
+            d["str"] = str(o)
+            return d
         return str(o)
 
 
