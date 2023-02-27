@@ -22,8 +22,8 @@ pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<BlockScope>()?;
     m.add_class::<InlineScope>()?;
 
-    m.add_class::<BlockScopeOwnerDecorator>()?;
-    m.add_class::<InlineScopeOwnerDecorator>()?;
+    m.add_class::<BlockScopeOwnerGeneratorDecorator>()?;
+    m.add_class::<InlineScopeOwnerGeneratorDecorator>()?;
 
     Ok(())
 }
@@ -83,7 +83,7 @@ impl PyTypeclass for BlockScopeOwner {
 ///
 /// e.g. one could define a function
 /// ```python
-/// @block_scope_owner
+/// @block_scope_owner_generator
 /// def block(name=""):
 ///     def inner(items):
 ///         return items
@@ -95,12 +95,12 @@ impl PyTypeclass for BlockScopeOwner {
 /// The contents of greg
 /// }
 /// ```
-#[pyclass(name = "block_scope_owner")]
-struct BlockScopeOwnerDecorator {
+#[pyclass(name = "block_scope_owner_generator")]
+struct BlockScopeOwnerGeneratorDecorator {
     inner: Py<PyAny>,
 }
 #[pymethods]
-impl BlockScopeOwnerDecorator {
+impl BlockScopeOwnerGeneratorDecorator {
     #[new]
     fn __new__(inner: Py<PyAny>) -> Self {
         Self { inner }
@@ -130,7 +130,7 @@ impl PyTypeclass for InlineScopeOwner {
 ///
 /// e.g. one could define a function
 /// ```python
-/// @inline_scope_owner
+/// @inline_scope_owner_generator
 /// def inline(postfix = ""):
 ///     def inner(items):
 ///         return items + [postfix]
@@ -140,12 +140,12 @@ impl PyTypeclass for InlineScopeOwner {
 /// ```!text
 /// [inline("!"))]{surprise}
 /// ```
-#[pyclass(name = "inline_scope_owner")]
-struct InlineScopeOwnerDecorator {
+#[pyclass(name = "inline_scope_owner_generator")]
+struct InlineScopeOwnerGeneratorDecorator {
     inner: Py<PyAny>,
 }
 #[pymethods]
-impl InlineScopeOwnerDecorator {
+impl InlineScopeOwnerGeneratorDecorator {
     #[new]
     fn __new__(inner: Py<PyAny>) -> Self {
         Self { inner }
@@ -176,7 +176,7 @@ impl PyTypeclass for RawScopeOwner {
 ///
 /// e.g. one could define a function
 /// ```python
-/// @raw_scope_owner
+/// @raw_scope_owner_generator
 /// def math(name=""):
 ///     def inner(raw_text):
 ///         return ...
@@ -186,12 +186,12 @@ impl PyTypeclass for RawScopeOwner {
 /// ```!text
 /// [math()]#{\sin\(x\)}#
 /// ```
-#[pyclass(name = "raw_scope_owner")]
-struct RawScopeOwnerDecorator {
+#[pyclass(name = "raw_scope_owner_generator")]
+struct RawScopeOwnerGeneratorDecorator {
     inner: Py<PyAny>,
 }
 #[pymethods]
-impl RawScopeOwnerDecorator {
+impl RawScopeOwnerGeneratorDecorator {
     #[new]
     fn __new__(inner: Py<PyAny>) -> Self {
         Self { inner }

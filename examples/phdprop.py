@@ -29,7 +29,7 @@ def footnote(label: Optional[str]=None) -> FootnoteAnchor:
         label = str(uuid.uuid4())
     return FootnoteAnchor(label)
 
-@inline_scope_owner
+@inline_scope_owner_generator
 def footnote_text(label: str):
     # Return a callable which is invoked with the contents of the following inline scope
     # Example usage:
@@ -57,7 +57,7 @@ class Header:
             s_head += r"\label{" + self.label + "}"
         return s_head
 
-@block_scope_owner
+@block_scope_owner_generator
 def section(name: str, label: Optional[str]=None, num: bool=True) -> Header:
     def handle_block_contents(contents: List):
         return Header(
@@ -69,7 +69,7 @@ def section(name: str, label: Optional[str]=None, num: bool=True) -> Header:
         )
     return handle_block_contents
 
-@block_scope_owner
+@block_scope_owner_generator
 def subsection(name: str, label: Optional[str]=None, num: bool=True) -> Header:
     def handle_block_contents(contents: List):
         return Header(
@@ -81,7 +81,7 @@ def subsection(name: str, label: Optional[str]=None, num: bool=True) -> Header:
         )
     return handle_block_contents
 
-@block_scope_owner
+@block_scope_owner_generator
 def subsubsection(name: str, label: Optional[str]=None, num: bool=True) -> Header:
     def handle_block_contents(contents: List):
         return Header(
@@ -141,16 +141,16 @@ class DisplayList:
         raise NotImplementedError()
 
 
-@block_scope_owner
+@block_scope_owner_generator
 def enumerate():
     def handle_block_contents(contents: List):
         return DisplayList(mode="enumerate", items=contents)
     return handle_block_contents
 
-@inline_scope_owner
+@inline_scope_owner_generator
 def item():
     # TODO I feel iffy about an inline scope owner returning "paragraph"
-    # Should put something in the inline_scope_owner decorator to check?
+    # Should put something in the inline_scope_owner_generator decorator to check?
     def inner(sentence):
         return Paragraph(sentence)
     return inner
