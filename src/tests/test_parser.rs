@@ -628,7 +628,7 @@ pub fn test_comments() {
 It was the blurst of times."#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![
             test_sentence("It was the best of times."),
-            test_sentence("it was the blurst of times."),
+            test_sentence("It was the blurst of times."),
         ])])),
     )
 }
