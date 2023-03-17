@@ -138,7 +138,7 @@ impl PyTypeclass for InlineScopeOwner {
 /// ```
 /// which allows turnip-text as so:
 /// ```!text
-/// [inline("!"))]{surprise}
+/// [inline("!")]{surprise}
 /// ```
 #[pyclass(name = "inline_scope_owner_generator")]
 struct InlineScopeOwnerGeneratorDecorator {
