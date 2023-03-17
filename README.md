@@ -12,6 +12,16 @@ Key features include:
 - [Embedded Python interpreter, to replace LaTeX macro programming](notes/code_syntax.md)
 - [Separation of content (text with embedded Python, figure content) from formatting (e.g. page breaks, figure placement, etc)](notes/content_v_formatting.md)
 
+# Project Structure 
+Based on the recommended structure from [github.com/PyO3/maturin].
+
+- [`notes`](./notes/) - Notes on how the language should work
+- [`examples`](./examples/) - Example documents, volatile and WIP
+- [`python/turnip_text`](./python/turnip_text) - Python component
+- [`src`](./src/) - Rust component
+
+# FAQs
+
 ### Why output LaTeX source code?
 Because LaTeX is still in many cases the lingua franca of scientific papers, it is unreasonable to expect to replace it.
 The TeX typesetting engine is also still great for laying out raw text, and I have no intention of reinventing that wheel.
