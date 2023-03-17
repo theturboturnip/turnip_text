@@ -1,0 +1,4 @@
+[alias]
+# This project requires the "extension-module" feature to be disabled 
+# for any tests to be compiled. This shortcut runs tests with that feature disabled.
+testall = "test --no-default-features"
