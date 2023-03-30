@@ -46,6 +46,21 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
         Self(PyList::empty(py).into(), PhantomData::default())
     }
 
+    /// Given a pre-existing Python list, pass in
+    pub fn from(py: Python, list: Py<PyList>) -> PyResult<Self> {
+        for obj in list.as_ref(py) {
+            if !T::fits_typeclass(obj)? {
+                let s = obj.str()?;
+                return Err(PyTypeError::new_err(format!(
+                    "Passed list containing object {} into PyTypeclassList constructor -- expected object fitting typeclass {}, didn't get it",
+                    s.to_str()?,
+                    T::NAME
+                )));
+            }
+        }
+        Ok(Self(list, PhantomData::default()))
+    }
+
     pub fn append_checked(&self, val: &PyAny) -> PyResult<()> {
         if T::fits_typeclass(val)? {
             self.0.as_ref(val.py()).append(val)?;

@@ -293,23 +293,32 @@ impl UnescapedText {
 /// Typically created by Rust while parsing input files.
 #[pyclass(sequence)]
 #[derive(Debug, Clone)]
-pub struct Sentence(pub Py<PyList>);
+pub struct Sentence(pub PyTypeclassList<Inline>);
+impl Sentence {
+    pub fn new_empty(py: Python) -> Self {
+        Self(PyTypeclassList::new(py))
+    }
+}
 #[pymethods]
 impl Sentence {
     #[new]
-    pub fn new(py: Python) -> Self {
-        Self(PyList::empty(py).into())
+    #[pyo3(signature = (list=None))]
+    pub fn new(py: Python, list: Option<Py<PyList>>) -> PyResult<Self> {
+        match list {
+            Some(list) => Ok(Self(PyTypeclassList::from(py, list)?)),
+            None => Ok(Self(PyTypeclassList::new(py))),
+        }
     }
 
     pub fn __len__(&self, py: Python) -> usize {
-        self.0.as_ref(py).len()
+        self.0.list(py).len()
     }
     pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
-        PyIterator::from_object(py, &self.0)
+        PyIterator::from_object(py, self.0.list(py))
     }
 
     pub fn push_node(&mut self, py: Python, node: &PyAny) -> PyResult<()> {
-        self.0.as_ref(py).append(node)
+        self.0.list(py).append(node)
     }
 }
 
@@ -319,11 +328,20 @@ impl Sentence {
 #[pyclass(sequence)]
 #[derive(Debug, Clone)]
 pub struct Paragraph(pub PyInstanceList<Sentence>);
+impl Paragraph {
+    pub fn new_empty(py: Python) -> Self {
+        Self(PyInstanceList::new(py))
+    }
+}
 #[pymethods]
 impl Paragraph {
     #[new]
-    pub fn new(py: Python) -> Self {
-        Self(PyInstanceList::new(py))
+    #[pyo3(signature = (list=None))]
+    pub fn new(py: Python, list: Option<Py<PyList>>) -> PyResult<Self> {
+        match list {
+            Some(list) => Ok(Self(PyInstanceList::from(py, list)?)),
+            None => Ok(Self(PyInstanceList::new(py))),
+        }
     }
 
     #[getter]
@@ -349,11 +367,20 @@ impl Paragraph {
 #[pyclass(sequence)]
 #[derive(Debug, Clone)]
 pub struct BlockScope(pub PyTypeclassList<Block>);
+impl BlockScope {
+    pub fn new_empty(py: Python) -> Self {
+        Self(PyTypeclassList::new(py))
+    }
+}
 #[pymethods]
 impl BlockScope {
     #[new]
-    pub fn new(py: Python) -> Self {
-        Self(PyTypeclassList::new(py))
+    #[pyo3(signature = (list=None))]
+    pub fn new(py: Python, list: Option<Py<PyList>>) -> PyResult<Self> {
+        match list {
+            Some(list) => Ok(Self(PyTypeclassList::from(py, list)?)),
+            None => Ok(Self(PyTypeclassList::new(py))),
+        }
     }
 
     #[getter]

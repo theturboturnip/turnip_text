@@ -159,8 +159,8 @@ impl InterpParaState {
     pub(crate) fn new(py: Python) -> PyResult<Self> {
         Ok(Self {
             sentence_state: InterpSentenceState::SentenceStart,
-            para: Py::new(py, Paragraph::new(py))?,
-            sentence: Py::new(py, Sentence::new(py))?,
+            para: Py::new(py, Paragraph::new_empty(py))?,
+            sentence: Py::new(py, Sentence::new_empty(py))?,
             inline_stack: vec![],
         })
     }
@@ -414,7 +414,7 @@ impl InterpParaState {
                 .borrow_mut(py)
                 .push_sentence(self.sentence.as_ref(py))
                 .err_as_interp_internal(py)?;
-            self.sentence = Py::new(py, Sentence::new(py)).err_as_interp_internal(py)?;
+            self.sentence = Py::new(py, Sentence::new_empty(py)).err_as_interp_internal(py)?;
         }
         Ok(())
     }
@@ -588,7 +588,8 @@ impl InterpParaState {
                         .borrow_mut(py)
                         .push_sentence(self.sentence.as_ref(py))
                         .err_as_interp_internal(py)?;
-                    self.sentence = Py::new(py, Sentence::new(py)).err_as_interp_internal(py)?;
+                    self.sentence =
+                        Py::new(py, Sentence::new_empty(py)).err_as_interp_internal(py)?;
                 }
                 Ok(InterpParaTransition::EndParagraphAndPopBlock(
                     scope_close_span,

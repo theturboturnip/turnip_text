@@ -29,7 +29,7 @@ pub struct InterpState<'a> {
 }
 impl<'a> InterpState<'a> {
     pub fn new<'interp>(py: Python<'interp>, data: &'a str) -> InterpResult<Self> {
-        let root = Py::new(py, BlockScope::new(py)).err_as_interp_internal(py)?;
+        let root = Py::new(py, BlockScope::new_empty(py)).err_as_interp_internal(py)?;
         Ok(Self {
             block_state: InterpBlockState::ReadyForNewBlock,
             comment_state: None,
@@ -451,7 +451,8 @@ impl<'a> InterpState<'a> {
                 ) => {
                     self.block_stack.push(InterpBlockScopeState {
                         builder,
-                        children: Py::new(py, BlockScope::new(py)).err_as_interp_internal(py)?,
+                        children: Py::new(py, BlockScope::new_empty(py))
+                            .err_as_interp_internal(py)?,
                         scope_start,
                     });
                     S::ReadyForNewBlock
