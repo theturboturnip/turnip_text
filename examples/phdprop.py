@@ -9,14 +9,14 @@ def latex_escape(text: UnescapedText):
     # TODO
     return str(text)
 
-FOOTNOTE_TEXT: Dict[str, UnescapedText] = {}
+FOOTNOTE_TEXT: Dict[str, Inline] = {}
 @dataclass(frozen=True)
-class FootnoteAnchor:
+class FootnoteAnchor(Inline):
     label: str
     # Can be used as an inline scope owner
     owns_inline_scope = True
     # If used as an inline scope owner, automatically set FOOTNOTE_TEXT and return self
-    def __call__(self, contents: UnescapedText) -> 'FootnoteAnchor':
+    def build_from_inlines(self, contents: List[Inline]) -> 'FootnoteAnchor':
         FOOTNOTE_TEXT[self.label] = contents
         return self
 
@@ -29,7 +29,7 @@ def footnote(label: Optional[str]=None) -> FootnoteAnchor:
         label = str(uuid.uuid4())
     return FootnoteAnchor(label)
 
-@inline_scope_owner_generator
+@inline_scope_builder_generator
 def footnote_text(label: str):
     # Return a callable which is invoked with the contents of the following inline scope
     # Example usage:
@@ -41,12 +41,14 @@ def footnote_text(label: str):
     return handle_inline_contents
 
 @dataclass(frozen=True)
-class Header:
+class HeadedBlock:
     latex_name: str
     name: str
-    contents: List
+    contents: List[Block]
     label: Optional[str] = None
     num: bool = True
+
+    is_block = True
 
     def render(self):
         s_head = "\\" + self.latex_name
@@ -57,10 +59,10 @@ class Header:
             s_head += r"\label{" + self.label + "}"
         return s_head
 
-@block_scope_owner_generator
-def section(name: str, label: Optional[str]=None, num: bool=True) -> Header:
-    def handle_block_contents(contents: List):
-        return Header(
+@block_scope_builder_generator
+def section(name: str, label: Optional[str]=None, num: bool=True):
+    def handle_block_contents(contents: List[Block]) -> Block:
+        return HeadedBlock(
             latex_name="section",
             name=name,
             label=label,
@@ -69,10 +71,10 @@ def section(name: str, label: Optional[str]=None, num: bool=True) -> Header:
         )
     return handle_block_contents
 
-@block_scope_owner_generator
-def subsection(name: str, label: Optional[str]=None, num: bool=True) -> Header:
-    def handle_block_contents(contents: List):
-        return Header(
+@block_scope_builder_generator
+def subsection(name: str, label: Optional[str]=None, num: bool=True):
+    def handle_block_contents(contents: List[Block]) -> Block:
+        return HeadedBlock(
             latex_name="subsection",
             name=name,
             label=label,
@@ -81,10 +83,10 @@ def subsection(name: str, label: Optional[str]=None, num: bool=True) -> Header:
         )
     return handle_block_contents
 
-@block_scope_owner_generator
-def subsubsection(name: str, label: Optional[str]=None, num: bool=True) -> Header:
-    def handle_block_contents(contents: List):
-        return Header(
+@block_scope_builder_generator
+def subsubsection(name: str, label: Optional[str]=None, num: bool=True):
+    def handle_block_contents(contents: List[Block]) -> Block:
+        return HeadedBlock(
             latex_name="subsubsection",
             name=name,
             label=label,
@@ -106,7 +108,7 @@ class Citation:
             for label, note in self.labels
         ])
 
-def cite(*labels: List[Union[str, Tuple[str, Optional[str]]]]):
+def cite(*labels: Union[str, Tuple[str, Optional[str]]]):
     # Convert ["label"] to [("label", None)] so Citation has a consistent format
     adapted_labels = [
         (label, None) if isinstance(label, str) else label
@@ -126,12 +128,13 @@ def url(url: str):
     return Url(url)
 
 @dataclass(frozen=True)
-class DisplayList:
+class DisplayList(Block):
     # TODO allow nested lists
     #items: List[Union[BlockNode, List]]
     items: List
     mode: str
-    
+    is_block = True    
+
     def render(self):
         # TODO nesting!
         # TODO \begin{self.mode}
@@ -141,53 +144,45 @@ class DisplayList:
         raise NotImplementedError()
 
 
-@block_scope_owner_generator
+@block_scope_builder_generator
 def enumerate():
-    def handle_block_contents(contents: List):
+    def handle_block_contents(contents: List[Block]) -> Block:
         return DisplayList(mode="enumerate", items=contents)
     return handle_block_contents
 
-@inline_scope_owner_generator
+@block_scope_builder_generator
 def item():
-    # TODO I feel iffy about an inline scope owner returning "paragraph"
-    # Should put something in the inline_scope_owner_generator decorator to check?
-    def inner(sentence):
-        return Paragraph(sentence)
+    def inner(block_scope: BlockScope) -> Block:
+        # TODO some sort of Item() wrapper class?
+        return block_scope
     return inner
 
 @dataclass
-class Formatted:
+class Formatted(Inline):
     format_type: str # e.g. "emph"
-    items: List
+    items: List[Inline]
 
     def render(self):
         # TODO return "\" + self.format_type + "{" + render(self.items) + "}"
         raise NotImplementedError()
 
 # Because we want to use this like [emph]
-# mark it as "owns_inline_scope" manually
-def emph(sentence):
-    return Formatted("emph", sentence)
-emph.owns_inline_scope = True
+# mark it as "build_from_inlines" manually
+def emph(items: List[Inline]) -> Inline:
+    return Formatted("emph", items)
+emph.build_from_inlines = emph
 
-def enquote(sentence):
-    return ["``"] + sentence + ["''"]
-enquote.owns_inline_scope = True
+def enquote(items: List[Inline]) -> Inline:
+    return ["``"] + items + ["''"]
+enquote.build_from_inlines = enquote
 
 import json
 class CustomEncoder(json.JSONEncoder):
     def default(self, o):
-        if isinstance(o, (BlockScope, InlineScope)):
-            return {
-                "owner": o.owner,
-                "children": o.children,
-            }
-        if isinstance(o, (Paragraph, Sentence)):
+        if isinstance(o, (BlockScope, Paragraph, Sentence)):
             return list(o)
         if isinstance(o, UnescapedText):
             return o.text
-        if isinstance(o, RawText):
-            return o.contents
         if hasattr(o, "__dict__"):
             d = vars(o)
             d["str"] = str(o)
