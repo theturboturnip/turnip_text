@@ -1,8 +1,12 @@
 [project]
 name = "turnip_text"
+dependencies = ["mypy ~= 1.1.1"]
+requires-python = ">=3.8"
 
 [tool.maturin]
 python-source = "python"
+
+[tool.mypy]
 
 [build-system]
 requires = ["maturin>=0.14,<0.15"]
