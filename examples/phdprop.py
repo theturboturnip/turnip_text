@@ -3,6 +3,8 @@ from turnip_text import *
 from dataclasses import dataclass
 import uuid
 
+from turnip_text.helpers import block_scope_builder, inline_scope_builder
+
 # TODO - move this logic into a Python-implemented LaTeX renderer library
 
 def latex_escape(text: UnescapedText):
@@ -29,22 +31,23 @@ def footnote(label: Optional[str]=None) -> FootnoteAnchor:
         label = str(uuid.uuid4())
     return FootnoteAnchor(label)
 
-@inline_scope_builder_generator
 def footnote_text(label: str):
     # Return a callable which is invoked with the contents of the following inline scope
     # Example usage:
     # [footnote_text("label")]{text}
     # equivalent to
     # [footnote_text("label")(r"text")]
-    def handle_inline_contents(text: UnescapedText):
-        FOOTNOTE_TEXT[label] = text
+    @inline_scope_builder
+    def handle_inline_contents(contents: List[Inline]) -> Inline:
+        FOOTNOTE_TEXT[label] = contents
+        return None
     return handle_inline_contents
 
 @dataclass(frozen=True)
 class HeadedBlock:
     latex_name: str
     name: str
-    contents: List[Block]
+    contents: BlockScope
     label: Optional[str] = None
     num: bool = True
 
@@ -59,9 +62,9 @@ class HeadedBlock:
             s_head += r"\label{" + self.label + "}"
         return s_head
 
-@block_scope_builder_generator
-def section(name: str, label: Optional[str]=None, num: bool=True):
-    def handle_block_contents(contents: List[Block]) -> Block:
+def section(name: str, label: Optional[str]=None, num: bool=True) -> BlockScopeBuilder:
+    @block_scope_builder
+    def handle_block_contents(contents: BlockScope) -> Block:
         return HeadedBlock(
             latex_name="section",
             name=name,
@@ -71,9 +74,9 @@ def section(name: str, label: Optional[str]=None, num: bool=True):
         )
     return handle_block_contents
 
-@block_scope_builder_generator
-def subsection(name: str, label: Optional[str]=None, num: bool=True):
-    def handle_block_contents(contents: List[Block]) -> Block:
+def subsection(name: str, label: Optional[str]=None, num: bool=True) -> BlockScopeBuilder:
+    @block_scope_builder
+    def handle_block_contents(contents: BlockScope) -> Block:
         return HeadedBlock(
             latex_name="subsection",
             name=name,
@@ -83,9 +86,9 @@ def subsection(name: str, label: Optional[str]=None, num: bool=True):
         )
     return handle_block_contents
 
-@block_scope_builder_generator
-def subsubsection(name: str, label: Optional[str]=None, num: bool=True):
-    def handle_block_contents(contents: List[Block]) -> Block:
+def subsubsection(name: str, label: Optional[str]=None, num: bool=True) -> BlockScopeBuilder:
+    @block_scope_builder
+    def handle_block_contents(contents: BlockScope) -> Block:
         return HeadedBlock(
             latex_name="subsubsection",
             name=name,
@@ -95,7 +98,7 @@ def subsubsection(name: str, label: Optional[str]=None, num: bool=True):
         )
     return handle_block_contents
 
-CITATIONS = {}
+CITATIONS: Dict[str, Any] = {}
 
 @dataclass(frozen=True)
 class Citation:
@@ -144,14 +147,14 @@ class DisplayList(Block):
         raise NotImplementedError()
 
 
-@block_scope_builder_generator
 def enumerate():
+    @block_scope_builder
     def handle_block_contents(contents: List[Block]) -> Block:
         return DisplayList(mode="enumerate", items=contents)
     return handle_block_contents
 
-@block_scope_builder_generator
 def item():
+    @block_scope_builder
     def inner(block_scope: BlockScope) -> Block:
         # TODO some sort of Item() wrapper class?
         return block_scope
@@ -168,13 +171,13 @@ class Formatted(Inline):
 
 # Because we want to use this like [emph]
 # mark it as "build_from_inlines" manually
+@inline_scope_builder
 def emph(items: List[Inline]) -> Inline:
     return Formatted("emph", items)
-emph.build_from_inlines = emph
 
+@inline_scope_builder
 def enquote(items: List[Inline]) -> Inline:
     return ["``"] + items + ["''"]
-enquote.build_from_inlines = enquote
 
 import json
 class CustomEncoder(json.JSONEncoder):

@@ -4,7 +4,7 @@ use pyo3::{
     exceptions::PyRuntimeError,
     intern,
     prelude::*,
-    types::{PyDict, PyIterator, PyList, PyString, PyTuple},
+    types::{PyDict, PyIterator, PyList, PyString},
 };
 
 use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
@@ -17,12 +17,7 @@ pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<UnescapedText>()?;
     m.add_class::<Sentence>()?;
     m.add_class::<Paragraph>()?;
-
     m.add_class::<BlockScope>()?;
-
-    m.add_class::<BlockScopeBuilderDecorator>()?;
-    m.add_class::<InlineScopeBuilderGeneratorDecorator>()?;
-    m.add_class::<RawScopeBuilderGeneratorDecorator>()?;
 
     Ok(())
 }
@@ -161,107 +156,6 @@ impl PyTypeclass for RawScopeBuilder {
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
         obj.hasattr(Self::marker_func_name(obj.py()))
-    }
-}
-
-/// Decorator which allows functions-returning-functions to fit the BlockScopeBuilder typeclass.
-///
-/// e.g. one could define a function
-/// ```python
-/// @block_scope_builder_generator
-/// def block(name=""):
-///     def inner(items):
-///         return items
-///     return inner
-/// ```
-/// which allows turnip-text as so:
-/// ```!text
-/// [block(name="greg")]{
-/// The contents of greg
-/// }
-/// ```
-#[pyclass(name = "block_scope_builder_generator")]
-struct BlockScopeBuilderDecorator {
-    inner: Py<PyAny>,
-}
-#[pymethods]
-impl BlockScopeBuilderDecorator {
-    #[new]
-    fn __new__(inner: Py<PyAny>) -> Self {
-        Self { inner }
-    }
-
-    #[pyo3(signature = (*args, **kwargs))]
-    fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
-        let obj = self.inner.call(py, args, kwargs)?;
-        obj.setattr(py, BlockScopeBuilder::marker_func_name(py), obj.clone())?;
-        Ok(obj)
-    }
-}
-
-/// Decorator which ensures functions fit the InlineScopeBuilder typeclass
-///
-/// e.g. one could define a function
-/// ```python
-/// @inline_scope_builder_generator
-/// def inline(postfix = ""):
-///     def inner(items):
-///         return items + [postfix]
-///     return inner
-/// ```
-/// which allows turnip-text as so:
-/// ```!text
-/// [inline("!")]{surprise}
-/// ```
-#[pyclass(name = "inline_scope_builder_generator")]
-struct InlineScopeBuilderGeneratorDecorator {
-    inner: Py<PyAny>,
-}
-#[pymethods]
-impl InlineScopeBuilderGeneratorDecorator {
-    #[new]
-    fn __new__(inner: Py<PyAny>) -> Self {
-        Self { inner }
-    }
-
-    #[pyo3(signature = (*args, **kwargs))]
-    fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
-        let obj = self.inner.call(py, args, kwargs)?;
-        obj.setattr(py, InlineScopeBuilder::marker_func_name(py), obj.clone())?;
-        Ok(obj)
-    }
-}
-
-/// Decorator which allows functions-returning-functions to fit the RawScopeBuilder typeclass.
-///
-/// e.g. one could define a function
-/// ```python
-/// @raw_scope_builder_generator
-/// def math(name=""):
-///     def inner(raw_text):
-///         return ...
-///     return inner
-/// ```
-/// which allows turnip-text as so:
-/// ```!text
-/// [math()]#{\sin\(x\)}#
-/// ```
-#[pyclass(name = "raw_scope_builder_generator")]
-struct RawScopeBuilderGeneratorDecorator {
-    inner: Py<PyAny>,
-}
-#[pymethods]
-impl RawScopeBuilderGeneratorDecorator {
-    #[new]
-    fn __new__(inner: Py<PyAny>) -> Self {
-        Self { inner }
-    }
-
-    #[pyo3(signature = (*args, **kwargs))]
-    fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
-        let obj = self.inner.call(py, args, kwargs)?;
-        obj.setattr(py, RawScopeBuilder::marker_func_name(py), obj.clone())?;
-        Ok(obj)
     }
 }
 
