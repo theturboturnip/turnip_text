@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 
-use pyo3::{prelude::*, types::PyDict};
+use pyo3::{
+    prelude::*,
+    types::{PyDict, PyString},
+};
 use thiserror::Error;
 
 use crate::{
@@ -26,7 +29,7 @@ pub struct InterpState<'a> {
 }
 impl<'a> InterpState<'a> {
     pub fn new<'interp>(py: Python<'interp>, data: &'a str) -> InterpResult<Self> {
-        let root = Py::new(py, BlockScope::new_rs(py, None)).err_as_interp_internal(py)?;
+        let root = Py::new(py, BlockScope::new(py)).err_as_interp_internal(py)?;
         Ok(Self {
             block_state: InterpBlockState::ReadyForNewBlock,
             comment_state: None,
@@ -66,8 +69,19 @@ struct InterpCommentState {
 
 #[derive(Debug)]
 struct InterpBlockScopeState {
-    scope: Py<BlockScope>,
+    builder: Option<PyTcRef<BlockScopeBuilder>>,
+    children: Py<BlockScope>,
     scope_start: ParseSpan,
+}
+impl InterpBlockScopeState {
+    fn build_to_block(self, py: Python, scope_end: ParseSpan) -> InterpResult<PyTcRef<Block>> {
+        let scope = ParseSpan::new(self.scope_start.start, scope_end.end);
+        match self.builder {
+            Some(builder) => BlockScopeBuilder::call_build_from_blocks(py, builder, self.children)
+                .err_as_interp(py, scope),
+            None => Ok(PyTcRef::of(self.children.as_ref(py)).expect("Internal error: InterpBlockScopeState::children, a BlockScope, somehow doesn't fit the Block typeclass")),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -101,7 +115,7 @@ pub(crate) enum InterpBlockTransition {
     ///
     /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::ReadyForNewBlock]
     /// - [InterpBlockState::BuildingBlockLevelCode] -> [InterpBlockState::ReadyForNewBlock]
-    PushBlock(Option<PyTcRef<BlockScopeOwner>>, ParseSpan),
+    PushBlock(Option<PyTcRef<BlockScopeBuilder>>, ParseSpan),
 
     /// On encountering a scope close, pop the current block from the scope
     ///
@@ -121,23 +135,23 @@ pub(crate) enum InterpSpecialTransition {
 #[derive(Debug)]
 pub(crate) enum InlineNodeToCreate {
     UnescapedText(String),
-    RawText(Option<PyTcRef<RawScopeOwner>>, String),
+    RawText(Option<PyTcRef<RawScopeBuilder>>, String),
     PythonObject(PyObject),
 }
 impl InlineNodeToCreate {
-    fn to_py_intern(self, py: Python) -> PyResult<PyObject> {
-        let node = match self {
+    fn to_py_intern(self, py: Python) -> PyResult<PyTcRef<Inline>> {
+        match self {
             InlineNodeToCreate::UnescapedText(s) => {
-                Py::new(py, UnescapedText::new_rs(py, s.as_str()))?.to_object(py)
+                PyTcRef::of(Py::new(py, UnescapedText::new_rs(py, s.as_str()))?.as_ref(py))
             }
-            InlineNodeToCreate::RawText(owner, s) => {
-                Py::new(py, RawText::new_rs(py, owner, s.as_str()))?.to_object(py)
-            }
-            InlineNodeToCreate::PythonObject(obj) => obj,
-        };
-        Ok(node)
+            InlineNodeToCreate::RawText(builder, raw) => match builder {
+                Some(builder) => RawScopeBuilder::call_build_from_raw(py, builder, raw),
+                None => PyTcRef::of(PyString::new(py, raw.as_str())),
+            },
+            InlineNodeToCreate::PythonObject(obj) => PyTcRef::of(obj.as_ref(py)),
+        }
     }
-    pub(crate) fn to_py(self, py: Python) -> InterpResult<PyObject> {
+    pub(crate) fn to_py(self, py: Python) -> InterpResult<PyTcRef<Inline>> {
         self.to_py_intern(py).err_as_interp_internal(py)
     }
 }
@@ -422,8 +436,9 @@ impl<'a> InterpState<'a> {
                     // Pop block
                     let popped_scope = self.block_stack.pop();
                     match popped_scope {
-                        Some(InterpBlockScopeState { scope, .. }) => {
-                            self.push_to_topmost_block(py, scope.as_ref(py))?
+                        Some(popped_scope) => {
+                            let block = popped_scope.build_to_block(py, scope_close_span)?;
+                            self.push_to_topmost_block(py, block.as_ref(py))?
                         }
                         None => return Err(InterpError::ScopeCloseOutsideScope(scope_close_span)),
                     }
@@ -432,11 +447,11 @@ impl<'a> InterpState<'a> {
 
                 (
                     S::ReadyForNewBlock | S::BuildingBlockLevelCode { .. },
-                    T::PushBlock(owner, scope_start),
+                    T::PushBlock(builder, scope_start),
                 ) => {
                     self.block_stack.push(InterpBlockScopeState {
-                        scope: Py::new(py, BlockScope::new_rs(py, owner))
-                            .err_as_interp_internal(py)?,
+                        builder,
+                        children: Py::new(py, BlockScope::new(py)).err_as_interp_internal(py)?,
                         scope_start,
                     });
                     S::ReadyForNewBlock
@@ -445,7 +460,8 @@ impl<'a> InterpState<'a> {
                     let popped_scope = self.block_stack.pop();
                     match popped_scope {
                         Some(popped_scope) => {
-                            self.push_to_topmost_block(py, popped_scope.scope.as_ref(py))?
+                            let block = popped_scope.build_to_block(py, scope_close_span)?;
+                            self.push_to_topmost_block(py, block.as_ref(py))?
                         }
                         None => return Err(InterpError::ScopeCloseOutsideScope(scope_close_span)),
                     }
@@ -481,14 +497,13 @@ impl<'a> InterpState<'a> {
         Ok(())
     }
 
-    fn push_to_topmost_block(&self, py: Python, node: &PyAny) -> InterpResult<()> {
+    fn push_to_topmost_block(&self, py: Python, block: &PyAny) -> InterpResult<()> {
         {
-            let pyref = match self.block_stack.last() {
-                Some(b) => &b.scope,
+            let child_list_ref = match self.block_stack.last() {
+                Some(b) => &b.children,
                 None => &self.root,
             };
-            let scope = &mut *pyref.borrow_mut(py);
-            scope.push_node(node)
+            child_list_ref.borrow_mut(py).push_block(block)
         }
         .err_as_interp_internal(py)
     }
@@ -532,9 +547,9 @@ fn handle_code_mode(
     Ok(Some((res, code_span)))
 }
 pub enum EvalBracketResult {
-    Block(PyTcRef<BlockScopeOwner>),
-    Inline(PyTcRef<InlineScopeOwner>),
-    Raw(PyTcRef<RawScopeOwner>, usize),
+    Block(PyTcRef<BlockScopeBuilder>),
+    Inline(PyTcRef<InlineScopeBuilder>),
+    Raw(PyTcRef<RawScopeBuilder>, usize),
     Other(PyObject),
 }
 impl EvalBracketResult {

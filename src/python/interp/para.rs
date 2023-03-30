@@ -5,7 +5,7 @@ use crate::{
     python::{
         interop::*,
         interp::{handle_code_mode, EvalBracketResult, InterpError, MapInterpResult},
-        typeclass::PyTcRef,
+        typeclass::{PyTcRef, PyTypeclassList},
     },
     util::ParseSpan,
 };
@@ -22,8 +22,19 @@ pub(crate) struct InterpParaState {
 
 #[derive(Debug)]
 struct InterpInlineScopeState {
-    scope: Py<InlineScope>,
+    builder: Option<PyTcRef<InlineScopeBuilder>>,
+    children: PyTypeclassList<Inline>,
     scope_start: ParseSpan,
+}
+impl InterpInlineScopeState {
+    fn build_to_inline(self, py: Python, scope_end: ParseSpan) -> InterpResult<PyTcRef<Inline>> {
+        let scope = ParseSpan::new(self.scope_start.start, scope_end.end);
+        match self.builder {
+            Some(builder) => InlineScopeBuilder::call_build_from_inlines(py, builder, self.children)
+                .err_as_interp(py, scope),
+            None => Ok(PyTcRef::of(self.children.list(py)).expect("Internal error: InterpInlineScopeState::children, a PyList containing Inline, somehow doesn't fit the Inline typeclass")),
+        }
+    }
 }
 
 /// Interpreter state specific to parsing paragraphs and the content within (i.e. inline content)
@@ -50,7 +61,7 @@ enum InterpSentenceState {
     },
     /// When building raw text, optionally attached to an InlineScopeOwner
     BuildingRawText {
-        owner: Option<PyTcRef<RawScopeOwner>>,
+        owner: Option<PyTcRef<RawScopeBuilder>>,
         text: String,
         raw_start: ParseSpan,
         expected_n_hashes: usize,
@@ -83,7 +94,7 @@ pub(crate) enum InterpParaTransition {
     /// - [InterpSentenceState::MidSentence] -> [InterpSentenceState::MidSentence]
     /// - [InterpSentenceState::BuildingCode] -> [InterpSentenceState::MidSentence]
     /// - [InterpSentenceState::BuildingText] -> [InterpSentenceState::MidSentence]
-    PushInlineScope(Option<PyTcRef<InlineScopeOwner>>, ParseSpan),
+    PushInlineScope(Option<PyTcRef<InlineScopeBuilder>>, ParseSpan),
 
     /// On encountering a scope close, pop the current inline scope off the stack
     /// (pushing the current BuildingText to that scope beforehand)
@@ -134,7 +145,7 @@ pub(crate) enum InterpParaTransition {
     /// - [InterpSentenceState::MidSentence] -> [InterpSentenceState::BuildingRawText]
     /// - [InterpSentenceState::BuildingText] -> [InterpSentenceState::BuildingRawText]
     /// - (other block state) -> [InterpSentenceState::BuildingRawText]
-    StartRawScope(Option<PyTcRef<RawScopeOwner>>, ParseSpan, usize),
+    StartRawScope(Option<PyTcRef<RawScopeBuilder>>, ParseSpan, usize),
 
     /// On encountering inline text, start processing a string of text
     ///
@@ -286,11 +297,11 @@ impl InterpParaState {
                     | S::MidSentence
                     | S::BuildingCode { .. }
                     | S::BuildingText { .. },
-                    T::PushInlineScope(owner, span),
+                    T::PushInlineScope(builder, span),
                 ) => {
                     let scope = InterpInlineScopeState {
-                        scope: Py::new(py, InlineScope::new_rs(py, owner))
-                            .err_as_interp_internal(py)?,
+                        builder,
+                        children: PyTypeclassList::new(py),
                         scope_start: span,
                     };
                     self.inline_stack.push(scope);
@@ -298,11 +309,14 @@ impl InterpParaState {
                 }
                 (
                     S::SentenceStart | S::MidSentence | S::BuildingText { .. },
-                    T::PopInlineScope(_),
+                    T::PopInlineScope(scope_end),
                 ) => {
                     let popped_scope = self.inline_stack.pop();
                     match popped_scope {
-                        Some(popped_scope) => self.push_to_topmost_scope(py, popped_scope.scope.as_ref(py))?,
+                        Some(popped_scope) => {
+                            let inline_item = popped_scope.build_to_inline(py, scope_end)?;
+                            self.push_to_topmost_scope(py, inline_item.as_ref(py))?
+                        },
                         None => {
                             return Err(InterpError::InternalErr("PopInlineScope attempted with no inline scopes - should use EndParagraphAndPopBlock in this case".into()))
                         }
@@ -594,7 +608,7 @@ impl InterpParaState {
 
     fn push_to_topmost_scope(&self, py: Python, node: &PyAny) -> InterpResult<()> {
         match self.inline_stack.last() {
-            Some(i) => i.scope.borrow_mut(py).push_node(py, node),
+            Some(i) => i.children.append_checked(node),
             None => self.sentence.borrow_mut(py).push_node(py, node),
         }
         .err_as_interp_internal(py)

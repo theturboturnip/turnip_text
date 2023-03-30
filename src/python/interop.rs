@@ -2,6 +2,7 @@ use std::path::Path;
 
 use pyo3::{
     exceptions::PyRuntimeError,
+    intern,
     prelude::*,
     types::{PyDict, PyIterator, PyList, PyString, PyTuple},
 };
@@ -14,23 +15,25 @@ pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
 
     // Primitives
     m.add_class::<UnescapedText>()?;
-    m.add_class::<RawText>()?;
     m.add_class::<Sentence>()?;
     m.add_class::<Paragraph>()?;
 
-    // Scopes
     m.add_class::<BlockScope>()?;
-    m.add_class::<InlineScope>()?;
 
-    m.add_class::<BlockScopeOwnerDecorator>()?;
-    m.add_class::<InlineScopeOwnerGeneratorDecorator>()?;
+    m.add_class::<BlockScopeBuilderDecorator>()?;
+    m.add_class::<InlineScopeBuilderGeneratorDecorator>()?;
+    m.add_class::<RawScopeBuilderGeneratorDecorator>()?;
 
     Ok(())
 }
 
 /// Given a file path, calls [crate::cli::parse_file] (includes parsing, checking for syntax errors, evaluating python)
 #[pyfunction]
-fn parse_file(py: Python<'_>, path: &str, locals: Option<&PyDict>) -> PyResult<Py<BlockScope>> {
+fn parse_file<'py>(
+    py: Python<'py>,
+    path: &str,
+    locals: Option<&PyDict>,
+) -> PyResult<Py<BlockScope>> {
     // crate::cli::parse_file already surfaces the error to the user - we can just return a generic error
     crate::cli::parse_file(
         py,
@@ -42,48 +45,130 @@ fn parse_file(py: Python<'_>, path: &str, locals: Option<&PyDict>) -> PyResult<P
 
 /// Typeclass for block elements within the document tree e.g. paragraphs, block scopes.
 #[derive(Debug, Clone)]
-pub struct BlockNode {}
-impl PyTypeclass for BlockNode {
-    const NAME: &'static str = "BlockNode";
+pub struct Block {}
+impl Block {
+    fn marker_bool_name(py: Python<'_>) -> &PyString {
+        intern!(py, "is_block")
+    }
+}
+impl PyTypeclass for Block {
+    const NAME: &'static str = "Block";
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
-        let x = obj.is_instance_of::<BlockScope>()? || obj.is_instance_of::<Paragraph>()?;
-        Ok(x)
+        let attr_name = Self::marker_bool_name(obj.py());
+        if matches!(obj.hasattr(attr_name), Ok(true)) {
+            obj.getattr(attr_name)?.is_true()
+        } else {
+            Ok(false)
+        }
     }
 }
 
 /// Typeclass for objects representing content that stays within a single line/sentence.
+/// Captures everything that is *not* a block.
 #[derive(Debug, Clone)]
-pub struct InlineNode {}
-impl PyTypeclass for InlineNode {
-    const NAME: &'static str = "InlineNode";
+pub struct Inline {}
+impl PyTypeclass for Inline {
+    const NAME: &'static str = "Inline";
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
-        let x = obj.is_instance_of::<InlineScope>()?
-            || obj.is_instance_of::<RawText>()?
-            || obj.is_instance_of::<UnescapedText>()?;
-        Ok(x)
+        let is_block = Block::fits_typeclass(obj)?;
+        Ok(!is_block)
     }
 }
 
-/// Typeclass representing the "owner" of a block scope, which may modify how that scope is rendered.
+/// Typeclass representing the "builder" of a block scope, which may modify how that scope is rendered.
 #[derive(Debug, Clone)]
-pub struct BlockScopeOwner {}
-impl PyTypeclass for BlockScopeOwner {
-    const NAME: &'static str = "BlockScopeOwner";
+pub struct BlockScopeBuilder {}
+impl BlockScopeBuilder {
+    fn marker_func_name(py: Python<'_>) -> &PyString {
+        intern!(py, "build_from_blocks")
+    }
+    pub fn call_build_from_blocks<'py>(
+        py: Python<'py>,
+        builder: PyTcRef<Self>,
+        blocks: Py<BlockScope>,
+    ) -> PyResult<PyTcRef<Block>> {
+        let output = builder
+            .as_ref(py)
+            .getattr(Self::marker_func_name(py))?
+            .call1((blocks,))?;
+        PyTcRef::of(output)
+    }
+}
+impl PyTypeclass for BlockScopeBuilder {
+    const NAME: &'static str = "BlockScopeBuilder";
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
-        // TODO intern!() here
-        let fits = obj.is_callable() && obj.hasattr("owns_block_scope")?;
-        Ok(fits)
+        obj.hasattr(Self::marker_func_name(obj.py()))
     }
 }
 
-/// Decorator which allows functions-returning-functions to fit the BlockScopeOwner typeclass.
+/// Typeclass representing the "builder" of an inline scope, which may modify how that scope is rendered.
+#[derive(Debug, Clone)]
+pub struct InlineScopeBuilder {}
+impl InlineScopeBuilder {
+    fn marker_func_name(py: Python<'_>) -> &PyString {
+        intern!(py, "build_from_inlines")
+    }
+    pub fn call_build_from_inlines<'py>(
+        py: Python<'py>,
+        builder: PyTcRef<Self>,
+        inlines: PyTypeclassList<Inline>,
+    ) -> PyResult<PyTcRef<Inline>> {
+        let output = builder
+            .as_ref(py)
+            .getattr(Self::marker_func_name(py))?
+            .call1((inlines.list(py),))?;
+        PyTcRef::of(output)
+    }
+}
+impl PyTypeclass for InlineScopeBuilder {
+    const NAME: &'static str = "InlineScopeBuilder";
+
+    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
+        obj.hasattr(Self::marker_func_name(obj.py()))
+    }
+}
+
+/// Typeclass representing the "builder" of a raw scope, which interprets how that scope is rendered.
+///
+/// Requires a method
+/// ```python
+/// def build_from_raw(self, raw: str) -> Inline: ...
+/// ```
+#[derive(Debug, Clone)]
+pub struct RawScopeBuilder {}
+impl RawScopeBuilder {
+    fn marker_func_name(py: Python<'_>) -> &PyString {
+        intern!(py, "build_from_raw")
+    }
+    /// Calls builder.build_from_raw(raw)  
+    pub fn call_build_from_raw<'py>(
+        py: Python<'py>,
+        builder: PyTcRef<Self>,
+        raw: String,
+    ) -> PyResult<PyTcRef<Inline>> {
+        let output = builder
+            .as_ref(py)
+            .getattr(Self::marker_func_name(py))?
+            .call1((raw,))?;
+        PyTcRef::of(output)
+    }
+}
+impl PyTypeclass for RawScopeBuilder {
+    const NAME: &'static str = "RawScopeBuilder";
+
+    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
+        obj.hasattr(Self::marker_func_name(obj.py()))
+    }
+}
+
+/// Decorator which allows functions-returning-functions to fit the BlockScopeBuilder typeclass.
 ///
 /// e.g. one could define a function
 /// ```python
-/// @block_scope_owner_generator
+/// @block_scope_builder_generator
 /// def block(name=""):
 ///     def inner(items):
 ///         return items
@@ -95,12 +180,12 @@ impl PyTypeclass for BlockScopeOwner {
 /// The contents of greg
 /// }
 /// ```
-#[pyclass(name = "block_scope_owner_generator")]
-struct BlockScopeOwnerDecorator {
+#[pyclass(name = "block_scope_builder_generator")]
+struct BlockScopeBuilderDecorator {
     inner: Py<PyAny>,
 }
 #[pymethods]
-impl BlockScopeOwnerDecorator {
+impl BlockScopeBuilderDecorator {
     #[new]
     fn __new__(inner: Py<PyAny>) -> Self {
         Self { inner }
@@ -109,28 +194,16 @@ impl BlockScopeOwnerDecorator {
     #[pyo3(signature = (*args, **kwargs))]
     fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
         let obj = self.inner.call(py, args, kwargs)?;
-        obj.setattr(py, "owns_block_scope", true)?;
+        obj.setattr(py, BlockScopeBuilder::marker_func_name(py), obj.clone())?;
         Ok(obj)
     }
 }
 
-/// Typeclass representing the "owner" of an inline scope, which may modify how that scope is rendered.
-#[derive(Debug, Clone)]
-pub struct InlineScopeOwner {}
-impl PyTypeclass for InlineScopeOwner {
-    const NAME: &'static str = "InlineScopeOwner";
-
-    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
-        // TODO intern!() here
-        let fits = obj.is_callable() && obj.hasattr("owns_inline_scope")?;
-        Ok(fits)
-    }
-}
-/// Decorator which ensures functions fit the InlineScopeOwner typeclass
+/// Decorator which ensures functions fit the InlineScopeBuilder typeclass
 ///
 /// e.g. one could define a function
 /// ```python
-/// @inline_scope_owner_generator
+/// @inline_scope_builder_generator
 /// def inline(postfix = ""):
 ///     def inner(items):
 ///         return items + [postfix]
@@ -140,12 +213,12 @@ impl PyTypeclass for InlineScopeOwner {
 /// ```!text
 /// [inline("!")]{surprise}
 /// ```
-#[pyclass(name = "inline_scope_owner_generator")]
-struct InlineScopeOwnerGeneratorDecorator {
+#[pyclass(name = "inline_scope_builder_generator")]
+struct InlineScopeBuilderGeneratorDecorator {
     inner: Py<PyAny>,
 }
 #[pymethods]
-impl InlineScopeOwnerGeneratorDecorator {
+impl InlineScopeBuilderGeneratorDecorator {
     #[new]
     fn __new__(inner: Py<PyAny>) -> Self {
         Self { inner }
@@ -154,29 +227,16 @@ impl InlineScopeOwnerGeneratorDecorator {
     #[pyo3(signature = (*args, **kwargs))]
     fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
         let obj = self.inner.call(py, args, kwargs)?;
-        obj.setattr(py, "owns_inline_scope", true)?;
+        obj.setattr(py, InlineScopeBuilder::marker_func_name(py), obj.clone())?;
         Ok(obj)
     }
 }
 
-/// Typeclass representing the "owner" of a raw scope, which interprets how that scope is rendered
-#[derive(Debug, Clone)]
-pub struct RawScopeOwner {}
-impl PyTypeclass for RawScopeOwner {
-    const NAME: &'static str = "RawScopeOwner";
-
-    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
-        // TODO intern!() here
-        let fits = obj.is_callable() && obj.hasattr("owns_raw_scope")?;
-        Ok(fits)
-    }
-}
-
-/// Decorator which allows functions-returning-functions to fit the RawScopeOwner typeclass.
+/// Decorator which allows functions-returning-functions to fit the RawScopeBuilder typeclass.
 ///
 /// e.g. one could define a function
 /// ```python
-/// @raw_scope_owner_generator
+/// @raw_scope_builder_generator
 /// def math(name=""):
 ///     def inner(raw_text):
 ///         return ...
@@ -186,12 +246,12 @@ impl PyTypeclass for RawScopeOwner {
 /// ```!text
 /// [math()]#{\sin\(x\)}#
 /// ```
-#[pyclass(name = "raw_scope_owner_generator")]
-struct RawScopeOwnerGeneratorDecorator {
+#[pyclass(name = "raw_scope_builder_generator")]
+struct RawScopeBuilderGeneratorDecorator {
     inner: Py<PyAny>,
 }
 #[pymethods]
-impl RawScopeOwnerGeneratorDecorator {
+impl RawScopeBuilderGeneratorDecorator {
     #[new]
     fn __new__(inner: Py<PyAny>) -> Self {
         Self { inner }
@@ -200,7 +260,7 @@ impl RawScopeOwnerGeneratorDecorator {
     #[pyo3(signature = (*args, **kwargs))]
     fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
         let obj = self.inner.call(py, args, kwargs)?;
-        obj.setattr(py, "owns_raw_scope", true)?;
+        obj.setattr(py, RawScopeBuilder::marker_func_name(py), obj.clone())?;
         Ok(obj)
     }
 }
@@ -266,6 +326,11 @@ impl Paragraph {
         Self(PyInstanceList::new(py))
     }
 
+    #[getter]
+    pub fn is_block(&self) -> bool {
+        true
+    }
+
     pub fn __len__(&self, py: Python) -> usize {
         self.0.list(py).len()
     }
@@ -278,140 +343,32 @@ impl Paragraph {
     }
 }
 
-/// Represents a block of plain text that may contain newlines (TODO are newlines normalized to \n?)
+/// A group of [Block]s inside non-code-preceded squiggly braces
 ///
 /// Typically created by Rust while parsing input files.
-#[pyclass]
+#[pyclass(sequence)]
 #[derive(Debug, Clone)]
-pub struct RawText {
-    pub owner: Option<PyTcRef<RawScopeOwner>>,
-    pub contents: Py<PyString>,
-}
-impl RawText {
-    pub fn new_rs(py: Python, owner: Option<PyTcRef<RawScopeOwner>>, s: &str) -> Self {
-        Self {
-            owner,
-            contents: PyString::new(py, s).into_py(py),
-        }
-    }
-}
-#[pymethods]
-impl RawText {
-    #[new]
-    #[pyo3(signature = (owner, contents))]
-    pub fn new(owner: Option<&PyAny>, contents: Py<PyString>) -> PyResult<Self> {
-        let o = match owner {
-            Some(o) => Some(PyTcRef::of(o)?),
-            None => None,
-        };
-        Ok(Self { owner: o, contents })
-    }
-    #[getter]
-    pub fn contents(&self) -> PyResult<Py<PyString>> {
-        Ok(self.contents.clone())
-    }
-}
-
-/// A block of [Paragraph]s and other [BlockNode]s, owned by a [ScopeOwner].
-///
-/// Explicitly created with squiggly braces e.g.
-/// ```text
-/// [emph]{
-///     paragraph 1
-///
-///     paragraph 2
-/// }```
-#[pyclass]
-#[derive(Debug, Clone)]
-pub struct BlockScope {
-    pub owner: Option<PyTcRef<BlockScopeOwner>>,
-    pub children: PyTypeclassList<BlockNode>,
-}
-impl BlockScope {
-    pub fn new_rs(py: Python, owner: Option<PyTcRef<BlockScopeOwner>>) -> Self {
-        Self {
-            owner,
-            children: PyTypeclassList::new(py),
-        }
-    }
-}
+pub struct BlockScope(pub PyTypeclassList<Block>);
 #[pymethods]
 impl BlockScope {
     #[new]
-    pub fn new(py: Python, owner: Option<&PyAny>) -> PyResult<Self> {
-        let o = match owner {
-            Some(o) => Some(PyTcRef::of(o)?),
-            None => None,
-        };
-        Ok(Self::new_rs(py, o))
+    pub fn new(py: Python) -> Self {
+        Self(PyTypeclassList::new(py))
     }
 
     #[getter]
-    pub fn owner<'py>(&'py self, py: Python<'py>) -> Option<&'py PyAny> {
-        self.owner.as_ref().map(|tc| tc.as_ref(py))
-    }
-    #[getter]
-    pub fn children<'py>(&'py self, py: Python<'py>) -> &'py PyList {
-        self.children.list(py)
+    pub fn is_block(&self) -> bool {
+        true
     }
 
     pub fn __len__(&self, py: Python) -> usize {
-        self.children.list(py).len()
+        self.0.list(py).len()
     }
     pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
-        PyIterator::from_object(py, self.children.list(py))
+        PyIterator::from_object(py, self.0.list(py))
     }
 
-    pub fn push_node(&mut self, node: &PyAny) -> PyResult<()> {
-        self.children.append_checked(node)
-    }
-}
-
-/// A sequence of [UnescapedText]s and other [InlineNode]s, owned by a [ScopeOwner].
-///
-/// e.g. `[code]{this_is_formatted_as_code}`
-#[pyclass]
-#[derive(Debug, Clone)]
-pub struct InlineScope {
-    pub owner: Option<PyTcRef<InlineScopeOwner>>,
-    pub children: Py<PyList>,
-}
-impl InlineScope {
-    pub fn new_rs(py: Python, owner: Option<PyTcRef<InlineScopeOwner>>) -> Self {
-        Self {
-            owner,
-            children: PyList::empty(py).into(),
-        }
-    }
-}
-#[pymethods]
-impl InlineScope {
-    #[new]
-    pub fn new(py: Python, owner: Option<&PyAny>) -> PyResult<Self> {
-        let o = match owner {
-            Some(o) => Some(PyTcRef::of(o)?),
-            None => None,
-        };
-        Ok(Self::new_rs(py, o))
-    }
-
-    #[getter]
-    pub fn owner<'py>(&'py self, py: Python<'py>) -> Option<&'py PyAny> {
-        self.owner.as_ref().map(|tc| tc.as_ref(py))
-    }
-    #[getter]
-    pub fn children<'py>(&'py self, py: Python<'py>) -> &'py PyList {
-        self.children.as_ref(py)
-    }
-
-    pub fn __len__(&self, py: Python) -> usize {
-        self.children.as_ref(py).len()
-    }
-    pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
-        PyIterator::from_object(py, self.children.as_ref(py))
-    }
-
-    pub fn push_node(&mut self, py: Python, node: &PyAny) -> PyResult<()> {
-        self.children.as_ref(py).append(node)
+    pub fn push_block(&mut self, node: &PyAny) -> PyResult<()> {
+        self.0.append_checked(node)
     }
 }
