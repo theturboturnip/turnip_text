@@ -548,6 +548,7 @@ impl InterpParaState {
                             }
                             Inline(i) => PushInlineScope(Some(i), code_span),
                             Raw(r, n_hashes) => StartRawScope(Some(r), code_span, n_hashes),
+                            // TODO If the object is not already Inline, check if it's Block or BlockScopeBuilder or InlineScopeBuilder or RawScopeBuilder, stringify it, then put in an Unescaped box?
                             Other(s) => PushInlineContent(InlineNodeToCreate::PythonObject(
                                 PyTcRef::of(s.as_ref(py)).err_as_interp(py, code_span)?,
                             )),

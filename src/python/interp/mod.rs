@@ -372,6 +372,7 @@ impl<'a> InterpState<'a> {
                                 InterpParaTransition::StartRawScope(Some(r), code_span, n_hashes),
                             )),
                             Other(s) => {
+                                // TODO If the object is not already Inline, check if it's Block or BlockScopeBuilder or InlineScopeBuilder or RawScopeBuilder, stringify it, then put in an Unescaped box?
                                 StartParagraph(Some(InterpParaTransition::PushInlineContent(
                                     InlineNodeToCreate::PythonObject(
                                         PyTcRef::of(s.as_ref(py)).err_as_interp(py, code_span)?,
