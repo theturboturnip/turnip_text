@@ -149,7 +149,9 @@ pub enum TestInline {
     UnescapedText(String),
     RawText(String),
 
+    /// Test-only - a Python object built from an inline scope with __test_inline: List[Inline] = the contents of that scope
     TestOwnedInline(Vec<TestInline>),
+    /// Test-only - a Python object built from raw text with __test_raw_str: str = the raw text
     TestOwnedRaw(String),
 }
 pub fn test_doc(contents: Vec<TestBlock>) -> TestBlock {
@@ -250,42 +252,53 @@ impl PyToTest<TestInline> for PyAny {
 
 /// Generate a set of local Python variables used in each test case
 ///
-/// Provides `TEST_BLOCK_OWNER`, `TEST_INLINE_OWNER`, `TEST_RAW_OWNER` objects
+/// Provides `TEST_BLOCK_BUILDER`, `TEST_INLINE_BUILDER`, `TEST_RAW_BUILDER` objects
 /// that can own block, inline, and raw scopes respectively.
-pub fn generate_globals<'interp>(py: Python<'interp>) -> PyResult<&'interp PyDict> {
+pub fn generate_globals<'interp>(py: Python<'interp>) -> Option<&'interp PyDict> {
     let globals = PyDict::new(py);
 
-    py.run(
+    let result = py.run(
         r#"
 class FauxBlock:
     is_block = True
     def __init__(self, contents):
         self.__test_block = contents
 
-def TEST_BLOCK_BUILDER(contents) -> FauxBlock:
-    return FauxBlock(contents)
-
 class FauxInline:
     is_inline = True
     def __init__(self, contents):
         self.__test_inline = contents
-
-def TEST_INLINE_BUILDER(contents) -> FauxInline:
-    return FauxInline(contents)
 
 class FauxRaw:
     is_inline = True
     def __init__(self, contents):
         self.__test_raw_str = str(contents)
 
-def TEST_RAW_BUILDER(contents) -> FauxRaw:
-    return FauxRaw(contents)
+class TestBuilder:
+    def build_from_blocks(self, contents):
+        return FauxBlock(contents)
+    def build_from_inlines(self, contents):
+        return FauxInline(contents)
+    def build_from_raw(self, contents):
+        return FauxRaw(contents)
+
+TEST_BLOCK_BUILDER = TestBuilder()
+TEST_INLINE_BUILDER = TestBuilder()
+TEST_RAW_BUILDER = TestBuilder() 
 "#,
         None,
         Some(globals),
-    )?;
+    );
 
-    Ok(globals)
+    match result {
+        Err(pyerr) => {
+            pyerr.print(py);
+            return None;
+        }
+        Ok(_) => {}
+    };
+
+    Some(globals)
 }
 
 /// Run the lexer and parser on a given piece of text, convert the parsed result to our test versions, and compare with the expected result.
@@ -533,7 +546,7 @@ It was the best of the times, it was the blurst of times
 }
 "#,
         Err(TestInterpError::PythonErr {
-            pyerr: "TypeError : Expected object fitting typeclass BlockScopeBuilder, didn't get it"
+            pyerr: "TypeError : Expected object fitting typeclass BlockScopeBuilder, didn't get it. Got None"
                 .into(),
             code_span: TestParserSpan {
                 start: (1, 1),
@@ -554,12 +567,13 @@ pub fn test_owned_inline_scope() {
 }
 
 #[test]
-pub fn test_owned_inline_scope_with_non_inline_owner() {
+pub fn test_owned_inline_scope_with_non_inline_builder() {
     expect_parse(
         r"[None]{special text}",
         Err(TestInterpError::PythonErr {
-            pyerr: "TypeError : Expected object fitting typeclass InlineScopeOwner, didn't get it"
-                .into(),
+            pyerr:
+                "TypeError : Expected object fitting typeclass InlineScopeBuilder, didn't get it. Got None"
+                    .into(),
             code_span: TestParserSpan {
                 start: (1, 1),
                 end: (1, 8),
@@ -571,7 +585,7 @@ pub fn test_owned_inline_scope_with_non_inline_owner() {
 #[test]
 pub fn test_owned_inline_raw_scope_with_newline() {
     expect_parse(
-        r#"[TEST_RAW_OWNER]#{
+        r#"[TEST_RAW_BUILDER]#{
 import os
 }#"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
@@ -586,13 +600,13 @@ import os
 }
 
 #[test]
-pub fn test_owned_inline_raw_scope_with_non_raw_owner() {
+pub fn test_owned_inline_raw_scope_with_non_raw_builder() {
     expect_parse(
         r#"[None]#{
 import os
 }#"#,
         Err(TestInterpError::PythonErr {
-            pyerr: "TypeError : Expected object fitting typeclass RawScopeOwner, didn't get it"
+            pyerr: "TypeError : Expected object fitting typeclass RawScopeBuilder, didn't get it. Got None"
                 .into(),
             code_span: TestParserSpan {
                 start: (1, 1),

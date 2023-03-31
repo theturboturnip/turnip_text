@@ -1,9 +1,6 @@
 #![allow(dead_code)]
 
-use pyo3::{
-    prelude::*,
-    types::{PyDict, PyString},
-};
+use pyo3::{prelude::*, types::PyDict};
 use thiserror::Error;
 
 use crate::{
@@ -147,7 +144,10 @@ impl InlineNodeToCreate {
             }
             InlineNodeToCreate::RawText(builder, raw) => match builder {
                 Some(builder) => RawScopeBuilder::call_build_from_raw(py, builder, raw),
-                None => PyTcRef::of(PyString::new(py, raw.as_str())),
+                None => {
+                    let raw_text = Py::new(py, RawText::new_rs(py, raw.as_str()))?;
+                    PyTcRef::of(raw_text.as_ref(py))
+                }
             },
             InlineNodeToCreate::PythonObject(obj) => Ok(obj),
         }

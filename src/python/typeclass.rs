@@ -24,11 +24,11 @@ impl<T: PyTypeclass> PyTcRef<T> {
         if T::fits_typeclass(val)? {
             Ok(Self(val.into(), PhantomData::default()))
         } else {
-            let obj_str = val.str()?;
+            let obj_repr = val.repr()?;
             Err(PyTypeError::new_err(format!(
                 "Expected object fitting typeclass {}, didn't get it. Got {}",
                 T::NAME,
-                obj_str.to_str()?
+                obj_repr.to_str()?
             )))
         }
     }
@@ -51,10 +51,10 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
     pub fn from(py: Python, list: Py<PyList>) -> PyResult<Self> {
         for obj in list.as_ref(py) {
             if !T::fits_typeclass(obj)? {
-                let s = obj.str()?;
+                let obj_repr = obj.repr()?;
                 return Err(PyTypeError::new_err(format!(
                     "Passed list containing object {} into PyTypeclassList constructor -- expected object fitting typeclass {}, didn't get it",
-                    s.to_str()?,
+                    obj_repr.to_str()?,
                     T::NAME
                 )));
             }
@@ -67,11 +67,11 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
             self.0.as_ref(val.py()).append(val)?;
             Ok(())
         } else {
-            let obj_str = val.str()?;
+            let obj_repr = val.repr()?;
             Err(PyTypeError::new_err(format!(
                 "Expected object fitting typeclass {}, didn't get it. Got {}",
                 T::NAME,
-                obj_str.to_str()?
+                obj_repr.to_str()?
             )))
         }
     }
