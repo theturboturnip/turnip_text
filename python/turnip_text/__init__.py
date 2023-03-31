@@ -1,10 +1,10 @@
-from .turnip_text import UnescapedText, Sentence, Paragraph, BlockScope, parse_file # type: ignore
+from .turnip_text import UnescapedText, Sentence, Paragraph, BlockScope, InlineScope, parse_file # type: ignore
 
 from typing import List, Protocol, runtime_checkable
 
 
 class Inline(Protocol):
-    pass #is_block: None
+    is_inline: bool = True
 
 @runtime_checkable
 class Block(Protocol):
@@ -16,7 +16,7 @@ class BlockScopeBuilder(Protocol):
 
 @runtime_checkable
 class InlineScopeBuilder(Protocol):
-    def build_from_inlines(self, inls: List[Inline]) -> Inline: ...
+    def build_from_inlines(self, inls: InlineScope) -> Inline: ...
 
 @runtime_checkable
 class RawScopeBuilder(Protocol):

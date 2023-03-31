@@ -5,7 +5,7 @@ use crate::{
     python::{
         interop::*,
         interp::{handle_code_mode, EvalBracketResult, InterpError, MapInterpResult},
-        typeclass::{PyTcRef, PyTypeclassList},
+        typeclass::PyTcRef,
     },
     util::ParseSpan,
 };
@@ -23,7 +23,7 @@ pub(crate) struct InterpParaState {
 #[derive(Debug)]
 struct InterpInlineScopeState {
     builder: Option<PyTcRef<InlineScopeBuilder>>,
-    children: PyTypeclassList<Inline>,
+    children: Py<InlineScope>,
     scope_start: ParseSpan,
 }
 impl InterpInlineScopeState {
@@ -32,7 +32,7 @@ impl InterpInlineScopeState {
         match self.builder {
             Some(builder) => InlineScopeBuilder::call_build_from_inlines(py, builder, self.children)
                 .err_as_interp(py, scope),
-            None => Ok(PyTcRef::of(self.children.list(py)).expect("Internal error: InterpInlineScopeState::children, a PyList containing Inline, somehow doesn't fit the Inline typeclass")),
+            None => Ok(PyTcRef::of(self.children.as_ref(py)).expect("Internal error: InterpInlineScopeState::children, an InlineScope, somehow doesn't fit the Inline typeclass")),
         }
     }
 }
@@ -301,7 +301,8 @@ impl InterpParaState {
                 ) => {
                     let scope = InterpInlineScopeState {
                         builder,
-                        children: PyTypeclassList::new(py),
+                        children: Py::new(py, InlineScope::new_empty(py))
+                            .err_as_interp_internal(py)?,
                         scope_start: span,
                     };
                     self.inline_stack.push(scope);
@@ -547,7 +548,9 @@ impl InterpParaState {
                             }
                             Inline(i) => PushInlineScope(Some(i), code_span),
                             Raw(r, n_hashes) => StartRawScope(Some(r), code_span, n_hashes),
-                            Other(s) => PushInlineContent(InlineNodeToCreate::PythonObject(s)),
+                            Other(s) => PushInlineContent(InlineNodeToCreate::PythonObject(
+                                PyTcRef::of(s.as_ref(py)).err_as_interp(py, code_span)?,
+                            )),
                         };
                         Some(inl_transition)
                     }
@@ -609,8 +612,8 @@ impl InterpParaState {
 
     fn push_to_topmost_scope(&self, py: Python, node: &PyAny) -> InterpResult<()> {
         match self.inline_stack.last() {
-            Some(i) => i.children.append_checked(node),
-            None => self.sentence.borrow_mut(py).push_node(py, node),
+            Some(i) => i.children.borrow_mut(py).push_inline(node),
+            None => self.sentence.borrow_mut(py).push_inline(node),
         }
         .err_as_interp_internal(py)
     }

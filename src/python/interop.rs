@@ -18,6 +18,7 @@ pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<Sentence>()?;
     m.add_class::<Paragraph>()?;
     m.add_class::<BlockScope>()?;
+    m.add_class::<InlineScope>()?;
 
     Ok(())
 }
@@ -63,16 +64,30 @@ impl PyTypeclass for Block {
 /// Captures everything that is *not* a block.
 #[derive(Debug, Clone)]
 pub struct Inline {}
+impl Inline {
+    fn marker_bool_name(py: Python<'_>) -> &PyString {
+        intern!(py, "is_inline")
+    }
+}
 impl PyTypeclass for Inline {
     const NAME: &'static str = "Inline";
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
-        let is_block = Block::fits_typeclass(obj)?;
-        Ok(!is_block)
+        let attr_name = Self::marker_bool_name(obj.py());
+        if matches!(obj.hasattr(attr_name), Ok(true)) {
+            obj.getattr(attr_name)?.is_true()
+        } else {
+            Ok(false)
+        }
     }
 }
 
 /// Typeclass representing the "builder" of a block scope, which may modify how that scope is rendered.
+///
+/// Requires a method
+/// ```python
+/// def build_from_blocks(self, blocks: BlockScope) -> Block: ...
+/// ```
 #[derive(Debug, Clone)]
 pub struct BlockScopeBuilder {}
 impl BlockScopeBuilder {
@@ -100,6 +115,11 @@ impl PyTypeclass for BlockScopeBuilder {
 }
 
 /// Typeclass representing the "builder" of an inline scope, which may modify how that scope is rendered.
+///
+/// Requires a method
+/// ```python
+/// def build_from_inlines(self, inlines: InlineScope) -> Inline: ...
+/// ```
 #[derive(Debug, Clone)]
 pub struct InlineScopeBuilder {}
 impl InlineScopeBuilder {
@@ -109,12 +129,12 @@ impl InlineScopeBuilder {
     pub fn call_build_from_inlines<'py>(
         py: Python<'py>,
         builder: PyTcRef<Self>,
-        inlines: PyTypeclassList<Inline>,
+        inlines: Py<InlineScope>,
     ) -> PyResult<PyTcRef<Inline>> {
         let output = builder
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
-            .call1((inlines.list(py),))?;
+            .call1((inlines,))?;
         PyTcRef::of(output)
     }
 }
@@ -180,6 +200,10 @@ impl UnescapedText {
     pub fn text(&self) -> PyResult<Py<PyString>> {
         Ok(self.0.clone())
     }
+    #[getter]
+    pub fn is_inline(&self) -> bool {
+        true
+    }
 }
 
 /// A sequence of objects that represents a single sentence.
@@ -211,8 +235,8 @@ impl Sentence {
         PyIterator::from_object(py, self.0.list(py))
     }
 
-    pub fn push_node(&mut self, py: Python, node: &PyAny) -> PyResult<()> {
-        self.0.list(py).append(node)
+    pub fn push_inline(&mut self, node: &PyAny) -> PyResult<()> {
+        self.0.append_checked(node)
     }
 }
 
@@ -290,6 +314,45 @@ impl BlockScope {
     }
 
     pub fn push_block(&mut self, node: &PyAny) -> PyResult<()> {
+        self.0.append_checked(node)
+    }
+}
+
+/// A group of [Inline]s inside non-code-preceded squiggly braces
+///
+/// Typically created by Rust while parsing input files.
+#[pyclass(sequence)]
+#[derive(Debug, Clone)]
+pub struct InlineScope(pub PyTypeclassList<Inline>);
+impl InlineScope {
+    pub fn new_empty(py: Python) -> Self {
+        Self(PyTypeclassList::new(py))
+    }
+}
+#[pymethods]
+impl InlineScope {
+    #[new]
+    #[pyo3(signature = (list=None))]
+    pub fn new(py: Python, list: Option<Py<PyList>>) -> PyResult<Self> {
+        match list {
+            Some(list) => Ok(Self(PyTypeclassList::from(py, list)?)),
+            None => Ok(Self(PyTypeclassList::new(py))),
+        }
+    }
+
+    #[getter]
+    pub fn is_inline(&self) -> bool {
+        true
+    }
+
+    pub fn __len__(&self, py: Python) -> usize {
+        self.0.list(py).len()
+    }
+    pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
+        PyIterator::from_object(py, self.0.list(py))
+    }
+
+    pub fn push_inline(&mut self, node: &PyAny) -> PyResult<()> {
         self.0.append_checked(node)
     }
 }

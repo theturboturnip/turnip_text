@@ -24,10 +24,11 @@ impl<T: PyTypeclass> PyTcRef<T> {
         if T::fits_typeclass(val)? {
             Ok(Self(val.into(), PhantomData::default()))
         } else {
-            // TODO stringify obj
+            let obj_str = val.str()?;
             Err(PyTypeError::new_err(format!(
-                "Expected object fitting typeclass {}, didn't get it",
-                T::NAME
+                "Expected object fitting typeclass {}, didn't get it. Got {}",
+                T::NAME,
+                obj_str.to_str()?
             )))
         }
     }
@@ -66,10 +67,11 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
             self.0.as_ref(val.py()).append(val)?;
             Ok(())
         } else {
-            // TODO stringify obj
+            let obj_str = val.str()?;
             Err(PyTypeError::new_err(format!(
-                "Expected object fitting typeclass {}, didn't get it",
-                T::NAME
+                "Expected object fitting typeclass {}, didn't get it. Got {}",
+                T::NAME,
+                obj_str.to_str()?
             )))
         }
     }

@@ -136,19 +136,20 @@ pub(crate) enum InterpSpecialTransition {
 pub(crate) enum InlineNodeToCreate {
     UnescapedText(String),
     RawText(Option<PyTcRef<RawScopeBuilder>>, String),
-    PythonObject(PyObject),
+    PythonObject(PyTcRef<Inline>),
 }
 impl InlineNodeToCreate {
     fn to_py_intern(self, py: Python) -> PyResult<PyTcRef<Inline>> {
         match self {
             InlineNodeToCreate::UnescapedText(s) => {
-                PyTcRef::of(Py::new(py, UnescapedText::new_rs(py, s.as_str()))?.as_ref(py))
+                let unescaped_text = Py::new(py, UnescapedText::new_rs(py, s.as_str()))?;
+                PyTcRef::of(unescaped_text.as_ref(py))
             }
             InlineNodeToCreate::RawText(builder, raw) => match builder {
                 Some(builder) => RawScopeBuilder::call_build_from_raw(py, builder, raw),
                 None => PyTcRef::of(PyString::new(py, raw.as_str())),
             },
-            InlineNodeToCreate::PythonObject(obj) => PyTcRef::of(obj.as_ref(py)),
+            InlineNodeToCreate::PythonObject(obj) => Ok(obj),
         }
     }
     pub(crate) fn to_py(self, py: Python) -> InterpResult<PyTcRef<Inline>> {
@@ -372,7 +373,9 @@ impl<'a> InterpState<'a> {
                             )),
                             Other(s) => {
                                 StartParagraph(Some(InterpParaTransition::PushInlineContent(
-                                    InlineNodeToCreate::PythonObject(s),
+                                    InlineNodeToCreate::PythonObject(
+                                        PyTcRef::of(s.as_ref(py)).err_as_interp(py, code_span)?,
+                                    ),
                                 )))
                             }
                         };

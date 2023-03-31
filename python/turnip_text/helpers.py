@@ -1,6 +1,6 @@
 from typing import Any, Callable, List
 
-from turnip_text import Block, BlockScope, BlockScopeBuilder, Inline, InlineScopeBuilder, RawScopeBuilder
+from turnip_text import Block, BlockScope, BlockScopeBuilder, Inline, InlineScope, InlineScopeBuilder, RawScopeBuilder
 
 
 class block_scope_builder(BlockScopeBuilder):
@@ -39,8 +39,8 @@ class inline_scope_builder(InlineScopeBuilder):
     ```python
     def inline(postfix = ""):
         @inline_scope_builder
-        def inner(items: List[Inline]) -> Inline:
-            return items + [postfix]
+        def inner(items: InlineScope) -> Inline:
+            return InlineScope(list(items) + [postfix])
         return inner
     ```
     which allows turnip-text as so:
@@ -49,12 +49,12 @@ class inline_scope_builder(InlineScopeBuilder):
     ```
     """
     
-    func: Callable[[List[Inline]], Inline]
+    func: Callable[[InlineScope], Inline]
 
-    def __init__(self, func: Callable[[List[Inline]], Inline]) -> None:
+    def __init__(self, func: Callable[[InlineScope], Inline]) -> None:
         self.func = func
 
-    def build_from_inlines(self, inls: List[Inline]) -> Inline:
+    def build_from_inlines(self, inls: InlineScope) -> Inline:
         return self.func(inls)
 
 

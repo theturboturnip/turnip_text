@@ -11,25 +11,26 @@ def latex_escape(text: UnescapedText):
     # TODO
     return str(text)
 
-FOOTNOTE_TEXT: Dict[str, Inline] = {}
+FOOTNOTE_TEXT: Dict[str, Block] = {}
 @dataclass(frozen=True)
 class FootnoteAnchor(Inline):
     label: str
-    # Can be used as an inline scope owner
-    owns_inline_scope = True
-    # If used as an inline scope owner, automatically set FOOTNOTE_TEXT and return self
-    def build_from_inlines(self, contents: List[Inline]) -> 'FootnoteAnchor':
-        FOOTNOTE_TEXT[self.label] = contents
-        return self
 
     def render(self):
         # TODO maybe have the footnote_text define the text there?
         return r"\footnote{" + latex_escape(FOOTNOTE_TEXT[self.label]) + "}"
 
-def footnote(label: Optional[str]=None) -> FootnoteAnchor:
+def footnote(label: Optional[str]=None) -> InlineScopeBuilder:
     if label is None:
         label = str(uuid.uuid4())
-    return FootnoteAnchor(label)
+
+    l: str = label
+
+    @inline_scope_builder
+    def handle_inline_contents(contents: InlineScope) -> Inline:
+        FOOTNOTE_TEXT[l] = Paragraph([Sentence([contents])])
+        return FootnoteAnchor(l)
+    return handle_inline_contents
 
 def footnote_text(label: str):
     # Return a callable which is invoked with the contents of the following inline scope
@@ -37,11 +38,11 @@ def footnote_text(label: str):
     # [footnote_text("label")]{text}
     # equivalent to
     # [footnote_text("label")(r"text")]
-    @inline_scope_builder
-    def handle_inline_contents(contents: List[Inline]) -> Inline:
+    @block_scope_builder
+    def handle_block_contents(contents: BlockScope) -> Block:
         FOOTNOTE_TEXT[label] = contents
         return None
-    return handle_inline_contents
+    return handle_block_contents
 
 @dataclass(frozen=True)
 class HeadedBlock:
@@ -101,7 +102,7 @@ def subsubsection(name: str, label: Optional[str]=None, num: bool=True) -> Block
 CITATIONS: Dict[str, Any] = {}
 
 @dataclass(frozen=True)
-class Citation:
+class Citation(Inline):
     # List of (label, note)
     labels: List[Tuple[str, Optional[str]]]
 
@@ -124,10 +125,10 @@ def citeauthor(label: str):
     return Citation([(label, None)])
 
 @dataclass(frozen=True)
-class Url:
+class Url(Inline):
     url: str
 
-def url(url: str):
+def url(url: str) -> Inline:
     return Url(url)
 
 @dataclass(frozen=True)
@@ -163,7 +164,7 @@ def item():
 @dataclass
 class Formatted(Inline):
     format_type: str # e.g. "emph"
-    items: List[Inline]
+    items: InlineScope
 
     def render(self):
         # TODO return "\" + self.format_type + "{" + render(self.items) + "}"
@@ -172,17 +173,20 @@ class Formatted(Inline):
 # Because we want to use this like [emph]
 # mark it as "build_from_inlines" manually
 @inline_scope_builder
-def emph(items: List[Inline]) -> Inline:
+def emph(items: InlineScope) -> Inline:
     return Formatted("emph", items)
 
+# TODO this should be RawLatexText instead of UnescapedText
+OPEN_DQUOTE = UnescapedText("``")
+CLOS_DQUOTE = UnescapedText("''")
 @inline_scope_builder
-def enquote(items: List[Inline]) -> Inline:
-    return ["``"] + items + ["''"]
+def enquote(items: InlineScope) -> Inline:
+    return InlineScope([OPEN_DQUOTE] + list(items) + [CLOS_DQUOTE])
 
 import json
 class CustomEncoder(json.JSONEncoder):
     def default(self, o):
-        if isinstance(o, (BlockScope, Paragraph, Sentence)):
+        if isinstance(o, (BlockScope, InlineScope, Paragraph, Sentence)):
             return list(o)
         if isinstance(o, UnescapedText):
             return o.text
