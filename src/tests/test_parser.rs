@@ -149,9 +149,9 @@ pub enum TestInline {
     UnescapedText(String),
     RawText(String),
 
-    /// Test-only - a Python object built from an inline scope with __test_inline: List[Inline] = the contents of that scope
+    /// Test-only - a Python object built from an inline scope with test_inline: List[Inline] = the contents of that scope
     TestOwnedInline(Vec<TestInline>),
-    /// Test-only - a Python object built from raw text with __test_raw_str: str = the raw text
+    /// Test-only - a Python object built from raw text with test_raw_str: str = the raw text
     TestOwnedRaw(String),
 }
 pub fn test_doc(contents: Vec<TestBlock>) -> TestBlock {
@@ -189,10 +189,12 @@ impl PyToTest<TestBlock> for PyAny {
                     .map(|obj| PyToTest::as_test(obj, py))
                     .collect(),
             )
-        } else if let Ok(obj) = self.getattr("__test_block") {
+        } else if let Ok(obj) = self.getattr("test_block") {
             TestBlock::TestOwnedBlock(
-                obj.downcast::<PyList>()
+                obj.extract::<BlockScope>()
                     .unwrap()
+                    .0
+                    .list(py)
                     .iter()
                     .map(|obj| PyToTest::as_test(obj, py))
                     .collect(),
@@ -230,15 +232,17 @@ impl PyToTest<TestInline> for PyAny {
             TestInline::UnescapedText(text.0.as_ref(py).to_string())
         } else if let Ok(text) = self.extract::<RawText>() {
             TestInline::RawText(text.0.as_ref(py).to_string())
-        } else if let Ok(obj) = self.getattr("__test_inline") {
+        } else if let Ok(obj) = self.getattr("test_inline") {
             TestInline::TestOwnedInline(
-                obj.downcast::<PyList>()
+                obj.extract::<InlineScope>()
                     .unwrap()
+                    .0
+                    .list(py)
                     .iter()
                     .map(|obj| PyToTest::as_test(obj, py))
                     .collect(),
             )
-        } else if let Ok(text) = self.getattr("__test_raw_str") {
+        } else if let Ok(text) = dbg!(self.getattr("test_raw_str")) {
             TestInline::TestOwnedRaw(text.to_string())
         } else {
             TestInline::UnescapedText(
@@ -262,17 +266,17 @@ pub fn generate_globals<'interp>(py: Python<'interp>) -> Option<&'interp PyDict>
 class FauxBlock:
     is_block = True
     def __init__(self, contents):
-        self.__test_block = contents
+        self.test_block = contents
 
 class FauxInline:
     is_inline = True
     def __init__(self, contents):
-        self.__test_inline = contents
+        self.test_inline = contents
 
 class FauxRaw:
     is_inline = True
     def __init__(self, contents):
-        self.__test_raw_str = str(contents)
+        self.test_raw_str = str(contents)
 
 class TestBuilder:
     def build_from_blocks(self, contents):
@@ -286,7 +290,7 @@ TEST_BLOCK_BUILDER = TestBuilder()
 TEST_INLINE_BUILDER = TestBuilder()
 TEST_RAW_BUILDER = TestBuilder() 
 "#,
-        None,
+        Some(globals),
         Some(globals),
     );
 
