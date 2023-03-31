@@ -9,6 +9,12 @@ class UnescapedText(Inline):
     def text(self) -> str: ...
 
 
+class RawText(Inline):
+    def __init__(self, text: str) -> None: ...
+    @property
+    def text(self) -> str: ...
+
+
 # Note - Sentence is NOT an Inline. This means there's always a hierarchy of Paragraph -> many Sentences -> many Inlines.
 # InlineScopes can be nested, Sentences cannot.
 class Sentence:

@@ -10,7 +10,7 @@ use crate::python::{interp_data, prepare_freethreaded_turniptext_python, InterpE
 use crate::util::ParseSpan;
 
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyList};
 
 use std::panic;
 // We need to initialize Python the first time we test
@@ -138,29 +138,22 @@ impl TestInterpError {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TestBlock {
-    BlockScope {
-        owner: Option<String>,
-        contents: Vec<TestBlock>,
-    },
+    BlockScope(Vec<TestBlock>),
     Paragraph(Vec<Vec<TestInline>>),
+
+    TestOwnedBlock(Vec<TestBlock>),
 }
 #[derive(Debug, PartialEq, Eq)]
 pub enum TestInline {
-    InlineScope {
-        owner: Option<String>,
-        contents: Vec<TestInline>,
-    },
+    InlineScope(Vec<TestInline>),
     UnescapedText(String),
-    RawText {
-        owner: Option<String>,
-        contents: String,
-    },
+    RawText(String),
+
+    TestOwnedInline(Vec<TestInline>),
+    TestOwnedRaw(String),
 }
 pub fn test_doc(contents: Vec<TestBlock>) -> TestBlock {
-    TestBlock::BlockScope {
-        owner: None,
-        contents,
-    }
+    TestBlock::BlockScope(contents)
 }
 pub fn test_sentence(s: impl Into<String>) -> Vec<TestInline> {
     vec![TestInline::UnescapedText(s.into())]
@@ -168,11 +161,8 @@ pub fn test_sentence(s: impl Into<String>) -> Vec<TestInline> {
 pub fn test_text(s: impl Into<String>) -> TestInline {
     TestInline::UnescapedText(s.into())
 }
-pub fn test_raw_text(owner: Option<String>, s: impl Into<String>) -> TestInline {
-    TestInline::RawText {
-        owner,
-        contents: s.into(),
-    }
+pub fn test_raw_text(s: impl Into<String>) -> TestInline {
+    TestInline::RawText(s.into())
 }
 
 pub trait PyToTest<T> {
@@ -181,19 +171,26 @@ pub trait PyToTest<T> {
 impl PyToTest<TestBlock> for PyAny {
     fn as_test(&self, py: Python) -> TestBlock {
         if let Ok(block) = self.extract::<BlockScope>() {
-            TestBlock::BlockScope {
-                owner: block.owner.map(|x| x.as_ref(py).to_string()),
-                contents: block
-                    .children
+            TestBlock::BlockScope(
+                block
+                    .0
                     .list(py)
                     .iter()
                     .map(|obj| PyToTest::as_test(obj, py))
                     .collect(),
-            }
+            )
         } else if let Ok(para) = self.extract::<Paragraph>() {
             TestBlock::Paragraph(
                 para.0
                     .list(py)
+                    .iter()
+                    .map(|obj| PyToTest::as_test(obj, py))
+                    .collect(),
+            )
+        } else if let Ok(obj) = self.getattr("__test_block") {
+            TestBlock::TestOwnedBlock(
+                obj.downcast::<PyList>()
+                    .unwrap()
                     .iter()
                     .map(|obj| PyToTest::as_test(obj, py))
                     .collect(),
@@ -208,7 +205,7 @@ impl PyToTest<Vec<TestInline>> for PyAny {
         if let Ok(sentence) = self.extract::<Sentence>() {
             sentence
                 .0
-                .as_ref(py)
+                .list(py)
                 .iter()
                 .map(|obj| PyToTest::as_test(obj, py))
                 .collect()
@@ -220,22 +217,27 @@ impl PyToTest<Vec<TestInline>> for PyAny {
 impl PyToTest<TestInline> for PyAny {
     fn as_test(&self, py: Python) -> TestInline {
         if let Ok(inl) = self.extract::<InlineScope>() {
-            TestInline::InlineScope {
-                owner: inl.owner.map(|x| x.as_ref(py).to_string()),
-                contents: inl
-                    .children
-                    .as_ref(py)
+            TestInline::InlineScope(
+                inl.0
+                    .list(py)
                     .iter()
                     .map(|obj| PyToTest::as_test(obj, py))
                     .collect(),
-            }
+            )
         } else if let Ok(text) = self.extract::<UnescapedText>() {
             TestInline::UnescapedText(text.0.as_ref(py).to_string())
         } else if let Ok(text) = self.extract::<RawText>() {
-            TestInline::RawText {
-                owner: text.owner.map(|x| x.as_ref(py).to_string()),
-                contents: text.contents.as_ref(py).to_string(),
-            }
+            TestInline::RawText(text.0.as_ref(py).to_string())
+        } else if let Ok(obj) = self.getattr("__test_inline") {
+            TestInline::TestOwnedInline(
+                obj.downcast::<PyList>()
+                    .unwrap()
+                    .iter()
+                    .map(|obj| PyToTest::as_test(obj, py))
+                    .collect(),
+            )
+        } else if let Ok(text) = self.getattr("__test_raw_str") {
+            TestInline::TestOwnedRaw(text.to_string())
         } else {
             TestInline::UnescapedText(
                 self.str()
@@ -255,22 +257,29 @@ pub fn generate_globals<'interp>(py: Python<'interp>) -> PyResult<&'interp PyDic
 
     py.run(
         r#"
-class TestOwner:
-    def __init__(self, name):
-        self.name = name
-    def __str__(self):
-        return self.name
-    def __call__(self, x):
-        return str(x)
+class FauxBlock:
+    is_block = True
+    def __init__(self, contents):
+        self.__test_block = contents
 
-TEST_BLOCK_OWNER = TestOwner("TEST_BLOCK_OWNER")
-TEST_BLOCK_OWNER.owns_block_scope = True
+def TEST_BLOCK_BUILDER(contents) -> FauxBlock:
+    return FauxBlock(contents)
 
-TEST_INLINE_OWNER = TestOwner("TEST_INLINE_OWNER")
-TEST_INLINE_OWNER.owns_inline_scope = True
+class FauxInline:
+    is_inline = True
+    def __init__(self, contents):
+        self.__test_inline = contents
 
-TEST_RAW_OWNER = TestOwner("TEST_RAW_OWNER")
-TEST_RAW_OWNER.owns_raw_scope = True
+def TEST_INLINE_BUILDER(contents) -> FauxInline:
+    return FauxInline(contents)
+
+class FauxRaw:
+    is_inline = True
+    def __init__(self, contents):
+        self.__test_raw_str = str(contents)
+
+def TEST_RAW_BUILDER(contents) -> FauxRaw:
+    return FauxRaw(contents)
 "#,
         None,
         Some(globals),
@@ -428,13 +437,10 @@ Second paragraph inside the scope
 }"#,
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![test_sentence("Outside the scope")]),
-            TestBlock::BlockScope {
-                owner: None,
-                contents: vec![
-                    TestBlock::Paragraph(vec![test_sentence("Inside the scope")]),
-                    TestBlock::Paragraph(vec![test_sentence("Second paragraph inside the scope")]),
-                ],
-            },
+            TestBlock::BlockScope(vec![
+                TestBlock::Paragraph(vec![test_sentence("Inside the scope")]),
+                TestBlock::Paragraph(vec![test_sentence("Second paragraph inside the scope")]),
+            ]),
         ])),
     )
 }
@@ -444,10 +450,7 @@ pub fn test_raw_scope() {
     expect_parse(
         "#{It's f&%#ing raw}#",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::RawText {
-                owner: None,
-                contents: "It's f&%#ing raw".into(),
-            },
+            test_raw_text("It's f&%#ing raw"),
         ]])])),
     )
 }
@@ -458,10 +461,7 @@ pub fn test_inline_scope() {
         r#"Outside the scope {inside the scope}"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Outside the scope "),
-            TestInline::InlineScope {
-                owner: None,
-                contents: vec![test_text("inside the scope")],
-            },
+            TestInline::InlineScope(vec![test_text("inside the scope")]),
         ]])])),
     )
 }
@@ -482,7 +482,7 @@ pub fn test_raw_scope_newlines() {
         "Outside the scope #{\ninside the raw scope\n}#",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Outside the scope "),
-            test_raw_text(None, "\ninside the raw scope\n"),
+            test_raw_text("\ninside the raw scope\n"),
         ]])])),
     )
 }
@@ -494,7 +494,7 @@ pub fn test_raw_scope_crlf_newlines() {
         "Outside the scope #{\r\ninside the raw scope\r\n}#",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Outside the scope "),
-            test_raw_text(None, "\ninside the raw scope\n"),
+            test_raw_text("\ninside the raw scope\n"),
         ]])])),
     )
 }
@@ -505,7 +505,7 @@ pub fn test_inline_raw_scope() {
         r#"Outside the scope #{inside the raw scope}#"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Outside the scope "),
-            test_raw_text(None, "inside the raw scope"),
+            test_raw_text("inside the raw scope"),
         ]])])),
     )
 }
@@ -513,28 +513,27 @@ pub fn test_inline_raw_scope() {
 #[test]
 pub fn test_owned_block_scope() {
     expect_parse(
-        r#"[TEST_BLOCK_OWNER]{
+        r#"[TEST_BLOCK_BUILDER]{
 It was the best of the times, it was the blurst of times
 }
 "#,
-        Ok(test_doc(vec![TestBlock::BlockScope {
-            owner: Some("TEST_BLOCK_OWNER".into()),
-            contents: vec![TestBlock::Paragraph(vec![test_sentence(
+        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![
+            TestBlock::Paragraph(vec![test_sentence(
                 "It was the best of the times, it was the blurst of times",
-            )])],
-        }])),
+            )]),
+        ])])),
     )
 }
 
 #[test]
-pub fn test_owned_block_scope_with_non_block_owner() {
+pub fn test_owned_block_scope_with_non_block_builder() {
     expect_parse(
         r#"[None]{
 It was the best of the times, it was the blurst of times
 }
 "#,
         Err(TestInterpError::PythonErr {
-            pyerr: "TypeError : Expected object fitting typeclass BlockScopeOwner, didn't get it"
+            pyerr: "TypeError : Expected object fitting typeclass BlockScopeBuilder, didn't get it"
                 .into(),
             code_span: TestParserSpan {
                 start: (1, 1),
@@ -547,12 +546,9 @@ It was the best of the times, it was the blurst of times
 #[test]
 pub fn test_owned_inline_scope() {
     expect_parse(
-        r"[TEST_INLINE_OWNER]{special text}",
+        r"[TEST_INLINE_BUILDER]{special text}",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::InlineScope {
-                owner: Some("TEST_INLINE_OWNER".into()),
-                contents: vec![test_text("special text")],
-            },
+            TestInline::TestOwnedInline(vec![test_text("special text")]),
         ]])])),
     )
 }
@@ -579,13 +575,12 @@ pub fn test_owned_inline_raw_scope_with_newline() {
 import os
 }#"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::RawText {
-                owner: Some("TEST_RAW_OWNER".into()),
-                contents: r#"
+            TestInline::TestOwnedRaw(
+                r#"
 import os
 "#
                 .into(),
-            },
+            ),
         ]])])),
     )
 }
@@ -766,14 +761,12 @@ pub fn test_block_scope_vs_inline_scope() {
 block scope
 }{inline scope}"#,
         Ok(test_doc(vec![
-            TestBlock::BlockScope {
-                owner: None,
-                contents: vec![TestBlock::Paragraph(vec![test_sentence("block scope")])],
-            },
-            TestBlock::Paragraph(vec![vec![TestInline::InlineScope {
-                owner: None,
-                contents: vec![test_text("inline scope")],
-            }]]),
+            TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+                "block scope",
+            )])]),
+            TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![test_text(
+                "inline scope",
+            )])]]),
         ])),
     )
 }

@@ -15,6 +15,7 @@ pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
 
     // Primitives
     m.add_class::<UnescapedText>()?;
+    m.add_class::<RawText>()?;
     m.add_class::<Sentence>()?;
     m.add_class::<Paragraph>()?;
     m.add_class::<BlockScope>()?;
@@ -192,6 +193,33 @@ impl UnescapedText {
 }
 #[pymethods]
 impl UnescapedText {
+    #[new]
+    pub fn new(data: Py<PyString>) -> Self {
+        Self(data)
+    }
+    #[getter]
+    pub fn text(&self) -> PyResult<Py<PyString>> {
+        Ok(self.0.clone())
+    }
+    #[getter]
+    pub fn is_inline(&self) -> bool {
+        true
+    }
+}
+
+/// Represents raw text that should not be escaped for rendering.
+///
+/// Typically created by Rust while parsing input files.
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct RawText(pub Py<PyString>);
+impl RawText {
+    pub fn new_rs(py: Python, s: &str) -> Self {
+        Self::new(PyString::new(py, s).into_py(py))
+    }
+}
+#[pymethods]
+impl RawText {
     #[new]
     pub fn new(data: Py<PyString>) -> Self {
         Self(data)

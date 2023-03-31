@@ -173,13 +173,10 @@ inside 2
         ],
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![test_sentence("outside")]),
-            TestBlock::BlockScope {
-                owner: None,
-                contents: vec![
-                    TestBlock::Paragraph(vec![test_sentence("inside")]),
-                    TestBlock::Paragraph(vec![test_sentence("inside 2")]),
-                ],
-            },
+            TestBlock::BlockScope(vec![
+                TestBlock::Paragraph(vec![test_sentence("inside")]),
+                TestBlock::Paragraph(vec![test_sentence("inside 2")]),
+            ]),
         ])),
     )
 }
@@ -200,10 +197,7 @@ pub fn test_raw_scope() {
             RawScopeClose(1),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::RawText {
-                owner: None,
-                contents: "It's f&%#ing raw".into(),
-            },
+            TestInline::RawText("It's f&%#ing raw".into()),
         ]])])),
     )
 }
@@ -221,10 +215,7 @@ pub fn test_inline_scope() {
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("outside "),
-            TestInline::InlineScope {
-                owner: None,
-                contents: vec![test_text("inside")],
-            },
+            TestInline::InlineScope(vec![test_text("inside")]),
         ]])])),
     )
 }
@@ -263,7 +254,7 @@ pub fn test_raw_scope_newlines() {
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("outside "),
-            test_raw_text(None, "\ninside\n"),
+            test_raw_text("\ninside\n"),
         ]])])),
     )
 }
@@ -284,7 +275,7 @@ pub fn test_raw_scope_crlf_newlines() {
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("outside "),
-            test_raw_text(None, "\ninside\n"),
+            test_raw_text("\ninside\n"),
         ]])])),
     )
 }
@@ -302,7 +293,7 @@ pub fn test_inline_raw_scope() {
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("outside "),
-            test_raw_text(None, "inside"),
+            test_raw_text("inside"),
         ]])])),
     )
 }
@@ -439,14 +430,10 @@ block
             ScopeClose,
         ],
         Ok(test_doc(vec![
-            TestBlock::BlockScope {
-                owner: None,
-                contents: vec![TestBlock::Paragraph(vec![test_sentence("block")])],
-            },
-            TestBlock::Paragraph(vec![vec![TestInline::InlineScope {
-                owner: None,
-                contents: vec![test_text("inline")],
-            }]]),
+            TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence("block")])]),
+            TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![test_text(
+                "inline",
+            )])]]),
         ])),
     )
 }
