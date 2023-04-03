@@ -2,7 +2,7 @@ from turnip_text.renderers.std_plugins import CitationPluginInterface, CiteKey, 
 from turnip_text.renderers import CustomRenderFunc, Renderer, RendererPlugin
 from .base import LatexRenderer, RawLatex
 
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union, cast
 from dataclasses import dataclass
 import uuid
 
@@ -37,9 +37,12 @@ class Url(Inline):
 class DisplayList(Block):
     # TODO allow nested lists
     #items: List[Union[BlockNode, List]]
-    items: List
+    items: List['DisplayListItem']
     mode: str
-    is_block = True    
+
+@dataclass(frozen=True)
+class DisplayListItem(Block):
+    item: Block
 
 @dataclass(frozen=True)
 class Formatted(Inline):
@@ -200,19 +203,56 @@ class LatexFormatPlugin(RendererPlugin, FormatPluginInterface):
         return enquote_builder
 
 class LatexListPlugin(RendererPlugin):
+    def _block_handlers(self) -> Iterable[CustomRenderFunc]:
+        return (
+            (DisplayList, self._render_list),
+            (DisplayListItem, self._render_list_item)
+        )
+
+    def _render_list(self, renderer: Renderer, list: DisplayList) -> str:
+        # TODO indents!
+        data = f"\\begin{{{list.mode}}}\n"
+        data += renderer.PARAGRAPH_SEP.join(
+            renderer.render_block(i)
+            for i in list.items
+        )
+        return data + f"\n\\end{{{list.mode}}}"
+
+    def _render_list_item(self, renderer: Renderer, list_item: DisplayListItem) -> str:
+        # TODO indents!
+        return "\\item " + renderer.render_block(list_item.item)
+
     @dictify_pure_property
     def enumerate(self) -> BlockScopeBuilder:
         @block_scope_builder
         def enumerate_builder(contents: BlockScope) -> Block:
-            return DisplayList(mode="enumerate", items=list(contents))
+            items = list(contents)
+            if any(not isinstance(x, DisplayListItem) for x in items):
+                raise TypeError(f"Found blocks in this list that were not list [item]s!")
+            return DisplayList(
+                mode="enumerate",
+                items=cast(List[DisplayListItem], items)
+            )
         return enumerate_builder
+
+    @dictify_pure_property
+    def itemize(self) -> BlockScopeBuilder:
+        @block_scope_builder
+        def itemize_builder(contents: BlockScope) -> Block:
+            items = list(contents)
+            if any(not isinstance(x, DisplayListItem) for x in items):
+                raise TypeError(f"Found blocks in this list that were not list [item]s!")
+            return DisplayList(
+                mode="itemize",
+                items=cast(List[DisplayListItem], items)
+            )
+        return itemize_builder
 
     @dictify_pure_property
     def item(self) -> BlockScopeBuilder:
         @block_scope_builder
         def item_builder(block_scope: BlockScope) -> Block:
-            # TODO some sort of Item() wrapper class?
-            return block_scope
+            return DisplayListItem(block_scope)
         return item_builder
 
 class LatexUrlPlugin(RendererPlugin):
