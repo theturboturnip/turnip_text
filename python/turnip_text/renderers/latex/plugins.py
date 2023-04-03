@@ -10,7 +10,7 @@ from turnip_text import Block, BlockScope, BlockScopeBuilder, Inline, InlineScop
 from turnip_text.helpers import block_scope_builder, inline_scope_builder
 from turnip_text.renderers import dictify_pure_property
 
-CiteKeyWithOptionNote = Tuple[CiteKey, Optional[str]]
+CiteKeyWithOptionNote = Tuple[CiteKey, Optional[UnescapedText]]
 
 @dataclass(frozen=True)
 class FootnoteAnchor(Inline):
@@ -64,12 +64,24 @@ class LatexCitationPlugin(RendererPlugin, CitationPluginInterface):
         )
 
     def _render_citation(self, renderer: Renderer, citation: Citation) -> str:
-        raise NotImplementedError("_render_citation")
+        if any(note for _, note in citation.labels):
+            # We can't add a citenote for multiple citations at a time in Latex - split individually
+            data = ""
+            for key, note in citation.labels:
+                if note:
+                    rendered_note = renderer.render_unescapedtext(note)
+                    data += f"\\cite[{rendered_note}]{{{key}}}"
+                else:
+                    data += f"\\cite{{{key}}}"
+            return data
+        else:
+            data = "\\cite{" + ",".join(key for key, _ in citation.labels) + "}"
+            return data
 
-    def cite(self, *labels: Union[str, Tuple[str, Optional[str]]]) -> Inline:
+    def cite(self, *labels: Union[str, Tuple[str, str]]) -> Inline:
         # Convert ["label"] to [("label", None)] so Citation has a consistent format
         adapted_labels = [
-            (label, None) if isinstance(label, str) else label
+            (label, None) if isinstance(label, str) else (label[0], UnescapedText(label[1]))
             for label in labels
         ]
         return Citation(adapted_labels)
@@ -182,8 +194,10 @@ class LatexFormatPlugin(RendererPlugin, FormatPluginInterface):
             (Formatted, self._render_formatted),
         )
 
-    def _render_formatted(self, renderer: Renderer, block: HeadedBlock) -> str:
-        raise NotImplementedError("_render_formatted")
+    def _render_formatted(self, renderer: Renderer, item: Formatted) -> str:
+        data = f"\\{item.format_type}{{"
+        data += renderer.render_inlinescope(item.items)
+        return data + "}}"
 
     @dictify_pure_property
     def emph(self) -> InlineScopeBuilder:
