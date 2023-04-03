@@ -23,7 +23,7 @@ class TypeToRenderMap(Generic[T], abc.ABC):
         for t, renderer in self.handlers.items():
             if isinstance(obj, t):
                 return renderer(base_renderer, obj)
-        raise NotImplementedError("Need default handler?")
+        raise NotImplementedError(f"Couldn't handle {obj}")
 
 
 class Renderer(abc.ABC):
