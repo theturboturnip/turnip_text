@@ -197,7 +197,7 @@ class LatexFormatPlugin(RendererPlugin, FormatPluginInterface):
     def _render_formatted(self, renderer: Renderer, item: Formatted) -> str:
         data = f"\\{item.format_type}{{"
         data += renderer.render_inlinescope(item.items)
-        return data + "}}"
+        return data + "}"
 
     @dictify_pure_property
     def emph(self) -> InlineScopeBuilder:
@@ -206,7 +206,6 @@ class LatexFormatPlugin(RendererPlugin, FormatPluginInterface):
             return Formatted("emph", items)
         return emph_builder
     
-    # TODO this should be RawLatexText instead of UnescapedText
     OPEN_DQUOTE = RawLatex("``")
     CLOS_DQUOTE = RawLatex("''")
     @dictify_pure_property
