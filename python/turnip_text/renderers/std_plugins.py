@@ -48,3 +48,25 @@ class FormatPluginInterface(Protocol):
     @dictify_pure_property
     def emph(self) -> InlineScopeBuilder:
         ...
+
+    @dictify_pure_property
+    def enquote(self) -> InlineScopeBuilder:
+        ...
+    
+class ListPluginInterface(Protocol):
+    @dictify_pure_property
+    def enumerate(self) -> BlockScopeBuilder:
+        ...
+
+    @dictify_pure_property
+    def itemize(self) -> BlockScopeBuilder:
+        ...
+
+    @dictify_pure_property
+    def item(self) -> BlockScopeBuilder:
+        ...
+
+
+class UrlPluginInterface(Protocol):
+    def url(self, url: str) -> Inline:
+        ...
