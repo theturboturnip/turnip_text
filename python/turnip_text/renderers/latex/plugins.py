@@ -91,7 +91,9 @@ class LatexFootnotePlugin(RendererPlugin, FootnotePluginInterface):
         )
 
     def _render_footnote_anchor(self, renderer: Renderer, footnote: FootnoteAnchor) -> str:
-        raise NotImplementedError("_render_footnote_anchor")
+        # TODO - intelligent footnotetext placement using floats?
+        rendered_footnotetext = renderer.render_block(self._footnotes[footnote.label])
+        return f"\\footnote{{{rendered_footnotetext}}}"
 
     @dictify_pure_property
     def footnote(self) -> InlineScopeBuilder:
