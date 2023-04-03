@@ -216,5 +216,16 @@ class LatexListPlugin(RendererPlugin):
         return item_builder
 
 class LatexUrlPlugin(RendererPlugin):
+    # TODO add dependency on hyperref!!
+
+    def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
+        return (
+            (Url, self._render_url),
+        )
+
+    def _render_url(self, renderer: Renderer, url: Url) -> str:
+        escaped_url = url.url.replace("#", "\\#")
+        return f"\\url{{{escaped_url}}}"
+
     def url(self, url: str) -> Inline:
         return Url(url)
