@@ -4,7 +4,7 @@ import uuid
 
 from turnip_text import Block, BlockScope, BlockScopeBuilder, Inline, InlineScope, InlineScopeBuilder, UnescapedText, Paragraph, Sentence
 from turnip_text.helpers import block_scope_builder, inline_scope_builder
-from turnip_text.renderers import CiteKey, Renderer, dictify_pure_property
+from turnip_text.renderers import CiteKey, MonolithRenderer, dictify_pure_property
 
 CiteKeyWithOptionNote = Tuple[CiteKey, Optional[str]]
 
@@ -43,7 +43,7 @@ class Formatted(Inline):
     items: InlineScope
 
 # TODO pytest for "does LatexRenderer support all functions of Renderer"
-class LatexRenderer(Renderer):
+class LatexRenderer(MonolithRenderer):
     _citations: Dict[str, Any]
     _footnotes: Dict[str, Block]
 
