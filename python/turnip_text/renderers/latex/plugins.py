@@ -19,7 +19,7 @@ class FootnoteAnchor(Inline):
 @dataclass(frozen=True)
 class HeadedBlock(Block):
     latex_name: str
-    name: str
+    name: UnescapedText
     contents: BlockScope
     label: Optional[str] = None
     num: bool = True
@@ -126,14 +126,21 @@ class LatexSectionPlugin(RendererPlugin, SectionPluginInterface):
         )
 
     def _render_headed_block(self, renderer: Renderer, block: HeadedBlock) -> str:
-        raise NotImplementedError("_render_headed_block")
+        header = f"\\{block.latex_name}" # i.e. r"\section"
+        if block.num:
+            header += "*"
+        escaped_name = renderer.render_unescapedtext(block.name)
+        header += f"{{{escaped_name}}}" # i.e. r"\section*" + "{Section Name}"
+        if block.label:
+            header += f"\\label{{{block.label}}}" # i.e. r"\section*{Section Name}" + r"\label{block_label}"
+        return f"{header}\n\n" + renderer.render_blockscope(block.contents)
 
     def section(self, name: str, label: Optional[str]=None, num: bool=True) -> BlockScopeBuilder:
         @block_scope_builder
         def handle_block_contents(contents: BlockScope) -> Block:
             return HeadedBlock(
                 latex_name="section",
-                name=name,
+                name=UnescapedText(name),
                 label=label,
                 num=num,
                 contents=contents
@@ -145,7 +152,7 @@ class LatexSectionPlugin(RendererPlugin, SectionPluginInterface):
         def handle_block_contents(contents: BlockScope) -> Block:
             return HeadedBlock(
                 latex_name="subsection",
-                name=name,
+                name=UnescapedText(name),
                 label=label,
                 num=num,
                 contents=contents
@@ -157,7 +164,7 @@ class LatexSectionPlugin(RendererPlugin, SectionPluginInterface):
         def handle_block_contents(contents: BlockScope) -> Block:
             return HeadedBlock(
                 latex_name="subsubsection",
-                name=name,
+                name=UnescapedText(name),
                 label=label,
                 num=num,
                 contents=contents
