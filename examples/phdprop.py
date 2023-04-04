@@ -13,7 +13,7 @@ from turnip_text.renderers.latex.plugins import (
 )
 from turnip_text.renderers.markdown.base import MarkdownRenderer
 from turnip_text.renderers.markdown.plugins import (
-    MarkdownCitationPlugin,
+    MarkdownCitationAsFootnotePlugin,
     MarkdownFootnotePlugin,
     MarkdownFormatPlugin,
     MarkdownListPlugin,
@@ -48,12 +48,18 @@ if __name__ == "__main__":
     )
     r_md = MarkdownRenderer(
         [
-            MarkdownCitationPlugin(),
+            MarkdownCitationAsFootnotePlugin(),
             MarkdownFootnotePlugin(),
             MarkdownSectionPlugin(),
             MarkdownFormatPlugin(),
             MarkdownListPlugin(),
             MarkdownUrlPlugin(),
+        ]
+    )
+    r_md.request_postamble_order(
+        [
+            MarkdownFootnotePlugin._MARKDOWN_FOOTNOTE_POSTAMBLE_ID,
+            MarkdownCitationAsFootnotePlugin._BIBLIOGRAPHY_POSTAMBLE_ID,
         ]
     )
 

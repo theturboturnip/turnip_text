@@ -1,6 +1,17 @@
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 
 from turnip_text import (
     Block,
@@ -75,20 +86,38 @@ class Formatted(Inline):
     items: InlineScope
 
 
-class MarkdownCitationPlugin(RendererPlugin, CitationPluginInterface):
+class MarkdownCitationAsFootnotePlugin(RendererPlugin, CitationPluginInterface):
     _citations: Dict[str, Any]
+    _referenced_citations: Set[str]
 
     def __init__(self) -> None:
         super().__init__()
 
         # TODO load citations from somewhere
         self._citations = {}
+        self._referenced_citations = set()
 
     def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
         return ((Citation, self._render_citation),)
 
+    def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[Renderer], str]]]:
+        return ((self._BIBLIOGRAPHY_POSTAMBLE_ID, self._render_bibliography),)
+
     def _render_citation(self, renderer: Renderer, citation: Citation) -> str:
-        raise NotImplementedError("_render_citation")
+        # TODO what happens with unmarkdownable labels? e.g. labels with backslash or something. need to check that when loading.
+        # TODO also maybe people wouldn't want those labels being exposed?
+        return "".join(
+            f"[^{label}]"
+            if opt_note is None
+            else f"\\([^{label}], {renderer.render_unescapedtext(opt_note)}\\)"
+            for label, opt_note in citation.labels
+        )
+
+    def _render_bibliography(self, renderer: Renderer) -> str:
+        # TODO actual reference rendering!
+        return renderer.SENTENCE_SEP.join(
+            f"[^{label}]: {label}" for label in self._referenced_citations
+        )
 
     def cite(self, *labels: Union[str, Tuple[str, str]]) -> Inline:
         # Convert ["label"] to [("label", None)] so Citation has a consistent format
@@ -98,6 +127,9 @@ class MarkdownCitationPlugin(RendererPlugin, CitationPluginInterface):
             else (label[0], UnescapedText(label[1]))
             for label in labels
         ]
+
+        self._referenced_citations.update(label for label, _ in adapted_labels)
+
         return Citation(adapted_labels)
 
     # TODO make this output \citeauthor
