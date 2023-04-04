@@ -219,7 +219,7 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
             header + renderer.PARAGRAPH_SEP + renderer.render_blockscope(block.contents)
         )
 
-    # [chapter_num, section_num, subsection_num... etc]
+    # [section_num, subsection_num... etc]
     _current_number: List[int]
 
     def __init__(self) -> None:
@@ -229,21 +229,25 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
     def _update_number(self, current_level: int) -> Tuple[int, ...]:
         """Update the structure number based on a newly-encountered header at level current_level.
 
-        i.e. if encountering a new section, call _update_number(1), which will a) increment the section number and b) return a tuple of (chapter_num, section_num) which can be used in rendering later.
+        i.e. if encountering a new section, call _update_number(2), which will a) increment the subsection number and b) return a tuple of (section_num, subsection_num) which can be used in rendering later.
         """
 
-        # Step 1: pad self._current_number out to (current_level + 1) elements with 0s
-        self._current_number += (current_level + 1 - len(self._current_number)) * [0]
-        # Step 2: increment self._current_number[level] and reset all numbers beyond that to 0
-        self._current_number[current_level] += 1
-        for i in range(current_level + 1, len(self._current_number)):
+        # Step 1: pad self._current_number out to current_level elements with 0s
+        self._current_number += (current_level - len(self._current_number)) * [0]
+        # Step 2: increment self._current_number[level - 1] and reset all numbers beyond that to 0
+        # e.g. for a plain section, level = 1 => increment current_number[0] and zero out current_number[1:]
+        self._current_number[current_level - 1] += 1
+        for i in range(current_level, len(self._current_number)):
             self._current_number[i] = 0
-        # Step 3: return a tuple of all elements up to current_level plus one
-        return tuple(self._current_number[: current_level + 1])
+        # Step 3: return a tuple of all elements up to current_level
+        return tuple(self._current_number[:current_level])
 
     def section(
         self, name: str, label: Optional[str] = None, num: bool = True
     ) -> BlockScopeBuilder:
+        # Increment the section number here, not at the end of the block
+        section_num = self._update_number(1)
+
         @block_scope_builder
         def handle_block_contents(contents: BlockScope) -> Block:
             return HeadedBlock(
@@ -251,7 +255,7 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
                 name=UnescapedText(name),
                 label=label,
                 use_num=num,
-                num=self._update_number(1),
+                num=section_num,
                 contents=contents,
             )
 
@@ -260,6 +264,9 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
     def subsection(
         self, name: str, label: Optional[str] = None, num: bool = True
     ) -> BlockScopeBuilder:
+        # Increment the section number here, not at the end of the block
+        section_num = self._update_number(2)
+
         @block_scope_builder
         def handle_block_contents(contents: BlockScope) -> Block:
             return HeadedBlock(
@@ -267,7 +274,7 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
                 name=UnescapedText(name),
                 label=label,
                 use_num=num,
-                num=self._update_number(2),
+                num=section_num,
                 contents=contents,
             )
 
@@ -276,6 +283,9 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
     def subsubsection(
         self, name: str, label: Optional[str] = None, num: bool = True
     ) -> BlockScopeBuilder:
+        # Increment the section number here, not at the end of the block
+        section_num = self._update_number(3)
+
         @block_scope_builder
         def handle_block_contents(contents: BlockScope) -> Block:
             return HeadedBlock(
@@ -283,7 +293,7 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
                 name=UnescapedText(name),
                 label=label,
                 use_num=num,
-                num=self._update_number(3),
+                num=section_num,
                 contents=contents,
             )
 
