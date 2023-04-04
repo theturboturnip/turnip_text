@@ -1,6 +1,6 @@
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union, cast
 
 from turnip_text import (
     Block,
@@ -107,31 +107,52 @@ class MarkdownCitationPlugin(RendererPlugin, CitationPluginInterface):
 
 class MarkdownFootnotePlugin(RendererPlugin, FootnotePluginInterface):
     _footnotes: Dict[str, Block]
+    _footnote_ref_order: List[str]
+
+    _MARKDOWN_FOOTNOTE_POSTAMBLE_ID = "MarkdownFootnotePlugin_Footnotes"
 
     def __init__(self) -> None:
         super().__init__()
 
         self._footnotes = {}
+        self._footnote_ref_order = []
 
     def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
         return ((FootnoteAnchor, self._render_footnote_anchor),)
 
+    def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[Renderer], str]]]:
+        return ((self._MARKDOWN_FOOTNOTE_POSTAMBLE_ID, self._render_footnotes),)
+
     def _render_footnote_anchor(
         self, renderer: Renderer, footnote: FootnoteAnchor
     ) -> str:
-        raise NotImplementedError("_render_footnote_anchor")
+        footnote_num = self._footnote_ref_order.index(footnote.label)
+        return f"[^{footnote_num + 1}]"
+
+    def _render_footnotes(self, renderer: Renderer) -> str:
+        return renderer.PARAGRAPH_SEP.join(
+            # TODO render with indent
+            f"[^{num + 1}]: " + renderer.render_block(self._footnotes[label])
+            for num, label in enumerate(self._footnote_ref_order)
+        )
+
+    def _add_footnote_reference(self, label: str):
+        if label not in self._footnote_ref_order:
+            self._footnote_ref_order.append(label)
 
     @dictify_pure_property
     def footnote(self) -> InlineScopeBuilder:
         @inline_scope_builder
         def footnote_builder(contents: InlineScope) -> Inline:
             label = str(uuid.uuid4())
+            self._add_footnote_reference(label)
             self._footnotes[label] = Paragraph([Sentence([contents])])
             return FootnoteAnchor(label)
 
         return footnote_builder
 
     def footnote_ref(self, label: str) -> Inline:
+        self._add_footnote_reference(label)
         return FootnoteAnchor(label)
 
     def footnote_text(self, label: str) -> BlockScopeBuilder:
