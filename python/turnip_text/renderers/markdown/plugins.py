@@ -347,13 +347,13 @@ class MarkdownListPlugin(RendererPlugin):
 
 
 class MarkdownUrlPlugin(RendererPlugin):
-    # TODO add dependency on hyperref!!
-
     def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
         return ((Url, self._render_url),)
 
     def _render_url(self, renderer: Renderer, url: Url) -> str:
-        raise NotImplementedError("_render_url")
+        # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal markdown
+        escaped_url_text = renderer.render_unescapedtext(UnescapedText(url.url))
+        return f"[{escaped_url_text}]({url.url})"
 
     def url(self, url: str) -> Inline:
         return Url(url)
