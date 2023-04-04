@@ -266,9 +266,11 @@ fn display_cli_feedback<T: GivesCliFeedback>(data: &str, err: &T) {
 }
 pub fn parse_file(py: Python, globals: &PyDict, path: &std::path::Path) -> anyhow::Result<Py<BlockScope>> {
     let data = std::fs::read_to_string(path)?;
-
+    parse_str(py, globals, &data)
+}
+pub fn parse_str(py: Python, globals: &PyDict, data: &str) -> anyhow::Result<Py<BlockScope>> {
     let mut units = vec![];
-    let lexer = LexerOfStr::<LexPosn, LexToken, LexError>::new(&data);
+    let lexer = LexerOfStr::<LexPosn, LexToken, LexError>::new(data);
 
     for u in lexer.iter(&[
         Box::new(Unit::parse_special),

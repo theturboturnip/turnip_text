@@ -12,6 +12,7 @@ use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
 #[pymodule]
 pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_file, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_str, m)?)?;
 
     // Primitives
     m.add_class::<UnescapedText>()?;
@@ -38,6 +39,17 @@ fn parse_file<'py>(
         Path::new(path),
     )
     .map_err(|_| PyRuntimeError::new_err("parse failed, see stdout"))
+}
+
+#[pyfunction]
+fn parse_str<'py>(
+    py: Python<'py>,
+    data: &str,
+    locals: Option<&PyDict>,
+) -> PyResult<Py<BlockScope>> {
+    // crate::cli::parse_str already surfaces the error to the user - we can just return a generic error
+    crate::cli::parse_str(py, locals.unwrap_or_else(|| PyDict::new(py)), data)
+        .map_err(|_| PyRuntimeError::new_err("parse failed, see stdout"))
 }
 
 /// Typeclass for block elements within the document tree e.g. paragraphs, block scopes.
