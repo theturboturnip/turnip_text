@@ -38,8 +38,11 @@ class HeadedBlock(Block):
     level: int
     name: UnescapedText
     contents: BlockScope
+    # Numbering
+    use_num: bool  # Whether to number the heading or not
+    num: Tuple[int, ...]  # The actual number of the heading
+    # Labelling
     label: Optional[str] = None
-    num: bool = True
 
 
 @dataclass(frozen=True)
@@ -150,7 +153,40 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
         return ((HeadedBlock, self._render_headed_block),)
 
     def _render_headed_block(self, renderer: Renderer, block: HeadedBlock) -> str:
-        raise NotImplementedError("_render_headed_block")
+        if block.label:
+            raise NotImplementedError("Section labelling not supported")
+
+        header = "#" * block.level + " "
+        if block.use_num:
+            header += ".".join(str(n) for n in block.num)
+            header += " "
+        header += renderer.render_unescapedtext(block.name)
+
+        return (
+            header + renderer.PARAGRAPH_SEP + renderer.render_blockscope(block.contents)
+        )
+
+    # [chapter_num, section_num, subsection_num... etc]
+    _current_number: List[int]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._current_number = []
+
+    def _update_number(self, current_level: int) -> Tuple[int, ...]:
+        """Update the structure number based on a newly-encountered header at level current_level.
+
+        i.e. if encountering a new section, call _update_number(1), which will a) increment the section number and b) return a tuple of (chapter_num, section_num) which can be used in rendering later.
+        """
+
+        # Step 1: pad self._current_number out to (current_level + 1) elements with 0s
+        self._current_number += (current_level + 1 - len(self._current_number)) * [0]
+        # Step 2: increment self._current_number[level] and reset all numbers beyond that to 0
+        self._current_number[current_level] += 1
+        for i in range(current_level + 1, len(self._current_number)):
+            self._current_number[i] = 0
+        # Step 3: return a tuple of all elements up to current_level plus one
+        return tuple(self._current_number[: current_level + 1])
 
     def section(
         self, name: str, label: Optional[str] = None, num: bool = True
@@ -161,7 +197,8 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
                 level=1,
                 name=UnescapedText(name),
                 label=label,
-                num=num,
+                use_num=num,
+                num=self._update_number(1),
                 contents=contents,
             )
 
@@ -176,7 +213,8 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
                 level=2,
                 name=UnescapedText(name),
                 label=label,
-                num=num,
+                use_num=num,
+                num=self._update_number(2),
                 contents=contents,
             )
 
@@ -191,7 +229,8 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
                 level=3,
                 name=UnescapedText(name),
                 label=label,
-                num=num,
+                use_num=num,
+                num=self._update_number(3),
                 contents=contents,
             )
 
