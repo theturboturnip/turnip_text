@@ -63,8 +63,8 @@ if __name__ == "__main__":
         ]
     )
 
-    doc_block = r_latex.parse_file(Path("./examples/phdprop.ttxt"))
-    print(r_latex.render_doc(doc_block))
+    # doc_block = r_latex.parse_file(Path("./examples/phdprop.ttxt"))
+    # print(r_latex.render_doc(doc_block))
 
     # r.load_cites("phdprop.bibtex")
     doc_block = r_md.parse_file(Path("./examples/phdprop.ttxt"))
