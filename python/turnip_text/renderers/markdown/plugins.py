@@ -61,12 +61,12 @@ class DisplayList(Block):
     # TODO allow nested lists
     # items: List[Union[BlockNode, List]]
     items: List["DisplayListItem"]
-    mode: str
+    numbered: bool
 
 
 @dataclass(frozen=True)
 class DisplayListItem(Block):
-    item: Block
+    contents: Block
 
 
 @dataclass(frozen=True)
@@ -296,18 +296,20 @@ class MarkdownFormatPlugin(RendererPlugin, FormatPluginInterface):
 
 class MarkdownListPlugin(RendererPlugin):
     def _block_handlers(self) -> Iterable[CustomRenderFunc]:
-        return (
-            (DisplayList, self._render_list),
-            (DisplayListItem, self._render_list_item),
-        )
+        return ((DisplayList, self._render_list),)
 
     def _render_list(self, renderer: Renderer, list: DisplayList) -> str:
         # TODO indents!
-        raise NotImplementedError("_render_list")
-
-    def _render_list_item(self, renderer: Renderer, list_item: DisplayListItem) -> str:
-        # TODO indents!
-        raise NotImplementedError("_render_list_item")
+        if list.numbered:
+            return renderer.SENTENCE_SEP.join(
+                f"{idx+1}. " + renderer.render_block(item.contents)
+                for idx, item in enumerate(list.items)
+            )
+        else:
+            return renderer.SENTENCE_SEP.join(
+                f"- " + renderer.render_block(item.contents)
+                for idx, item in enumerate(list.items)
+            )
 
     @dictify_pure_property
     def enumerate(self) -> BlockScopeBuilder:
@@ -318,9 +320,7 @@ class MarkdownListPlugin(RendererPlugin):
                 raise TypeError(
                     f"Found blocks in this list that were not list [item]s!"
                 )
-            return DisplayList(
-                mode="enumerate", items=cast(List[DisplayListItem], items)
-            )
+            return DisplayList(numbered=True, items=cast(List[DisplayListItem], items))
 
         return enumerate_builder
 
@@ -333,7 +333,7 @@ class MarkdownListPlugin(RendererPlugin):
                 raise TypeError(
                     f"Found blocks in this list that were not list [item]s!"
                 )
-            return DisplayList(mode="itemize", items=cast(List[DisplayListItem], items))
+            return DisplayList(numbered=False, items=cast(List[DisplayListItem], items))
 
         return itemize_builder
 
