@@ -115,8 +115,8 @@ class MarkdownCitationAsFootnotePlugin(RendererPlugin, CitationPluginInterface):
 
     def _render_bibliography(self, renderer: Renderer) -> str:
         # TODO actual reference rendering!
-        return renderer.SENTENCE_SEP.join(
-            f"[^{label}]: {label}" for label in self._referenced_citations
+        return renderer.PARAGRAPH_SEP.join(
+            f"[^{label}]: cite {label}" for label in self._referenced_citations
         )
 
     def cite(self, *labels: Union[str, Tuple[str, str]]) -> Inline:
