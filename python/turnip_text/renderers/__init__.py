@@ -1,6 +1,16 @@
 import abc
 from os import PathLike
-from typing import Callable, Dict, Generic, Iterable, List, Tuple, Type, TypeVar
+from typing import (
+    Callable,
+    Dict,
+    Generic,
+    Iterable,
+    Iterator,
+    List,
+    Tuple,
+    Type,
+    TypeVar,
+)
 
 from turnip_text import Block, BlockScope, Inline, parse_file_native
 from turnip_text.renderers.dictify import dictify
@@ -10,22 +20,84 @@ T = TypeVar("T")
 CustomRenderFunc = Tuple[Type[T], Callable[["Renderer", T], str]]
 
 
-class TypeToRenderMap(Generic[T], abc.ABC):
-    handlers: Dict[Type[T], Callable[["Renderer", T], str]]
+class TypeToRenderMap(Generic[T]):
+    _handlers: Dict[Type[T], Callable[["Renderer", T], str]]
 
     def __init__(self) -> None:
         super().__init__()
-        self.handlers = {}
+        self._handlers = {}
 
     def push_association(self, t_func: CustomRenderFunc):
         t, func = t_func
-        self.handlers[t] = func
+        if t in self._handlers:
+            raise RuntimeError(f"Conflict: registered two renderers for {t}")
+        self._handlers[t] = func
 
     def render(self, base_renderer: "Renderer", obj: T) -> str:
-        for t, renderer in self.handlers.items():
+        for t, renderer in self._handlers.items():
             if isinstance(obj, t):
                 return renderer(base_renderer, obj)
         raise NotImplementedError(f"Couldn't handle {obj}")
+
+
+class AmbleMap:
+    """Class that stores and reorders {pre,post}amble handlers.
+
+    Handlers are simply functions that return a string, which have a unique ID.
+
+    Only one handler per ID can exist.
+
+    The user can request that the ID are sorted in a particular order, or default to order of insertion.
+
+    When the document is rendered, the handlers will be called in that order."""
+
+    _handlers: Dict[str, Callable[[], str]]
+    _id_order: List[str]
+
+    def __init__(self) -> None:
+        self._handlers = {}
+
+    def push_handler(self, id: str, f: Callable[[], str]):
+        if id in self._handlers:
+            raise RuntimeError(f"Conflict: registered two amble-handlers for ID {id}")
+        self._handlers[id] = f
+        self._id_order.append(id)
+
+    def reorder_handlers(self, selected_id_order: List[str]):
+        """Request that certain handler IDs are rendered in a specific order.
+
+        Does not need to be a complete ordering, i.e. if handlers ['a', 'b', 'c'] are registered
+        this function can be called with ['c', 'a'] to ensure 'c' comes before 'a',
+        but all of the IDs in the order need to have been registered.
+
+        When the requested ordering is incomplete, handlers which haven't been mentioned
+        will retain their old order but there is no specified ordering between (mentioned) and (not-mentioned) IDs.
+        """
+
+        assert all(id in self._handlers for id in selected_id_order)
+
+        if len(selected_id_order) != len(set(selected_id_order)):
+            raise RuntimeError(
+                f"reorder_handlers() called with ordering with duplicate IDs: {selected_id_order}"
+            )
+
+        # Shortcut if the selected order is complete i.e. covers all IDs so far
+        if len(self._id_order) == len(selected_id_order):
+            self._id_order = selected_id_order
+        else:
+            # Otherwise, we need to consider the non-selected IDs too.
+            # The easy way: put selected ones first, then non-selected ones last
+            # Get the list of ids NOT in selected_id_order, in the order they're currently in in self._id_order
+            non_selected_ids = [
+                id for id in self._id_order if id not in selected_id_order
+            ]
+            self._id_order = selected_id_order + non_selected_ids
+
+        assert all(id in self._id_order for id in self._handlers.keys())
+
+    def generate_ambles(self) -> Iterator[str]:
+        for id in self._id_order:
+            yield self._handlers[id]()
 
 
 class Renderer(abc.ABC):
@@ -36,6 +108,8 @@ class Renderer(abc.ABC):
 
     block_handlers: TypeToRenderMap[Block]
     inline_handlers: TypeToRenderMap[Inline]
+    preamble_handlers: AmbleMap
+    postamble_handlers: AmbleMap
 
     def __init__(self, plugins: List["RendererPlugin"]) -> None:
         super().__init__()
@@ -57,12 +131,21 @@ class Renderer(abc.ABC):
             (UnescapedText, lambda _, t: self.render_unescapedtext(t))
         )
 
+        self.preamble_handlers = AmbleMap()
+        self.postamble_handlers = AmbleMap()
+
         self.plugins = plugins
         for p in self.plugins:
             for block_t_func in p._block_handlers():
                 self.block_handlers.push_association(block_t_func)
             for inl_t_func in p._inline_handlers():
                 self.inline_handlers.push_association(inl_t_func)
+
+    def request_preamble_order(self, preamble_id_order: List[str]):
+        self.preamble_handlers.reorder_handlers(preamble_id_order)
+
+    def request_postamble_order(self, postamble_id_order: List[str]):
+        self.postamble_handlers.reorder_handlers(postamble_id_order)
 
     def parse_file(self, p: PathLike) -> BlockScope:
         # TODO this seems super icky
@@ -82,9 +165,16 @@ class Renderer(abc.ABC):
         """The baseline - take text and return a string that will look like that text exactly in the given backend."""
         raise NotImplementedError(f"Need to implement render_unescapedtext")
 
-    def render_doc(self, doc: BlockScope) -> str:
-        # TODO: Document prefix/postfix?
-        return self.render_blockscope(doc)
+    def render_doc(self, doc_block: BlockScope) -> str:
+        doc = ""
+        for preamble in self.preamble_handlers.generate_ambles():
+            doc += preamble
+            doc += self.PARAGRAPH_SEP
+        doc += self.render_blockscope(doc_block)
+        for postamble in self.postamble_handlers.generate_ambles():
+            doc += self.PARAGRAPH_SEP
+            doc += postamble
+        return doc
 
     def render_inline(self, i: Inline) -> str:
         return self.inline_handlers.render(self, i)
@@ -130,4 +220,10 @@ class RendererPlugin(abc.ABC):
         return ()
 
     def _inline_handlers(self) -> Iterable[CustomRenderFunc[Inline]]:
+        return ()
+
+    def _preamble_handlers(self) -> Iterable[Tuple[str, Callable[[], str]]]:
+        return ()
+
+    def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[], str]]]:
         return ()
