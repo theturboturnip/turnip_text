@@ -5,6 +5,9 @@ from turnip_text.renderers.latex.plugins import LatexCitationPlugin, LatexFootno
 
 import json
 
+from turnip_text.renderers.markdown.base import MarkdownRenderer
+from turnip_text.renderers.markdown.plugins import MarkdownCitationPlugin, MarkdownFootnotePlugin, MarkdownFormatPlugin, MarkdownListPlugin, MarkdownSectionPlugin, MarkdownUrlPlugin
+
 class CustomEncoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, (BlockScope, InlineScope, Paragraph, Sentence)):
@@ -19,7 +22,7 @@ class CustomEncoder(json.JSONEncoder):
 
 
 if __name__ == '__main__':
-    r = LatexRenderer([
+    r_latex = LatexRenderer([
         LatexCitationPlugin(),
         LatexFootnotePlugin(),
         LatexSectionPlugin(),
@@ -27,8 +30,17 @@ if __name__ == '__main__':
         LatexListPlugin(),
         LatexUrlPlugin()
     ])
+    r_md = MarkdownRenderer([
+        MarkdownCitationPlugin(),
+        MarkdownFootnotePlugin(),
+        MarkdownSectionPlugin(),
+        MarkdownFormatPlugin(),
+        MarkdownListPlugin(),
+        MarkdownUrlPlugin(),
+    ])
+
     # r.load_cites("phdprop.bibtex")
-    doc_block = r.parse_file(Path("./examples/phdprop.ttxt"))
-    print(r.render_doc(doc_block))
+    doc_block = r_md.parse_file(Path("./examples/phdprop.ttxt"))
+    print(r_md.render_doc(doc_block))
 
     # print(json.dumps(doc_block, indent=4, cls=CustomEncoder))
