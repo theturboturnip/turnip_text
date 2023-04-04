@@ -1,6 +1,6 @@
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union, cast
 
 from turnip_text import (
     Block,
@@ -74,6 +74,8 @@ class Formatted(Inline):
 
 
 class LatexCitationPlugin(RendererPlugin, CitationPluginInterface):
+    # TODO require biblatex
+
     _citations: Dict[str, Any]
 
     def __init__(self) -> None:
@@ -84,6 +86,9 @@ class LatexCitationPlugin(RendererPlugin, CitationPluginInterface):
 
     def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
         return ((Citation, self._render_citation),)
+
+    def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[Renderer], str]]]:
+        return ((self._BIBLIOGRAPHY_POSTAMBLE_ID, self._render_bibliography),)
 
     def _render_citation(self, renderer: Renderer, citation: Citation) -> str:
         if any(note for _, note in citation.labels):
@@ -99,6 +104,12 @@ class LatexCitationPlugin(RendererPlugin, CitationPluginInterface):
         else:
             data = "\\cite{" + ",".join(key for key, _ in citation.labels) + "}"
             return data
+
+    def _render_bibliography(self, renderer: Renderer) -> str:
+        return """{
+\\raggedright
+\\printbibliography
+}"""
 
     def cite(self, *labels: Union[str, Tuple[str, str]]) -> Inline:
         # Convert ["label"] to [("label", None)] so Citation has a consistent format

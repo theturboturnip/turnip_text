@@ -40,6 +40,7 @@ class TypeToRenderMap(Generic[T]):
         raise NotImplementedError(f"Couldn't handle {obj}")
 
 
+# TODO Make preamble/postamble return Blocks to be rendered instead of just str? Would allow e.g. a Bibliography section? Perhaps better to expose a bibliography block for "standard" postambles?
 class AmbleMap:
     """Class that stores and reorders {pre,post}amble handlers.
 
@@ -51,13 +52,14 @@ class AmbleMap:
 
     When the document is rendered, the handlers will be called in that order."""
 
-    _handlers: Dict[str, Callable[[], str]]
+    _handlers: Dict[str, Callable[["Renderer"], str]]
     _id_order: List[str]
 
     def __init__(self) -> None:
         self._handlers = {}
+        self._id_order = []
 
-    def push_handler(self, id: str, f: Callable[[], str]):
+    def push_handler(self, id: str, f: Callable[["Renderer"], str]):
         if id in self._handlers:
             raise RuntimeError(f"Conflict: registered two amble-handlers for ID {id}")
         self._handlers[id] = f
@@ -95,9 +97,9 @@ class AmbleMap:
 
         assert all(id in self._id_order for id in self._handlers.keys())
 
-    def generate_ambles(self) -> Iterator[str]:
+    def generate_ambles(self, renderer: "Renderer") -> Iterator[str]:
         for id in self._id_order:
-            yield self._handlers[id]()
+            yield self._handlers[id](renderer)
 
 
 class Renderer(abc.ABC):
@@ -140,6 +142,10 @@ class Renderer(abc.ABC):
                 self.block_handlers.push_association(block_t_func)
             for inl_t_func in p._inline_handlers():
                 self.inline_handlers.push_association(inl_t_func)
+            for preamble_id, preamble_func in p._preamble_handlers():
+                self.preamble_handlers.push_handler(preamble_id, preamble_func)
+            for postamble_id, postamble_func in p._postamble_handlers():
+                self.postamble_handlers.push_handler(postamble_id, postamble_func)
 
     def request_preamble_order(self, preamble_id_order: List[str]):
         self.preamble_handlers.reorder_handlers(preamble_id_order)
@@ -167,11 +173,11 @@ class Renderer(abc.ABC):
 
     def render_doc(self, doc_block: BlockScope) -> str:
         doc = ""
-        for preamble in self.preamble_handlers.generate_ambles():
+        for preamble in self.preamble_handlers.generate_ambles(self):
             doc += preamble
             doc += self.PARAGRAPH_SEP
         doc += self.render_blockscope(doc_block)
-        for postamble in self.postamble_handlers.generate_ambles():
+        for postamble in self.postamble_handlers.generate_ambles(self):
             doc += self.PARAGRAPH_SEP
             doc += postamble
         return doc
@@ -222,8 +228,8 @@ class RendererPlugin(abc.ABC):
     def _inline_handlers(self) -> Iterable[CustomRenderFunc[Inline]]:
         return ()
 
-    def _preamble_handlers(self) -> Iterable[Tuple[str, Callable[[], str]]]:
+    def _preamble_handlers(self) -> Iterable[Tuple[str, Callable[[Renderer], str]]]:
         return ()
 
-    def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[], str]]]:
+    def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[Renderer], str]]]:
         return ()
