@@ -1,12 +1,18 @@
 [project]
 name = "turnip_text"
-dependencies = ["mypy ~= 1.1.1"]
+# TODO how to make these develop-only?
+dependencies = [
+    "mypy ~= 1.1.1",
+    "black",
+]
 requires-python = ">=3.8"
 
 [tool.maturin]
 python-source = "python"
 
 [tool.mypy]
+
+[tool.black]
 
 [build-system]
 requires = ["maturin>=0.14,<0.15"]

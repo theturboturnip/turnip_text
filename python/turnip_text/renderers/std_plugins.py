@@ -1,9 +1,7 @@
-import abc
-from typing import Any, Dict, Generic, Iterable, Optional, Protocol, Tuple, Type, TypeAlias, TypeVar, Union
-from turnip_text import Block, BlockScopeBuilder, Inline, InlineScopeBuilder
+from typing import Optional, Protocol, Tuple, Union
 
+from turnip_text import BlockScopeBuilder, Inline, InlineScopeBuilder
 from turnip_text.renderers.dictify import dictify_pure_property
-from turnip_text.renderers import CustomRenderFunc
 
 CiteKey = str
 CiteKeyWithNote = Tuple[CiteKey, str]

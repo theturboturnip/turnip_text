@@ -9,4 +9,17 @@
     },
     "python.linting.mypyEnabled": true,
     "rust-analyzer.cargo.noDefaultFeatures": true,
+    "python.formatting.provider": "black",
+    "isort.args": [
+        "--profile", "black"
+    ],
+    "[python]": {
+        "diffEditor.ignoreTrimWhitespace": false,
+        "editor.wordBasedSuggestions": false,
+        "editor.formatOnSave": true,
+        "editor.formatOnSaveMode": "file",
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": true
+        }
+    },
 }

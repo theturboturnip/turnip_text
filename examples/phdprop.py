@@ -1,12 +1,26 @@
+import json
 from pathlib import Path
+
 from turnip_text import *
 from turnip_text.renderers.latex import LatexRenderer
-from turnip_text.renderers.latex.plugins import LatexCitationPlugin, LatexFootnotePlugin, LatexFormatPlugin, LatexListPlugin, LatexSectionPlugin, LatexUrlPlugin
-
-import json
-
+from turnip_text.renderers.latex.plugins import (
+    LatexCitationPlugin,
+    LatexFootnotePlugin,
+    LatexFormatPlugin,
+    LatexListPlugin,
+    LatexSectionPlugin,
+    LatexUrlPlugin,
+)
 from turnip_text.renderers.markdown.base import MarkdownRenderer
-from turnip_text.renderers.markdown.plugins import MarkdownCitationPlugin, MarkdownFootnotePlugin, MarkdownFormatPlugin, MarkdownListPlugin, MarkdownSectionPlugin, MarkdownUrlPlugin
+from turnip_text.renderers.markdown.plugins import (
+    MarkdownCitationPlugin,
+    MarkdownFootnotePlugin,
+    MarkdownFormatPlugin,
+    MarkdownListPlugin,
+    MarkdownSectionPlugin,
+    MarkdownUrlPlugin,
+)
+
 
 class CustomEncoder(json.JSONEncoder):
     def default(self, o):
@@ -21,23 +35,27 @@ class CustomEncoder(json.JSONEncoder):
         return str(o)
 
 
-if __name__ == '__main__':
-    r_latex = LatexRenderer([
-        LatexCitationPlugin(),
-        LatexFootnotePlugin(),
-        LatexSectionPlugin(),
-        LatexFormatPlugin(),
-        LatexListPlugin(),
-        LatexUrlPlugin()
-    ])
-    r_md = MarkdownRenderer([
-        MarkdownCitationPlugin(),
-        MarkdownFootnotePlugin(),
-        MarkdownSectionPlugin(),
-        MarkdownFormatPlugin(),
-        MarkdownListPlugin(),
-        MarkdownUrlPlugin(),
-    ])
+if __name__ == "__main__":
+    r_latex = LatexRenderer(
+        [
+            LatexCitationPlugin(),
+            LatexFootnotePlugin(),
+            LatexSectionPlugin(),
+            LatexFormatPlugin(),
+            LatexListPlugin(),
+            LatexUrlPlugin(),
+        ]
+    )
+    r_md = MarkdownRenderer(
+        [
+            MarkdownCitationPlugin(),
+            MarkdownFootnotePlugin(),
+            MarkdownSectionPlugin(),
+            MarkdownFormatPlugin(),
+            MarkdownListPlugin(),
+            MarkdownUrlPlugin(),
+        ]
+    )
 
     # r.load_cites("phdprop.bibtex")
     doc_block = r_md.parse_file(Path("./examples/phdprop.ttxt"))

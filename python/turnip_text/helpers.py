@@ -1,12 +1,20 @@
 from typing import Any, Callable, List
 
-from turnip_text import Block, BlockScope, BlockScopeBuilder, Inline, InlineScope, InlineScopeBuilder, RawScopeBuilder
+from turnip_text import (
+    Block,
+    BlockScope,
+    BlockScopeBuilder,
+    Inline,
+    InlineScope,
+    InlineScopeBuilder,
+    RawScopeBuilder,
+)
 
 
 class block_scope_builder(BlockScopeBuilder):
     """
     Decorator which allows functions-returning-functions to fit the BlockScopeBuilder typeclass.
-    
+
     e.g. one could define a function
     ```python
     def block(name=""):
@@ -22,6 +30,7 @@ class block_scope_builder(BlockScopeBuilder):
     }
     ```
     """
+
     func: Callable[[BlockScope], Block]
 
     def __init__(self, func: Callable[[BlockScope], Block]) -> None:
@@ -34,7 +43,7 @@ class block_scope_builder(BlockScopeBuilder):
 class inline_scope_builder(InlineScopeBuilder):
     """
     Decorator which ensures functions fit the InlineScopeBuilder typeclass
-    
+
     e.g. one could define a function
     ```python
     def inline(postfix = ""):
@@ -48,7 +57,7 @@ class inline_scope_builder(InlineScopeBuilder):
     [inline("!")]{surprise}
     ```
     """
-    
+
     func: Callable[[InlineScope], Inline]
 
     def __init__(self, func: Callable[[InlineScope], Inline]) -> None:
@@ -61,7 +70,7 @@ class inline_scope_builder(InlineScopeBuilder):
 class raw_scope_builder(RawScopeBuilder):
     """
     Decorator which allows functions to fit the RawScopeBuilder typeclass.
-    
+
     e.g. one could define a function
     ```python
     def math(name=""):
