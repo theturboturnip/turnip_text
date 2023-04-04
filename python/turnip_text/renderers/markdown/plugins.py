@@ -263,12 +263,11 @@ class MarkdownFormatPlugin(RendererPlugin, FormatPluginInterface):
         return ((Formatted, self._render_formatted),)
 
     def _render_formatted(self, renderer: Renderer, item: Formatted) -> str:
-        data = (
+        return (
             item.format_type
             + renderer.render_inlinescope(item.items)
             + item.format_type
         )
-        return data + "}"
 
     @dictify_pure_property
     def emph(self) -> InlineScopeBuilder:
@@ -300,6 +299,7 @@ class MarkdownListPlugin(RendererPlugin):
 
     def _render_list(self, renderer: Renderer, list: DisplayList) -> str:
         # TODO indents!
+        # If list items are multiline, right now all lines after the first will NOT be indented and thus not counted as part of the list item.
         if list.numbered:
             return renderer.SENTENCE_SEP.join(
                 f"{idx+1}. " + renderer.render_block(item.contents)
