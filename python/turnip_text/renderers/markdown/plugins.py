@@ -137,6 +137,65 @@ class MarkdownCitationAsFootnotePlugin(RendererPlugin, CitationPluginInterface):
         return Citation([(label, None)])
 
 
+class MarkdownCitationAsHTMLPlugin(RendererPlugin, CitationPluginInterface):
+    _citations: Dict[str, Any]
+    _referenced_citations: Set[str]
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        # TODO load citations from somewhere
+        self._citations = {}
+        self._referenced_citations = set()
+
+    def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
+        return ((Citation, self._render_citation),)
+
+    def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[Renderer], str]]]:
+        return ((self._BIBLIOGRAPHY_POSTAMBLE_ID, self._render_bibliography),)
+
+    def _get_citation_shorthand(
+        self, renderer: Renderer, label: str, note: Optional[UnescapedText]
+    ) -> UnescapedText:
+        # TODO could do e.g. numbering here
+        if note:
+            return UnescapedText(f"[{label}, {note.text}]")
+        return UnescapedText(f"[{label}]")
+
+    def _render_citation(self, renderer: Renderer, citation: Citation) -> str:
+        # TODO what happens with unmarkdownable labels? e.g. labels with backslash or something. need to check that when loading.
+        # TODO also maybe people wouldn't want those labels being exposed?
+        return "".join(
+            # f'<a href="#cite-{label}">{self._get_citation_shorthand(renderer, label, opt_note)}</a>'
+            f"[{renderer.render_unescapedtext(self._get_citation_shorthand(renderer, label, opt_note))}](#cite-{label})"
+            for label, opt_note in citation.labels
+        )
+
+    def _render_bibliography(self, renderer: Renderer) -> str:
+        # TODO actual reference rendering!
+        return renderer.PARAGRAPH_SEP.join(
+            f'<a id="cite-{label}">{renderer.render_unescapedtext(self._get_citation_shorthand(renderer, label, None))}: cite {label}</a>'
+            for label in self._referenced_citations
+        )
+
+    def cite(self, *labels: Union[str, Tuple[str, str]]) -> Inline:
+        # Convert ["label"] to [("label", None)] so Citation has a consistent format
+        adapted_labels = [
+            (label, None)
+            if isinstance(label, str)
+            else (label[0], UnescapedText(label[1]))
+            for label in labels
+        ]
+
+        self._referenced_citations.update(label for label, _ in adapted_labels)
+
+        return Citation(adapted_labels)
+
+    # TODO make this output \citeauthor
+    def citeauthor(self, label: str) -> Inline:
+        return Citation([(label, None)])
+
+
 class MarkdownFootnotePlugin(RendererPlugin, FootnotePluginInterface):
     _footnotes: Dict[str, Block]
     _footnote_ref_order: List[str]
