@@ -1,3 +1,4 @@
+import argparse
 import json
 from pathlib import Path
 
@@ -36,6 +37,11 @@ class CustomEncoder(json.JSONEncoder):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-olatex", type=str)
+    parser.add_argument("-omd", type=str)
+    args = parser.parse_args()
+
     r_latex = LatexRenderer(
         [
             LatexCitationPlugin(),
@@ -63,11 +69,20 @@ if __name__ == "__main__":
         ]
     )
 
-    # doc_block = r_latex.parse_file(Path("./examples/phdprop.ttxt"))
-    # print(r_latex.render_doc(doc_block))
+    doc_block = r_latex.parse_file(Path("./examples/phdprop.ttxt"))
+    rendered_latex = r_latex.render_doc(doc_block)
+    if args.olatex:
+        with open(args.olatex, "w") as f:
+            f.write(rendered_latex)
+    else:
+        print(rendered_latex)
 
-    # r.load_cites("phdprop.bibtex")
     doc_block = r_md.parse_file(Path("./examples/phdprop.ttxt"))
-    print(r_md.render_doc(doc_block))
+    rendered_markdown = r_md.render_doc(doc_block)
+    if args.omd:
+        with open(args.omd, "w") as f:
+            f.write(rendered_markdown)
+    else:
+        print(rendered_markdown)
 
     # print(json.dumps(doc_block, indent=4, cls=CustomEncoder))
