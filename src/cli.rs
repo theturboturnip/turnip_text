@@ -73,7 +73,7 @@ fn annotation_from_parse_span<'a>(
     span: &ParseSpan,
 ) -> SourceAnnotation<'a> {
     SourceAnnotation {
-        range: (span.start.byte_ofs, span.end.byte_ofs),
+        range: (span.start.char_ofs, span.end.char_ofs),
         label,
         annotation_type,
     }

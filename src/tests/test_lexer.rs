@@ -543,3 +543,5 @@ pub fn test_crlf() {
     // '\r' + '\n'
     expect_lex("\r\ncontent", vec![Newline, OtherText("content")])
 }
+
+// TODO test error messages for multibyte?

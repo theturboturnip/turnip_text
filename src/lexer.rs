@@ -2,6 +2,7 @@ use lexer_rs::PosnInCharStream;
 use lexer_rs::SimpleParseError;
 use lexer_rs::{CharStream, Lexer, LexerParseResult};
 
+use crate::lexer_charofs_row_col::LineColumnChar;
 use crate::util::{ParsePosn, ParseSpan};
 
 /// Sequences that can define the start of a [SimpleToken]
@@ -106,7 +107,7 @@ impl Escapable {
     }
 }
 
-pub type LexPosn = lexer_rs::StreamCharPos<lexer_rs::LineColumn>;
+pub type LexPosn = lexer_rs::StreamCharPos<LineColumnChar>;
 pub type LexToken = Unit;
 pub type LexError = SimpleParseError<LexPosn>;
 
