@@ -19,6 +19,10 @@ annotate-snippets = "0.9.1"
 anyhow = "1.0.66"
 thiserror = "1.0.37"
 argh = "0.1.9"
+# Use the parallel feature so it's thread-safe, allowing us to put it into a Python object
+citeproc = { git = "https://github.com/zotero/citeproc-rs", features = ["parallel"] }
+# Use FnvHashMap to build things for citeproc
+fnv = "1.0.7"
 
 # Compile with extension-module by default, but make it optional
 # because 'cargo test' fails with link errors in that case.

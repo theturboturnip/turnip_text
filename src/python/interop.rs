@@ -1,5 +1,11 @@
-use std::path::Path;
+use std::{path::Path, str::FromStr};
 
+use citeproc::{
+    csl::{CslType, Variable},
+    prelude::*,
+    SupportedFormat,
+};
+use fnv::FnvHashMap;
 use pyo3::{
     exceptions::PyRuntimeError,
     intern,
@@ -394,5 +400,105 @@ impl InlineScope {
 
     pub fn push_inline(&mut self, node: &PyAny) -> PyResult<()> {
         self.0.append_checked(node)
+    }
+}
+
+trait FromPyArg<T>: Sized {
+    fn convert_py(val: T) -> PyResult<Self>;
+}
+impl FromPyArg<&str> for citeproc::SupportedFormat {
+    fn convert_py(val: &str) -> PyResult<Self> {
+        match val.to_lowercase().as_str() {
+            "html" => Ok(citeproc::SupportedFormat::Html),
+            "plain" => Ok(citeproc::SupportedFormat::Plain),
+            "rtf" => Ok(citeproc::SupportedFormat::Rtf),
+            _ => Err(PyRuntimeError::new_err(format!("Couldn't convert {val} to a valid citeproc format - expected 'html', 'plain', or 'rtf'")))
+        }
+    }
+}
+
+enum CslStyleXml {
+    DependentStyle {
+        parent_id: String,
+        locale_override: Option<citeproc::csl::Lang>,
+    },
+    Independent,
+}
+#[pyclass]
+struct CslCiteProcessor {
+    proc: citeproc::Processor,
+}
+impl CslCiteProcessor {
+    fn parse_meta_style(xml: &str) -> Result<CslStyleXml, citeproc::csl::StyleError> {
+        let meta_style = citeproc::csl::StyleMeta::parse(xml)?;
+        match meta_style.independent_parent_id() {
+            None => Ok(CslStyleXml::Independent),
+            Some(parent_id) => Ok(CslStyleXml::DependentStyle {
+                parent_id,
+                locale_override: meta_style.default_locale,
+            }),
+        }
+    }
+
+    fn build_proc(
+        format: SupportedFormat,
+        link_anchors: bool,
+        base_style_xml: &str,
+    ) -> Result<citeproc::Processor, citeproc::csl::StyleError> {
+        // match Self::parse_meta_style(base_style_xml)? {
+        //     CslStyleXml::DependentStyle { parent_id, locale_override } => todo!("Fetch parent XML and override locale"),
+        //     CslStyleXml::Independent => {}
+        // };
+
+        citeproc::Processor::new(citeproc::InitOptions {
+            format: format,
+            format_options: citeproc::FormatOptions {
+                link_anchors: link_anchors,
+            },
+
+            style: &base_style_xml,
+            locale_override: None,
+            fetcher: None,      // TODO locale fetcher support?
+            csl_features: None, // TODO manual csl feature suppport?
+            ..Default::default()
+        })
+    }
+
+    fn py_obj_to_ref(python: Python, obj: &PyDict) -> Reference {
+        let mut ordinary = FnvHashMap::default();
+        let mut number = FnvHashMap::default();
+        let mut name = FnvHashMap::default();
+        let mut date = FnvHashMap::default();
+
+        for (key, value) in obj.into_iter() {}
+
+        Reference {
+            id: todo!(),
+            csl_type: CslType::from_str(todo!("String for CslType e.g, book")),
+            language: None,
+            ordinary: todo!(),
+            number: todo!(),
+            name: todo!(),
+            date: todo!(),
+        }
+    }
+}
+#[pymethods]
+impl CslCiteProcessor {
+    #[new]
+    #[pyo3()]
+    pub fn new(format: &str, link_anchors: bool, base_style_xml: &str) -> PyResult<Self> {
+        let format = SupportedFormat::convert_py(format)?;
+
+        let proc = Self::build_proc(format, link_anchors, base_style_xml).map_err(|e| {
+            PyRuntimeError::new_err(format!("Failed to init citeproc Processor - {}", e))
+        })?;
+
+        Ok(Self { proc })
+    }
+
+    pub fn process_citations(&mut self, py: Python) {
+        self.proc.extend_references(vec![])
+        // self.proc.extend_references(refs).compute()
     }
 }
