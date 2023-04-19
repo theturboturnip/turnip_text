@@ -4,6 +4,7 @@ name = "turnip_text"
 dependencies = [
     "mypy ~= 1.1.1",
     "black",
+    "maturin"
 ]
 requires-python = ">=3.8"
 
