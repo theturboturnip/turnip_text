@@ -1,12 +1,12 @@
 [project]
-name = "turnip_text"
-# TODO how to make these develop-only?
-dependencies = [
-    "mypy ~= 1.1.1",
-    "black",
-    "maturin"
-]
+# name, version, description, license are merged in from Cargo.toml
+readme = "README.md"
+authors = [{ name = "Samuel Stark", email = "popgoestoast@gmail.com" }]
 requires-python = ">=3.8"
+
+[project.optional-dependencies]
+typing = ["mypy"]
+fmt = ["black"]
 
 [tool.maturin]
 python-source = "python"

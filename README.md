@@ -9,8 +9,23 @@ Key features include:
 - Output to LaTeX, markdown, plain text formats with idiomatic code 
   - (e.g. output source files can easily be tweaked by hand)
 - [Opinionated text structuring, to eliminate common LaTeX pitfalls](notes/opinionated_text.md)
-- [Embedded Python interpreter, to replace LaTeX macro programming](notes/code_syntax.md)
+- [Integrates into Python to replace LaTeX macro programming](notes/code_syntax.md)
 - [Separation of content (text with embedded Python, figure content) from formatting (e.g. page breaks, figure placement, etc)](notes/content_v_formatting.md)
+
+## License
+
+Licensed under either of
+
+ * Apache License, Version 2.0 ([LICENSE-APACHE](./LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license ([LICENSE-MIT](./LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.
 
 # Project Structure 
 Based on the recommended structure from [github.com/PyO3/maturin].
