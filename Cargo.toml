@@ -1,9 +1,9 @@
 [package]
 name = "turnip_text"
 version = "0.0.1"
-authors = ["Samuel Stark"]
 description = "Document description language that allows embedded Python to describe document structure"
 license = "MIT OR Apache-2.0"
+authors = ["Samuel Stark"]
 edition = "2021"
 
 # "cdylib" is necessary to produce a shared library for Python to import from.
