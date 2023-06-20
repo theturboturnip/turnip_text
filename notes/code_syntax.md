@@ -1,5 +1,11 @@
 # Code-in-text
 
+## TODO
+- Allow scopeless eval-brackets at the starts of paragraphs to return things fitting Block and inject them directly into the document. (This behaviour already works for Inline)
+  - Don't allow subsequent text to start a new paragraph - e.g. `[block_expr] some extra text` shouldn't be valid
+- Use `eval(compile(code, context, "exec"))` to support assignment to the globals/locals dict in eval-brackets https://stackoverflow.com/a/29456463
+- Better raw-scope-owning behaviour: maybe a raw-scope-owner is just something with a function that takes str? and can return either Block or Inline, and the parser adapts to this? (See above)
+
 ## Current syntax
 
 Code exists in two contexts: block-level and inline-level.
@@ -17,7 +23,7 @@ If an eval-bracket `[]` is opened outside of a paragraph, the contents are evalu
   
   test_block_owner.render_block([Paragraph("Paragraph one!"), Paragraph("Paragraph two!")])
   ```
-  - if the result fits the `InlineScopeOwner` typeclass, it is treated as the start of a new paragraph. it is expected the eval brackets will be followed by an inline scope (opened with squiggly brace w/out newline). The eval-result will be called with the contents of that scope (TODO when the inline scope is closed), and *that* result will be `render()`-ed in the finalization phase.
+  - if the result fits the `InlineScopeOwner` typeclass, it is treated as the start of a new paragraph. it is expected the eval brackets will be followed by an inline scope (opened with squiggly brace w/out newline). The eval-result will be called with the contents of that scope when the inline scope is closed, and *that* result will be `render()`-ed in the finalization phase.
   
   ```
   [test_inline]{inline text to annotate}
@@ -26,7 +32,7 @@ If an eval-bracket `[]` is opened outside of a paragraph, the contents are evalu
 
   test_inline.render_inline(["inline text to annotate"])
   ```
-  - otherwise the result is treated as the start of a new paragraph. The python object is placed directly into the sentence, and will be stringified in the finalization phase.
+  - otherwise the result is treated as the start of a new paragraph. The python object is placed directly into the sentence, and will be stringified in the finalization phase. (TODO this isn't the case anymore, now it's rejected because it isn't Inline. Need type coersion for this)
 
   ```
   [5+7]
@@ -161,6 +167,7 @@ I want the embedded scripting square-bracket syntax to work with many situations
       - This mutates global state (a list of labels?) by adding "sec:first"
 5. DEBATE: Are there compelling use cases for assigning to variables inside eval-brackets?
     - for now, no
+       - YES FOR SIMPLE MACROS (hindsight)
     - What would `[x = 5]` emit? Python REPL doesn't emit any text
 6. Affecting eval-brackets within a sub-scope
     - e.g. inside `[math]` in Markdown/MathJax, most formatting macros should probably be disabled
