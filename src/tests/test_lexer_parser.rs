@@ -400,12 +400,12 @@ newline"#,
 #[test]
 pub fn test_newline_in_code() {
     expect_lex_parse(
-        "[len((1,\r\n2))]",
+        "[test_inline_of(len((1,\r\n2)))]",
         vec![
             CodeOpen(1),
-            OtherText("len((1,"),
+            OtherText("test_inline_of(len((1,"),
             Newline,
-            OtherText("2))"),
+            OtherText("2)))"),
             CodeClose(1),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(

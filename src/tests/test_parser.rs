@@ -709,7 +709,7 @@ newline"#,
 #[test]
 pub fn test_newline_in_code() {
     expect_parse(
-        "[len((1,\r\n2))]",
+        "[test_inline_of(len((1,\r\n2)))]",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
             "2",
         )])])),
