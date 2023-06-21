@@ -399,21 +399,24 @@ class MarkdownFormatPlugin(RendererPlugin, FormatPluginInterface):
         return enquote_builder
 
 
+def indent_item(prefix, item_rendering):
+    return prefix + item_rendering.replace("\n", "\n" + " " * len(prefix))
+
+
 class MarkdownListPlugin(RendererPlugin):
     def _block_handlers(self) -> Iterable[CustomRenderFunc]:
         return ((DisplayList, self._render_list),)
 
     def _render_list(self, renderer: Renderer, list: DisplayList) -> str:
-        # TODO indents!
-        # If list items are multiline, right now all lines after the first will NOT be indented and thus not counted as part of the list item.
+        # TODO better way of indenting
         if list.numbered:
             return renderer.SENTENCE_SEP.join(
-                f"{idx+1}. " + renderer.render_block(item.contents)
+                indent_item(f"{idx+1}. ", renderer.render_block(item.contents))
                 for idx, item in enumerate(list.items)
             )
         else:
             return renderer.SENTENCE_SEP.join(
-                f"- " + renderer.render_block(item.contents)
+                indent_item("- ", renderer.render_block(item.contents))
                 for idx, item in enumerate(list.items)
             )
 
