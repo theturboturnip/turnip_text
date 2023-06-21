@@ -101,13 +101,12 @@ pub(crate) enum InterpBlockTransition {
     /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::BuildingRawText]
     StartRawScope(PyTcRef<RawScopeBuilder>, ParseSpan, usize),
 
-    /// Start a paragraph, optionally executing a transition on the paragraph-level state machine
+    /// Start a paragraph, executing a transition on the paragraph-level state machine
     ///
     /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::WritingPara]
     /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::WritingPara]
     /// - [InterpBlockState::BuildingRawText] -> [InterpBlockState::WritingPara]
-    /// TODO dear god stop using Option here, its so verbose and actually unnecessary
-    StartParagraph(Option<InterpParaTransition>),
+    StartParagraph(InterpParaTransition),
 
     /// On encountering a paragraph break (a blank line), add the paragraph to the document
     ///
@@ -330,9 +329,9 @@ impl<'a> InterpState<'a> {
 
                     // PushInlineScope with no code managing it
                     InlineScopeOpen(span) => (
-                        Some(StartParagraph(Some(InterpParaTransition::PushInlineScope(
+                        Some(StartParagraph(InterpParaTransition::PushInlineScope(
                             None, span,
-                        )))),
+                        ))),
                         None,
                     ),
 
@@ -340,9 +339,9 @@ impl<'a> InterpState<'a> {
                     // If we start a raw scope directly, with no owner, go into Inline mode.
                     // Raw text can only be inline content when inserted directly.
                     RawScopeOpen(span, n_hashes) => (
-                        Some(StartParagraph(Some(InterpParaTransition::StartRawScope(
+                        Some(StartParagraph(InterpParaTransition::StartRawScope(
                             None, span, n_hashes,
-                        )))),
+                        ))),
                         None,
                     ),
                     RawScopeClose(span, _) => Err(InterpError::RawScopeCloseOutsideRawScope(span))?,
@@ -366,9 +365,9 @@ impl<'a> InterpState<'a> {
 
                     // Normal text - start a new paragraph
                     _ => (
-                        Some(StartParagraph(Some(InterpParaTransition::StartText(
+                        Some(StartParagraph(InterpParaTransition::StartText(
                             tok.stringify_escaped(self.data).into(),
-                        )))),
+                        ))),
                         None,
                     ),
                 }
@@ -395,17 +394,17 @@ impl<'a> InterpState<'a> {
 
                         let block_transition = match res {
                             BlockBuilder(b) => PushBlockScope(Some(b), code_span),
-                            InlineBuilder(i) => StartParagraph(Some(
+                            InlineBuilder(i) => StartParagraph(
                                 InterpParaTransition::PushInlineScope(Some(i), code_span),
-                            )),
+                            ),
                             RawBuilder(r, n_hashes) => StartRawScope(r, code_span, n_hashes),
                             Block(b) => PushBlock(b),
                             Inline(i) => {
-                                StartParagraph(Some(InterpParaTransition::PushInlineContent(
+                                StartParagraph(InterpParaTransition::PushInlineContent(
                                     InlineNodeToCreate::PythonObject(
                                         i
                                     ),
-                                )))
+                                ))
                             }
                         };
                         (Some(block_transition), None)
@@ -422,7 +421,7 @@ impl<'a> InterpState<'a> {
                     if let Ok(block) = PyTcRef::of(to_emit_as_py) {
                         (Some(PushBlock(block)), None)
                     } else if let Ok(inl) = PyTcRef::of(to_emit_as_py) {
-                        (Some(StartParagraph(Some(InterpParaTransition::PushInlineContent(InlineNodeToCreate::PythonObject(inl))))), None)
+                        (Some(StartParagraph(InterpParaTransition::PushInlineContent(InlineNodeToCreate::PythonObject(inl)))), None)
                     } else {
                         unreachable!()
                     }
@@ -468,7 +467,7 @@ impl<'a> InterpState<'a> {
                 ) => {
                     let mut para_state = InterpParaState::new(py).err_as_interp_internal(py)?;
                     let (new_block_transition, new_special_transition) =
-                        para_state.handle_transition(py, transition)?;
+                        para_state.handle_transition(py, Some(transition))?;
                     if new_block_transition.is_some() {
                         return Err(InterpError::InternalErr(
                             "An inline transition, initiated with the start of a paragraph, tried to initiate another block transition. This is not allowed and should not be possible.".into()
