@@ -286,7 +286,8 @@ class LatexListPlugin(RendererPlugin):
 
     def _render_list_item(self, renderer: Renderer, list_item: DisplayListItem) -> str:
         # TODO indents!
-        return "\\item " + renderer.render_block(list_item.item)
+        # Put {} after \item so square brackets at the start of render_block don't get swallowed as arguments
+        return "\\item{} " + renderer.render_block(list_item.item)
 
     @dictify_pure_property
     def enumerate(self) -> BlockScopeBuilder:
