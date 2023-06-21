@@ -1,6 +1,6 @@
 use pyo3::{Python, types::PyDict, PyResult};
 
-use crate::{python::{typeclass::PyTcRef, interop::{BlockScopeBuilder, InlineScopeBuilder, RawScopeBuilder, Block, Inline}}, lexer::TTToken, util::ParseSpan};
+use crate::{python::{typeclass::PyTcRef, interop::{BlockScopeBuilder, InlineScopeBuilder, RawScopeBuilder, Block, Inline, InlineXorBlock}}, lexer::TTToken, util::ParseSpan};
 
 use super::{MapInterpResult, InterpResult};
 
@@ -30,12 +30,15 @@ impl EvalBracketResult {
                 EvalBracketResult::Raw(PyTcRef::of(raw_res)?, n_hashes)
             }
             TTToken::CodeClose(_, _) => {
-                // See if it's a Block or an Inline.
-                // If it isn't Inline, fail.
+                // See if it's either a Block or an Inline. It must be exactly one of them.
+                let _: PyTcRef<InlineXorBlock> = PyTcRef::of(raw_res)?;
+                // If so, produce either.
                 if let Ok(block) = PyTcRef::of(raw_res) {
                     EvalBracketResult::Block(block)
+                } else if let Ok(inl) = PyTcRef::of(raw_res) {
+                    EvalBracketResult::Inline(inl)
                 } else {
-                    EvalBracketResult::Inline(PyTcRef::of(raw_res)?) // TODO this error will imply we only accept Inline here.
+                    unreachable!()
                 }
             },
             _ => unreachable!(),

@@ -95,6 +95,21 @@ impl PyTypeclass for Inline {
     }
 }
 
+/// Typeclass used internally for things that can be emitted directly from eval-brackets:
+/// i.e. an Inline or a Block.
+/// Must be one or the other - doesn't make sense for something to be both, because it doesn't know what context it would be rendered in.
+#[derive(Debug, Clone)]
+pub struct InlineXorBlock {}
+impl PyTypeclass for InlineXorBlock {
+    const NAME: &'static str = "Inline XOR Block (not both)";
+
+    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
+        let is_inline = Inline::fits_typeclass(obj)?;
+        let is_block = Block::fits_typeclass(obj)?;
+        Ok(is_inline ^ is_block)
+    }
+}
+
 /// Typeclass representing the "builder" of a block scope, which may modify how that scope is rendered.
 ///
 /// Requires a method
