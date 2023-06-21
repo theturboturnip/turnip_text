@@ -63,9 +63,9 @@ class SectionPluginInterface(Protocol):
 
 
 class FormatPluginInterface(Protocol):
-    @dictify_pure_property
-    def emph(self) -> InlineScopeBuilder:
-        ...
+    emph: InlineScopeBuilder
+    italic: InlineScopeBuilder
+    bold: InlineScopeBuilder
 
     @dictify_pure_property
     def enquote(self) -> InlineScopeBuilder:

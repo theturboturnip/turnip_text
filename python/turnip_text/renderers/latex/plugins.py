@@ -244,6 +244,21 @@ class LatexSectionPlugin(RendererPlugin, SectionPluginInterface):
         return handle_block_contents
 
 
+@inline_scope_builder
+def emph_builder(items: InlineScope) -> Inline:
+    return Formatted("emph", items)
+
+
+@inline_scope_builder
+def italic_builder(items: InlineScope) -> Inline:
+    return Formatted("textit", items)
+
+
+@inline_scope_builder
+def bold_builder(items: InlineScope) -> Inline:
+    return Formatted("textbf", items)
+
+
 class LatexFormatPlugin(RendererPlugin, FormatPluginInterface):
     def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
         return ((Formatted, self._render_formatted),)
@@ -253,13 +268,9 @@ class LatexFormatPlugin(RendererPlugin, FormatPluginInterface):
         data += renderer.render_inlinescope(item.items)
         return data + "}"
 
-    @dictify_pure_property
-    def emph(self) -> InlineScopeBuilder:
-        @inline_scope_builder
-        def emph_builder(items: InlineScope) -> Inline:
-            return Formatted("emph", items)
-
-        return emph_builder
+    emph = emph_builder
+    italic = italic_builder
+    bold = bold_builder
 
     OPEN_DQUOTE = RawLatex("``")
     CLOS_DQUOTE = RawLatex("''")

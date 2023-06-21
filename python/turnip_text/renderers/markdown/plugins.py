@@ -364,6 +364,22 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
         return handle_block_contents
 
 
+@inline_scope_builder
+def emph_builder(items: InlineScope) -> Inline:
+    return italic_builder.build_from_inlines(items)
+
+
+@inline_scope_builder
+def italic_builder(items: InlineScope) -> Inline:
+    # Use single underscore for italics, double asterisks for bold, double underscore for underlining?
+    return Formatted("_", items)
+
+
+@inline_scope_builder
+def bold_builder(items: InlineScope) -> Inline:
+    return Formatted("**", items)
+
+
 class MarkdownFormatPlugin(RendererPlugin, FormatPluginInterface):
     def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
         return ((Formatted, self._render_formatted),)
@@ -375,14 +391,9 @@ class MarkdownFormatPlugin(RendererPlugin, FormatPluginInterface):
             + item.format_type
         )
 
-    @dictify_pure_property
-    def emph(self) -> InlineScopeBuilder:
-        @inline_scope_builder
-        def emph_builder(items: InlineScope) -> Inline:
-            # Use single underscore for italics, double asterisks for bold, double underscore for underlining?
-            return Formatted("_", items)
-
-        return emph_builder
+    emph = emph_builder
+    italic = italic_builder
+    bold = bold_builder
 
     DQUOTE = RawMarkdown('"')
 
