@@ -1,7 +1,7 @@
 import abc
 from typing import Iterator, List, Optional, Protocol, runtime_checkable
 
-from turnip_text import Block, Inline
+from turnip_text._native import Block, Inline
 
 class UnescapedText(Inline):
     def __init__(self, text: str) -> None: ...

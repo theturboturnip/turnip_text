@@ -12,9 +12,17 @@ from typing import (
     TypeVar,
 )
 
-from turnip_text import Block, BlockScope, Inline, parse_file_native
+from turnip_text import (
+    Block,
+    BlockScope,
+    Inline,
+    InlineScope,
+    Paragraph,
+    Sentence,
+    UnescapedText,
+    parse_file_native,
+)
 from turnip_text.renderers.dictify import dictify
-from turnip_text.turnip_text import InlineScope, Paragraph, Sentence, UnescapedText
 
 T = TypeVar("T")
 CustomRenderFunc = Tuple[Type[T], Callable[["Renderer", T], str]]

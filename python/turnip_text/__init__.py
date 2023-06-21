@@ -1,13 +1,15 @@
 from typing import Optional, Protocol, Union, runtime_checkable
 
-from .turnip_text import (  # type: ignore
+from ._native import (  # type: ignore
     BlockScope,
     InlineScope,
     Paragraph,
+    RawText,
     Sentence,
     UnescapedText,
 )
-from .turnip_text import parse_file as parse_file_native  # type: ignore
+from ._native import parse_file as parse_file_native  # type: ignore
+from ._native import parse_str as parse_str_native  # type: ignore
 
 
 class Inline(Protocol):
