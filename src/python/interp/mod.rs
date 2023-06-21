@@ -96,6 +96,11 @@ pub(crate) enum InterpBlockTransition {
     /// - All others invalid
     StartBlockLevelCode(ParseSpan, usize),
 
+    /// On executing code that returned None, transition back to waiting for a paragraph
+    /// 
+    /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::ReadyForNewBlock]
+    EmitNone,
+
     /// On finishing block-level code, if it intends to own a raw scope, start a raw scope.
     /// 
     /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::BuildingRawText]
@@ -403,6 +408,7 @@ impl<'a> InterpState<'a> {
                                     ),
                                 ))
                             }
+                            PyNone => EmitNone
                         };
                         (Some(block_transition), None)
                     }
@@ -500,6 +506,13 @@ impl<'a> InterpState<'a> {
                     S::ReadyForNewBlock
                 }
 
+                (
+                    S::BuildingCode { .. },
+                    T::EmitNone
+                ) => {
+                    S::ReadyForNewBlock
+                }
+                
                 (
                     S::BuildingCode { .. },
                     T::StartRawScope(r, builder_span, expected_n_hashes)

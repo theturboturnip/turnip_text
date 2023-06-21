@@ -925,3 +925,24 @@ pub fn test_raw_scope_emitting_inline_inside_paragraph() {
         ]])])),
     )
 }
+
+#[test]
+pub fn test_emitting_none_at_block() {
+    expect_parse(
+        "
+[None]
+", 
+    Ok(test_doc(vec![]))
+    )
+}
+
+#[test]
+pub fn test_emitting_none_inline() {
+    expect_parse(
+        "Check it out, there's [None]!", 
+    Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+        test_text("Check it out, there's "),
+        test_text("!")
+    ]])]))
+    )
+}

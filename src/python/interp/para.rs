@@ -86,6 +86,11 @@ pub(crate) enum InterpParaTransition {
     /// - [InterpSentenceState::MidSentence] -> [InterpSentenceState::SentenceStart]
     BreakSentence,
 
+    /// On running Python code and returning None, ignore the code without emitting anything
+    ///
+    /// - [InterpSentenceState::BuildingCode] -> [InterpSentenceState::MidSentence]
+    EmitNone,
+
     /// On encountering the start of an inline scope (i.e. an InlineScopeOpen optionally preceded by Python scope owner),
     /// push an inline scope onto existing paragraph state (or create a new one).
     ///
@@ -291,6 +296,13 @@ impl InterpParaState {
                         S::SentenceStart,
                         (None, Some(InterpSpecialTransition::StartComment(span))),
                     )
+                }
+
+                (
+                    S::BuildingCode { .. },
+                    T::EmitNone,
+                ) => {
+                    (S::MidSentence, (None, None))
                 }
 
                 (
@@ -554,6 +566,7 @@ impl InterpParaState {
                             RawBuilder(r, n_hashes) => StartRawScope(Some(r), code_span, n_hashes),
                             // TODO If the object is not already Inline, check if it's Block or BlockScopeBuilder or InlineScopeBuilder or RawScopeBuilder, stringify it, then put in an Unescaped box?
                             Inline(i) => PushInlineContent(InlineNodeToCreate::PythonObject(i)),
+                            PyNone => EmitNone,
                         };
                         Some(inl_transition)
                     }

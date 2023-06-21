@@ -10,6 +10,7 @@ pub enum EvalBracketResult {
     RawBuilder(PyTcRef<RawScopeBuilder>, usize),
     Block(PyTcRef<Block>),
     Inline(PyTcRef<Inline>),
+    PyNone,
 }
 impl EvalBracketResult {
     pub fn eval_in_correct_ctx(
@@ -30,15 +31,19 @@ impl EvalBracketResult {
                 EvalBracketResult::RawBuilder(PyTcRef::of(raw_res)?, n_hashes)
             }
             TTToken::CodeClose(_, _) => {
-                // See if it's either a Block or an Inline. It must be exactly one of them.
-                let _: PyTcRef<InlineXorBlock> = PyTcRef::of(raw_res)?;
-                // If so, produce either.
-                if let Ok(block) = PyTcRef::of(raw_res) {
-                    EvalBracketResult::Block(block)
-                } else if let Ok(inl) = PyTcRef::of(raw_res) {
-                    EvalBracketResult::Inline(inl)
+                if raw_res.is_none() {
+                    EvalBracketResult::PyNone
                 } else {
-                    unreachable!()
+                    // See if it's either a Block or an Inline. It must be exactly one of them.
+                    let _: PyTcRef<InlineXorBlock> = PyTcRef::of(raw_res)?;
+                    // If so, produce either.
+                    if let Ok(block) = PyTcRef::of(raw_res) {
+                        EvalBracketResult::Block(block)
+                    } else if let Ok(inl) = PyTcRef::of(raw_res) {
+                        EvalBracketResult::Inline(inl)
+                    } else {
+                        unreachable!()
+                    }
                 }
             },
             _ => unreachable!(),
