@@ -667,10 +667,9 @@ It was the blurst of times."#,
 #[test]
 pub fn test_special_with_escaped_backslash() {
     expect_parse(
-        r#"About to see a backslash! \\[None]"#,
+        r#"About to see a backslash! \\#"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text(r#"About to see a backslash! \"#),
-            test_text("None"),
         ]])])),
     )
 }
