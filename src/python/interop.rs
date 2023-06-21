@@ -126,12 +126,16 @@ impl BlockScopeBuilder {
         py: Python<'py>,
         builder: PyTcRef<Self>,
         blocks: Py<BlockScope>,
-    ) -> PyResult<PyTcRef<Block>> {
+    ) -> PyResult<Option<PyTcRef<Block>>> {
         let output = builder
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
             .call1((blocks,))?;
-        PyTcRef::of(output)
+        if output.is_none() {
+            Ok(None)
+        } else {
+            Ok(Some(PyTcRef::of(output)?))
+        }
     }
 }
 impl PyTypeclass for BlockScopeBuilder {

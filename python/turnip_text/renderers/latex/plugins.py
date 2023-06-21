@@ -164,7 +164,7 @@ class LatexFootnotePlugin(RendererPlugin, FootnotePluginInterface):
         # equivalent to
         # [footnote_text("label")(r"text")]
         @block_scope_builder
-        def handle_block_contents(contents: BlockScope) -> Block:
+        def handle_block_contents(contents: BlockScope) -> Optional[Block]:
             self._footnotes[label] = contents
             return None
 

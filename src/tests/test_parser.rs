@@ -10,7 +10,7 @@ use crate::python::{interp_data, prepare_freethreaded_turniptext_python, InterpE
 use crate::util::ParseSpan;
 
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::PyDict;
 
 use std::panic;
 // We need to initialize Python the first time we test
@@ -308,10 +308,16 @@ class TestRawBlockBuilder:
     def build_from_raw(self, raw_str):
         return TEST_BLOCK
 
+class TestBlockSwallower():
+    def build_from_blocks(self, contents):
+        return None
+
 TEST_BLOCK_BUILDER = TestBuilder()
 TEST_INLINE_BUILDER = TestBuilder()
 TEST_RAW_INLINE_BUILDER = TestRawInlineBuilder()
 TEST_RAW_BLOCK_BUILDER = TestRawBlockBuilder()
+
+TEST_BLOCK_SWALLOWER = TestBlockSwallower()
 
 def test_inline_of(x):
     return UnescapedText(str(x))
@@ -967,5 +973,22 @@ pub fn test_syntax_errs_passed_thru() {
             pyerr: "SyntaxError : invalid syntax (<string>, line 1)".into(),
             code_span: TestParserSpan { start: (1, 1), end: (1, 11) }
         })
+    )
+}
+
+#[test]
+pub fn test_block_scope_builder_return_none() {
+    expect_parse(
+        "[TEST_BLOCK_SWALLOWER]{
+stuff that gets swallowed
+}", Ok(test_doc(vec![]))
+    )
+}
+
+#[test]
+pub fn test_block_scope_builder_return_none_with_end_inside_para() {
+    expect_parse(
+        "[TEST_BLOCK_SWALLOWER]{
+stuff that gets swallowed}", Ok(test_doc(vec![]))
     )
 }

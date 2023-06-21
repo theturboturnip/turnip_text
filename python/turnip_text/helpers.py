@@ -1,4 +1,4 @@
-from typing import Any, Callable, List
+from typing import Any, Callable, List, Optional
 
 from turnip_text import (
     Block,
@@ -31,12 +31,12 @@ class block_scope_builder(BlockScopeBuilder):
     ```
     """
 
-    func: Callable[[BlockScope], Block]
+    func: Callable[[BlockScope], Optional[Block]]
 
-    def __init__(self, func: Callable[[BlockScope], Block]) -> None:
+    def __init__(self, func: Callable[[BlockScope], Optional[Block]]) -> None:
         self.func = func
 
-    def build_from_blocks(self, b: BlockScope) -> Block:
+    def build_from_blocks(self, b: BlockScope) -> Optional[Block]:
         return self.func(b)
 
 

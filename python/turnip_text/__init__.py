@@ -1,4 +1,4 @@
-from typing import Protocol, Union, runtime_checkable
+from typing import Optional, Protocol, Union, runtime_checkable
 
 from .turnip_text import (  # type: ignore
     BlockScope,
@@ -21,7 +21,7 @@ class Block(Protocol):
 
 @runtime_checkable
 class BlockScopeBuilder(Protocol):
-    def build_from_blocks(self, bs: BlockScope) -> Block:
+    def build_from_blocks(self, bs: BlockScope) -> Optional[Block]:
         ...
 
 

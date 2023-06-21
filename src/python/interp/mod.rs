@@ -78,12 +78,12 @@ struct InterpBlockScopeState {
     scope_start: ParseSpan,
 }
 impl InterpBlockScopeState {
-    fn build_to_block(self, py: Python, scope_end: ParseSpan) -> InterpResult<PyTcRef<Block>> {
+    fn build_to_block(self, py: Python, scope_end: ParseSpan) -> InterpResult<Option<PyTcRef<Block>>> {
         let scope = ParseSpan::new(self.scope_start.start, scope_end.end);
         match self.builder {
             Some(builder) => BlockScopeBuilder::call_build_from_blocks(py, builder, self.children)
                 .err_as_interp(py, scope),
-            None => Ok(PyTcRef::of(self.children.as_ref(py)).expect("Internal error: InterpBlockScopeState::children, a BlockScope, somehow doesn't fit the Block typeclass")),
+            None => Ok(Some(PyTcRef::of(self.children.as_ref(py)).expect("Internal error: InterpBlockScopeState::children, a BlockScope, somehow doesn't fit the Block typeclass"))),
         }
     }
 }
@@ -490,8 +490,10 @@ impl<'a> InterpState<'a> {
                     let popped_scope = self.block_stack.pop();
                     match popped_scope {
                         Some(popped_scope) => {
-                            let block = popped_scope.build_to_block(py, scope_close_span)?;
-                            self.push_to_topmost_block(py, block.as_ref(py))?
+                            match popped_scope.build_to_block(py, scope_close_span)? {
+                                Some(block) => self.push_to_topmost_block(py, block.as_ref(py))?,
+                                None => {}
+                            }
                         }
                         None => return Err(InterpError::ScopeCloseOutsideScope(scope_close_span)),
                     }
@@ -535,8 +537,10 @@ impl<'a> InterpState<'a> {
                     let popped_scope = self.block_stack.pop();
                     match popped_scope {
                         Some(popped_scope) => {
-                            let block = popped_scope.build_to_block(py, scope_close_span)?;
-                            self.push_to_topmost_block(py, block.as_ref(py))?
+                            match popped_scope.build_to_block(py, scope_close_span)? {
+                                Some(block) => self.push_to_topmost_block(py, block.as_ref(py))?,
+                                None => {}
+                            }
                         }
                         None => return Err(InterpError::ScopeCloseOutsideScope(scope_close_span)),
                     }
