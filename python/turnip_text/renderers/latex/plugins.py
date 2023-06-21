@@ -177,12 +177,20 @@ class LatexFootnotePlugin(RendererPlugin, FootnotePluginInterface):
 
 
 class LatexSectionPlugin(RendererPlugin, SectionPluginInterface):
+    _pagebreak_before: List[str]
+
+    def __init__(self, pagebreak_before: List[str] = []) -> None:
+        super().__init__()
+        self._pagebreak_before = pagebreak_before
+
     def _block_handlers(self) -> Iterable[CustomRenderFunc]:
         return ((HeadedBlock, self._render_headed_block),)
 
     def _render_headed_block(self, renderer: Renderer, block: HeadedBlock) -> str:
         header = f"\\{block.latex_name}"  # i.e. r"\section"
-        if block.num:
+        if block.latex_name in self._pagebreak_before:
+            header = "\\pagebreak\n" + header
+        if not block.num:
             header += "*"
         escaped_name = renderer.render_unescapedtext(block.name)
         header += f"{{{escaped_name}}}"  # i.e. r"\section*" + "{Section Name}"
