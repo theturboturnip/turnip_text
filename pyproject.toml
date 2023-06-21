@@ -1,6 +1,6 @@
 [project]
 name = "turnip_text"
-version = "0.0.1"
+version = "0.0.2"
 description = "Document description language that allows embedded Python to describe document structure"
 license = { text = "MIT OR Apache-2.0" }
 readme = "README.md"
