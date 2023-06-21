@@ -56,6 +56,9 @@ pub enum TestInterpError {
     BlockCodeMidPara {
         code_span: TestParserSpan,
     },
+    BlockCodeFromRawScopeMidPara {
+        code_span: TestParserSpan,
+    },
     SentenceBreakInInlineScope {
         scope_start: TestParserSpan,
     },
@@ -108,6 +111,9 @@ impl TestInterpError {
             },
             InterpError::BlockCodeMidPara { code_span } => Self::BlockCodeMidPara {
                 code_span: code_span.into(),
+            },
+            InterpError::BlockCodeFromRawScopeMidPara { code_span } => Self::BlockCodeFromRawScopeMidPara {
+                code_span: code_span.into()
             },
             InterpError::SentenceBreakInInlineScope { scope_start, .. } => {
                 Self::SentenceBreakInInlineScope {
@@ -883,7 +889,6 @@ I'm in a [TEST_BLOCK]",
     )
 }
 
-// TODO test raw scope builders emitting blocks at paragraph open but not in the middle of a paragraph
 #[test]
 pub fn test_raw_scope_emitting_block_from_block_level() {
     expect_parse(
@@ -906,7 +911,7 @@ pub fn test_raw_scope_emitting_inline_from_block_level() {
 pub fn test_raw_scope_cant_emit_block_inside_paragraph() {
     expect_parse(
         "Inside a paragraph, you can't [TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#",
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        Err(TestInterpError::BlockCodeFromRawScopeMidPara { code_span: TestParserSpan { start: (1, 31), end: (1, 57) } })
     )
 }
 

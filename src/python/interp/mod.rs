@@ -61,7 +61,7 @@ enum InterpBlockState {
     BuildingRawText {
         builder: PyTcRef<RawScopeBuilder>,
         text: String,
-        raw_start: ParseSpan,
+        builder_span: ParseSpan,
         expected_n_hashes: usize,
     },
 }
@@ -150,7 +150,7 @@ pub(crate) enum InterpSpecialTransition {
 #[derive(Debug)]
 pub(crate) enum InlineNodeToCreate {
     UnescapedText(String),
-    RawText(Option<PyTcRef<RawScopeBuilder>>, String),
+    RawText(String),
     PythonObject(PyTcRef<Inline>),
 }
 impl InlineNodeToCreate {
@@ -160,14 +160,9 @@ impl InlineNodeToCreate {
                 let unescaped_text = Py::new(py, UnescapedText::new_rs(py, s.as_str()))?;
                 PyTcRef::of(unescaped_text.as_ref(py))
             }
-            InlineNodeToCreate::RawText(builder, raw) => match builder {
-                Some(builder) => {
-                    RawScopeBuilder::call_build_from_raw_inline(py, &builder, &raw)
-                },
-                None => {
-                    let raw_text = Py::new(py, RawText::new_rs(py, raw.as_str()))?;
-                    PyTcRef::of(raw_text.as_ref(py))
-                }
+            InlineNodeToCreate::RawText(raw) => {
+                let raw_text = Py::new(py, RawText::new_rs(py, raw.as_str()))?;
+                PyTcRef::of(raw_text.as_ref(py))
             },
             InlineNodeToCreate::PythonObject(obj) => Ok(obj),
         }
@@ -198,6 +193,8 @@ pub enum InterpError {
     BlockOwnerCodeMidPara { code_span: ParseSpan },
     #[error("A Python `Block` was returned by code inside a paragraph")]
     BlockCodeMidPara { code_span: ParseSpan },
+    #[error("A Python `Block` was returned by a RawScopeBuilder inside a paragraph")]
+    BlockCodeFromRawScopeMidPara { code_span: ParseSpan },
     #[error("Inline scope contained sentence break")]
     SentenceBreakInInlineScope { scope_start: ParseSpan },
     #[error("Inline scope contained paragraph break")]
@@ -276,9 +273,9 @@ impl<'a> InterpState<'a> {
                     code_start: *code_start,
                 })
             }
-            InterpBlockState::BuildingRawText { raw_start, .. } => {
+            InterpBlockState::BuildingRawText { builder_span, .. } => {
                 return Err(InterpError::EndedInsideRawScope {
-                    raw_scope_start: *raw_start,
+                    raw_scope_start: *builder_span, // TODO This is technically wrong but it gets the point across. Should return the raw_scope token start, not the builder start
                 })
             }
         };
@@ -412,10 +409,10 @@ impl<'a> InterpState<'a> {
                     None => (None, None),
                 }
             }
-            InterpBlockState::BuildingRawText { builder, text, raw_start, expected_n_hashes } => match tok {
+            InterpBlockState::BuildingRawText { builder, text, builder_span, expected_n_hashes } => match tok {
                 RawScopeClose(_, n_hashes) if n_hashes == *expected_n_hashes => {
                     // Make sure the RawScopeBuilder produces something that's either Inline or Block
-                    let to_emit = RawScopeBuilder::call_build_from_raw(py, builder, text).err_as_interp(py, *raw_start)?;
+                    let to_emit = RawScopeBuilder::call_build_from_raw(py, builder, text).err_as_interp(py, *builder_span)?;
                     
                     let to_emit_as_py = to_emit.as_ref(py);
                     if let Ok(block) = PyTcRef::of(to_emit_as_py) {
@@ -505,9 +502,9 @@ impl<'a> InterpState<'a> {
 
                 (
                     S::BuildingCode { .. },
-                    T::StartRawScope(r, raw_start, expected_n_hashes)
+                    T::StartRawScope(r, builder_span, expected_n_hashes)
                 ) => {
-                    S::BuildingRawText { builder: r, text: "".into(), raw_start, expected_n_hashes }
+                    S::BuildingRawText { builder: r, text: "".into(), builder_span, expected_n_hashes }
                 }
                 (
                     S::ReadyForNewBlock | S::BuildingCode { .. },

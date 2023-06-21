@@ -61,8 +61,9 @@ enum InterpSentenceState {
     },
     /// When building raw text, optionally attached to a RawScopeBuilder
     BuildingRawText {
-        owner: Option<PyTcRef<RawScopeBuilder>>,
+        builder: Option<PyTcRef<RawScopeBuilder>>,
         text: String,
+        /// Either the token opening the raw scope, or the code for the builder
         raw_start: ParseSpan,
         expected_n_hashes: usize,
     },
@@ -330,10 +331,10 @@ impl InterpParaState {
                     | S::MidSentence
                     | S::BuildingText { .. }
                     | S::BuildingCode { .. },
-                    T::StartRawScope(owner, raw_start, expected_n_hashes),
+                    T::StartRawScope(builder, raw_start, expected_n_hashes),
                 ) => (
                     S::BuildingRawText {
-                        owner,
+                        builder,
                         text: "".into(),
                         raw_start,
                         expected_n_hashes,
@@ -560,14 +561,29 @@ impl InterpParaState {
                 }
             }
             InterpSentenceState::BuildingRawText {
-                owner,
+                builder,
                 text,
                 expected_n_hashes,
-                ..
+                raw_start,
             } => match tok {
-                RawScopeClose(_, n_hashes) if n_hashes == *expected_n_hashes => Some(
-                    PushInlineContent(InlineNodeToCreate::RawText(owner.clone(), text.clone())),
-                ),
+                RawScopeClose(_, n_hashes) if n_hashes == *expected_n_hashes => match builder {
+                    Some(builder) => {
+                        let to_emit = RawScopeBuilder::call_build_from_raw(py, builder, text).err_as_interp(py, *raw_start)?;
+                    
+                        let to_emit_as_py = to_emit.as_ref(py);
+                        if let Ok(_) = PyTcRef::<Block>::of(to_emit_as_py) {
+                            return Err(InterpError::BlockCodeFromRawScopeMidPara{ code_span: *raw_start })
+                        } else if let Ok(inl) = PyTcRef::of(to_emit_as_py) {
+                            Some(PushInlineContent(InlineNodeToCreate::PythonObject(inl)))
+                        } else {
+                            unreachable!()
+                        }
+                    },
+                    None => Some(
+                        PushInlineContent(InlineNodeToCreate::RawText(text.clone())),
+                    ),
+                }
+                    
                 _ => {
                     text.push_str(tok.stringify_raw(data));
                     None
