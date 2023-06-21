@@ -946,3 +946,26 @@ pub fn test_emitting_none_inline() {
     ]])]))
     )
 }
+
+#[test]
+pub fn test_assign_and_recall() {
+    expect_parse(
+        "[x = 5]
+
+[test_inline_of(x)]",
+    Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text("5")]])]))
+    )
+}
+
+#[test]
+pub fn test_syntax_errs_passed_thru() {
+    // The assignment support depends on trying to eval() the expression, that failing with a SyntaxError, and then trying to exec() it.
+    // Make sure that something invalid as both still returns a SyntaxError
+    expect_parse(
+        "[1invalid]",
+        Err(TestInterpError::PythonErr {
+            pyerr: "SyntaxError : invalid syntax (<string>, line 1)".into(),
+            code_span: TestParserSpan { start: (1, 1), end: (1, 11) }
+        })
+    )
+}

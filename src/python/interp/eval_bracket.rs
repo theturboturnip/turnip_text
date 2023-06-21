@@ -1,4 +1,4 @@
-use pyo3::{Python, types::PyDict, PyResult};
+use pyo3::{Python, types::PyDict, PyResult, exceptions::PySyntaxError};
 
 use crate::{python::{typeclass::PyTcRef, interop::{BlockScopeBuilder, InlineScopeBuilder, RawScopeBuilder, Block, Inline, InlineXorBlock}}, lexer::TTToken, util::ParseSpan};
 
@@ -21,7 +21,15 @@ impl EvalBracketResult {
     ) -> PyResult<EvalBracketResult> {
         // Python picks up leading whitespace as an incorrect indent
         let code = code.trim();
-        let raw_res = py.eval(code, Some(globals), None)?;
+        let raw_res = match py.eval(code, Some(globals), None) {
+            Ok(raw_res) => raw_res,
+            Err(error) if error.is_instance_of::<PySyntaxError>(py) => {
+                // Try to exec() it as a statement instead of eval() it as an expression
+                py.run(code, Some(globals), None)?;
+                return Ok(EvalBracketResult::PyNone);
+            }
+            Err(error) => return Err(error)
+        };
         let res = match tok {
             TTToken::CodeCloseOwningBlock(_, _) => EvalBracketResult::BlockBuilder(PyTcRef::of(raw_res)?),
             TTToken::CodeCloseOwningInline(_, _) => {

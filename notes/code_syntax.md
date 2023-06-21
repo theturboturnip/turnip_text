@@ -4,7 +4,7 @@
 - DONE Allow scopeless eval-brackets at the starts of paragraphs to return things fitting Block and inject them directly into the document. (This behaviour already works for Inline)
   - NOTDONE Don't allow subsequent text to start a new paragraph - e.g. `[block_expr] some extra text` shouldn't be valid
 - DONE Allow scopeless eval-brackets to return None and do no emitting
-- Use `eval(compile(code, context, "exec"))` to support assignment to the globals/locals dict in eval-brackets https://stackoverflow.com/a/29456463
+- DONE Support assignment and recall `[x=5] \n\n [UnescapedText(x)]` -> "5"
 - DONE Better raw-scope-owning behaviour: maybe a raw-scope-owner is just something with a function that takes str? and can return either Block or Inline, and the parser adapts to this? (See above)
 - Add a context variable to all(?) plugin functions, so they can call out to other functions without knowing
 
