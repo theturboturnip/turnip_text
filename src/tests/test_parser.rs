@@ -853,3 +853,5 @@ because you may need it to split up words in sentences."#,
 }
 
 // TODO test emitting blocks directly from code works for new paragraphs but not in the middle of a paragraph
+
+// TODO test raw scope builders emitting blocks at paragraph open but not in the middle of a paragraph

@@ -1,4 +1,4 @@
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Union, runtime_checkable
 
 from .turnip_text import (  # type: ignore
     BlockScope,
@@ -33,5 +33,5 @@ class InlineScopeBuilder(Protocol):
 
 @runtime_checkable
 class RawScopeBuilder(Protocol):
-    def build_from_raw(self, raw: str) -> Inline:
+    def build_from_raw(self, raw: str) -> Union[Inline, Block]:
         ...

@@ -57,6 +57,13 @@ enum InterpBlockState {
         code_start: ParseSpan,
         expected_close_len: usize,
     },
+    /// When building raw text initiated at the block level, owned by a RawScopeBuilder, which may return Inline or Block content
+    BuildingRawText {
+        builder: PyTcRef<RawScopeBuilder>,
+        text: String,
+        raw_start: ParseSpan,
+        expected_n_hashes: usize,
+    },
 }
 
 #[derive(Debug)]
@@ -85,14 +92,20 @@ impl InterpBlockScopeState {
 pub(crate) enum InterpBlockTransition {
     /// On encountering a CodeOpen at the start of a line, start gathering block level code
     ///
-    /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::BuildingBlockLevelCode]
+    /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::BuildingCode]
     /// - All others invalid
     StartBlockLevelCode(ParseSpan, usize),
+
+    /// On finishing block-level code, if it intends to own a raw scope, start a raw scope.
+    /// 
+    /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::BuildingRawText]
+    StartRawScope(PyTcRef<RawScopeBuilder>, ParseSpan, usize),
 
     /// Start a paragraph, optionally executing a transition on the paragraph-level state machine
     ///
     /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::WritingPara]
     /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::WritingPara]
+    /// - [InterpBlockState::BuildingRawText] -> [InterpBlockState::WritingPara]
     /// TODO dear god stop using Option here, its so verbose and actually unnecessary
     StartParagraph(Option<InterpParaTransition>),
 
@@ -114,9 +127,10 @@ pub(crate) enum InterpBlockTransition {
     /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::ReadyForNewBlock]
     PushBlockScope(Option<PyTcRef<BlockScopeBuilder>>, ParseSpan),
 
-    /// If an eval-bracket emits a Block directly, push it onto the stack
+    /// If an eval-bracket emits a Block directly, or a raw scope owner takes raw text and produces Block, push it onto the stack
     /// 
     /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::ReadyForNewBlock]
+    /// - [InterpBlockState::BuildingRawText] -> [InterpBlockState::ReadyForNewBlock]
     PushBlock(PyTcRef<Block>),
 
     /// On encountering a scope close, pop the current block from the scope
@@ -148,7 +162,9 @@ impl InlineNodeToCreate {
                 PyTcRef::of(unescaped_text.as_ref(py))
             }
             InlineNodeToCreate::RawText(builder, raw) => match builder {
-                Some(builder) => RawScopeBuilder::call_build_from_raw(py, builder, raw),
+                Some(builder) => {
+                    RawScopeBuilder::call_build_from_raw_inline(py, &builder, &raw)
+                },
                 None => {
                     let raw_text = Py::new(py, RawText::new_rs(py, raw.as_str()))?;
                     PyTcRef::of(raw_text.as_ref(py))
@@ -261,6 +277,11 @@ impl<'a> InterpState<'a> {
                     code_start: *code_start,
                 })
             }
+            InterpBlockState::BuildingRawText { raw_start, .. } => {
+                return Err(InterpError::EndedInsideRawScope {
+                    raw_scope_start: *raw_start,
+                })
+            }
         };
 
         match self.block_stack.pop() {
@@ -316,6 +337,8 @@ impl<'a> InterpState<'a> {
                     ),
 
                     // StartRawBlock
+                    // If we start a raw scope directly, with no owner, go into Inline mode.
+                    // Raw text can only be inline content when inserted directly.
                     RawScopeOpen(span, n_hashes) => (
                         Some(StartParagraph(Some(InterpParaTransition::StartRawScope(
                             None, span, n_hashes,
@@ -375,9 +398,7 @@ impl<'a> InterpState<'a> {
                             InlineBuilder(i) => StartParagraph(Some(
                                 InterpParaTransition::PushInlineScope(Some(i), code_span),
                             )),
-                            Raw(r, n_hashes) => StartParagraph(Some(
-                                InterpParaTransition::StartRawScope(Some(r), code_span, n_hashes),
-                            )),
+                            RawBuilder(r, n_hashes) => StartRawScope(r, code_span, n_hashes),
                             Block(b) => PushBlock(b),
                             Inline(i) => {
                                 StartParagraph(Some(InterpParaTransition::PushInlineContent(
@@ -392,6 +413,25 @@ impl<'a> InterpState<'a> {
                     None => (None, None),
                 }
             }
+            InterpBlockState::BuildingRawText { builder, text, raw_start, expected_n_hashes } => match tok {
+                RawScopeClose(_, n_hashes) if n_hashes == *expected_n_hashes => {
+                    // Make sure the RawScopeBuilder produces something that's either Inline or Block
+                    let to_emit = RawScopeBuilder::call_build_from_raw(py, builder, text).err_as_interp(py, *raw_start)?;
+                    
+                    let to_emit_as_py = to_emit.as_ref(py);
+                    if let Ok(block) = PyTcRef::of(to_emit_as_py) {
+                        (Some(PushBlock(block)), None)
+                    } else if let Ok(inl) = PyTcRef::of(to_emit_as_py) {
+                        (Some(StartParagraph(Some(InterpParaTransition::PushInlineContent(InlineNodeToCreate::PythonObject(inl))))), None)
+                    } else {
+                        unreachable!()
+                    }
+                }
+                _ => {
+                    text.push_str(tok.stringify_raw(self.data));
+                    (None, None)
+                }
+            },
         };
 
         Ok(transition)
@@ -423,7 +463,7 @@ impl<'a> InterpState<'a> {
                 }
 
                 (
-                    S::ReadyForNewBlock | S::BuildingCode { .. },
+                    S::ReadyForNewBlock | S::BuildingCode { .. } | S::BuildingRawText { .. },
                     T::StartParagraph(transition),
                 ) => {
                     let mut para_state = InterpParaState::new(py).err_as_interp_internal(py)?;
@@ -457,11 +497,18 @@ impl<'a> InterpState<'a> {
                 }
 
                 (
-                    S::BuildingCode { .. },
+                    S::BuildingCode { .. } | S::BuildingRawText { .. },
                     T::PushBlock(b)
                 ) => {
                     self.push_to_topmost_block(py, b.as_ref(py))?;
                     S::ReadyForNewBlock
+                }
+
+                (
+                    S::BuildingCode { .. },
+                    T::StartRawScope(r, raw_start, expected_n_hashes)
+                ) => {
+                    S::BuildingRawText { builder: r, text: "".into(), raw_start, expected_n_hashes }
                 }
                 (
                     S::ReadyForNewBlock | S::BuildingCode { .. },

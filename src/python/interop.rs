@@ -186,11 +186,23 @@ impl RawScopeBuilder {
     fn marker_func_name(py: Python<'_>) -> &PyString {
         intern!(py, "build_from_raw")
     }
-    /// Calls builder.build_from_raw(raw)  
+    /// Calls builder.build_from_raw(raw), could be inline or block 
     pub fn call_build_from_raw<'py>(
         py: Python<'py>,
-        builder: PyTcRef<Self>,
-        raw: String,
+        builder: &PyTcRef<Self>,
+        raw: &String,
+    ) -> PyResult<PyTcRef<InlineXorBlock>> {
+        let output = builder
+            .as_ref(py)
+            .getattr(Self::marker_func_name(py))?
+            .call1((raw,))?;
+        PyTcRef::of(output)
+    }
+    /// Calls builder.build_from_raw(raw), forces coersion to Inline
+    pub fn call_build_from_raw_inline<'py>(
+        py: Python<'py>,
+        builder: &PyTcRef<Self>,
+        raw: &String,
     ) -> PyResult<PyTcRef<Inline>> {
         let output = builder
             .as_ref(py)

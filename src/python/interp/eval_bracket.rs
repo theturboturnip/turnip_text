@@ -7,7 +7,7 @@ use super::{MapInterpResult, InterpResult};
 pub enum EvalBracketResult {
     BlockBuilder(PyTcRef<BlockScopeBuilder>),
     InlineBuilder(PyTcRef<InlineScopeBuilder>),
-    Raw(PyTcRef<RawScopeBuilder>, usize),
+    RawBuilder(PyTcRef<RawScopeBuilder>, usize),
     Block(PyTcRef<Block>),
     Inline(PyTcRef<Inline>),
 }
@@ -27,7 +27,7 @@ impl EvalBracketResult {
                 EvalBracketResult::InlineBuilder(PyTcRef::of(raw_res)?)
             }
             TTToken::CodeCloseOwningRaw(_, _, n_hashes) => {
-                EvalBracketResult::Raw(PyTcRef::of(raw_res)?, n_hashes)
+                EvalBracketResult::RawBuilder(PyTcRef::of(raw_res)?, n_hashes)
             }
             TTToken::CodeClose(_, _) => {
                 // See if it's either a Block or an Inline. It must be exactly one of them.

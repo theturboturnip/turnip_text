@@ -59,7 +59,7 @@ enum InterpSentenceState {
         code_start: ParseSpan,
         expected_n_hashes: usize,
     },
-    /// When building raw text, optionally attached to an InlineScopeOwner
+    /// When building raw text, optionally attached to a RawScopeBuilder
     BuildingRawText {
         owner: Option<PyTcRef<RawScopeBuilder>>,
         text: String,
@@ -550,7 +550,7 @@ impl InterpParaState {
                                 return Err(InterpError::BlockCodeMidPara { code_span });
                             }
                             InlineBuilder(i) => PushInlineScope(Some(i), code_span),
-                            Raw(r, n_hashes) => StartRawScope(Some(r), code_span, n_hashes),
+                            RawBuilder(r, n_hashes) => StartRawScope(Some(r), code_span, n_hashes),
                             // TODO If the object is not already Inline, check if it's Block or BlockScopeBuilder or InlineScopeBuilder or RawScopeBuilder, stringify it, then put in an Unescaped box?
                             Inline(i) => PushInlineContent(InlineNodeToCreate::PythonObject(i)),
                         };
