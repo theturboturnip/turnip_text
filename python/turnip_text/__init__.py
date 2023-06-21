@@ -1,13 +1,15 @@
-from typing import Protocol, runtime_checkable
+from typing import Optional, Protocol, Union, runtime_checkable
 
-from .turnip_text import (  # type: ignore
+from ._native import (  # type: ignore
     BlockScope,
     InlineScope,
     Paragraph,
+    RawText,
     Sentence,
     UnescapedText,
 )
-from .turnip_text import parse_file as parse_file_native  # type: ignore
+from ._native import parse_file as parse_file_native  # type: ignore
+from ._native import parse_str as parse_str_native  # type: ignore
 
 
 class Inline(Protocol):
@@ -21,7 +23,7 @@ class Block(Protocol):
 
 @runtime_checkable
 class BlockScopeBuilder(Protocol):
-    def build_from_blocks(self, bs: BlockScope) -> Block:
+    def build_from_blocks(self, bs: BlockScope) -> Optional[Block]:
         ...
 
 
@@ -33,5 +35,5 @@ class InlineScopeBuilder(Protocol):
 
 @runtime_checkable
 class RawScopeBuilder(Protocol):
-    def build_from_raw(self, raw: str) -> Inline:
+    def build_from_raw(self, raw: str) -> Union[Inline, Block]:
         ...

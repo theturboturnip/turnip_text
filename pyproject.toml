@@ -1,6 +1,6 @@
 [project]
 name = "turnip_text"
-version = "0.0.1"
+version = "0.0.2"
 description = "Document description language that allows embedded Python to describe document structure"
 license = { text = "MIT OR Apache-2.0" }
 readme = "README.md"
@@ -20,11 +20,12 @@ fmt = ["black"]
 
 [tool.maturin]
 python-source = "python"
+module-name = "turnip_text._native"
 
 [tool.mypy]
 
 [tool.black]
 
 [build-system]
-requires = ["maturin>=0.14,<0.15"]
+requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"

@@ -59,10 +59,11 @@ enum InterpSentenceState {
         code_start: ParseSpan,
         expected_n_hashes: usize,
     },
-    /// When building raw text, optionally attached to an InlineScopeOwner
+    /// When building raw text, optionally attached to a RawScopeBuilder
     BuildingRawText {
-        owner: Option<PyTcRef<RawScopeBuilder>>,
+        builder: Option<PyTcRef<RawScopeBuilder>>,
         text: String,
+        /// Either the token opening the raw scope, or the code for the builder
         raw_start: ParseSpan,
         expected_n_hashes: usize,
     },
@@ -84,6 +85,11 @@ pub(crate) enum InterpParaTransition {
     ///
     /// - [InterpSentenceState::MidSentence] -> [InterpSentenceState::SentenceStart]
     BreakSentence,
+
+    /// On running Python code and returning None, ignore the code without emitting anything
+    ///
+    /// - [InterpSentenceState::BuildingCode] -> [InterpSentenceState::MidSentence]
+    EmitNone,
 
     /// On encountering the start of an inline scope (i.e. an InlineScopeOpen optionally preceded by Python scope owner),
     /// push an inline scope onto existing paragraph state (or create a new one).
@@ -293,6 +299,13 @@ impl InterpParaState {
                 }
 
                 (
+                    S::BuildingCode { .. },
+                    T::EmitNone,
+                ) => {
+                    (S::MidSentence, (None, None))
+                }
+
+                (
                     S::SentenceStart
                     | S::MidSentence
                     | S::BuildingCode { .. }
@@ -330,10 +343,10 @@ impl InterpParaState {
                     | S::MidSentence
                     | S::BuildingText { .. }
                     | S::BuildingCode { .. },
-                    T::StartRawScope(owner, raw_start, expected_n_hashes),
+                    T::StartRawScope(builder, raw_start, expected_n_hashes),
                 ) => (
                     S::BuildingRawText {
-                        owner,
+                        builder,
                         text: "".into(),
                         raw_start,
                         expected_n_hashes,
@@ -543,15 +556,17 @@ impl InterpParaState {
                         use EvalBracketResult::*;
 
                         let inl_transition = match res {
-                            Block(_) => {
+                            BlockBuilder(_) => {
                                 return Err(InterpError::BlockOwnerCodeMidPara { code_span })
                             }
-                            Inline(i) => PushInlineScope(Some(i), code_span),
-                            Raw(r, n_hashes) => StartRawScope(Some(r), code_span, n_hashes),
+                            Block(_) => {
+                                return Err(InterpError::BlockCodeMidPara { code_span });
+                            }
+                            InlineBuilder(i) => PushInlineScope(Some(i), code_span),
+                            RawBuilder(r, n_hashes) => StartRawScope(Some(r), code_span, n_hashes),
                             // TODO If the object is not already Inline, check if it's Block or BlockScopeBuilder or InlineScopeBuilder or RawScopeBuilder, stringify it, then put in an Unescaped box?
-                            Other(s) => PushInlineContent(InlineNodeToCreate::PythonObject(
-                                PyTcRef::of(s.as_ref(py)).err_as_interp(py, code_span)?,
-                            )),
+                            Inline(i) => PushInlineContent(InlineNodeToCreate::PythonObject(i)),
+                            PyNone => EmitNone,
                         };
                         Some(inl_transition)
                     }
@@ -559,14 +574,29 @@ impl InterpParaState {
                 }
             }
             InterpSentenceState::BuildingRawText {
-                owner,
+                builder,
                 text,
                 expected_n_hashes,
-                ..
+                raw_start,
             } => match tok {
-                RawScopeClose(_, n_hashes) if n_hashes == *expected_n_hashes => Some(
-                    PushInlineContent(InlineNodeToCreate::RawText(owner.clone(), text.clone())),
-                ),
+                RawScopeClose(_, n_hashes) if n_hashes == *expected_n_hashes => match builder {
+                    Some(builder) => {
+                        let to_emit = RawScopeBuilder::call_build_from_raw(py, builder, text).err_as_interp(py, *raw_start)?;
+                    
+                        let to_emit_as_py = to_emit.as_ref(py);
+                        if let Ok(_) = PyTcRef::<Block>::of(to_emit_as_py) {
+                            return Err(InterpError::BlockCodeFromRawScopeMidPara{ code_span: *raw_start })
+                        } else if let Ok(inl) = PyTcRef::of(to_emit_as_py) {
+                            Some(PushInlineContent(InlineNodeToCreate::PythonObject(inl)))
+                        } else {
+                            unreachable!()
+                        }
+                    },
+                    None => Some(
+                        PushInlineContent(InlineNodeToCreate::RawText(text.clone())),
+                    ),
+                }
+                    
                 _ => {
                     text.push_str(tok.stringify_raw(data));
                     None

@@ -61,11 +61,11 @@ qemu = Code(Text("QEMU"))
 I like to use [qemu]
 ```
 ```latex
-# In latex
+% In latex
 I like to use \texttt{QEMU}
 ```
 ```md
-# In Markdown
+<!-- In Markdown -->
 I like to use `QEMU`
 ```
 but I also want to be able to swap in/out the things that render those at an individual level.
@@ -81,7 +81,9 @@ qemu = ctx.code.build_from_inlines("QEMU")
 qemu = ctx.code.build_from_inlines([UnescapedText("QEMU")])
 ```
 
-which moves the abstraction to the function level (good, allows extra attrs with `*args, **kwargs`)
+which moves the abstraction to the function level (good, allows extra attrs with `*args, **kwargs`).
+This is also necessary because some state is spread out - e.g. footnotes, you don't just emit Footnote(blah), you call `footnote() -> Builder` and the Builder sets a value in FOOTNOTE_DICT... etc.
+We need to pass around the context for the document so people can write """macros""" in ~~the same~~ a similar way they would use them in the document
 
 but that's not a great syntax?
 

@@ -10,6 +10,7 @@ use pyo3::{
 use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
 
 #[pymodule]
+#[pyo3(name="_native")]
 pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_file, m)?)?;
     m.add_function(wrap_pyfunction!(parse_str, m)?)?;
@@ -95,6 +96,21 @@ impl PyTypeclass for Inline {
     }
 }
 
+/// Typeclass used internally for things that can be emitted directly from eval-brackets:
+/// i.e. an Inline or a Block.
+/// Must be one or the other - doesn't make sense for something to be both, because it doesn't know what context it would be rendered in.
+#[derive(Debug, Clone)]
+pub struct InlineXorBlock {}
+impl PyTypeclass for InlineXorBlock {
+    const NAME: &'static str = "Inline XOR Block (not both)";
+
+    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
+        let is_inline = Inline::fits_typeclass(obj)?;
+        let is_block = Block::fits_typeclass(obj)?;
+        Ok(is_inline ^ is_block)
+    }
+}
+
 /// Typeclass representing the "builder" of a block scope, which may modify how that scope is rendered.
 ///
 /// Requires a method
@@ -111,12 +127,16 @@ impl BlockScopeBuilder {
         py: Python<'py>,
         builder: PyTcRef<Self>,
         blocks: Py<BlockScope>,
-    ) -> PyResult<PyTcRef<Block>> {
+    ) -> PyResult<Option<PyTcRef<Block>>> {
         let output = builder
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
             .call1((blocks,))?;
-        PyTcRef::of(output)
+        if output.is_none() {
+            Ok(None)
+        } else {
+            Ok(Some(PyTcRef::of(output)?))
+        }
     }
 }
 impl PyTypeclass for BlockScopeBuilder {
@@ -171,12 +191,12 @@ impl RawScopeBuilder {
     fn marker_func_name(py: Python<'_>) -> &PyString {
         intern!(py, "build_from_raw")
     }
-    /// Calls builder.build_from_raw(raw)  
+    /// Calls builder.build_from_raw(raw), could be inline or block 
     pub fn call_build_from_raw<'py>(
         py: Python<'py>,
-        builder: PyTcRef<Self>,
-        raw: String,
-    ) -> PyResult<PyTcRef<Inline>> {
+        builder: &PyTcRef<Self>,
+        raw: &String,
+    ) -> PyResult<PyTcRef<InlineXorBlock>> {
         let output = builder
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?

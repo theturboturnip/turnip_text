@@ -10,7 +10,7 @@ use crate::python::{interp_data, prepare_freethreaded_turniptext_python, InterpE
 use crate::util::ParseSpan;
 
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::PyDict;
 
 use std::panic;
 // We need to initialize Python the first time we test
@@ -51,6 +51,12 @@ pub enum TestInterpError {
         scope_start: TestParserSpan,
     },
     BlockOwnerCodeMidPara {
+        code_span: TestParserSpan,
+    },
+    BlockCodeMidPara {
+        code_span: TestParserSpan,
+    },
+    BlockCodeFromRawScopeMidPara {
         code_span: TestParserSpan,
     },
     SentenceBreakInInlineScope {
@@ -102,6 +108,12 @@ impl TestInterpError {
             },
             InterpError::BlockOwnerCodeMidPara { code_span } => Self::BlockOwnerCodeMidPara {
                 code_span: code_span.into(),
+            },
+            InterpError::BlockCodeMidPara { code_span } => Self::BlockCodeMidPara {
+                code_span: code_span.into(),
+            },
+            InterpError::BlockCodeFromRawScopeMidPara { code_span } => Self::BlockCodeFromRawScopeMidPara {
+                code_span: code_span.into()
             },
             InterpError::SentenceBreakInInlineScope { scope_start, .. } => {
                 Self::SentenceBreakInInlineScope {
@@ -263,6 +275,8 @@ pub fn generate_globals<'interp>(py: Python<'interp>) -> Option<&'interp PyDict>
 
     let result = py.run(
         r#"
+from turnip_text import InlineScope, UnescapedText, BlockScope
+
 class FauxBlock:
     is_block = True
     def __init__(self, contents):
@@ -273,22 +287,41 @@ class FauxInline:
     def __init__(self, contents):
         self.test_inline = contents
 
-class FauxRaw:
+class FauxInlineRaw:
     is_inline = True
-    def __init__(self, contents):
-        self.test_raw_str = str(contents)
+    def __init__(self, raw_str):
+        self.test_raw_str = str(raw_str)
 
 class TestBuilder:
     def build_from_blocks(self, contents):
         return FauxBlock(contents)
     def build_from_inlines(self, contents):
         return FauxInline(contents)
-    def build_from_raw(self, contents):
-        return FauxRaw(contents)
+
+class TestRawInlineBuilder:
+    def build_from_raw(self, raw_str):
+        return FauxInlineRaw(raw_str)
+
+TEST_BLOCK = FauxBlock(BlockScope([]))
+
+class TestRawBlockBuilder:
+    def build_from_raw(self, raw_str):
+        return TEST_BLOCK
+
+class TestBlockSwallower():
+    def build_from_blocks(self, contents):
+        return None
 
 TEST_BLOCK_BUILDER = TestBuilder()
 TEST_INLINE_BUILDER = TestBuilder()
-TEST_RAW_BUILDER = TestBuilder() 
+TEST_RAW_INLINE_BUILDER = TestRawInlineBuilder()
+TEST_RAW_BLOCK_BUILDER = TestRawBlockBuilder()
+
+TEST_BLOCK_SWALLOWER = TestBlockSwallower()
+
+def test_inline_of(x):
+    return UnescapedText(str(x))
+
 "#,
         Some(globals),
         Some(globals),
@@ -379,7 +412,7 @@ It was popularised in the 1960s with the release of Letraset sheets containing L
 #[test]
 pub fn test_inline_code() {
     expect_parse(
-        r#"Number of values in (1,2,3): [len((1,2,3))]"#,
+        r#"Number of values in (1,2,3): [test_inline_of(len((1,2,3)))]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
@@ -390,7 +423,7 @@ pub fn test_inline_code() {
 #[test]
 pub fn test_inline_code_with_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): [[ len((1,2,3)) ]]"#,
+        r#"Number of values in (1,2,3): [[ test_inline_of(len((1,2,3))) ]]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
@@ -401,7 +434,7 @@ pub fn test_inline_code_with_extra_delimiter() {
 #[test]
 pub fn test_inline_code_with_long_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): [[[[[ len((1,2,3)) ]]]]]"#,
+        r#"Number of values in (1,2,3): [[[[[ test_inline_of(len((1,2,3))) ]]]]]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
@@ -412,7 +445,7 @@ pub fn test_inline_code_with_long_extra_delimiter() {
 #[test]
 pub fn test_inline_code_with_escaped_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): \[[ len((1,2,3)) ]\]"#,
+        r#"Number of values in (1,2,3): \[[ test_inline_of(len((1,2,3))) ]\]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): ["),
             test_text("3"),
@@ -434,7 +467,7 @@ pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
 #[test]
 pub fn test_inline_list_with_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): [[ len([1,2,3]) ]]"#,
+        r#"Number of values in (1,2,3): [[ test_inline_of(len([1,2,3])) ]]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
@@ -589,7 +622,7 @@ pub fn test_owned_inline_scope_with_non_inline_builder() {
 #[test]
 pub fn test_owned_inline_raw_scope_with_newline() {
     expect_parse(
-        r#"[TEST_RAW_BUILDER]#{
+        r#"[TEST_RAW_INLINE_BUILDER]#{
 import os
 }#"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
@@ -655,10 +688,9 @@ It was the blurst of times."#,
 #[test]
 pub fn test_special_with_escaped_backslash() {
     expect_parse(
-        r#"About to see a backslash! \\[None]"#,
+        r#"About to see a backslash! \\#"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text(r#"About to see a backslash! \"#),
-            test_text("None"),
         ]])])),
     )
 }
@@ -697,7 +729,7 @@ newline"#,
 #[test]
 pub fn test_newline_in_code() {
     expect_parse(
-        "[len((1,\r\n2))]",
+        "[test_inline_of(len((1,\r\n2)))]",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
             "2",
         )])])),
@@ -843,5 +875,120 @@ because you may need it to split up words in sentences."#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![
             test_sentence("Whitespace is allowed after this because you may need it to split up words in sentences."),
         ])])),
+    )
+}
+
+#[test]
+pub fn test_emit_block_from_code() {
+    expect_parse(
+        "[TEST_BLOCK]", 
+        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+    )
+}
+
+#[test]
+pub fn test_cant_emit_block_from_code_inside_paragraph() {
+    expect_parse(
+        "Lorem ipsum!
+I'm in a [TEST_BLOCK]", 
+        Err(TestInterpError::BlockCodeMidPara { code_span: TestParserSpan { start: (2, 10), end: (2, 22) } }),
+    )
+}
+
+#[test]
+pub fn test_raw_scope_emitting_block_from_block_level() {
+    expect_parse(
+        "[TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#",
+        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+    )
+}
+
+#[test]
+pub fn test_raw_scope_emitting_inline_from_block_level() {
+    expect_parse(
+        "[TEST_RAW_INLINE_BUILDER]#{some raw stuff that goes in a block!}#",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            TestInline::TestOwnedRaw("some raw stuff that goes in a block!".into())
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_raw_scope_cant_emit_block_inside_paragraph() {
+    expect_parse(
+        "Inside a paragraph, you can't [TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#",
+        Err(TestInterpError::BlockCodeFromRawScopeMidPara { code_span: TestParserSpan { start: (1, 31), end: (1, 57) } })
+    )
+}
+
+#[test]
+pub fn test_raw_scope_emitting_inline_inside_paragraph() {
+    expect_parse(
+        "Inside a paragraph, you can [TEST_RAW_INLINE_BUILDER]#{insert an inline raw!}#",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Inside a paragraph, you can "),
+            TestInline::TestOwnedRaw("insert an inline raw!".into())
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_emitting_none_at_block() {
+    expect_parse(
+        "
+[None]
+", 
+    Ok(test_doc(vec![]))
+    )
+}
+
+#[test]
+pub fn test_emitting_none_inline() {
+    expect_parse(
+        "Check it out, there's [None]!", 
+    Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+        test_text("Check it out, there's "),
+        test_text("!")
+    ]])]))
+    )
+}
+
+#[test]
+pub fn test_assign_and_recall() {
+    expect_parse(
+        "[x = 5]
+
+[test_inline_of(x)]",
+    Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text("5")]])]))
+    )
+}
+
+#[test]
+pub fn test_syntax_errs_passed_thru() {
+    // The assignment support depends on trying to eval() the expression, that failing with a SyntaxError, and then trying to exec() it.
+    // Make sure that something invalid as both still returns a SyntaxError
+    expect_parse(
+        "[1invalid]",
+        Err(TestInterpError::PythonErr {
+            pyerr: "SyntaxError : invalid syntax (<string>, line 1)".into(),
+            code_span: TestParserSpan { start: (1, 1), end: (1, 11) }
+        })
+    )
+}
+
+#[test]
+pub fn test_block_scope_builder_return_none() {
+    expect_parse(
+        "[TEST_BLOCK_SWALLOWER]{
+stuff that gets swallowed
+}", Ok(test_doc(vec![]))
+    )
+}
+
+#[test]
+pub fn test_block_scope_builder_return_none_with_end_inside_para() {
+    expect_parse(
+        "[TEST_BLOCK_SWALLOWER]{
+stuff that gets swallowed}", Ok(test_doc(vec![]))
     )
 }

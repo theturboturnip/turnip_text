@@ -50,8 +50,13 @@ class Citation(Inline):
 
 
 @dataclass(frozen=True)
-class Url(Inline):
+class NamedUrl(Inline, InlineScopeBuilder):
     url: str
+    name: Optional[InlineScope] = None
+
+    def build_from_inlines(self, inls: InlineScope) -> Inline:
+        assert self.name is None
+        return NamedUrl(self.url, inls)
 
 
 @dataclass(frozen=True)
@@ -164,7 +169,7 @@ class LatexFootnotePlugin(RendererPlugin, FootnotePluginInterface):
         # equivalent to
         # [footnote_text("label")(r"text")]
         @block_scope_builder
-        def handle_block_contents(contents: BlockScope) -> Block:
+        def handle_block_contents(contents: BlockScope) -> Optional[Block]:
             self._footnotes[label] = contents
             return None
 
@@ -172,12 +177,20 @@ class LatexFootnotePlugin(RendererPlugin, FootnotePluginInterface):
 
 
 class LatexSectionPlugin(RendererPlugin, SectionPluginInterface):
+    _pagebreak_before: List[str]
+
+    def __init__(self, pagebreak_before: List[str] = []) -> None:
+        super().__init__()
+        self._pagebreak_before = pagebreak_before
+
     def _block_handlers(self) -> Iterable[CustomRenderFunc]:
         return ((HeadedBlock, self._render_headed_block),)
 
     def _render_headed_block(self, renderer: Renderer, block: HeadedBlock) -> str:
         header = f"\\{block.latex_name}"  # i.e. r"\section"
-        if block.num:
+        if block.latex_name in self._pagebreak_before:
+            header = "\\pagebreak\n" + header
+        if not block.num:
             header += "*"
         escaped_name = renderer.render_unescapedtext(block.name)
         header += f"{{{escaped_name}}}"  # i.e. r"\section*" + "{Section Name}"
@@ -231,6 +244,21 @@ class LatexSectionPlugin(RendererPlugin, SectionPluginInterface):
         return handle_block_contents
 
 
+@inline_scope_builder
+def emph_builder(items: InlineScope) -> Inline:
+    return Formatted("emph", items)
+
+
+@inline_scope_builder
+def italic_builder(items: InlineScope) -> Inline:
+    return Formatted("textit", items)
+
+
+@inline_scope_builder
+def bold_builder(items: InlineScope) -> Inline:
+    return Formatted("textbf", items)
+
+
 class LatexFormatPlugin(RendererPlugin, FormatPluginInterface):
     def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
         return ((Formatted, self._render_formatted),)
@@ -240,13 +268,9 @@ class LatexFormatPlugin(RendererPlugin, FormatPluginInterface):
         data += renderer.render_inlinescope(item.items)
         return data + "}"
 
-    @dictify_pure_property
-    def emph(self) -> InlineScopeBuilder:
-        @inline_scope_builder
-        def emph_builder(items: InlineScope) -> Inline:
-            return Formatted("emph", items)
-
-        return emph_builder
+    emph = emph_builder
+    italic = italic_builder
+    bold = bold_builder
 
     OPEN_DQUOTE = RawLatex("``")
     CLOS_DQUOTE = RawLatex("''")
@@ -281,7 +305,8 @@ class LatexListPlugin(RendererPlugin):
 
     def _render_list_item(self, renderer: Renderer, list_item: DisplayListItem) -> str:
         # TODO indents!
-        return "\\item " + renderer.render_block(list_item.item)
+        # Put {} after \item so square brackets at the start of render_block don't get swallowed as arguments
+        return "\\item{} " + renderer.render_block(list_item.item)
 
     @dictify_pure_property
     def enumerate(self) -> BlockScopeBuilder:
@@ -324,11 +349,16 @@ class LatexUrlPlugin(RendererPlugin):
     # TODO add dependency on hyperref!!
 
     def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
-        return ((Url, self._render_url),)
+        return ((NamedUrl, self._render_url),)
 
-    def _render_url(self, renderer: Renderer, url: Url) -> str:
-        escaped_url = url.url.replace("#", "\\#")
-        return f"\\url{{{escaped_url}}}"
+    def _render_url(self, renderer: Renderer, url: NamedUrl) -> str:
+        if url.name is None:
+            return f"\\url{{{url.url}}}"
+        else:
+            escaped_url_name = renderer.render_inlinescope(url.name)
+            return f"\\href{{{url.url}}}{{{escaped_url_name}}}"
 
-    def url(self, url: str) -> Inline:
-        return Url(url)
+    def url(self, url: str, name: Optional[str] = None) -> Inline:
+        return NamedUrl(
+            url, name=InlineScope([UnescapedText(name)]) if name is not None else None
+        )

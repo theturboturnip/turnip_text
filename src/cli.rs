@@ -140,6 +140,20 @@ impl GivesCliFeedback for InterpError {
                 AnnotationType::Error,
                 code_span,
             ),
+            BlockCodeMidPara { code_span } => snippet_from_parse_span(
+                file_src,
+                "A `Block` was returned by inline code inside a paragraph",
+                "Block returned by this",
+                AnnotationType::Error,
+                code_span,
+            ),
+            BlockCodeFromRawScopeMidPara { code_span } => snippet_from_parse_span(
+                file_src,
+                "A `Block` was returned after building a raw scope inside a paragraph",
+                "RawScopeBuilder returned by this",
+                AnnotationType::Error,
+                code_span,
+            ),
             SentenceBreakInInlineScope { scope_start } => snippet_from_parse_span(
                 file_src, 
                 "Paragraph break found inside an inline scope",
