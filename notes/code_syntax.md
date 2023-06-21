@@ -1,10 +1,11 @@
 # Code-in-text
 
 ## TODO
-- Allow scopeless eval-brackets at the starts of paragraphs to return things fitting Block and inject them directly into the document. (This behaviour already works for Inline)
-  - Don't allow subsequent text to start a new paragraph - e.g. `[block_expr] some extra text` shouldn't be valid
+- DONE Allow scopeless eval-brackets at the starts of paragraphs to return things fitting Block and inject them directly into the document. (This behaviour already works for Inline)
+  - NOTDONE Don't allow subsequent text to start a new paragraph - e.g. `[block_expr] some extra text` shouldn't be valid
 - Use `eval(compile(code, context, "exec"))` to support assignment to the globals/locals dict in eval-brackets https://stackoverflow.com/a/29456463
 - Better raw-scope-owning behaviour: maybe a raw-scope-owner is just something with a function that takes str? and can return either Block or Inline, and the parser adapts to this? (See above)
+- Add a context variable to all(?) plugin functions, so they can call out to other functions without knowing
 
 ## Current syntax
 
@@ -194,3 +195,9 @@ Talked about this with dad
   - i.e. inside `[math]` you can't have `[code]`, or inside `[list] [item]` you can't have `[section]`
   - enforce this by classes?
     - i.e. "`[code]` format is inline, math mode disables other inline formatting" or "`[section]` is only allowed at the top level of `[chapter]`"
+
+# Python Plugin Infrastructure
+
+Goals:
+1. Need a "context" function for composable plugins
+  - e.g. `ctx.bold @ ctx.color("red") @ "TODO: Do something"`

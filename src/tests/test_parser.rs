@@ -53,6 +53,9 @@ pub enum TestInterpError {
     BlockOwnerCodeMidPara {
         code_span: TestParserSpan,
     },
+    BlockCodeMidPara {
+        code_span: TestParserSpan,
+    },
     SentenceBreakInInlineScope {
         scope_start: TestParserSpan,
     },
@@ -101,6 +104,9 @@ impl TestInterpError {
                 scope_start: scope_start.into(),
             },
             InterpError::BlockOwnerCodeMidPara { code_span } => Self::BlockOwnerCodeMidPara {
+                code_span: code_span.into(),
+            },
+            InterpError::BlockCodeMidPara { code_span } => Self::BlockCodeMidPara {
                 code_span: code_span.into(),
             },
             InterpError::SentenceBreakInInlineScope { scope_start, .. } => {
@@ -845,3 +851,5 @@ because you may need it to split up words in sentences."#,
         ])])),
     )
 }
+
+// TODO test emitting blocks directly from code works for new paragraphs but not in the middle of a paragraph

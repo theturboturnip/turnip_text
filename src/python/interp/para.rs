@@ -543,15 +543,16 @@ impl InterpParaState {
                         use EvalBracketResult::*;
 
                         let inl_transition = match res {
-                            Block(_) => {
+                            BlockBuilder(_) => {
                                 return Err(InterpError::BlockOwnerCodeMidPara { code_span })
                             }
-                            Inline(i) => PushInlineScope(Some(i), code_span),
+                            Block(_) => {
+                                return Err(InterpError::BlockCodeMidPara { code_span });
+                            }
+                            InlineBuilder(i) => PushInlineScope(Some(i), code_span),
                             Raw(r, n_hashes) => StartRawScope(Some(r), code_span, n_hashes),
                             // TODO If the object is not already Inline, check if it's Block or BlockScopeBuilder or InlineScopeBuilder or RawScopeBuilder, stringify it, then put in an Unescaped box?
-                            Other(s) => PushInlineContent(InlineNodeToCreate::PythonObject(
-                                PyTcRef::of(s.as_ref(py)).err_as_interp(py, code_span)?,
-                            )),
+                            Inline(i) => PushInlineContent(InlineNodeToCreate::PythonObject(i)),
                         };
                         Some(inl_transition)
                     }

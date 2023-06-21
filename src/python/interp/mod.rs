@@ -51,8 +51,8 @@ enum InterpBlockState {
     WritingPara(InterpParaState),
     /// Building Python-code to evaluate at the block level, outside a paragraph
     ///
-    /// Transitions to [Self::AttachingBlockLevelCode] once finished
-    BuildingBlockLevelCode {
+    /// Transitions to [Self::AttachingBlockLevelCode] or [Self::ReadyForNewBlock] once finished
+    BuildingCode {
         code: String,
         code_start: ParseSpan,
         expected_close_len: usize,
@@ -92,7 +92,7 @@ pub(crate) enum InterpBlockTransition {
     /// Start a paragraph, optionally executing a transition on the paragraph-level state machine
     ///
     /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::WritingPara]
-    /// - [InterpBlockState::BuildingBlockLevelCode] -> [InterpBlockState::WritingPara]
+    /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::WritingPara]
     /// TODO dear god stop using Option here, its so verbose and actually unnecessary
     StartParagraph(Option<InterpParaTransition>),
 
@@ -107,17 +107,22 @@ pub(crate) enum InterpBlockTransition {
     /// - [InterpBlockState::WritingPara] -> [InterpBlockState::ReadyForNewBlock]
     EndParagraphAndPopBlock(ParseSpan),
 
-    /// On encountering block content (i.e. a BlockScopeOpen optionally preceded by a Python scope owner),
+    /// On encountering a block scope owner (i.e. a BlockScopeOpen optionally preceded by a Python scope owner),
     /// push a block scope onto the current stack
     ///
     /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::ReadyForNewBlock]
-    /// - [InterpBlockState::BuildingBlockLevelCode] -> [InterpBlockState::ReadyForNewBlock]
-    PushBlock(Option<PyTcRef<BlockScopeBuilder>>, ParseSpan),
+    /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::ReadyForNewBlock]
+    PushBlockScope(Option<PyTcRef<BlockScopeBuilder>>, ParseSpan),
+
+    /// If an eval-bracket emits a Block directly, push it onto the stack
+    /// 
+    /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::ReadyForNewBlock]
+    PushBlock(PyTcRef<Block>),
 
     /// On encountering a scope close, pop the current block from the scope
     ///
     /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::ReadyForNewBlock]
-    PopBlock(ParseSpan),
+    PopBlockScope(ParseSpan),
 }
 
 #[derive(Debug)]
@@ -176,6 +181,8 @@ pub enum InterpError {
     BlockScopeOpenedMidPara { scope_start: ParseSpan },
     #[error("A Python `BlockScopeOwner` was returned by code inside a paragraph")]
     BlockOwnerCodeMidPara { code_span: ParseSpan },
+    #[error("A Python `Block` was returned by code inside a paragraph")]
+    BlockCodeMidPara { code_span: ParseSpan },
     #[error("Inline scope contained sentence break")]
     SentenceBreakInInlineScope { scope_start: ParseSpan },
     #[error("Inline scope contained paragraph break")]
@@ -249,7 +256,7 @@ impl<'a> InterpState<'a> {
         let transitions = match &mut self.block_state {
             InterpBlockState::ReadyForNewBlock => (None, None),
             InterpBlockState::WritingPara(state) => state.finalize(py)?,
-            InterpBlockState::BuildingBlockLevelCode { code_start, .. } => {
+            InterpBlockState::BuildingCode { code_start, .. } => {
                 return Err(InterpError::EndedInsideCode {
                     code_start: *code_start,
                 })
@@ -298,7 +305,7 @@ impl<'a> InterpState<'a> {
                     CodeOpen(span, n_hashes) => (Some(StartBlockLevelCode(span, n_hashes)), None),
 
                     // PushBlock with no code managing it
-                    BlockScopeOpen(span) => (Some(PushBlock(None, span)), None),
+                    BlockScopeOpen(span) => (Some(PushBlockScope(None, span)), None),
 
                     // PushInlineScope with no code managing it
                     InlineScopeOpen(span) => (
@@ -319,7 +326,7 @@ impl<'a> InterpState<'a> {
 
                     // Try a scope close
                     ScopeClose(span) => match self.block_stack.last() {
-                        Some(_) => (Some(PopBlock(span)), None),
+                        Some(_) => (Some(PopBlockScope(span)), None),
                         None => Err(InterpError::ScopeCloseOutsideScope(span))?,
                     },
 
@@ -346,7 +353,7 @@ impl<'a> InterpState<'a> {
             InterpBlockState::WritingPara(state) => {
                 state.handle_token(py, globals, tok, self.data)?
             }
-            InterpBlockState::BuildingBlockLevelCode {
+            InterpBlockState::BuildingCode {
                 code,
                 code_start,
                 expected_close_len,
@@ -364,18 +371,18 @@ impl<'a> InterpState<'a> {
                         use EvalBracketResult::*;
 
                         let block_transition = match res {
-                            Block(b) => PushBlock(Some(b), code_span),
-                            Inline(i) => StartParagraph(Some(
+                            BlockBuilder(b) => PushBlockScope(Some(b), code_span),
+                            InlineBuilder(i) => StartParagraph(Some(
                                 InterpParaTransition::PushInlineScope(Some(i), code_span),
                             )),
                             Raw(r, n_hashes) => StartParagraph(Some(
                                 InterpParaTransition::StartRawScope(Some(r), code_span, n_hashes),
                             )),
-                            Other(s) => {
-                                // TODO If the object is not already Inline, check if it's Block or BlockScopeBuilder or InlineScopeBuilder or RawScopeBuilder, stringify it, then put in an Unescaped box?
+                            Block(b) => PushBlock(b),
+                            Inline(i) => {
                                 StartParagraph(Some(InterpParaTransition::PushInlineContent(
                                     InlineNodeToCreate::PythonObject(
-                                        PyTcRef::of(s.as_ref(py)).err_as_interp(py, code_span)?,
+                                        i
                                     ),
                                 )))
                             }
@@ -408,7 +415,7 @@ impl<'a> InterpState<'a> {
 
             let new_block_state = match (&self.block_state, transition) {
                 (S::ReadyForNewBlock, T::StartBlockLevelCode(code_start, expected_close_len)) => {
-                    S::BuildingBlockLevelCode {
+                    S::BuildingCode {
                         code: "".into(),
                         code_start,
                         expected_close_len,
@@ -416,7 +423,7 @@ impl<'a> InterpState<'a> {
                 }
 
                 (
-                    S::ReadyForNewBlock | S::BuildingBlockLevelCode { .. },
+                    S::ReadyForNewBlock | S::BuildingCode { .. },
                     T::StartParagraph(transition),
                 ) => {
                     let mut para_state = InterpParaState::new(py).err_as_interp_internal(py)?;
@@ -450,8 +457,15 @@ impl<'a> InterpState<'a> {
                 }
 
                 (
-                    S::ReadyForNewBlock | S::BuildingBlockLevelCode { .. },
-                    T::PushBlock(builder, scope_start),
+                    S::BuildingCode { .. },
+                    T::PushBlock(b)
+                ) => {
+                    self.push_to_topmost_block(py, b.as_ref(py))?;
+                    S::ReadyForNewBlock
+                }
+                (
+                    S::ReadyForNewBlock | S::BuildingCode { .. },
+                    T::PushBlockScope(builder, scope_start),
                 ) => {
                     self.block_stack.push(InterpBlockScopeState {
                         builder,
@@ -461,7 +475,7 @@ impl<'a> InterpState<'a> {
                     });
                     S::ReadyForNewBlock
                 }
-                (S::ReadyForNewBlock, T::PopBlock(scope_close_span)) => {
+                (S::ReadyForNewBlock, T::PopBlockScope(scope_close_span)) => {
                     let popped_scope = self.block_stack.pop();
                     match popped_scope {
                         Some(popped_scope) => {
@@ -514,70 +528,5 @@ impl<'a> InterpState<'a> {
     }
 }
 
-/// If the code is closed, evaluates the result and checks it matches the type of code close:
-/// - [TTToken::CodeCloseOwningBlock] -> [EvalBracketResult::Block]
-/// - [TTToken::CodeCloseOwningInline] -> [EvalBracketResult::Inline]
-/// - [TTToken::CodeCloseOwningRaw] -> [EvalBracketResult::Inline]
-/// - [TTToken::CodeClose] -> [EvalBracketResult::Other]
-fn handle_code_mode(
-    data: &str,
-    tok: TTToken,
-    code: &mut String,
-    code_start: &ParseSpan,
-    expected_close_len: usize,
-    py: Python,
-    globals: &PyDict,
-) -> InterpResult<Option<(EvalBracketResult, ParseSpan)>> {
-    let code_span = match tok {
-        TTToken::CodeClose(close_span, n)
-        | TTToken::CodeCloseOwningBlock(close_span, n)
-        | TTToken::CodeCloseOwningInline(close_span, n)
-        | TTToken::CodeCloseOwningRaw(close_span, n, _)
-            if n == expected_close_len =>
-        {
-            ParseSpan {
-                start: code_start.start,
-                end: close_span.end,
-            }
-        }
-        _ => {
-            // Code blocks use raw stringification to avoid confusion between text written and text entered
-            code.push_str(tok.stringify_raw(data));
-            return Ok(None);
-        }
-    };
-
-    let res = EvalBracketResult::eval_in_correct_ctx(py, globals, code, tok)
-        .err_as_interp(py, code_span)?;
-    Ok(Some((res, code_span)))
-}
-pub enum EvalBracketResult {
-    Block(PyTcRef<BlockScopeBuilder>),
-    Inline(PyTcRef<InlineScopeBuilder>),
-    Raw(PyTcRef<RawScopeBuilder>, usize),
-    Other(PyObject),
-}
-impl EvalBracketResult {
-    pub fn eval_in_correct_ctx(
-        py: Python,
-        globals: &PyDict,
-        code: &str,
-        tok: TTToken,
-    ) -> PyResult<EvalBracketResult> {
-        // Python picks up leading whitespace as an incorrect indent
-        let code = code.trim();
-        let raw_res = py.eval(code, Some(globals), None)?;
-        let res = match tok {
-            TTToken::CodeCloseOwningBlock(_, _) => EvalBracketResult::Block(PyTcRef::of(raw_res)?),
-            TTToken::CodeCloseOwningInline(_, _) => {
-                EvalBracketResult::Inline(PyTcRef::of(raw_res)?)
-            }
-            TTToken::CodeCloseOwningRaw(_, _, n_hashes) => {
-                EvalBracketResult::Raw(PyTcRef::of(raw_res)?, n_hashes)
-            }
-            TTToken::CodeClose(_, _) => EvalBracketResult::Other(raw_res.to_object(py)),
-            _ => unreachable!(),
-        };
-        Ok(res)
-    }
-}
+mod eval_bracket;
+use eval_bracket::{EvalBracketResult, handle_code_mode};
