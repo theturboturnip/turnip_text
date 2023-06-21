@@ -63,8 +63,13 @@ class Citation(Inline):
 
 
 @dataclass(frozen=True)
-class Url(Inline):
+class NamedUrl(Inline, InlineScopeBuilder):
     url: str
+    name: Optional[InlineScope] = None
+
+    def build_from_inlines(self, inls: InlineScope) -> Inline:
+        assert self.name is None
+        return NamedUrl(self.url, inls)
 
 
 @dataclass(frozen=True)
@@ -449,12 +454,17 @@ class MarkdownListPlugin(RendererPlugin):
 
 class MarkdownUrlPlugin(RendererPlugin):
     def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
-        return ((Url, self._render_url),)
+        return ((NamedUrl, self._render_url),)
 
-    def _render_url(self, renderer: Renderer, url: Url) -> str:
-        # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal markdown
-        escaped_url_text = renderer.render_unescapedtext(UnescapedText(url.url))
-        return f"[{escaped_url_text}]({url.url})"
+    def _render_url(self, renderer: Renderer, url: NamedUrl) -> str:
+        if url.name is None:
+            # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal markdown
+            escaped_url_name = renderer.render_unescapedtext(UnescapedText(url.url))
+        else:
+            escaped_url_name = renderer.render_inlinescope(url.name)
+        return f"[{escaped_url_name}]({url.url})"
 
-    def url(self, url: str) -> Inline:
-        return Url(url)
+    def url(self, url: str, name: Optional[str] = None) -> Inline:
+        return NamedUrl(
+            url, name=InlineScope([UnescapedText(name)]) if name is not None else None
+        )

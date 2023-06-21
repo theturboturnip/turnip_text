@@ -50,8 +50,13 @@ class Citation(Inline):
 
 
 @dataclass(frozen=True)
-class Url(Inline):
+class NamedUrl(Inline, InlineScopeBuilder):
     url: str
+    name: Optional[InlineScope] = None
+
+    def build_from_inlines(self, inls: InlineScope) -> Inline:
+        assert self.name is None
+        return NamedUrl(self.url, inls)
 
 
 @dataclass(frozen=True)
@@ -324,11 +329,16 @@ class LatexUrlPlugin(RendererPlugin):
     # TODO add dependency on hyperref!!
 
     def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
-        return ((Url, self._render_url),)
+        return ((NamedUrl, self._render_url),)
 
-    def _render_url(self, renderer: Renderer, url: Url) -> str:
-        escaped_url = url.url.replace("#", "\\#")
-        return f"\\url{{{escaped_url}}}"
+    def _render_url(self, renderer: Renderer, url: NamedUrl) -> str:
+        if url.name is None:
+            return f"\\url{{{url.url}}}"
+        else:
+            escaped_url_name = renderer.render_inlinescope(url.name)
+            return f"\\href{{{url.url}}}{{{escaped_url_name}}}"
 
-    def url(self, url: str) -> Inline:
-        return Url(url)
+    def url(self, url: str, name: Optional[str] = None) -> Inline:
+        return NamedUrl(
+            url, name=InlineScope([UnescapedText(name)]) if name is not None else None
+        )
