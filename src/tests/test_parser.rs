@@ -269,7 +269,7 @@ pub fn generate_globals<'interp>(py: Python<'interp>) -> Option<&'interp PyDict>
 
     let result = py.run(
         r#"
-from turnip_text import InlineScope, UnescapedText
+from turnip_text import InlineScope, UnescapedText, BlockScope
 
 class FauxBlock:
     is_block = True
@@ -281,22 +281,31 @@ class FauxInline:
     def __init__(self, contents):
         self.test_inline = contents
 
-class FauxRaw:
+class FauxInlineRaw:
     is_inline = True
-    def __init__(self, contents):
-        self.test_raw_str = str(contents)
+    def __init__(self, raw_str):
+        self.test_raw_str = str(raw_str)
 
 class TestBuilder:
     def build_from_blocks(self, contents):
         return FauxBlock(contents)
     def build_from_inlines(self, contents):
         return FauxInline(contents)
-    def build_from_raw(self, contents):
-        return FauxRaw(contents)
+
+class TestRawInlineBuilder:
+    def build_from_raw(self, raw_str):
+        return FauxInlineRaw(raw_str)
+
+TEST_BLOCK = FauxBlock(BlockScope([]))
+
+class TestRawBlockBuilder:
+    def build_from_raw(self, raw_str):
+        return TEST_BLOCK
 
 TEST_BLOCK_BUILDER = TestBuilder()
 TEST_INLINE_BUILDER = TestBuilder()
-TEST_RAW_BUILDER = TestBuilder()
+TEST_RAW_INLINE_BUILDER = TestRawInlineBuilder()
+TEST_RAW_BLOCK_BUILDER = TestRawBlockBuilder()
 
 def test_inline_of(x):
     return UnescapedText(str(x))
@@ -601,7 +610,7 @@ pub fn test_owned_inline_scope_with_non_inline_builder() {
 #[test]
 pub fn test_owned_inline_raw_scope_with_newline() {
     expect_parse(
-        r#"[TEST_RAW_BUILDER]#{
+        r#"[TEST_RAW_INLINE_BUILDER]#{
 import os
 }#"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
@@ -857,6 +866,57 @@ because you may need it to split up words in sentences."#,
     )
 }
 
-// TODO test emitting blocks directly from code works for new paragraphs but not in the middle of a paragraph
+#[test]
+pub fn test_emit_block_from_code() {
+    expect_parse(
+        "[TEST_BLOCK]", 
+        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+    )
+}
+
+#[test]
+pub fn test_cant_emit_block_from_code_inside_paragraph() {
+    expect_parse(
+        "Lorem ipsum!
+I'm in a [TEST_BLOCK]", 
+        Err(TestInterpError::BlockCodeMidPara { code_span: TestParserSpan { start: (2, 10), end: (2, 22) } }),
+    )
+}
 
 // TODO test raw scope builders emitting blocks at paragraph open but not in the middle of a paragraph
+#[test]
+pub fn test_raw_scope_emitting_block_from_block_level() {
+    expect_parse(
+        "[TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#",
+        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+    )
+}
+
+#[test]
+pub fn test_raw_scope_emitting_inline_from_block_level() {
+    expect_parse(
+        "[TEST_RAW_INLINE_BUILDER]#{some raw stuff that goes in a block!}#",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            TestInline::TestOwnedRaw("some raw stuff that goes in a block!".into())
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_raw_scope_cant_emit_block_inside_paragraph() {
+    expect_parse(
+        "Inside a paragraph, you can't [TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#",
+        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+    )
+}
+
+#[test]
+pub fn test_raw_scope_emitting_inline_inside_paragraph() {
+    expect_parse(
+        "Inside a paragraph, you can [TEST_RAW_INLINE_BUILDER]#{insert an inline raw!}#",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Inside a paragraph, you can "),
+            TestInline::TestOwnedRaw("insert an inline raw!".into())
+        ]])])),
+    )
+}
