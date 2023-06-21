@@ -269,6 +269,8 @@ pub fn generate_globals<'interp>(py: Python<'interp>) -> Option<&'interp PyDict>
 
     let result = py.run(
         r#"
+from turnip_text import InlineScope, UnescapedText
+
 class FauxBlock:
     is_block = True
     def __init__(self, contents):
@@ -294,7 +296,11 @@ class TestBuilder:
 
 TEST_BLOCK_BUILDER = TestBuilder()
 TEST_INLINE_BUILDER = TestBuilder()
-TEST_RAW_BUILDER = TestBuilder() 
+TEST_RAW_BUILDER = TestBuilder()
+
+def test_inline_of(x):
+    return UnescapedText(str(x))
+
 "#,
         Some(globals),
         Some(globals),
@@ -385,7 +391,7 @@ It was popularised in the 1960s with the release of Letraset sheets containing L
 #[test]
 pub fn test_inline_code() {
     expect_parse(
-        r#"Number of values in (1,2,3): [len((1,2,3))]"#,
+        r#"Number of values in (1,2,3): [test_inline_of(len((1,2,3)))]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
@@ -396,7 +402,7 @@ pub fn test_inline_code() {
 #[test]
 pub fn test_inline_code_with_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): [[ len((1,2,3)) ]]"#,
+        r#"Number of values in (1,2,3): [[ test_inline_of(len((1,2,3))) ]]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
@@ -407,7 +413,7 @@ pub fn test_inline_code_with_extra_delimiter() {
 #[test]
 pub fn test_inline_code_with_long_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): [[[[[ len((1,2,3)) ]]]]]"#,
+        r#"Number of values in (1,2,3): [[[[[ test_inline_of(len((1,2,3))) ]]]]]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
@@ -418,7 +424,7 @@ pub fn test_inline_code_with_long_extra_delimiter() {
 #[test]
 pub fn test_inline_code_with_escaped_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): \[[ len((1,2,3)) ]\]"#,
+        r#"Number of values in (1,2,3): \[[ test_inline_of(len((1,2,3))) ]\]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): ["),
             test_text("3"),
@@ -440,7 +446,7 @@ pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
 #[test]
 pub fn test_inline_list_with_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): [[ len([1,2,3]) ]]"#,
+        r#"Number of values in (1,2,3): [[ test_inline_of(len([1,2,3])) ]]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
