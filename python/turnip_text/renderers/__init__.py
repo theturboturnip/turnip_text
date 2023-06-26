@@ -1,6 +1,7 @@
 import abc
 from os import PathLike
 from typing import (
+    Any,
     Callable,
     Dict,
     Generic,
@@ -115,6 +116,7 @@ class Renderer(abc.ABC):
     SENTENCE_SEP: str
 
     plugins: List["RendererPlugin"]
+    ctx: "RendererContext"
 
     block_handlers: TypeToRenderMap[Block]
     inline_handlers: TypeToRenderMap[Inline]
@@ -155,6 +157,8 @@ class Renderer(abc.ABC):
             for postamble_id, postamble_func in p._postamble_handlers():
                 self.postamble_handlers.push_handler(postamble_id, postamble_func)
 
+        self.ctx = RendererContext(plugins)
+
     def request_preamble_order(self, preamble_id_order: List[str]):
         self.preamble_handlers.reorder_handlers(preamble_id_order)
 
@@ -162,18 +166,7 @@ class Renderer(abc.ABC):
         self.postamble_handlers.reorder_handlers(postamble_id_order)
 
     def parse_file(self, p: PathLike) -> BlockScope:
-        # TODO this seems super icky
-        # The problem: we want to be able to call e.g. [footnote] inside the turniptext file.
-        # But if footnote were a free function, it would mutate global state -- we don't want that.
-        # A hack! Require a 'renderer object' to be passed in - this encapsulates the local state.
-        # Create a new dictionary, holding all of the Renderer's public fields,
-        # and use that as the locals for parse_file_local.
-
-        locals = {}
-        for plugin in self.plugins:
-            locals.update(dictify(plugin))
-
-        return parse_file_native(str(p), locals)
+        return parse_file_native(str(p), self.ctx.__dict__)
 
     def render_unescapedtext(self, t: UnescapedText) -> str:
         """The baseline - take text and return a string that will look like that text exactly in the given backend."""
@@ -215,6 +208,19 @@ class Renderer(abc.ABC):
         return "".join(self.render_inline(i) for i in s)
 
 
+class RendererContext:
+    def __init__(self, plugins: Iterable["RendererPlugin"]) -> None:
+        self.__dict__ = {}
+        for plugin in plugins:
+            # Strip things beginning with _ from plugin._interface()
+            i = plugin._interface()
+            for key in i.keys():
+                if key.startswith("_"):
+                    del i[key]
+            self.__dict__.update(i)
+            plugin._ctx_setup(self)
+
+
 class RendererPlugin(abc.ABC):
     """
     Plugins should export a consistent set of functions for documents to rely on.
@@ -226,9 +232,27 @@ class RendererPlugin(abc.ABC):
     e.g. the `footnote` property is pure, but returns a single builder object that mutates the internal list of footnotes whenever `.build()` is called.
     """
 
+    # The current RendererContext.
+    # Only None until this plugin is made part of a RendererContext, at which moment it is set to a non-None.
+    _ctx: RendererContext = None  # type: ignore
+
+    def _ctx_setup(self, ctx: RendererContext):
+        assert self._ctx is None
+        assert ctx is not None
+        self._ctx = ctx
+
     @property
     def _plugin_name(self) -> str:
         return type(self).__name__
+
+    def _interface(self) -> Dict[str, Any]:
+        """Define the interface available to the renderer context,
+        and thus all eval-brackets in evaluated documents.
+
+        By default, uses dictify() to find all public variables, member functions, and static functions.
+
+        May be overridden."""
+        return dictify(self)
 
     def _block_handlers(self) -> Iterable[CustomRenderFunc[Block]]:
         return ()

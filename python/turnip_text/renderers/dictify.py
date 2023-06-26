@@ -4,8 +4,11 @@ from typing import Any, Dict, List, Mapping
 class dictify_pure_property(property):
     """Equivalent to `property`, but acts as a purity marker.
     This should only be used if invoking the property itself DOESN'T MUTATE STATE.
-    This means calling it once is equivalent to calling it many times, which is a useful property when dictifying."""
+    This means calling it once is equivalent to calling it many times, which is a useful property when dictifying.
+    """
+
     pass
+
 
 def dictify(r: Any) -> Dict[str, Any]:
     """
@@ -28,23 +31,22 @@ def dictify(r: Any) -> Dict[str, Any]:
 
     from inspect import isdatadescriptor
 
-    r_obj_public_fields: List[str] = [
-        k
-        for k in dir(r)
-        if not k.startswith("_")
-    ]
-    
+    r_obj_public_fields: List[str] = [k for k in dir(r) if not k.startswith("_")]
+
     r_type_dict: Mapping[str, Any] = type(r).__dict__
-    
+
     # Warn about impure data descriptor fields
     for k in r_obj_public_fields:
-        if isdatadescriptor(r_type_dict[k]) and not isinstance(r_type_dict[k], dictify_pure_property):
-            print(f"dictify_renderer Warning: renderer {r} exposes a public 'data descriptor' (e.g. a property) "
-                  f"named {k!r}. This will be evaluated exactly once, and the result will be stored in the "
-                  f"returned dict, instead of evaluating the property each time the dict is accessed. "
-                  f"DO NOT USE THESE IF YOU CAN AVOID IT. Use a normal field instead.")
+        if (
+            k in r_type_dict  # TODO figure out how to warn about keys from superclasses
+            and isdatadescriptor(r_type_dict[k])
+            and not isinstance(r_type_dict[k], dictify_pure_property)
+        ):
+            print(
+                f"dictify_renderer Warning: renderer {r} exposes a public 'data descriptor' (e.g. a property) "
+                f"named {k!r}. This will be evaluated exactly once, and the result will be stored in the "
+                f"returned dict, instead of evaluating the property each time the dict is accessed. "
+                f"DO NOT USE THESE IF YOU CAN AVOID IT. Use a normal field instead."
+            )
 
-    return {
-        k: getattr(r, k)
-        for k in r_obj_public_fields
-    }
+    return {k: getattr(r, k) for k in r_obj_public_fields}

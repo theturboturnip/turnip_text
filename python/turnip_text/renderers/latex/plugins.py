@@ -163,11 +163,7 @@ class LatexFootnotePlugin(RendererPlugin, FootnotePluginInterface):
         return FootnoteAnchor(label)
 
     def footnote_text(self, label: str) -> BlockScopeBuilder:
-        # Return a callable which is invoked with the contents of the following inline scope
-        # Example usage:
-        # [footnote_text("label")]{text}
-        # equivalent to
-        # [footnote_text("label")(r"text")]
+        # Store the contents of a block scope and associate them with a specific footnote label
         @block_scope_builder
         def handle_block_contents(contents: BlockScope) -> Optional[Block]:
             self._footnotes[label] = contents
