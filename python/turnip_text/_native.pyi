@@ -1,7 +1,19 @@
 import abc
 from typing import Iterator, List, Optional, Protocol, runtime_checkable
 
-from turnip_text import Block, Inline
+from turnip_text import (
+    Block,
+    CoercibleToBlock,
+    CoercibleToBlockScope,
+    CoercibleToInline,
+    CoercibleToInlineScope,
+    Inline,
+)
+
+def coerce_to_inline(obj: CoercibleToInline) -> Inline: ...
+def coerce_to_inline_scope(obj: CoercibleToInlineScope) -> InlineScope: ...
+def coerce_to_block(obj: CoercibleToBlock) -> Block: ...
+def coerce_to_block_scope(obj: CoercibleToBlockScope) -> BlockScope: ...
 
 class UnescapedText(Inline):
     def __init__(self, text: str) -> None: ...
