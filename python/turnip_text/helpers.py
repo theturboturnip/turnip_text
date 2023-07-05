@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, Union
 
 from turnip_text import (
     Block,
@@ -85,10 +85,10 @@ class raw_scope_builder(RawScopeBuilder):
     ```
     """
 
-    func: Callable[[str], Inline]
+    func: Callable[[str], Union[Block, Inline]]
 
-    def __init__(self, func: Callable[[str], Inline]) -> None:
+    def __init__(self, func: Callable[[str], Union[Block, Inline]]) -> None:
         self.func = func
 
-    def build_from_inlines(self, raw: str) -> Inline:
+    def build_from_raw(self, raw: str) -> Union[Block, Inline]:
         return self.func(raw)
