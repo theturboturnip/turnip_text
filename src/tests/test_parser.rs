@@ -275,7 +275,9 @@ pub fn generate_globals<'interp>(py: Python<'interp>) -> Option<&'interp PyDict>
 
     let result = py.run(
         r#"
-from turnip_text import InlineScope, UnescapedText, BlockScope
+# The Rust module name is _native, which is included under turnip_text, so Python IDEs don't try to import directly from it.
+# This means we use _native instead of turnip_text as the module name here.
+from _native import InlineScope, UnescapedText, BlockScope
 
 class FauxBlock:
     is_block = True
