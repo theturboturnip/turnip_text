@@ -395,11 +395,11 @@ impl<'a> InterpState<'a> {
                         use EvalBracketResult::*;
 
                         let block_transition = match res {
-                            BlockBuilder(b) => PushBlockScope(Some(b), code_span),
-                            InlineBuilder(i) => StartParagraph(
+                            NeededBlockBuilder(b) => PushBlockScope(Some(b), code_span),
+                            NeededInlineBuilder(i) => StartParagraph(
                                 InterpParaTransition::PushInlineScope(Some(i), code_span),
                             ),
-                            RawBuilder(r, n_hashes) => StartRawScope(r, code_span, n_hashes),
+                            NeededRawBuilder(r, n_hashes) => StartRawScope(r, code_span, n_hashes),
                             Block(b) => PushBlock(b),
                             Inline(i) => {
                                 StartParagraph(InterpParaTransition::PushInlineContent(
