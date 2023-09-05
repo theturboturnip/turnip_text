@@ -10,10 +10,11 @@ from ._native import (
     coerce_to_block_scope,
     coerce_to_inline_scope,
 )
-from ._native import parse_file as parse_file_native  # type: ignore
-from ._native import parse_str as parse_str_native  # type: ignore
+from ._native import parse_file as parse_file_native
+from ._native import parse_str as parse_str_native
 
 
+@runtime_checkable
 class Inline(Protocol):
     is_inline: bool = True
 
