@@ -112,14 +112,19 @@ class MarkdownCitationAsFootnotePlugin(
         self._referenced_citations = set()
 
     def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
-        return ((Citation, self._render_citation),)
+        handler.add_custom_inline(Citation, self._render_citation)
 
     def _postamble_handlers(
         self,
     ) -> Iterable[Tuple[str, Callable[[MarkdownRenderer], str]]]:
         return ((self._BIBLIOGRAPHY_POSTAMBLE_ID, self._render_bibliography),)
 
-    def _render_citation(self, renderer: MarkdownRenderer, citation: Citation) -> str:
+    def _render_citation(
+        self,
+        renderer: MarkdownRenderer,
+        ctx: StatelessContext[MarkdownRenderer],
+        citation: Citation,
+    ) -> str:
         # TODO what happens with unmarkdownable labels? e.g. labels with backslash or something. need to check that when loading.
         # TODO also maybe people wouldn't want those labels being exposed?
         return "".join(
@@ -171,7 +176,7 @@ class MarkdownCitationAsHTMLPlugin(Plugin[MarkdownRenderer], CitationPluginInter
         self._referenced_citations = set()
 
     def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
-        return ((Citation, self._render_citation),)
+        handler.add_custom_inline(Citation, self._render_citation)
 
     def _postamble_handlers(
         self,
@@ -186,7 +191,12 @@ class MarkdownCitationAsHTMLPlugin(Plugin[MarkdownRenderer], CitationPluginInter
             return UnescapedText(f"[{label}, {note.text}]")
         return UnescapedText(f"[{label}]")
 
-    def _render_citation(self, renderer: MarkdownRenderer, citation: Citation) -> str:
+    def _render_citation(
+        self,
+        renderer: MarkdownRenderer,
+        ctx: StatelessContext[MarkdownRenderer],
+        citation: Citation,
+    ) -> str:
         # TODO what happens with unmarkdownable labels? e.g. labels with backslash or something. need to check that when loading.
         # TODO also maybe people wouldn't want those labels being exposed?
         return "".join(
@@ -239,7 +249,7 @@ class MarkdownFootnotePlugin(Plugin[MarkdownRenderer], FootnotePluginInterface):
         self._footnote_ref_order = []
 
     def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
-        return ((FootnoteAnchor, self._render_footnote_anchor),)
+        handler.add_custom_inline(FootnoteAnchor, self._render_footnote_anchor)
 
     def _postamble_handlers(
         self,
@@ -247,7 +257,10 @@ class MarkdownFootnotePlugin(Plugin[MarkdownRenderer], FootnotePluginInterface):
         return ((self._MARKDOWN_FOOTNOTE_POSTAMBLE_ID, self._render_footnotes),)
 
     def _render_footnote_anchor(
-        self, renderer: MarkdownRenderer, footnote: FootnoteAnchor
+        self,
+        renderer: MarkdownRenderer,
+        ctx: StatelessContext[MarkdownRenderer],
+        footnote: FootnoteAnchor,
     ) -> str:
         footnote_num = self._footnote_ref_order.index(footnote.label)
         return f"[^{footnote_num + 1}]"
@@ -434,9 +447,14 @@ def bold_builder(items: InlineScope) -> Inline:
 
 class MarkdownFormatPlugin(Plugin[MarkdownRenderer], FormatPluginInterface):
     def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
-        return ((Formatted, self._render_formatted),)
+        handler.add_custom_inline(Formatted, self._render_formatted)
 
-    def _render_formatted(self, renderer: MarkdownRenderer, item: Formatted) -> str:
+    def _render_formatted(
+        self,
+        renderer: MarkdownRenderer,
+        ctx: StatelessContext[MarkdownRenderer],
+        item: Formatted,
+    ) -> str:
         return (
             item.format_type
             + renderer.render_inlinescope(item.items)
@@ -529,9 +547,14 @@ class MarkdownListPlugin(Plugin[MarkdownRenderer]):
 
 class MarkdownUrlPlugin(Plugin[MarkdownRenderer]):
     def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
-        return ((NamedUrl, self._render_url),)
+        handler.add_custom_inline(NamedUrl, self._render_url)
 
-    def _render_url(self, renderer: MarkdownRenderer, url: NamedUrl) -> str:
+    def _render_url(
+        self,
+        renderer: MarkdownRenderer,
+        ctx: StatelessContext[MarkdownRenderer],
+        url: NamedUrl,
+    ) -> str:
         if url.name is None:
             # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal markdown
             escaped_url_name = renderer.render_unescapedtext(UnescapedText(url.url))
