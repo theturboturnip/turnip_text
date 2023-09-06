@@ -4,11 +4,13 @@ from os import PathLike
 from typing import (
     Any,
     Callable,
+    Concatenate,
     Dict,
     Generic,
     Iterable,
     Iterator,
     List,
+    ParamSpec,
     Protocol,
     Sequence,
     Tuple,
@@ -102,31 +104,9 @@ class CustomRenderDispatch(Generic[TRenderer]):
             return f(renderer, ctx, obj)
 
 
-class StatefulCallback(Generic[TRenderer], Protocol):
-    def __call__(
-        _self,
-        plugin: "Plugin[TRenderer]",
-        state: "MutableState[TRenderer]",
-        *args,
-        **kwargs,
-    ) -> Any:
-        ...
-
-
-class StatelessCallback(Generic[TRenderer], Protocol):
-    def __call__(
-        _self,
-        plugin: "Plugin[TRenderer]",
-        ctx: "StatelessContext[TRenderer]",
-        *args,
-        **kwargs,
-    ) -> Any:
-        ...
-
-
-class ProcessedCallback(Generic[TRenderer], Protocol):
-    def __call__(_self, plugin: "Plugin[TRenderer]", *args, **kwargs) -> Any:
-        ...
+TPlugin = TypeVar("TPlugin", bound="Plugin")
+P = ParamSpec("P")
+T = TypeVar("T")
 
 
 class Plugin(Generic[TRenderer]):
@@ -163,7 +143,11 @@ class Plugin(Generic[TRenderer]):
             if key.startswith("_"):
                 continue
             value = inspect.getattr_static(self, key)
-            if inspect.ismethoddescriptor(value) or inspect.isdatadescriptor(value):
+            if isinstance(value, property):
+                # Hack to make @property @stateless work.
+                stateless = getattr(value.fget, "_stateless", False)
+                interface[key] = BoundProperty(self, value, stateless)
+            elif inspect.ismethoddescriptor(value) or inspect.isdatadescriptor(value):
                 # We want to pass these through to the state/less context objects directly so they are re-__get__ted each time, but they still need to be bound to this plugin object.
                 # The solution: construct BoundProperty, which binds the internal __get__, __set__, __delete__ to self,
                 # and pass that through as the interface.
@@ -171,7 +155,7 @@ class Plugin(Generic[TRenderer]):
                 interface[key] = BoundProperty(self, value, stateless)
             else:
                 # Use getattr to do everything else as normal e.g. bind methods to the object etc.
-                interface[key] = getattr(self, value)
+                interface[key] = getattr(self, key)
 
         return interface
 
@@ -223,14 +207,16 @@ class Plugin(Generic[TRenderer]):
         return ctx, state
 
     @staticmethod
-    def _stateful(f: StatefulCallback[TRenderer]) -> ProcessedCallback[TRenderer]:
+    def _stateful(
+        f: Callable[Concatenate[TPlugin, "MutableState[TRenderer]", P], T]
+    ) -> Callable[Concatenate[TPlugin, P], T]:
         """
         An annotation for plugin bound methods which access the __state object i.e. other stateful (and stateless) functions and variables.
         This is the only way to access the state, and thus theoretically the only way to mutate state.
         Unfortunately, we can't protect a plugin from modifying its private state in a so-annotated "stateless" function.
         """
 
-        def wrapper(plugin: "Plugin[TRenderer]", *args, **kwargs):
+        def wrapper(plugin: TPlugin, *args, **kwargs):
             if plugin.__state._frozen:
                 raise RuntimeError(
                     "Can't run a stateful function when the state is frozen!"
@@ -238,11 +224,14 @@ class Plugin(Generic[TRenderer]):
             return f(plugin, plugin.__state, *args, **kwargs)
 
         wrapper._stateful = True  # type: ignore
+        wrapper.__doc__ = f.__doc__
 
         return wrapper
 
     @staticmethod
-    def _stateful_property(f: StatefulCallback[TRenderer]) -> property:
+    def _stateful_property(
+        f: Callable[Concatenate[TPlugin, "MutableState[TRenderer]", P], T]
+    ) -> property:
         """
         An example of stateful property:
 
@@ -257,14 +246,19 @@ class Plugin(Generic[TRenderer]):
 
         In this example, the lambda which captures __state may live longer until state is frozen.
         It's your responsibility to make sure it doesn't mutate __state in that case!!
+
+        Note that because property objects have opaque typing, typecheckers can't tell that this
+        returns something of type T. This means if you try to use stateful_property to decorate a function
+        that must match some property defined elsewhere, it won't work.
+        In those cases, you can use @property above @stateful and it all works fine.
         """
 
-        p = property(Plugin._stateful(f))
-        p._stateful = True  # type: ignore
-        return p
+        return property(Plugin._stateful(f))
 
     @staticmethod
-    def _stateless(f: StatelessCallback[TRenderer]) -> ProcessedCallback[TRenderer]:
+    def _stateless(
+        f: Callable[Concatenate[TPlugin, "StatelessContext[TRenderer]", P], T]
+    ) -> Callable[Concatenate[TPlugin, P], T]:
         """
         An annotation for plugin bound methods which access the __ctx object i.e. other stateless functions.
         This is the only way to access ctx.
@@ -280,15 +274,18 @@ class Plugin(Generic[TRenderer]):
         TODO could make this pass through stuff and just set _stateless, if __ctx is changed to _ctx
         """
 
-        def wrapper(plugin: "Plugin[TRenderer]", *args, **kwargs):
+        def wrapper(plugin: TPlugin, *args, **kwargs):
             return f(plugin, plugin.__ctx, *args, **kwargs)
 
         wrapper._stateless = True  # type: ignore
+        wrapper.__doc__ = f.__doc__
 
         return wrapper
 
     @staticmethod
-    def _stateless_property(f: StatelessCallback[TRenderer]) -> property:
+    def _stateless_property(
+        f: Callable[Concatenate[TPlugin, "StatelessContext[TRenderer]", P], T]
+    ) -> property:
         """
         In case you want to use the StatelessContext in a property:
 
@@ -298,11 +295,14 @@ class Plugin(Generic[TRenderer]):
                 return ctx.bold
             else:
                 return ctx.italic
+
+        Note that because property objects have opaque typing, typecheckers can't tell that this
+        returns something of type T. This means if you try to use stateless_property to decorate a function
+        that must match some property defined elsewhere, it won't work.
+        In those cases, you can use @property above @stateless and it all works fine.
         """
 
-        p = property(Plugin._stateless(f))
-        p._stateless = True  # type: ignore
-        return p
+        return property(Plugin._stateless(f))
 
 
 stateful = Plugin._stateful
@@ -342,7 +342,7 @@ class MutableState(Generic[TRenderer]):
     _frozen: bool = False  # Set to True when rendering the document, which disables functions annotated with @stateful.
 
     def parse_file(self, path: PathLike) -> BlockScope:
-        return parse_file_native(path, self.__dict__)
+        return parse_file_native(str(path), self.__dict__)
 
 
 # TODO Make preamble/postamble return Blocks to be rendered instead of just str? Would allow e.g. a Bibliography section? Perhaps better to expose a bibliography block for "standard" postambles?
@@ -507,3 +507,11 @@ class Renderer(abc.ABC):
 #         ctx: StatelessContext[TRenderer],
 #     ):
 #         pass
+
+
+class TestPlugin(Plugin):
+    def _soemthing(self, ctx: StatelessContext, blah: float):
+        pass
+
+    # x: StatelessCallback = _soemthing
+    something = stateless(_soemthing)

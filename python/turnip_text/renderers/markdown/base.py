@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import List
 
 from turnip_text import Inline, UnescapedText
-from turnip_text.renderers import Renderer, RendererPlugin
+from turnip_text.renderers import Plugin, Renderer
 
 
 @dataclass(frozen=True)
@@ -14,10 +14,10 @@ class MarkdownRenderer(Renderer):
     PARAGRAPH_SEP = "\n\n"
     SENTENCE_SEP = "\n"
 
-    def __init__(self, plugins: List["RendererPlugin"]) -> None:
+    def __init__(self, plugins: List[Plugin["MarkdownRenderer"]]) -> None:
         super().__init__(plugins)
-        self.inline_handlers.push_association(
-            (RawMarkdown, lambda _, raw: self._render_raw_markdown(raw))
+        self.render_dispatch.add_custom_inline(
+            RawMarkdown, lambda r, ctx, raw: r._render_raw_markdown(raw)  # type: ignore
         )
 
     def _render_raw_markdown(self, r: RawMarkdown) -> str:

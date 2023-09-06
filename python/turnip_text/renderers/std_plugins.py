@@ -1,7 +1,6 @@
 from typing import Optional, Protocol, Tuple, Union
 
 from turnip_text import BlockScopeBuilder, Inline, InlineScopeBuilder
-from turnip_text.renderers.dictify import dictify_pure_property
 
 CiteKey = str
 CiteKeyWithNote = Tuple[CiteKey, str]
@@ -25,7 +24,7 @@ class CitationPluginInterface(Protocol):
 class FootnotePluginInterface(Protocol):
     """Standard plugin for footnotes"""
 
-    @dictify_pure_property
+    @property
     def footnote(self) -> InlineScopeBuilder:
         """Define an unlabelled footnote, capturing the following inline text as the contents,
         and insert a reference to that footnote here.
@@ -67,21 +66,21 @@ class FormatPluginInterface(Protocol):
     italic: InlineScopeBuilder
     bold: InlineScopeBuilder
 
-    @dictify_pure_property
+    @property
     def enquote(self) -> InlineScopeBuilder:
         ...
 
 
 class ListPluginInterface(Protocol):
-    @dictify_pure_property
+    @property
     def enumerate(self) -> BlockScopeBuilder:
         ...
 
-    @dictify_pure_property
+    @property
     def itemize(self) -> BlockScopeBuilder:
         ...
 
-    @dictify_pure_property
+    @property
     def item(self) -> BlockScopeBuilder:
         ...
 

@@ -25,9 +25,16 @@ from turnip_text import (
     UnescapedText,
 )
 from turnip_text.helpers import block_scope_builder, inline_scope_builder
-from turnip_text.renderers import CustomRenderFunc, Renderer, RendererPlugin
-from turnip_text.renderers.dictify import dictify_pure_property
-from turnip_text.renderers.markdown.base import RawMarkdown
+from turnip_text.renderers import (
+    CustomRenderDispatch,
+    MutableState,
+    Plugin,
+    Renderer,
+    StatelessContext,
+    stateful,
+    stateless,
+)
+from turnip_text.renderers.markdown.base import MarkdownRenderer, RawMarkdown
 from turnip_text.renderers.std_plugins import (
     CitationPluginInterface,
     CiteKey,
@@ -91,7 +98,9 @@ class Formatted(Inline):
     items: InlineScope
 
 
-class MarkdownCitationAsFootnotePlugin(RendererPlugin, CitationPluginInterface):
+class MarkdownCitationAsFootnotePlugin(
+    Plugin[MarkdownRenderer], CitationPluginInterface
+):
     _citations: Dict[str, Any]
     _referenced_citations: Set[str]
 
@@ -102,13 +111,15 @@ class MarkdownCitationAsFootnotePlugin(RendererPlugin, CitationPluginInterface):
         self._citations = {}
         self._referenced_citations = set()
 
-    def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
+    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
         return ((Citation, self._render_citation),)
 
-    def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[Renderer], str]]]:
+    def _postamble_handlers(
+        self,
+    ) -> Iterable[Tuple[str, Callable[[MarkdownRenderer], str]]]:
         return ((self._BIBLIOGRAPHY_POSTAMBLE_ID, self._render_bibliography),)
 
-    def _render_citation(self, renderer: Renderer, citation: Citation) -> str:
+    def _render_citation(self, renderer: MarkdownRenderer, citation: Citation) -> str:
         # TODO what happens with unmarkdownable labels? e.g. labels with backslash or something. need to check that when loading.
         # TODO also maybe people wouldn't want those labels being exposed?
         return "".join(
@@ -118,13 +129,18 @@ class MarkdownCitationAsFootnotePlugin(RendererPlugin, CitationPluginInterface):
             for label, opt_note in citation.labels
         )
 
-    def _render_bibliography(self, renderer: Renderer) -> str:
+    def _render_bibliography(self, renderer: MarkdownRenderer) -> str:
         # TODO actual reference rendering!
         return renderer.PARAGRAPH_SEP.join(
             f"[^{label}]: cite {label}" for label in self._referenced_citations
         )
 
-    def cite(self, *labels: Union[str, Tuple[str, str]]) -> Inline:
+    @stateful
+    def cite(
+        self,
+        state: MutableState[MarkdownRenderer],
+        *labels: Union[str, Tuple[str, str]],
+    ) -> Inline:
         # Convert ["label"] to [("label", None)] so Citation has a consistent format
         adapted_labels = [
             (label, None)
@@ -137,12 +153,13 @@ class MarkdownCitationAsFootnotePlugin(RendererPlugin, CitationPluginInterface):
 
         return Citation(adapted_labels)
 
+    @stateless
     # TODO make this output \citeauthor
-    def citeauthor(self, label: str) -> Inline:
+    def citeauthor(self, ctx: StatelessContext[MarkdownRenderer], label: str) -> Inline:
         return Citation([(label, None)])
 
 
-class MarkdownCitationAsHTMLPlugin(RendererPlugin, CitationPluginInterface):
+class MarkdownCitationAsHTMLPlugin(Plugin[MarkdownRenderer], CitationPluginInterface):
     _citations: Dict[str, Any]
     _referenced_citations: Set[str]
 
@@ -153,21 +170,23 @@ class MarkdownCitationAsHTMLPlugin(RendererPlugin, CitationPluginInterface):
         self._citations = {}
         self._referenced_citations = set()
 
-    def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
+    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
         return ((Citation, self._render_citation),)
 
-    def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[Renderer], str]]]:
+    def _postamble_handlers(
+        self,
+    ) -> Iterable[Tuple[str, Callable[[MarkdownRenderer], str]]]:
         return ((self._BIBLIOGRAPHY_POSTAMBLE_ID, self._render_bibliography),)
 
     def _get_citation_shorthand(
-        self, renderer: Renderer, label: str, note: Optional[UnescapedText]
+        self, renderer: MarkdownRenderer, label: str, note: Optional[UnescapedText]
     ) -> UnescapedText:
         # TODO could do e.g. numbering here
         if note:
             return UnescapedText(f"[{label}, {note.text}]")
         return UnescapedText(f"[{label}]")
 
-    def _render_citation(self, renderer: Renderer, citation: Citation) -> str:
+    def _render_citation(self, renderer: MarkdownRenderer, citation: Citation) -> str:
         # TODO what happens with unmarkdownable labels? e.g. labels with backslash or something. need to check that when loading.
         # TODO also maybe people wouldn't want those labels being exposed?
         return "".join(
@@ -176,14 +195,19 @@ class MarkdownCitationAsHTMLPlugin(RendererPlugin, CitationPluginInterface):
             for label, opt_note in citation.labels
         )
 
-    def _render_bibliography(self, renderer: Renderer) -> str:
+    def _render_bibliography(self, renderer: MarkdownRenderer) -> str:
         # TODO actual reference rendering!
         return renderer.PARAGRAPH_SEP.join(
             f'<a id="cite-{label}">{renderer.render_unescapedtext(self._get_citation_shorthand(renderer, label, None))}: cite {label}</a>'
             for label in self._referenced_citations
         )
 
-    def cite(self, *labels: Union[str, Tuple[str, str]]) -> Inline:
+    @stateful
+    def cite(
+        self,
+        state: MutableState[MarkdownRenderer],
+        *labels: Union[str, Tuple[str, str]],
+    ) -> Inline:
         # Convert ["label"] to [("label", None)] so Citation has a consistent format
         adapted_labels = [
             (label, None)
@@ -197,11 +221,12 @@ class MarkdownCitationAsHTMLPlugin(RendererPlugin, CitationPluginInterface):
         return Citation(adapted_labels)
 
     # TODO make this output \citeauthor
-    def citeauthor(self, label: str) -> Inline:
+    @stateful
+    def citeauthor(self, state: MutableState[MarkdownRenderer], label: str) -> Inline:
         return Citation([(label, None)])
 
 
-class MarkdownFootnotePlugin(RendererPlugin, FootnotePluginInterface):
+class MarkdownFootnotePlugin(Plugin[MarkdownRenderer], FootnotePluginInterface):
     _footnotes: Dict[str, Block]
     _footnote_ref_order: List[str]
 
@@ -213,19 +238,21 @@ class MarkdownFootnotePlugin(RendererPlugin, FootnotePluginInterface):
         self._footnotes = {}
         self._footnote_ref_order = []
 
-    def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
+    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
         return ((FootnoteAnchor, self._render_footnote_anchor),)
 
-    def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[Renderer], str]]]:
+    def _postamble_handlers(
+        self,
+    ) -> Iterable[Tuple[str, Callable[[MarkdownRenderer], str]]]:
         return ((self._MARKDOWN_FOOTNOTE_POSTAMBLE_ID, self._render_footnotes),)
 
     def _render_footnote_anchor(
-        self, renderer: Renderer, footnote: FootnoteAnchor
+        self, renderer: MarkdownRenderer, footnote: FootnoteAnchor
     ) -> str:
         footnote_num = self._footnote_ref_order.index(footnote.label)
         return f"[^{footnote_num + 1}]"
 
-    def _render_footnotes(self, renderer: Renderer) -> str:
+    def _render_footnotes(self, renderer: MarkdownRenderer) -> str:
         return renderer.PARAGRAPH_SEP.join(
             # TODO render with indent
             f"[^{num + 1}]: " + renderer.render_block(self._footnotes[label])
@@ -236,8 +263,9 @@ class MarkdownFootnotePlugin(RendererPlugin, FootnotePluginInterface):
         if label not in self._footnote_ref_order:
             self._footnote_ref_order.append(label)
 
-    @dictify_pure_property
-    def footnote(self) -> InlineScopeBuilder:
+    @property
+    @stateful
+    def footnote(self, state: MutableState[MarkdownRenderer]) -> InlineScopeBuilder:
         @inline_scope_builder
         def footnote_builder(contents: InlineScope) -> Inline:
             label = str(uuid.uuid4())
@@ -247,11 +275,15 @@ class MarkdownFootnotePlugin(RendererPlugin, FootnotePluginInterface):
 
         return footnote_builder
 
-    def footnote_ref(self, label: str) -> Inline:
+    @stateful
+    def footnote_ref(self, state: MutableState[MarkdownRenderer], label: str) -> Inline:
         self._add_footnote_reference(label)
         return FootnoteAnchor(label)
 
-    def footnote_text(self, label: str) -> BlockScopeBuilder:
+    @stateful
+    def footnote_text(
+        self, state: MutableState[MarkdownRenderer], label: str
+    ) -> BlockScopeBuilder:
         # Return a callable which is invoked with the contents of the following inline scope
         # Example usage:
         # [footnote_text("label")]{text}
@@ -265,11 +297,16 @@ class MarkdownFootnotePlugin(RendererPlugin, FootnotePluginInterface):
         return handle_block_contents
 
 
-class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
-    def _block_handlers(self) -> Iterable[CustomRenderFunc]:
-        return ((HeadedBlock, self._render_headed_block),)
+class MarkdownSectionPlugin(Plugin[MarkdownRenderer], SectionPluginInterface):
+    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
+        handler.add_custom_block(HeadedBlock, self._render_headed_block)
 
-    def _render_headed_block(self, renderer: Renderer, block: HeadedBlock) -> str:
+    def _render_headed_block(
+        self,
+        renderer: MarkdownRenderer,
+        ctx: StatelessContext[MarkdownRenderer],
+        block: HeadedBlock,
+    ) -> str:
         if block.label:
             raise NotImplementedError("Section labelling not supported")
 
@@ -306,8 +343,13 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
         # Step 3: return a tuple of all elements up to current_level
         return tuple(self._current_number[:current_level])
 
+    @stateful
     def section(
-        self, name: str, label: Optional[str] = None, num: bool = True
+        self,
+        state: MutableState[MarkdownRenderer],
+        name: str,
+        label: Optional[str] = None,
+        num: bool = True,
     ) -> BlockScopeBuilder:
         # Increment the section number here, not at the end of the block
         section_num = self._update_number(1)
@@ -325,8 +367,13 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
 
         return handle_block_contents
 
+    @stateful
     def subsection(
-        self, name: str, label: Optional[str] = None, num: bool = True
+        self,
+        state: MutableState[MarkdownRenderer],
+        name: str,
+        label: Optional[str] = None,
+        num: bool = True,
     ) -> BlockScopeBuilder:
         # Increment the section number here, not at the end of the block
         section_num = self._update_number(2)
@@ -344,8 +391,13 @@ class MarkdownSectionPlugin(RendererPlugin, SectionPluginInterface):
 
         return handle_block_contents
 
+    @stateful
     def subsubsection(
-        self, name: str, label: Optional[str] = None, num: bool = True
+        self,
+        state: MutableState[MarkdownRenderer],
+        name: str,
+        label: Optional[str] = None,
+        num: bool = True,
     ) -> BlockScopeBuilder:
         # Increment the section number here, not at the end of the block
         section_num = self._update_number(3)
@@ -380,11 +432,11 @@ def bold_builder(items: InlineScope) -> Inline:
     return Formatted("**", items)
 
 
-class MarkdownFormatPlugin(RendererPlugin, FormatPluginInterface):
-    def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
+class MarkdownFormatPlugin(Plugin[MarkdownRenderer], FormatPluginInterface):
+    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
         return ((Formatted, self._render_formatted),)
 
-    def _render_formatted(self, renderer: Renderer, item: Formatted) -> str:
+    def _render_formatted(self, renderer: MarkdownRenderer, item: Formatted) -> str:
         return (
             item.format_type
             + renderer.render_inlinescope(item.items)
@@ -397,8 +449,9 @@ class MarkdownFormatPlugin(RendererPlugin, FormatPluginInterface):
 
     DQUOTE = RawMarkdown('"')
 
-    @dictify_pure_property
-    def enquote(self) -> InlineScopeBuilder:
+    @property
+    @stateless
+    def enquote(self, ctx: StatelessContext[MarkdownRenderer]) -> InlineScopeBuilder:
         @inline_scope_builder
         def enquote_builder(items: InlineScope) -> Inline:
             return InlineScope(
@@ -414,11 +467,16 @@ def indent_item(prefix, item_rendering):
     return prefix + item_rendering.replace("\n", "\n" + " " * len(prefix))
 
 
-class MarkdownListPlugin(RendererPlugin):
-    def _block_handlers(self) -> Iterable[CustomRenderFunc]:
-        return ((DisplayList, self._render_list),)
+class MarkdownListPlugin(Plugin[MarkdownRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
+        handler.add_custom_block(DisplayList, self._render_list)
 
-    def _render_list(self, renderer: Renderer, list: DisplayList) -> str:
+    def _render_list(
+        self,
+        renderer: MarkdownRenderer,
+        ctx: StatelessContext[MarkdownRenderer],
+        list: DisplayList,
+    ) -> str:
         # TODO better way of indenting
         if list.numbered:
             return renderer.SENTENCE_SEP.join(
@@ -431,8 +489,9 @@ class MarkdownListPlugin(RendererPlugin):
                 for idx, item in enumerate(list.items)
             )
 
-    @dictify_pure_property
-    def enumerate(self) -> BlockScopeBuilder:
+    @property
+    @stateless
+    def enumerate(self, ctx: StatelessContext[MarkdownRenderer]) -> BlockScopeBuilder:
         @block_scope_builder
         def enumerate_builder(contents: BlockScope) -> Block:
             items = list(contents)
@@ -444,8 +503,9 @@ class MarkdownListPlugin(RendererPlugin):
 
         return enumerate_builder
 
-    @dictify_pure_property
-    def itemize(self) -> BlockScopeBuilder:
+    @property
+    @stateless
+    def itemize(self, ctx: StatelessContext[MarkdownRenderer]) -> BlockScopeBuilder:
         @block_scope_builder
         def itemize_builder(contents: BlockScope) -> Block:
             items = list(contents)
@@ -457,8 +517,9 @@ class MarkdownListPlugin(RendererPlugin):
 
         return itemize_builder
 
-    @dictify_pure_property
-    def item(self) -> BlockScopeBuilder:
+    @property
+    @stateless
+    def item(self, ctx: StatelessContext[MarkdownRenderer]) -> BlockScopeBuilder:
         @block_scope_builder
         def item_builder(block_scope: BlockScope) -> Block:
             return DisplayListItem(block_scope)
@@ -466,11 +527,11 @@ class MarkdownListPlugin(RendererPlugin):
         return item_builder
 
 
-class MarkdownUrlPlugin(RendererPlugin):
-    def _inline_handlers(self) -> Iterable[CustomRenderFunc]:
+class MarkdownUrlPlugin(Plugin[MarkdownRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
         return ((NamedUrl, self._render_url),)
 
-    def _render_url(self, renderer: Renderer, url: NamedUrl) -> str:
+    def _render_url(self, renderer: MarkdownRenderer, url: NamedUrl) -> str:
         if url.name is None:
             # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal markdown
             escaped_url_name = renderer.render_unescapedtext(UnescapedText(url.url))
@@ -478,7 +539,13 @@ class MarkdownUrlPlugin(RendererPlugin):
             escaped_url_name = renderer.render_inlinescope(url.name)
         return f"[{escaped_url_name}]({url.url})"
 
-    def url(self, url: str, name: Optional[str] = None) -> Inline:
+    @stateless
+    def url(
+        self,
+        ctx: StatelessContext[MarkdownRenderer],
+        url: str,
+        name: Optional[str] = None,
+    ) -> Inline:
         return NamedUrl(
             url, name=InlineScope([UnescapedText(name)]) if name is not None else None
         )

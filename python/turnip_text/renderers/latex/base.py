@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import List
 
 from turnip_text import Inline, UnescapedText
-from turnip_text.renderers import Renderer, RendererPlugin
+from turnip_text.renderers import Plugin, Renderer
 
 
 @dataclass(frozen=True)
@@ -14,11 +14,11 @@ class LatexRenderer(Renderer):
     PARAGRAPH_SEP = "\n\n"
     SENTENCE_SEP = "\n"
 
-    def __init__(self, plugins: List[RendererPlugin]) -> None:
+    def __init__(self, plugins: List[Plugin["LatexRenderer"]]) -> None:
         super().__init__(plugins)
 
-        self.inline_handlers.push_association(
-            (RawLatex, lambda _, raw: self.render_raw_latex(raw))
+        self.render_dispatch.add_custom_inline(
+            RawLatex, lambda r, ctx, raw: r.render_raw_latex(raw)  # type: ignore
         )
 
     def render_raw_latex(self, r: RawLatex) -> str:
