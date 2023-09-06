@@ -323,6 +323,8 @@ TEST_RAW_BLOCK_BUILDER = TestRawBlockBuilder()
 
 TEST_BLOCK_SWALLOWER = TestBlockSwallower()
 
+TEST_PROPERTY = property(lambda x: 5)
+
 "#,
         Some(globals),
         Some(globals),
@@ -1072,5 +1074,15 @@ pub fn test_block_scope_builder_return_none_with_end_inside_para() {
         "[TEST_BLOCK_SWALLOWER]{
 stuff that gets swallowed}",
         Ok(test_doc(vec![])),
+    )
+}
+
+#[test]
+pub fn test_property_calls_get() {
+    expect_parse(
+        "[TEST_PROPERTY]",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text(
+            "5",
+        )]])])),
     )
 }

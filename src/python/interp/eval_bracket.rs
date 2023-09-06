@@ -1,4 +1,4 @@
-use pyo3::{exceptions::PySyntaxError, ffi::Py_None, types::PyDict, Py, PyAny, PyResult, Python};
+use pyo3::{exceptions::PySyntaxError, ffi::Py_None, types::PyDict, Py, PyAny, PyResult, Python, intern};
 
 use crate::{
     lexer::TTToken,
@@ -55,6 +55,20 @@ impl EvalBracketResult {
                 unsafe { Py::<PyAny>::from_borrowed_ptr(py, Py_None()).into_ref(py) }
             }
             Err(error) => return Err(error),
+        };
+        // If it has __get__, call it.
+        // `property` objects and other data descriptors use this.
+        let getter = intern!(py, "__get__");
+        let raw_res = if raw_res.hasattr(getter)? {
+            // https://docs.python.org/3.8/howto/descriptor.html
+            // "For objects, the machinery is in object.__getattribute__() which transforms b.x into type(b).__dict__['x'].__get__(b, type(b))."
+            //
+            // We're transforming `[x]` into (effectively) `globals.x`
+            // which should transform into (type(globals).__dict__['x']).__get__(globals, type(globals))
+            // = raw_res.__get__(globals, type(globals))
+            raw_res.call_method1(getter, (globals, globals.get_type()))?
+        } else {
+            raw_res
         };
         let res = match ctx {
             EvalBracketContext::NeedBlockBuilder => {
