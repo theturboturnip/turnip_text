@@ -1,6 +1,6 @@
 [package]
 name = "turnip_text"
-version = "0.0.3"
+version = "0.0.4"
 description = "Document description language that allows embedded Python to describe document structure"
 license = "MIT OR Apache-2.0"
 authors = ["Samuel Stark"]
@@ -16,9 +16,9 @@ crate-type = ["cdylib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-pyo3 = { version = "0.18.1", features = [
-    "abi3-py38",
-] } # Use abi3 for compatibility with Python 3.8+, we need dataclasses
+pyo3 = { version = "0.19.2", features = [
+    "abi3-py311",
+] } # Use abi3 for compatibility with Python 3.11+, we need dataclasses (python3.8) and typing.Self (python3.11)
 lexer-rs = "0.0.2"
 annotate-snippets = "0.9.1"
 anyhow = "1.0.66"

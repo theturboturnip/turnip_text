@@ -13,7 +13,7 @@ impl<T: PyClass> PyTypeclass for PyInstanceTypeclass<T> {
     const NAME: &'static str = T::NAME;
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
-        obj.is_instance_of::<T>()
+        Ok(obj.is_instance_of::<T>())
     }
 }
 

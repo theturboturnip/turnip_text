@@ -1,6 +1,6 @@
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
-VENV_LOCATION := "./venv"
+VENV_LOCATION := "./venv_3_11"
 
 # This is a bit of a hack. In order to get the env vars from the venv to propagate correctly,
 # we run the actual _test target inside a per-OS "shebang", which Just executes in a single shell.
