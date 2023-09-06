@@ -18,9 +18,15 @@ test:
 	just _test
 
 _test:
-	@python -m pip install . --use-feature=in-tree-build
+	# Make sure pip and maturin are installed/up-to-date in the venv
+	python -m pip install --upgrade pip
 	python -m pip install maturin
+
+	# This is equivalent to maturin develop for our purposes - maturin is faster
+	# python -m pip install . --use-feature=in-tree-build
 	maturin develop --extras=typing,test
+
+	# Run tests
 	cargo testall
 	mypy .\python\turnip_text --strict
 	pytest tests
