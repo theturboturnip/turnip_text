@@ -17,6 +17,7 @@ classifiers = [
 [project.optional-dependencies]
 typing = ["mypy"]
 fmt = ["black"]
+test = ["pytest"]
 
 [tool.maturin]
 python-source = "python"
