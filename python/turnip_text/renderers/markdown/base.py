@@ -17,7 +17,7 @@ class MarkdownRenderer(Renderer):
     def __init__(self, plugins: List[Plugin["MarkdownRenderer"]]) -> None:
         super().__init__(plugins)
         self.render_dispatch.add_custom_inline(
-            RawMarkdown, lambda r, ctx, raw: r._render_raw_markdown(raw)  # type: ignore
+            RawMarkdown, lambda r, ctx, raw: r._render_raw_markdown(raw)
         )
 
     def _render_raw_markdown(self, r: RawMarkdown) -> str:

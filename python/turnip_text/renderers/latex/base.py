@@ -18,7 +18,7 @@ class LatexRenderer(Renderer):
         super().__init__(plugins)
 
         self.render_dispatch.add_custom_inline(
-            RawLatex, lambda r, ctx, raw: r.render_raw_latex(raw)  # type: ignore
+            RawLatex, lambda r, ctx, raw: r.render_raw_latex(raw)
         )
 
     def render_raw_latex(self, r: RawLatex) -> str:

@@ -12,7 +12,7 @@ from typing import (
     List,
     Optional,
     ParamSpec,
-    Protocol,
+    Self,
     Sequence,
     Tuple,
     Type,
@@ -50,6 +50,7 @@ TInline = TypeVar("TInline", bound=Inline)
 
 
 class CustomRenderDispatch(Generic[TRenderer]):
+    # mypy doesn't let us use TBlock/TInline here - they're not bound to anything
     _block_table: Dict[
         Type[Block], Callable[[TRenderer, "StatelessContext[TRenderer]", Block], str]
     ]
@@ -69,7 +70,11 @@ class CustomRenderDispatch(Generic[TRenderer]):
     ) -> None:
         if t in self._block_table:
             raise RuntimeError(f"Conflict: registered two renderers for {t}")
-        self._block_table[t] = f  # type: ignore
+        # We know that we only assign _block_table[t] if f takes t, and that when we pull it
+        # out we will always call f with something of type t.
+        # mypy doesn't know that, so we say _block_table stores functions taking Block (the base class)
+        # and sweep the difference under the rug
+        self._block_table[t] = f # type: ignore
 
     def add_custom_inline(
         self,
@@ -78,7 +83,8 @@ class CustomRenderDispatch(Generic[TRenderer]):
     ) -> None:
         if t in self._inline_table:
             raise RuntimeError(f"Conflict: registered two renderers for {t}")
-        self._inline_table[t] = f  # type: ignore
+        # as above
+        self._inline_table[t] = f # type: ignore
 
     def render_block(
         self, renderer: TRenderer, ctx: "StatelessContext[TRenderer]", obj: TBlock
@@ -347,7 +353,7 @@ class MutableState(Generic[TRenderer]):
 
 
 # TODO Make preamble/postamble return Blocks to be rendered instead of just str? Would allow e.g. a Bibliography section? Perhaps better to expose a bibliography block for "standard" postambles?
-class AmbleMap:
+class AmbleMap(Generic[TRenderer]):
     """Class that stores and reorders {pre,post}amble handlers.
 
     Handlers are simply functions that return a string, which have a unique ID.
@@ -358,14 +364,14 @@ class AmbleMap:
 
     When the document is rendered, the handlers will be called in that order."""
 
-    _handlers: Dict[str, Callable[["Renderer"], str]]
+    _handlers: Dict[str, Callable[[TRenderer], str]]
     _id_order: List[str]
 
     def __init__(self) -> None:
         self._handlers = {}
         self._id_order = []
 
-    def push_handler(self, id: str, f: Callable[["Renderer"], str]) -> None:
+    def push_handler(self, id: str, f: Callable[[TRenderer], str]) -> None:
         if id in self._handlers:
             raise RuntimeError(f"Conflict: registered two amble-handlers for ID {id}")
         self._handlers[id] = f
@@ -403,7 +409,7 @@ class AmbleMap:
 
         assert all(id in self._id_order for id in self._handlers.keys())
 
-    def generate_ambles(self, renderer: "Renderer") -> Iterator[str]:
+    def generate_ambles(self, renderer: TRenderer) -> Iterator[str]:
         for id in self._id_order:
             yield self._handlers[id](renderer)
 
@@ -412,16 +418,15 @@ class Renderer(abc.ABC):
     PARAGRAPH_SEP: str
     SENTENCE_SEP: str
 
-    # TODO upgrade to Python 3.11 to use the self type here
-    plugins: List[Plugin["Renderer"]]
-    _ctx: StatelessContext["Renderer"]
-    _state: MutableState["Renderer"]
+    plugins: List[Plugin[Self]]
+    _ctx: StatelessContext[Self]
+    _state: MutableState[Self]
 
-    render_dispatch: CustomRenderDispatch["Renderer"]
-    preamble_handlers: AmbleMap
-    postamble_handlers: AmbleMap
+    render_dispatch: CustomRenderDispatch[Self]
+    preamble_handlers: AmbleMap[Self]
+    postamble_handlers: AmbleMap[Self]
 
-    def __init__(self: TRenderer, plugins: Sequence[Plugin[TRenderer]]) -> None:
+    def __init__(self: Self, plugins: Sequence[Plugin[Self]]) -> None:
         super().__init__()
 
         # Create render handlers and pre/postamble handlers
@@ -442,7 +447,7 @@ class Renderer(abc.ABC):
         self.preamble_handlers = AmbleMap()
         self.postamble_handlers = AmbleMap()
 
-        self.plugins = list(plugins)  # type: ignore
+        self.plugins = list(plugins)
         self._ctx, self._state = Plugin._make_contexts(self.plugins)
         for p in self.plugins:
             p._add_renderers(self.render_dispatch)
@@ -464,7 +469,7 @@ class Renderer(abc.ABC):
         """The baseline - take text and return a string that will look like that text exactly in the given backend."""
         raise NotImplementedError(f"Need to implement render_unescapedtext")
 
-    def render_doc(self, doc_block: BlockScope) -> str:
+    def render_doc(self: Self, doc_block: BlockScope) -> str:
         doc = ""
         for preamble in self.preamble_handlers.generate_ambles(self):
             doc += preamble
@@ -475,10 +480,10 @@ class Renderer(abc.ABC):
             doc += postamble
         return doc
 
-    def render_inline(self, i: Inline) -> str:
+    def render_inline(self: Self, i: Inline) -> str:
         return self.render_dispatch.render_inline(self, self._ctx, i)
 
-    def render_block(self, b: Block) -> str:
+    def render_block(self: Self, b: Block) -> str:
         return self.render_dispatch.render_block(self, self._ctx, b)
 
     def render_blockscope(self, bs: BlockScope) -> str:
