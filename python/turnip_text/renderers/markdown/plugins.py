@@ -111,7 +111,7 @@ class MarkdownCitationAsFootnotePlugin(
         self._citations = {}
         self._referenced_citations = set()
 
-    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]) -> None:
         handler.add_custom_inline(Citation, self._render_citation)
 
     def _postamble_handlers(
@@ -175,7 +175,7 @@ class MarkdownCitationAsHTMLPlugin(Plugin[MarkdownRenderer], CitationPluginInter
         self._citations = {}
         self._referenced_citations = set()
 
-    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]) -> None:
         handler.add_custom_inline(Citation, self._render_citation)
 
     def _postamble_handlers(
@@ -248,7 +248,7 @@ class MarkdownFootnotePlugin(Plugin[MarkdownRenderer], FootnotePluginInterface):
         self._footnotes = {}
         self._footnote_ref_order = []
 
-    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]) -> None:
         handler.add_custom_inline(FootnoteAnchor, self._render_footnote_anchor)
 
     def _postamble_handlers(
@@ -272,7 +272,7 @@ class MarkdownFootnotePlugin(Plugin[MarkdownRenderer], FootnotePluginInterface):
             for num, label in enumerate(self._footnote_ref_order)
         )
 
-    def _add_footnote_reference(self, label: str):
+    def _add_footnote_reference(self, label: str) -> None:
         if label not in self._footnote_ref_order:
             self._footnote_ref_order.append(label)
 
@@ -311,7 +311,7 @@ class MarkdownFootnotePlugin(Plugin[MarkdownRenderer], FootnotePluginInterface):
 
 
 class MarkdownSectionPlugin(Plugin[MarkdownRenderer], SectionPluginInterface):
-    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]) -> None:
         handler.add_custom_block(HeadedBlock, self._render_headed_block)
 
     def _render_headed_block(
@@ -446,7 +446,7 @@ def bold_builder(items: InlineScope) -> Inline:
 
 
 class MarkdownFormatPlugin(Plugin[MarkdownRenderer], FormatPluginInterface):
-    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]) -> None:
         handler.add_custom_inline(Formatted, self._render_formatted)
 
     def _render_formatted(
@@ -481,12 +481,12 @@ class MarkdownFormatPlugin(Plugin[MarkdownRenderer], FormatPluginInterface):
         return enquote_builder
 
 
-def indent_item(prefix, item_rendering):
+def indent_item(prefix: str, item_rendering: str) -> str:
     return prefix + item_rendering.replace("\n", "\n" + " " * len(prefix))
 
 
 class MarkdownListPlugin(Plugin[MarkdownRenderer]):
-    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]) -> None:
         handler.add_custom_block(DisplayList, self._render_list)
 
     def _render_list(
@@ -546,7 +546,7 @@ class MarkdownListPlugin(Plugin[MarkdownRenderer]):
 
 
 class MarkdownUrlPlugin(Plugin[MarkdownRenderer]):
-    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]) -> None:
         handler.add_custom_inline(NamedUrl, self._render_url)
 
     def _render_url(

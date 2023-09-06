@@ -10,6 +10,7 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Optional,
     ParamSpec,
     Protocol,
     Sequence,
@@ -65,7 +66,7 @@ class CustomRenderDispatch(Generic[TRenderer]):
         self,
         t: Type[TBlock],
         f: Callable[[TRenderer, "StatelessContext[TRenderer]", TBlock], str],
-    ):
+    ) -> None:
         if t in self._block_table:
             raise RuntimeError(f"Conflict: registered two renderers for {t}")
         self._block_table[t] = f  # type: ignore
@@ -74,7 +75,7 @@ class CustomRenderDispatch(Generic[TRenderer]):
         self,
         t: Type[TInline],
         f: Callable[[TRenderer, "StatelessContext[TRenderer]", TInline], str],
-    ):
+    ) -> None:
         if t in self._inline_table:
             raise RuntimeError(f"Conflict: registered two renderers for {t}")
         self._inline_table[t] = f  # type: ignore
@@ -104,7 +105,7 @@ class CustomRenderDispatch(Generic[TRenderer]):
             return f(renderer, ctx, obj)
 
 
-TPlugin = TypeVar("TPlugin", bound="Plugin")
+TPlugin = TypeVar("TPlugin", bound="Plugin[Any]")
 P = ParamSpec("P")
 T = TypeVar("T")
 
@@ -117,7 +118,7 @@ class Plugin(Generic[TRenderer]):
 
     def __init_ctx(
         self, state: "MutableState[TRenderer]", ctx: "StatelessContext[TRenderer]"
-    ):
+    ) -> None:
         self.__state = state
         self.__ctx = ctx
 
@@ -159,7 +160,7 @@ class Plugin(Generic[TRenderer]):
 
         return interface
 
-    def _add_renderers(self, handler: CustomRenderDispatch[TRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[TRenderer]) -> None:
         """
         Add render handler functions for all custom Blocks and Inlines this plugin uses
         """
@@ -216,7 +217,7 @@ class Plugin(Generic[TRenderer]):
         Unfortunately, we can't protect a plugin from modifying its private state in a so-annotated "stateless" function.
         """
 
-        def wrapper(plugin: TPlugin, *args, **kwargs):
+        def wrapper(plugin: TPlugin, /, *args: Any, **kwargs: Any) -> T:
             if plugin.__state._frozen:
                 raise RuntimeError(
                     "Can't run a stateful function when the state is frozen!"
@@ -274,7 +275,7 @@ class Plugin(Generic[TRenderer]):
         TODO could make this pass through stuff and just set _stateless, if __ctx is changed to _ctx
         """
 
-        def wrapper(plugin: TPlugin, *args, **kwargs):
+        def wrapper(plugin: TPlugin, /, *args: Any, **kwargs: Any) -> T:
             return f(plugin, plugin.__ctx, *args, **kwargs)
 
         wrapper._stateless = True  # type: ignore
@@ -318,19 +319,19 @@ class BoundProperty:
     _data_descriptor: Any
     _stateless: bool
 
-    def __init__(self, obj, data_descriptor, stateless: bool):
+    def __init__(self, obj: Any, data_descriptor: Any, stateless: bool) -> None:
         self._obj_for_data_descriptor = obj
         self._data_descriptor = data_descriptor
         self._stateless = stateless
         self.__doc__ = data_descriptor.__doc__
 
-    def __get__(self, _obj, _ownerclass=None):
+    def __get__(self, _obj: Any, _ownerclass: Optional[type] = None) -> Any:
         return self._data_descriptor.__get__(self._obj_for_data_descriptor)
 
-    def __set__(self, _obj, value):
+    def __set__(self, _obj: Any, value: Any) -> None:
         self._data_descriptor.__set__(self._obj_for_data_descriptor, value)
 
-    def __delete__(self, _obj):
+    def __delete__(self, _obj: Any) -> None:
         self._data_descriptor.__delete__(self._obj_for_data_descriptor)
 
 
@@ -341,7 +342,7 @@ class StatelessContext(Generic[TRenderer]):
 class MutableState(Generic[TRenderer]):
     _frozen: bool = False  # Set to True when rendering the document, which disables functions annotated with @stateful.
 
-    def parse_file(self, path: PathLike) -> BlockScope:
+    def parse_file(self, path: "PathLike[Any]") -> BlockScope:
         return parse_file_native(str(path), self.__dict__)
 
 
@@ -364,13 +365,13 @@ class AmbleMap:
         self._handlers = {}
         self._id_order = []
 
-    def push_handler(self, id: str, f: Callable[["Renderer"], str]):
+    def push_handler(self, id: str, f: Callable[["Renderer"], str]) -> None:
         if id in self._handlers:
             raise RuntimeError(f"Conflict: registered two amble-handlers for ID {id}")
         self._handlers[id] = f
         self._id_order.append(id)
 
-    def reorder_handlers(self, selected_id_order: List[str]):
+    def reorder_handlers(self, selected_id_order: List[str]) -> None:
         """Request that certain handler IDs are rendered in a specific order.
 
         Does not need to be a complete ordering, i.e. if handlers ['a', 'b', 'c'] are registered
@@ -450,13 +451,13 @@ class Renderer(abc.ABC):
             for postamble_id, postamble_func in p._postamble_handlers():
                 self.postamble_handlers.push_handler(postamble_id, postamble_func)
 
-    def request_preamble_order(self, preamble_id_order: List[str]):
+    def request_preamble_order(self, preamble_id_order: List[str]) -> None:
         self.preamble_handlers.reorder_handlers(preamble_id_order)
 
-    def request_postamble_order(self, postamble_id_order: List[str]):
+    def request_postamble_order(self, postamble_id_order: List[str]) -> None:
         self.postamble_handlers.reorder_handlers(postamble_id_order)
 
-    def parse_file(self, p: PathLike) -> BlockScope:
+    def parse_file(self, p: "PathLike[Any]") -> BlockScope:
         return self._state.parse_file(p)
 
     def render_unescapedtext(self, t: UnescapedText) -> str:
@@ -507,11 +508,3 @@ class Renderer(abc.ABC):
 #         ctx: StatelessContext[TRenderer],
 #     ):
 #         pass
-
-
-class TestPlugin(Plugin):
-    def _soemthing(self, ctx: StatelessContext, blah: float):
-        pass
-
-    # x: StatelessCallback = _soemthing
-    something = stateless(_soemthing)

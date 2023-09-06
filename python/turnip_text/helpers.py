@@ -120,7 +120,7 @@ class raw_scope_builder(RawScopeBuilder):
     def build_from_raw(self, raw: str) -> Union[Block, Inline]:
         return self.func(raw)
 
-    def __matmul__(self, maybe_str) -> Union[Block, Inline]:
+    def __matmul__(self, maybe_str: Any) -> Union[Block, Inline]:
         if isinstance(maybe_str, str):
             return self.func(maybe_str)
         raise TypeError(

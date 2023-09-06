@@ -1,5 +1,27 @@
 from typing import List, Optional, Protocol, Union, runtime_checkable
 
+__all__ = [
+    "Block",
+    "BlockScope",
+    "Inline",
+    "InlineScope",
+    "Paragraph",
+    "RawText",
+    "Sentence",
+    "UnescapedText",
+    "coerce_to_block_scope",
+    "coerce_to_inline_scope",
+    "BlockScopeBuilder",
+    "InlineScopeBuilder",
+    "RawScopeBuilder",
+    "CoercibleToInline",
+    "CoercibleToInlineScope",
+    "CoercibleToBlock",
+    "CoercibleToBlockScope",
+    "parse_file_native",
+    "parse_str_native",
+]
+
 from ._native import (
     BlockScope,
     InlineScope,

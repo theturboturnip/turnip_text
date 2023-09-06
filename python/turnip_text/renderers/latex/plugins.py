@@ -93,7 +93,7 @@ class LatexCitationPlugin(Plugin[LatexRenderer], CitationPluginInterface):
         # TODO load citations from somewhere
         self._citations = {}
 
-    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]) -> None:
         handler.add_custom_inline(Citation, self._render_citation)
 
     def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[Renderer], str]]]:
@@ -152,7 +152,7 @@ class LatexFootnotePlugin(Plugin[LatexRenderer], FootnotePluginInterface):
 
         self._footnotes = {}
 
-    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]) -> None:
         handler.add_custom_inline(FootnoteAnchor, self._render_footnote_anchor)
 
     def _render_footnote_anchor(
@@ -200,7 +200,7 @@ class LatexSectionPlugin(Plugin[LatexRenderer], SectionPluginInterface):
         super().__init__()
         self._pagebreak_before = pagebreak_before
 
-    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]) -> None:
         handler.add_custom_block(HeadedBlock, self._render_headed_block)
 
     def _render_headed_block(
@@ -297,7 +297,7 @@ def bold_builder(items: InlineScope) -> Inline:
 
 
 class LatexFormatPlugin(Plugin[LatexRenderer], FormatPluginInterface):
-    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]) -> None:
         handler.add_custom_inline(Formatted, self._render_formatted)
 
     def _render_formatted(
@@ -332,7 +332,7 @@ class LatexFormatPlugin(Plugin[LatexRenderer], FormatPluginInterface):
 
 
 class LatexListPlugin(Plugin[LatexRenderer]):
-    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]) -> None:
         handler.add_custom_block(DisplayList, self._render_list)
         handler.add_custom_block(DisplayListItem, self._render_list_item)
 
@@ -402,7 +402,7 @@ class LatexListPlugin(Plugin[LatexRenderer]):
 class LatexUrlPlugin(Plugin[LatexRenderer]):
     # TODO add dependency on hyperref!!
 
-    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]):
+    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]) -> None:
         handler.add_custom_inline(NamedUrl, self._render_url)
 
     def _render_url(
