@@ -22,4 +22,7 @@
             "source.organizeImports": true
         }
     },
+    "rust-analyzer.server.extraEnv": {
+        "VIRTUAL_ENV": "${workspaceFolder}/venv_3_11"
+    }
 }
