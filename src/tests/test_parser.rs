@@ -196,7 +196,7 @@ impl PartialEq<InterpError> for TestInterpError {
                     pyerr: r_pyerr,
                     code_span: r_code_span,
                 },
-            ) => l_pyerr.is_match(&r_pyerr) && (*l_code_span) == (*r_code_span).into(),
+            ) => dbg!(l_pyerr).is_match(&dbg!(r_pyerr)) && (*l_code_span) == (*r_code_span).into(),
             (
                 Self::InternalPythonErr { pyerr: l_pyerr },
                 InterpError::InternalPythonErr { pyerr: r_pyerr },
@@ -1115,7 +1115,6 @@ pub fn test_syntax_errs_passed_thru() {
     expect_parse(
         "[1invalid]",
         Err(TestInterpError::PythonErr {
-            // TODO need to make the equality check for this one use like a prefix or something - this error is not stable between python versions
             pyerr: Regex::new("^SyntaxError : invalid syntax").unwrap(),
             code_span: TestParserSpan {
                 start: (1, 1),
