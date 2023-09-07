@@ -28,5 +28,5 @@ _test:
 
 	# Run tests
 	cargo testall
-	mypy .\python\turnip_text --strict
+	mypy ./python/turnip_text --strict
 	pytest tests
