@@ -1,11 +1,13 @@
 import abc
 import inspect
+from io import StringIO
 from os import PathLike
 from typing import (
     Any,
     Callable,
     Concatenate,
     Dict,
+    Generator,
     Generic,
     Iterable,
     Iterator,
@@ -16,6 +18,7 @@ from typing import (
     Sequence,
     Tuple,
     Type,
+    TypedDict,
     TypeVar,
 )
 
@@ -49,13 +52,13 @@ TBlock = TypeVar("TBlock", bound=Block)
 TInline = TypeVar("TInline", bound=Inline)
 
 
-class CustomRenderDispatch(Generic[TRenderer]):
+class CustomEmitDispatch(Generic[TRenderer]):
     # mypy doesn't let us use TBlock/TInline here - they're not bound to anything
     _block_table: Dict[
-        Type[Block], Callable[[TRenderer, "StatelessContext[TRenderer]", Block], str]
+        Type[Block], Callable[[TRenderer, "StatelessContext[TRenderer]", Block], None]
     ]
     _inline_table: Dict[
-        Type[Inline], Callable[[TRenderer, "StatelessContext[TRenderer]", Inline], str]
+        Type[Inline], Callable[[TRenderer, "StatelessContext[TRenderer]", Inline], None]
     ]
 
     def __init__(self) -> None:
@@ -66,7 +69,7 @@ class CustomRenderDispatch(Generic[TRenderer]):
     def add_custom_block(
         self,
         t: Type[TBlock],
-        f: Callable[[TRenderer, "StatelessContext[TRenderer]", TBlock], str],
+        f: Callable[[TRenderer, "StatelessContext[TRenderer]", TBlock], None],
     ) -> None:
         if t in self._block_table:
             raise RuntimeError(f"Conflict: registered two renderers for {t}")
@@ -79,36 +82,38 @@ class CustomRenderDispatch(Generic[TRenderer]):
     def add_custom_inline(
         self,
         t: Type[TInline],
-        f: Callable[[TRenderer, "StatelessContext[TRenderer]", TInline], str],
+        f: Callable[[TRenderer, "StatelessContext[TRenderer]", TInline], None],
     ) -> None:
         if t in self._inline_table:
             raise RuntimeError(f"Conflict: registered two renderers for {t}")
         # as above
         self._inline_table[t] = f # type: ignore
 
-    def render_block(
+    def emit_block(
         self, renderer: TRenderer, ctx: "StatelessContext[TRenderer]", obj: TBlock
-    ) -> str:
+    ) -> None:
         f = self._block_table.get(type(obj))
         if f is None:
             for t, f in self._block_table.items():
                 if isinstance(obj, t):
-                    return f(renderer, ctx, obj)
+                    f(renderer, ctx, obj)
+                    return
             raise NotImplementedError(f"Couldn't handle {obj}")
         else:
-            return f(renderer, ctx, obj)
+            f(renderer, ctx, obj)
 
-    def render_inline(
+    def emit_inline(
         self, renderer: TRenderer, ctx: "StatelessContext[TRenderer]", obj: TInline
-    ) -> str:
+    ) -> None:
         f = self._inline_table.get(type(obj))
         if f is None:
             for t, f in self._inline_table.items():
                 if isinstance(obj, t):
-                    return f(renderer, ctx, obj)
+                    f(renderer, ctx, obj)
+                    return
             raise NotImplementedError(f"Couldn't handle {obj}")
         else:
-            return f(renderer, ctx, obj)
+            f(renderer, ctx, obj)
 
 
 TPlugin = TypeVar("TPlugin", bound="Plugin[Any]")
@@ -167,7 +172,7 @@ class Plugin(Generic[TRenderer]):
 
         return interface
 
-    def _add_renderers(self, handler: CustomRenderDispatch[TRenderer]) -> None:
+    def _add_emitters(self, handler: CustomEmitDispatch[TRenderer]) -> None:
         """
         Add render handler functions for all custom Blocks and Inlines this plugin uses
         """
@@ -175,10 +180,10 @@ class Plugin(Generic[TRenderer]):
 
     # TODO improve/remove amble handlers - these are better suited with custom blocks
 
-    def _preamble_handlers(self) -> Iterable[Tuple[str, Callable[[TRenderer], str]]]:
+    def _preamble_handlers(self) -> Iterable[Tuple[str, Callable[[TRenderer], None]]]:
         return ()
 
-    def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[TRenderer], str]]]:
+    def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[TRenderer], None]]]:
         return ()
 
     @staticmethod
@@ -343,7 +348,14 @@ class BoundProperty:
 
 
 class StatelessContext(Generic[TRenderer]):
-    pass
+    def __getattr__(self, name: str) -> Any:
+        # The StatelessContext has various things that we don't know at type-time.
+        # We want to be able to use those things from Python code.
+        # __getattr__ is called when an attribute access is attempted and the "normal routes" fail.
+        # Defining __getattr__ tells the type checker "hey, this object has various dynamic attributes"
+        # and the type checker will then allow Python code to use arbitrary attributes on this object.
+        # We still need to raise AttributeError here, because we don't actually define any attributes this way.
+        raise AttributeError(name=name, obj=self)
 
 
 class MutableState(Generic[TRenderer]):
@@ -351,6 +363,15 @@ class MutableState(Generic[TRenderer]):
 
     def parse_file(self, path: "PathLike[Any]") -> BlockScope:
         return parse_file_native(str(path), self.__dict__)
+    
+    def __getattr__(self, name: str) -> Any:
+        # The StatelessContext has various things that we don't know at type-time.
+        # We want to be able to use those things from Python code.
+        # __getattr__ is called when an attribute access is attempted and the "normal routes" fail.
+        # Defining __getattr__ tells the type checker "hey, this object has various dynamic attributes"
+        # and the type checker will then allow Python code to use arbitrary attributes on this object.
+        # We still need to raise AttributeError here, because we don't actually define any attributes this way.
+        raise AttributeError(name=name, obj=self)
 
 
 # TODO Make preamble/postamble return Blocks to be rendered instead of just str? Would allow e.g. a Bibliography section? Perhaps better to expose a bibliography block for "standard" postambles?
@@ -365,14 +386,14 @@ class AmbleMap(Generic[TRenderer]):
 
     When the document is rendered, the handlers will be called in that order."""
 
-    _handlers: Dict[str, Callable[[TRenderer], str]]
+    _handlers: Dict[str, Callable[[TRenderer], None]]
     _id_order: List[str]
 
     def __init__(self) -> None:
         self._handlers = {}
         self._id_order = []
 
-    def push_handler(self, id: str, f: Callable[[TRenderer], str]) -> None:
+    def push_handler(self, id: str, f: Callable[[TRenderer], None]) -> None:
         if id in self._handlers:
             raise RuntimeError(f"Conflict: registered two amble-handlers for ID {id}")
         self._handlers[id] = f
@@ -410,39 +431,40 @@ class AmbleMap(Generic[TRenderer]):
 
         assert all(id in self._id_order for id in self._handlers.keys())
 
-    def generate_ambles(self, renderer: TRenderer) -> Iterator[str]:
+    def generate_ambles(self, renderer: TRenderer) -> Generator[Callable[[TRenderer], None], None, None]:
         for id in self._id_order:
-            yield self._handlers[id](renderer)
+            yield self._handlers[id]
 
 
 class Renderer(abc.ABC):
-    PARAGRAPH_SEP: str
-    SENTENCE_SEP: str
-
     plugins: List[Plugin[Self]]
     _ctx: StatelessContext[Self]
     _state: MutableState[Self]
 
-    render_dispatch: CustomRenderDispatch[Self]
+    emit_dispatch: CustomEmitDispatch[Self]
     preamble_handlers: AmbleMap[Self]
     postamble_handlers: AmbleMap[Self]
+
+    document: StringIO
+
+    indent: str = ""
 
     def __init__(self: Self, plugins: Sequence[Plugin[Self]]) -> None:
         super().__init__()
 
         # Create render handlers and pre/postamble handlers
-        self.render_dispatch = CustomRenderDispatch()
-        self.render_dispatch.add_custom_block(
-            BlockScope, lambda r, ctx, bs: r.render_blockscope(bs)
+        self.emit_dispatch = CustomEmitDispatch()
+        self.emit_dispatch.add_custom_block(
+            BlockScope, lambda r, ctx, bs: r.emit_blockscope(bs)
         )
-        self.render_dispatch.add_custom_block(
-            Paragraph, lambda r, ctx, bs: r.render_paragraph(bs)
+        self.emit_dispatch.add_custom_block(
+            Paragraph, lambda r, ctx, bs: r.emit_paragraph(bs)
         )
-        self.render_dispatch.add_custom_inline(
-            InlineScope, lambda r, ctx, inls: r.render_inlinescope(inls)
+        self.emit_dispatch.add_custom_inline(
+            InlineScope, lambda r, ctx, inls: r.emit_inlinescope(inls)
         )
-        self.render_dispatch.add_custom_inline(
-            UnescapedText, lambda r, ctx, t: r.render_unescapedtext(t)
+        self.emit_dispatch.add_custom_inline(
+            UnescapedText, lambda r, ctx, t: r.emit_unescapedtext(t)
         )
 
         self.preamble_handlers = AmbleMap()
@@ -451,11 +473,13 @@ class Renderer(abc.ABC):
         self.plugins = list(plugins)
         self._ctx, self._state = Plugin._make_contexts(self.plugins)
         for p in self.plugins:
-            p._add_renderers(self.render_dispatch)
+            p._add_emitters(self.emit_dispatch)
             for preamble_id, preamble_func in p._preamble_handlers():
                 self.preamble_handlers.push_handler(preamble_id, preamble_func)
             for postamble_id, postamble_func in p._postamble_handlers():
                 self.postamble_handlers.push_handler(postamble_id, postamble_func)
+
+        self.document = StringIO()
 
     def request_preamble_order(self, preamble_id_order: List[str]) -> None:
         self.preamble_handlers.reorder_handlers(preamble_id_order)
@@ -466,44 +490,112 @@ class Renderer(abc.ABC):
     def parse_file(self, p: "PathLike[Any]") -> BlockScope:
         return self._state.parse_file(p)
 
-    def render_unescapedtext(self, t: UnescapedText) -> str:
-        """The baseline - take text and return a string that will look like that text exactly in the given backend."""
-        raise NotImplementedError(f"Need to implement render_unescapedtext")
+    def emit_raw(self, x: str) -> None:
+        """
+        The function on which all emitters are based.
+        """
+        self.document.write(x)
 
-    def render_doc(self: Self, doc_block: BlockScope) -> str:
-        doc = ""
-        for preamble in self.preamble_handlers.generate_ambles(self):
-            doc += preamble
-            doc += self.PARAGRAPH_SEP
-        doc += self.render_blockscope(doc_block)
-        for postamble in self.postamble_handlers.generate_ambles(self):
-            doc += self.PARAGRAPH_SEP
-            doc += postamble
-        return doc
+    # TODO pass a generator instead of emit_t, ts!
+    def emit_join(self, emit_t: Callable[[T], None], ts: Iterable[T], emit_join: Callable[[], None]) -> None:
+        first = True
+        for t in ts:
+            if not first:
+                emit_join()
+            first = False
+            emit_t(t)
 
-    def render_inline(self: Self, i: Inline) -> str:
-        return self.render_dispatch.render_inline(self, self._ctx, i)
+    def emit_join_gen(self, emit_gen: Generator[None, None, None], emit_join: Callable[[], None]) -> None:
+        first = True
+        while True:
+            if not first:
+                emit_join()
+            first = False
+            try:
+                next(emit_gen)
+            except StopIteration:
+                break
 
-    def render_block(self: Self, b: Block) -> str:
-        return self.render_dispatch.render_block(self, self._ctx, b)
+    def emit_break_sentence(self) -> None:
+        self.emit_raw("\n" + self.indent)
+    
+    def emit_break_paragraph(self) -> None:
+        self.emit_raw("\n\n" + self.indent)
 
-    def render_blockscope(self, bs: BlockScope) -> str:
+    @abc.abstractmethod
+    def emit_unescapedtext(self, t: UnescapedText) -> None:
+        """
+        Given some text, emit a string that will look like that text exactly in the given backend.
+        """
+        raise NotImplementedError(f"Need to implement emit_unescapedtext")
+
+    def render_doc(self: Self, doc_block: BlockScope) -> StringIO:
+        for emit_preamble in self.preamble_handlers.generate_ambles(self):
+            emit_preamble(self)
+            self.emit_break_paragraph()
+        self.emit_blockscope(doc_block)
+        for emit_postamble in self.postamble_handlers.generate_ambles(self):
+            self.emit_break_paragraph()
+            emit_postamble(self)
+        return self.document
+
+    # TODO this is probably a bad idea to implement because it will get mixed up with raw.
+    # def emit(self, x: Any) -> None:
+    #     if isinstance(x, Inline):
+    #         self.emit_inline(x)
+    #     else:
+    #         self.emit_block(x)
+
+
+    # TODO or i could get even crazier with it - make it expand tuples?
+    def emit(self, *args: Any, joiner: Optional[Callable[[], None]]=None) -> None:
+        first = True            
+        for a in args:
+            if joiner and not first:
+                joiner()
+            first = False
+            if isinstance(a, str):
+                self.emit_raw(a)
+            elif isinstance(a, Inline):
+                self.emit_inline(a)
+            else:
+                self.emit_block(a)
+
+    def emit_inline(self: Self, i: Inline) -> None:
+        self.emit_dispatch.emit_inline(self, self._ctx, i)
+
+    def emit_block(self: Self, b: Block) -> None:
+        self.emit_dispatch.emit_block(self, self._ctx, b)
+
+    def emit_blockscope(self, bs: BlockScope) -> None:
         # Default: join paragraphs with self.PARAGRAPH_SEP
         # If you get nested blockscopes, this will still be fine - you won't get double separators
-        return self.PARAGRAPH_SEP.join(self.render_block(b) for b in bs)
+        self.emit_join(self.emit_block, bs, self.emit_break_paragraph)
 
-    def render_paragraph(self, p: Paragraph) -> str:
+    def emit_paragraph(self, p: Paragraph) -> None:
         # Default: join sentences with self.SENTENCE_SEP
-        return self.SENTENCE_SEP.join(self.render_sentence(s) for s in p)
+        for s in p:
+            self.emit_sentence(s)
 
-    def render_inlinescope(self, inls: InlineScope) -> str:
+    def emit_inlinescope(self, inls: InlineScope) -> None:
         # Default: join internal inline elements directly
-        return "".join(self.render_inline(i) for i in inls)
+        for i in inls:
+            self.emit_inline(i)
 
-    def render_sentence(self, s: Sentence) -> str:
+    def emit_sentence(self, s: Sentence) -> None:
         # Default: join internal inline elements directly
         # TODO could be extended by e.g. latex to ensure you get sentence-break-whitespace at the end of each sentence?
-        return "".join(self.render_inline(i) for i in s)
+        for i in s:
+            self.emit_inline(i)
+        self.emit_break_sentence()
+
+    def push_indent(self, n: int) -> None:
+        self.indent += " " * n
+
+    def pop_indent(self, n: int) -> None:
+        if len(self.indent) < n:
+            raise ValueError()
+        self.indent = self.indent[:-n]
 
 # class DocumentConfig(Generic[TRenderer], abc.ABC):
 #    pass

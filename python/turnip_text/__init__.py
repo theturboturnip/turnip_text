@@ -1,3 +1,4 @@
+import abc
 from typing import List, Optional, Protocol, Union, runtime_checkable
 
 __all__ = [
@@ -46,18 +47,25 @@ class Block(Protocol):
     is_block: bool = True
 
 
-@runtime_checkable
-class BlockScopeBuilder(Protocol):
+class BlockScopeBuilder(abc.ABC):
+    @abc.abstractmethod
     def build_from_blocks(self, bs: BlockScope) -> Optional[Block]:
         ...
 
+    def __matmul__(self, maybe_b: 'CoercibleToBlockScope') -> Optional[Block]:
+        bs = coerce_to_block_scope(maybe_b)
+        return self.build_from_blocks(bs)
 
-@runtime_checkable
-class InlineScopeBuilder(Protocol):
+
+class InlineScopeBuilder(abc.ABC):
+    @abc.abstractmethod
     def build_from_inlines(self, inls: InlineScope) -> Inline:
         ...
 
-
+    def __matmul__(self, maybe_inls: 'CoercibleToInlineScope') -> Inline:
+        inls = coerce_to_inline_scope(maybe_inls)
+        return self.build_from_inlines(inls)
+    
 @runtime_checkable
 class RawScopeBuilder(Protocol):
     def build_from_raw(self, raw: str) -> Union[Inline, Block]:

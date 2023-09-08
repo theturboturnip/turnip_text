@@ -16,7 +16,7 @@ from turnip_text import (
 from turnip_text.helpers import block_scope_builder, inline_scope_builder
 from turnip_text.renderers import Plugin, Renderer, stateful, stateless
 from turnip_text.renderers.stateful import (
-    CustomRenderDispatch,
+    CustomEmitDispatch,
     MutableState,
     StatelessContext,
 )
@@ -93,37 +93,34 @@ class LatexCitationPlugin(Plugin[LatexRenderer], CitationPluginInterface):
         # TODO load citations from somewhere
         self._citations = {}
 
-    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]) -> None:
-        handler.add_custom_inline(Citation, self._render_citation)
+    def _add_emitters(self, handler: CustomEmitDispatch[LatexRenderer]) -> None:
+        handler.add_custom_inline(Citation, self._emit_citation)
 
-    def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[Renderer], str]]]:
-        return ((self._BIBLIOGRAPHY_POSTAMBLE_ID, self._render_bibliography),)
+    def _postamble_handlers(self) -> Iterable[Tuple[str, Callable[[LatexRenderer], None]]]:
+        return ((self._BIBLIOGRAPHY_POSTAMBLE_ID, self._emit_bibliography),)
 
-    def _render_citation(
+    def _emit_citation(
         self,
         renderer: LatexRenderer,
         ctx: StatelessContext[LatexRenderer],
         citation: Citation,
-    ) -> str:
+    ) -> None:
         if any(note for _, note in citation.labels):
             # We can't add a citenote for multiple citations at a time in Latex - split individually
-            data = ""
             for key, note in citation.labels:
+                renderer.emit_macro("cite")
                 if note:
-                    rendered_note = renderer.render_unescapedtext(note)
-                    data += f"\\cite[{rendered_note}]{{{key}}}"
-                else:
-                    data += f"\\cite{{{key}}}"
-            return data
+                    renderer.emit_sqr_bracketed(note)
+                renderer.emit_braced(str(key))
         else:
-            data = "\\cite{" + ",".join(key for key, _ in citation.labels) + "}"
-            return data
+            renderer.emit_macro("cite")
+            renderer.emit_braced(",".join(key for key, _ in citation.labels))
 
-    def _render_bibliography(self, renderer: Renderer) -> str:
-        return """{
+    def _emit_bibliography(self, renderer: LatexRenderer) -> None:
+        renderer.emit("""{
 \\raggedright
 \\printbibliography
-}"""
+}""")
 
     @stateless
     def cite(
@@ -152,18 +149,18 @@ class LatexFootnotePlugin(Plugin[LatexRenderer], FootnotePluginInterface):
 
         self._footnotes = {}
 
-    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]) -> None:
-        handler.add_custom_inline(FootnoteAnchor, self._render_footnote_anchor)
+    def _add_emitters(self, handler: CustomEmitDispatch[LatexRenderer]) -> None:
+        handler.add_custom_inline(FootnoteAnchor, self._emit_footnote_anchor)
 
-    def _render_footnote_anchor(
+    def _emit_footnote_anchor(
         self,
         renderer: LatexRenderer,
         ctx: StatelessContext[LatexRenderer],
         footnote: FootnoteAnchor,
-    ) -> str:
+    ) -> None:
         # TODO - intelligent footnotetext placement using floats?
-        rendered_footnotetext = renderer.render_block(self._footnotes[footnote.label])
-        return f"\\footnote{{{rendered_footnotetext}}}"
+        renderer.emit_macro("footnote")
+        renderer.emit_braced(self._footnotes[footnote.label])
 
     @property
     @stateful
@@ -200,25 +197,27 @@ class LatexSectionPlugin(Plugin[LatexRenderer], SectionPluginInterface):
         super().__init__()
         self._pagebreak_before = pagebreak_before
 
-    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]) -> None:
-        handler.add_custom_block(HeadedBlock, self._render_headed_block)
+    def _add_emitters(self, handler: CustomEmitDispatch[LatexRenderer]) -> None:
+        handler.add_custom_block(HeadedBlock, self._emit_headed_block)
 
-    def _render_headed_block(
+    def _emit_headed_block(
         self,
         renderer: LatexRenderer,
         ctx: StatelessContext[LatexRenderer],
         block: HeadedBlock,
-    ) -> str:
-        header = f"\\{block.latex_name}"  # i.e. r"\section"
+    ) -> None:
         if block.latex_name in self._pagebreak_before:
-            header = "\\pagebreak\n" + header
-        if not block.num:
-            header += "*"
-        escaped_name = renderer.render_unescapedtext(block.name)
-        header += f"{{{escaped_name}}}"  # i.e. r"\section*" + "{Section Name}"
+            renderer.emit_raw("\\pagebreak\n")
+        if block.num:
+            renderer.emit_macro(block.latex_name) # i.e. r"\section"
+        else:
+            renderer.emit_macro(block.latex_name + "*")
+        renderer.emit_braced(block.name) # i.e. r"\section*" + "{Section Name}"
         if block.label:
-            header += f"\\label{{{block.label}}}"  # i.e. r"\section*{Section Name}" + r"\label{block_label}"
-        return f"{header}\n\n" + renderer.render_blockscope(block.contents)
+            renderer.emit_macro("label")
+            renderer.emit_braced(block.label) # i.e. r"\section*{Section Name}" + r"\label{block_label}"
+        renderer.emit_break_paragraph()
+        renderer.emit_blockscope(block.contents)
 
     @stateful
     def section(
@@ -297,18 +296,17 @@ def bold_builder(items: InlineScope) -> Inline:
 
 
 class LatexFormatPlugin(Plugin[LatexRenderer], FormatPluginInterface):
-    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]) -> None:
-        handler.add_custom_inline(Formatted, self._render_formatted)
+    def _add_emitters(self, handler: CustomEmitDispatch[LatexRenderer]) -> None:
+        handler.add_custom_inline(Formatted, self._emit_formatted)
 
-    def _render_formatted(
+    def _emit_formatted(
         self,
         renderer: LatexRenderer,
         ctx: StatelessContext[LatexRenderer],
         item: Formatted,
-    ) -> str:
-        data = f"\\{item.format_type}{{"
-        data += renderer.render_inlinescope(item.items)
-        return data + "}"
+    ) -> None:
+        renderer.emit_macro(item.format_type)
+        renderer.emit_braced(item.items)
 
     emph = emph_builder
     italic = italic_builder
@@ -332,32 +330,38 @@ class LatexFormatPlugin(Plugin[LatexRenderer], FormatPluginInterface):
 
 
 class LatexListPlugin(Plugin[LatexRenderer]):
-    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]) -> None:
-        handler.add_custom_block(DisplayList, self._render_list)
-        handler.add_custom_block(DisplayListItem, self._render_list_item)
+    indent_list_items: bool = True
 
-    def _render_list(
+    def __init__(self, indent_list_items: bool = True):
+        self.indent_list_items = indent_list_items
+
+    def _add_emitters(self, handler: CustomEmitDispatch[LatexRenderer]) -> None:
+        handler.add_custom_block(DisplayList, self._emit_list)
+        handler.add_custom_block(DisplayListItem, self._emit_list_item)
+
+    def _emit_list(
         self,
         renderer: LatexRenderer,
         ctx: StatelessContext[LatexRenderer],
         list: DisplayList,
-    ) -> str:
-        # TODO indents!
-        data = f"\\begin{{{list.mode}}}\n"
-        data += renderer.PARAGRAPH_SEP.join(
-            renderer.render_block(i) for i in list.items
-        )
-        return data + f"\n\\end{{{list.mode}}}"
+    ) -> None:
+        renderer.emit_env_begin(list.mode)
+        renderer.emit(*list.items, joiner=renderer.emit_break_paragraph)
+        renderer.emit_env_end(list.mode)
 
-    def _render_list_item(
+    def _emit_list_item(
         self,
         renderer: LatexRenderer,
         ctx: StatelessContext[LatexRenderer],
         list_item: DisplayListItem,
-    ) -> str:
-        # TODO indents!
+    ) -> None:
+        renderer.emit_macro("item")
         # Put {} after \item so square brackets at the start of render_block don't get swallowed as arguments
-        return "\\item{} " + renderer.render_block(list_item.item)
+        renderer.emit("{} ")
+        indent_width = len("\\item{} ")
+        renderer.push_indent(indent_width)
+        renderer.emit(list_item.item)
+        renderer.pop_indent(indent_width)
 
     @property
     @stateless
@@ -402,17 +406,21 @@ class LatexListPlugin(Plugin[LatexRenderer]):
 class LatexUrlPlugin(Plugin[LatexRenderer]):
     # TODO add dependency on hyperref!!
 
-    def _add_renderers(self, handler: CustomRenderDispatch[LatexRenderer]) -> None:
-        handler.add_custom_inline(NamedUrl, self._render_url)
+    def _add_emitters(self, handler: CustomEmitDispatch[LatexRenderer]) -> None:
+        handler.add_custom_inline(NamedUrl, self._emit_url)
 
-    def _render_url(
-        self, renderer: Renderer, ctx: StatelessContext[LatexRenderer], url: NamedUrl
-    ) -> str:
+    def _emit_url(
+        self, renderer: LatexRenderer, ctx: StatelessContext[LatexRenderer], url: NamedUrl
+    ) -> None:
+        assert "}" not in url.url
+        assert "#" not in url.url
         if url.name is None:
-            return f"\\url{{{url.url}}}"
+            renderer.emit_macro("url")
+            renderer.emit_braced(url.url)
         else:
-            escaped_url_name = renderer.render_inlinescope(url.name)
-            return f"\\href{{{url.url}}}{{{escaped_url_name}}}"
+            renderer.emit_macro("href")
+            renderer.emit_braced(url.url)
+            renderer.emit_braced(url.name)
 
     @stateless
     def url(

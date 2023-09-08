@@ -50,10 +50,6 @@ class block_scope_builder(BlockScopeBuilder):
     def build_from_blocks(self, b: BlockScope) -> Optional[Block]:
         return self.func(b)
 
-    def __matmul__(self, maybe_b: CoercibleToBlockScope) -> Optional[Block]:
-        bs = coerce_to_block_scope(maybe_b)
-        return self.func(bs)
-
 
 class inline_scope_builder(InlineScopeBuilder):
     """
@@ -84,10 +80,6 @@ class inline_scope_builder(InlineScopeBuilder):
         self.func = func
 
     def build_from_inlines(self, inls: InlineScope) -> Inline:
-        return self.func(inls)
-
-    def __matmul__(self, maybe_inls: CoercibleToInlineScope) -> Inline:
-        inls = coerce_to_inline_scope(maybe_inls)
         return self.func(inls)
 
 

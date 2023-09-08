@@ -74,16 +74,16 @@ if __name__ == "__main__":
     rendered_latex = r_latex.render_doc(doc_block)
     if args.olatex:
         with open(args.olatex, "w") as f:
-            f.write(rendered_latex)
+            f.write(rendered_latex.getvalue())
     else:
-        print(rendered_latex)
+        print(rendered_latex.getvalue())
 
     doc_block = r_md.parse_file(Path("./examples/phdprop.ttxt"))
     rendered_markdown = r_md.render_doc(doc_block)
     if args.omd:
         with open(args.omd, "w") as f:
-            f.write(rendered_markdown)
+            f.write(rendered_markdown.getvalue())
     else:
-        print(rendered_markdown)
+        print(rendered_markdown.getvalue())
 
     # print(json.dumps(doc_block, indent=4, cls=CustomEncoder))

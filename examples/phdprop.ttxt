@@ -29,6 +29,8 @@
         [enumerate]{
             [item]{
                 Capabilities hold memory addresses that are controlled by the Operating System (OS) from the CPU
+
+                and I want to write a new paragraph!
             }
             [item]{
                 Capabilities have the same format

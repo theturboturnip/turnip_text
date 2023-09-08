@@ -4,6 +4,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Generator,
     Iterable,
     List,
     Optional,
@@ -26,7 +27,7 @@ from turnip_text import (
 )
 from turnip_text.helpers import block_scope_builder, inline_scope_builder
 from turnip_text.renderers import (
-    CustomRenderDispatch,
+    CustomEmitDispatch,
     MutableState,
     Plugin,
     Renderer,
@@ -111,34 +112,41 @@ class MarkdownCitationAsFootnotePlugin(
         self._citations = {}
         self._referenced_citations = set()
 
-    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]) -> None:
-        handler.add_custom_inline(Citation, self._render_citation)
+    def _add_emitters(self, handler: CustomEmitDispatch[MarkdownRenderer]) -> None:
+        handler.add_custom_inline(Citation, self._emit_citation)
 
     def _postamble_handlers(
         self,
-    ) -> Iterable[Tuple[str, Callable[[MarkdownRenderer], str]]]:
-        return ((self._BIBLIOGRAPHY_POSTAMBLE_ID, self._render_bibliography),)
+    ) -> Iterable[Tuple[str, Callable[[MarkdownRenderer], None]]]:
+        return ((self._BIBLIOGRAPHY_POSTAMBLE_ID, self._emit_bibliography),)
 
-    def _render_citation(
+    def _emit_citation(
         self,
         renderer: MarkdownRenderer,
         ctx: StatelessContext[MarkdownRenderer],
         citation: Citation,
-    ) -> str:
+    ) -> None:
         # TODO what happens with unmarkdownable labels? e.g. labels with backslash or something. need to check that when loading.
         # TODO also maybe people wouldn't want those labels being exposed?
-        return "".join(
-            f"[^{label}]"
-            if opt_note is None
-            else f"\\([^{label}], {renderer.render_unescapedtext(opt_note)}\\)"
-            for label, opt_note in citation.labels
-        )
 
-    def _render_bibliography(self, renderer: MarkdownRenderer) -> str:
+        for label, opt_note in citation.labels:
+            if opt_note is None:
+                renderer.emit_raw(f"[^{label}]")
+            else:
+                renderer.emit(
+                    f"\\([^{label}], ",
+                    opt_note,
+                    f"\\)"
+                )
+
+    def _emit_bibliography(self, renderer: MarkdownRenderer) -> None:
         # TODO actual reference rendering!
-        return renderer.PARAGRAPH_SEP.join(
-            f"[^{label}]: cite {label}" for label in self._referenced_citations
-        )
+        def bib_gen() -> Generator[None, None, None]:
+            for label in self._referenced_citations:
+                renderer.emit(f"[^{label}]: ", UnescapedText(f"cite {label}"))
+                yield
+
+        renderer.emit_join_gen(bib_gen(), renderer.emit_break_paragraph)
 
     @stateful
     def cite(
@@ -175,42 +183,49 @@ class MarkdownCitationAsHTMLPlugin(Plugin[MarkdownRenderer], CitationPluginInter
         self._citations = {}
         self._referenced_citations = set()
 
-    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]) -> None:
-        handler.add_custom_inline(Citation, self._render_citation)
+    def _add_emitters(self, handler: CustomEmitDispatch[MarkdownRenderer]) -> None:
+        handler.add_custom_inline(Citation, self._emit_citation)
 
     def _postamble_handlers(
         self,
-    ) -> Iterable[Tuple[str, Callable[[MarkdownRenderer], str]]]:
-        return ((self._BIBLIOGRAPHY_POSTAMBLE_ID, self._render_bibliography),)
+    ) -> Iterable[Tuple[str, Callable[[MarkdownRenderer], None]]]:
+        return ((self._BIBLIOGRAPHY_POSTAMBLE_ID, self._emit_bibliography),)
 
     def _get_citation_shorthand(
-        self, renderer: MarkdownRenderer, label: str, note: Optional[UnescapedText]
+        self, label: str, note: Optional[UnescapedText]
     ) -> UnescapedText:
         # TODO could do e.g. numbering here
         if note:
             return UnescapedText(f"[{label}, {note.text}]")
         return UnescapedText(f"[{label}]")
 
-    def _render_citation(
+    def _emit_citation(
         self,
         renderer: MarkdownRenderer,
         ctx: StatelessContext[MarkdownRenderer],
         citation: Citation,
-    ) -> str:
+    ) -> None:
         # TODO what happens with unmarkdownable labels? e.g. labels with backslash or something. need to check that when loading.
         # TODO also maybe people wouldn't want those labels being exposed?
-        return "".join(
-            # f'<a href="#cite-{label}">{self._get_citation_shorthand(renderer, label, opt_note)}</a>'
-            f"[{renderer.render_unescapedtext(self._get_citation_shorthand(renderer, label, opt_note))}](#cite-{label})"
-            for label, opt_note in citation.labels
+
+        for label, opt_note in citation.labels:
+            renderer.emit(ctx.url(f"#cite-{label}") @ self._get_citation_shorthand(label, opt_note))
+
+    def _emit_bibliography(self, renderer: MarkdownRenderer) -> None:
+        # TODO actual reference rendering!
+        def emit_individual(label: str) -> None:
+            renderer.emit(
+                f'<a id="cite-{label}">',
+                self._get_citation_shorthand(label, None),
+                f" : cite {label}</a>"
+            )
+
+        renderer.emit_join(
+            emit_individual,
+            self._referenced_citations,
+            renderer.emit_break_paragraph,
         )
 
-    def _render_bibliography(self, renderer: MarkdownRenderer) -> str:
-        # TODO actual reference rendering!
-        return renderer.PARAGRAPH_SEP.join(
-            f'<a id="cite-{label}">{renderer.render_unescapedtext(self._get_citation_shorthand(renderer, label, None))}: cite {label}</a>'
-            for label in self._referenced_citations
-        )
 
     @stateful
     def cite(
@@ -248,28 +263,32 @@ class MarkdownFootnotePlugin(Plugin[MarkdownRenderer], FootnotePluginInterface):
         self._footnotes = {}
         self._footnote_ref_order = []
 
-    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]) -> None:
-        handler.add_custom_inline(FootnoteAnchor, self._render_footnote_anchor)
+    def _add_emitters(self, handler: CustomEmitDispatch[MarkdownRenderer]) -> None:
+        handler.add_custom_inline(FootnoteAnchor, self._emit_footnote_anchor)
 
     def _postamble_handlers(
         self,
-    ) -> Iterable[Tuple[str, Callable[[MarkdownRenderer], str]]]:
-        return ((self._MARKDOWN_FOOTNOTE_POSTAMBLE_ID, self._render_footnotes),)
+    ) -> Iterable[Tuple[str, Callable[[MarkdownRenderer], None]]]:
+        return ((self._MARKDOWN_FOOTNOTE_POSTAMBLE_ID, self._emit_footnotes),)
 
-    def _render_footnote_anchor(
+    def _emit_footnote_anchor(
         self,
         renderer: MarkdownRenderer,
         ctx: StatelessContext[MarkdownRenderer],
         footnote: FootnoteAnchor,
-    ) -> str:
+    ) -> None:
         footnote_num = self._footnote_ref_order.index(footnote.label)
-        return f"[^{footnote_num + 1}]"
+        renderer.emit_raw(f"[^{footnote_num + 1}]")
 
-    def _render_footnotes(self, renderer: MarkdownRenderer) -> str:
-        return renderer.PARAGRAPH_SEP.join(
-            # TODO render with indent
-            f"[^{num + 1}]: " + renderer.render_block(self._footnotes[label])
-            for num, label in enumerate(self._footnote_ref_order)
+    def _emit_footnotes(self, renderer: MarkdownRenderer) -> None:
+        def emit_individual(num_label: Tuple[int, str]) -> None:
+            num, label = num_label
+            renderer.emit(f"[^{num + 1}]: ", self._footnotes[label])
+
+        return renderer.emit_join(
+            emit_individual,
+            enumerate(self._footnote_ref_order),
+            renderer.emit_break_paragraph,
         )
 
     def _add_footnote_reference(self, label: str) -> None:
@@ -311,15 +330,15 @@ class MarkdownFootnotePlugin(Plugin[MarkdownRenderer], FootnotePluginInterface):
 
 
 class MarkdownSectionPlugin(Plugin[MarkdownRenderer], SectionPluginInterface):
-    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]) -> None:
-        handler.add_custom_block(HeadedBlock, self._render_headed_block)
+    def _add_emitters(self, handler: CustomEmitDispatch[MarkdownRenderer]) -> None:
+        handler.add_custom_block(HeadedBlock, self._emit_headed_block)
 
-    def _render_headed_block(
+    def _emit_headed_block(
         self,
         renderer: MarkdownRenderer,
         ctx: StatelessContext[MarkdownRenderer],
         block: HeadedBlock,
-    ) -> str:
+    ) -> None:
         if block.label:
             raise NotImplementedError("Section labelling not supported")
 
@@ -327,11 +346,12 @@ class MarkdownSectionPlugin(Plugin[MarkdownRenderer], SectionPluginInterface):
         if block.use_num:
             header += ".".join(str(n) for n in block.num)
             header += " "
-        header += renderer.render_unescapedtext(block.name)
-
-        return (
-            header + renderer.PARAGRAPH_SEP + renderer.render_blockscope(block.contents)
+        renderer.emit(
+            header,
+            block.name
         )
+        renderer.emit_break_paragraph()
+        renderer.emit_blockscope(block.contents)
 
     # [section_num, subsection_num... etc]
     _current_number: List[int]
@@ -446,19 +466,19 @@ def bold_builder(items: InlineScope) -> Inline:
 
 
 class MarkdownFormatPlugin(Plugin[MarkdownRenderer], FormatPluginInterface):
-    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]) -> None:
-        handler.add_custom_inline(Formatted, self._render_formatted)
+    def _add_emitters(self, handler: CustomEmitDispatch[MarkdownRenderer]) -> None:
+        handler.add_custom_inline(Formatted, self._emit_formatted)
 
-    def _render_formatted(
+    def _emit_formatted(
         self,
         renderer: MarkdownRenderer,
         ctx: StatelessContext[MarkdownRenderer],
         item: Formatted,
-    ) -> str:
-        return (
-            item.format_type
-            + renderer.render_inlinescope(item.items)
-            + item.format_type
+    ) -> None:
+        renderer.emit(
+            item.format_type,
+            item.items,
+            item.format_type,
         )
 
     emph = emph_builder
@@ -481,31 +501,38 @@ class MarkdownFormatPlugin(Plugin[MarkdownRenderer], FormatPluginInterface):
         return enquote_builder
 
 
-def indent_item(prefix: str, item_rendering: str) -> str:
-    return prefix + item_rendering.replace("\n", "\n" + " " * len(prefix))
-
-
 class MarkdownListPlugin(Plugin[MarkdownRenderer]):
-    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]) -> None:
-        handler.add_custom_block(DisplayList, self._render_list)
+    def _add_emitters(self, handler: CustomEmitDispatch[MarkdownRenderer]) -> None:
+        handler.add_custom_block(DisplayList, self._emit_list)
 
-    def _render_list(
+    def _emit_list(
         self,
         renderer: MarkdownRenderer,
         ctx: StatelessContext[MarkdownRenderer],
         list: DisplayList,
-    ) -> str:
-        # TODO better way of indenting
+    ) -> None:
         if list.numbered:
-            return renderer.SENTENCE_SEP.join(
-                indent_item(f"{idx+1}. ", renderer.render_block(item.contents))
-                for idx, item in enumerate(list.items)
-            )
+            def emit_numbered() -> Generator[None, None, None]:
+                for idx, item in enumerate(list.items):
+                    indent = f"{idx+1}. "
+                    renderer.emit_raw(indent)
+                    renderer.push_indent(len(indent))
+                    renderer.emit_block(item.contents)
+                    renderer.pop_indent(len(indent))
+                    yield None
+
+            renderer.emit_join_gen(emit_numbered(), renderer.emit_break_sentence)
         else:
-            return renderer.SENTENCE_SEP.join(
-                indent_item("- ", renderer.render_block(item.contents))
-                for idx, item in enumerate(list.items)
-            )
+            def emit_dashed() -> Generator[None, None, None]:
+                for idx, item in enumerate(list.items):
+                    indent = f"- "
+                    renderer.emit_raw(indent)
+                    renderer.push_indent(len(indent))
+                    renderer.emit_block(item.contents)
+                    renderer.pop_indent(len(indent))
+                    yield None
+
+            renderer.emit_join_gen(emit_dashed(), renderer.emit_break_sentence)
 
     @property
     @stateless
@@ -546,21 +573,23 @@ class MarkdownListPlugin(Plugin[MarkdownRenderer]):
 
 
 class MarkdownUrlPlugin(Plugin[MarkdownRenderer]):
-    def _add_renderers(self, handler: CustomRenderDispatch[MarkdownRenderer]) -> None:
-        handler.add_custom_inline(NamedUrl, self._render_url)
+    def _add_emitters(self, handler: CustomEmitDispatch[MarkdownRenderer]) -> None:
+        handler.add_custom_inline(NamedUrl, self._emit_url)
 
-    def _render_url(
+    def _emit_url(
         self,
         renderer: MarkdownRenderer,
         ctx: StatelessContext[MarkdownRenderer],
         url: NamedUrl,
-    ) -> str:
+    ) -> None:
+        assert ")" not in url.url
+        renderer.emit_raw("[")
         if url.name is None:
             # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal markdown
-            escaped_url_name = renderer.render_unescapedtext(UnescapedText(url.url))
+            renderer.emit_unescapedtext(UnescapedText(url.url))
         else:
-            escaped_url_name = renderer.render_inlinescope(url.name)
-        return f"[{escaped_url_name}]({url.url})"
+            renderer.emit_inlinescope(url.name)
+        renderer.emit_raw(f"]({url.url})")
 
     @stateless
     def url(
