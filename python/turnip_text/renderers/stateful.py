@@ -125,6 +125,7 @@ class Plugin(Generic[TRenderer]):
     def __init_ctx(
         self, state: "MutableState[TRenderer]", ctx: "StatelessContext[TRenderer]"
     ) -> None:
+        assert self.__state is None and self.__ctx is None
         self.__state = state
         self.__ctx = ctx
 
