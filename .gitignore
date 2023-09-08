@@ -3,3 +3,4 @@ venv_3_11
 python/turnip_text/*.so
 python/turnip_text/*.pyd
 *.pyc
+.DS_Store
