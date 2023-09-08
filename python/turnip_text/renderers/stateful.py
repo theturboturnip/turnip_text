@@ -505,12 +505,10 @@ class Renderer(abc.ABC):
         # TODO could be extended by e.g. latex to ensure you get sentence-break-whitespace at the end of each sentence?
         return "".join(self.render_inline(i) for i in s)
 
+# class DocumentConfig(Generic[TRenderer], abc.ABC):
+#    pass
 
-# class Renderer:
-#     @classmethod
-#     def parse_and_render(
-#         cls: Type[TRenderer],
-#         state: MutableState[TRenderer],
-#         ctx: StatelessContext[TRenderer],
-#     ):
-#         pass
+# We want to be able to
+# - add custom args to Renderer.__init__ (so we can't hardcode how Renderers are created)
+# - add custom reproducible transformations to a parsed document BlockScope (to make up for a lack of ambles)
+# - set a default set of plugins for documents (so we have to start all this through the DocumentConfig)
