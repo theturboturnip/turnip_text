@@ -542,3 +542,67 @@ impl InlineScope {
         self.0.append_checked(node)
     }
 }
+
+/// This is used for implicit structure.
+/// It's created by Python code just with the Header and Weight, and the Weight is used to implicitly open and close scopes
+/// 
+/// ```text
+/// [section("Blah")] # -> ImplicitStructure(header=Section(), weight=10)
+/// 
+/// # This paragraph is implicitly included as a child of ImplicitStructure().children
+/// some text
+/// 
+/// [subsection("Sub-Blah")] # -> ImplicitStructure(header=Subsection(), weight=20)
+/// # the weight is greater than for the Section -> the subsection is implicitly included as a child of section
+/// 
+/// Some other text in a subsection
+/// 
+/// [section("Blah 2")] # -> ImplicitStructure(header=Section(), weight=10)
+/// # the weight is <=subsection -> subsection 1.1 automatically ends
+/// # the weight is <=section -> section 1 automatically ends
+/// 
+/// Some other text in a second section
+/// ```
+/// 
+/// There can be weird interactions with manual scopes.
+/// It may be confusing for a renderer to find Section containing Manual Scope containing Subsection,
+/// having the Subsection not as a direct child of the Section.
+/// Thus we allow manual scopes to be opened and closed as usual, but we don't allow ImplicitStructures *within* them.
+/// Effectively ImplicitStructure must only exist at the "top level" - they may be enclosed by ImplicitStructures, but nothing else.
+/// [TODO] this means subfiles need to emit lists of blocks directly into the enclosing BlockScope,
+/// as otherwise you couldn't have an ImplicitStructures inside them at all - they'd all be implicitly contained by a BlockScope
+/// 
+/// An example error from mixing explicit and implicit scoping:
+/// ```text
+/// [section("One")]
+/// 
+/// this text is clearly in section 1
+/// 
+/// {
+///     [subsection("One.One")]
+/// 
+///     this text is clearly in subsection 1.1...
+/// } # Maybe this should be an error? but then it's only a problem if there's bare text underneath...
+/// 
+/// but where is this?? # This is really the error.
+/// 
+/// [subsection("One.Two")]
+/// 
+/// this text is clearly in subsection 1.2
+/// ```
+#[pyclass]
+#[derive(Debug,Clone)]
+pub struct ImplicitStructure {
+    pub header: Paragraph,
+    pub children: BlockScope,
+    pub weight: i64,
+}
+#[pymethods]
+impl ImplicitStructure {
+    #[getter]
+    pub fn is_block(&self) -> bool {
+        true
+    }
+}
+
+// 
