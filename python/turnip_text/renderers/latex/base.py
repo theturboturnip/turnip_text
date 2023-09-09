@@ -1,5 +1,6 @@
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable, List
+from typing import Any, Callable, Iterator, List
 
 from turnip_text import Inline, UnescapedText
 from turnip_text.renderers import Plugin, Renderer
@@ -54,15 +55,18 @@ class LatexRenderer(Renderer):
         self.emit(*args)
         self.emit_raw("}")
 
-    def emit_env_begin(self, name: str) -> None:
+    @contextmanager
+    def emit_env(self, name: str, indent: int = 4) -> Iterator[None]:
         self.emit_macro("begin")
         self.emit_braced(name)
-        self.push_indent(4)
+        self.push_indent(indent)
         self.emit_break_sentence()
-        
-    def emit_env_end(self, name: str) -> None:
-        self.pop_indent(4)
-        self.emit_break_sentence()
-        self.emit_macro("end")
-        self.emit_braced(name)
+
+        try:
+            yield
+        finally:
+            self.pop_indent(indent)
+            self.emit_break_sentence()
+            self.emit_macro("end")
+            self.emit_braced(name)
     

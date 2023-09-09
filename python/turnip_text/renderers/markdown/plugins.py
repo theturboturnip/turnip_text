@@ -516,9 +516,8 @@ class MarkdownListPlugin(Plugin[MarkdownRenderer]):
                 for idx, item in enumerate(list.items):
                     indent = f"{idx+1}. "
                     renderer.emit_raw(indent)
-                    renderer.push_indent(len(indent))
-                    renderer.emit_block(item.contents)
-                    renderer.pop_indent(len(indent))
+                    with renderer.indent(len(indent)):
+                        renderer.emit_block(item.contents)
                     yield None
 
             renderer.emit_join_gen(emit_numbered(), renderer.emit_break_sentence)
@@ -527,9 +526,8 @@ class MarkdownListPlugin(Plugin[MarkdownRenderer]):
                 for idx, item in enumerate(list.items):
                     indent = f"- "
                     renderer.emit_raw(indent)
-                    renderer.push_indent(len(indent))
-                    renderer.emit_block(item.contents)
-                    renderer.pop_indent(len(indent))
+                    with renderer.indent(len(indent)):
+                        renderer.emit_block(item.contents)
                     yield None
 
             renderer.emit_join_gen(emit_dashed(), renderer.emit_break_sentence)

@@ -1,5 +1,6 @@
 import abc
 import inspect
+from contextlib import contextmanager
 from io import StringIO
 from os import PathLike
 from typing import (
@@ -447,7 +448,7 @@ class Renderer(abc.ABC):
 
     document: StringIO
 
-    indent: str = ""
+    _indent: str = ""
 
     def __init__(self: Self, plugins: Sequence[Plugin[Self]]) -> None:
         super().__init__()
@@ -517,10 +518,10 @@ class Renderer(abc.ABC):
                 break
 
     def emit_break_sentence(self) -> None:
-        self.emit_raw("\n" + self.indent)
+        self.emit_raw("\n" + self._indent)
     
     def emit_break_paragraph(self) -> None:
-        self.emit_raw("\n\n" + self.indent)
+        self.emit_raw("\n\n" + self._indent)
 
     @abc.abstractmethod
     def emit_unescapedtext(self, t: UnescapedText) -> None:
@@ -590,13 +591,20 @@ class Renderer(abc.ABC):
         self.emit_break_sentence()
 
     def push_indent(self, n: int) -> None:
-        self.indent += " " * n
+        self._indent += " " * n
 
     def pop_indent(self, n: int) -> None:
-        if len(self.indent) < n:
+        if len(self._indent) < n:
             raise ValueError()
-        self.indent = self.indent[:-n]
+        self._indent = self._indent[:-n]
 
+    @contextmanager
+    def indent(self, n: int) -> Iterator[None]:
+        self.push_indent(n)
+        try: 
+            yield
+        finally:
+            self.pop_indent(n)
 # class DocumentConfig(Generic[TRenderer], abc.ABC):
 #    pass
 

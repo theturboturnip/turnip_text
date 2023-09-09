@@ -345,9 +345,8 @@ class LatexListPlugin(Plugin[LatexRenderer]):
         ctx: StatelessContext[LatexRenderer],
         list: DisplayList,
     ) -> None:
-        renderer.emit_env_begin(list.mode)
-        renderer.emit(*list.items, joiner=renderer.emit_break_paragraph)
-        renderer.emit_env_end(list.mode)
+        with renderer.emit_env(list.mode):
+            renderer.emit(*list.items, joiner=renderer.emit_break_paragraph)
 
     def _emit_list_item(
         self,
@@ -359,9 +358,8 @@ class LatexListPlugin(Plugin[LatexRenderer]):
         # Put {} after \item so square brackets at the start of render_block don't get swallowed as arguments
         renderer.emit("{} ")
         indent_width = len("\\item{} ")
-        renderer.push_indent(indent_width)
-        renderer.emit(list_item.item)
-        renderer.pop_indent(indent_width)
+        with renderer.indent(indent_width):
+            renderer.emit(list_item.item)
 
     @property
     @stateless
