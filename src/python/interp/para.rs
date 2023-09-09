@@ -399,7 +399,7 @@ impl InterpParaState {
                     (
                         S::SentenceStart,
                         (
-                            Some(InterpBlockTransition::EndParagraphAndPopBlock(
+                            Some(InterpBlockTransition::EndParagraphAndCloseManualBlockScope(
                                 scope_end_span,
                             )),
                             None,

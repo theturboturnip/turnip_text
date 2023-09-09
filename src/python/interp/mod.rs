@@ -18,7 +18,7 @@ pub struct InterpState<'a> {
     /// Overrides InterpBlockState and raw_state - if Some(state), we are in "comment mode" and all other state machines are paused
     comment_state: Option<InterpCommentState>,
     /// Stack of block scopes
-    block_stack: Vec<InterpBlockScopeState>,
+    block_stack: Vec<InterpManualBlockScopeState>,
     /// Root of the document
     root: Py<BlockScope>,
     /// Raw text data
@@ -72,12 +72,12 @@ struct InterpCommentState {
 }
 
 #[derive(Debug)]
-struct InterpBlockScopeState {
+struct InterpManualBlockScopeState {
     builder: Option<PyTcRef<BlockScopeBuilder>>,
     children: Py<BlockScope>,
     scope_start: ParseSpan,
 }
-impl InterpBlockScopeState {
+impl InterpManualBlockScopeState {
     fn build_to_block(self, py: Python, scope_end: ParseSpan) -> InterpResult<Option<PyTcRef<Block>>> {
         let scope = ParseSpan::new(self.scope_start.start, scope_end.end);
         match self.builder {
@@ -104,7 +104,7 @@ pub(crate) enum InterpBlockTransition {
     /// On finishing block-level code, if it intends to own a raw scope, start a raw scope.
     /// 
     /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::BuildingRawText]
-    StartRawScope(PyTcRef<RawScopeBuilder>, ParseSpan, usize),
+    OpenRawScope(PyTcRef<RawScopeBuilder>, ParseSpan, usize),
 
     /// Start a paragraph, executing a transition on the paragraph-level state machine
     ///
@@ -122,14 +122,14 @@ pub(crate) enum InterpBlockTransition {
     /// add the paragraph and close the topmost scope
     ///
     /// - [InterpBlockState::WritingPara] -> [InterpBlockState::ReadyForNewBlock]
-    EndParagraphAndPopBlock(ParseSpan),
+    EndParagraphAndCloseManualBlockScope(ParseSpan),
 
     /// On encountering a block scope owner (i.e. a BlockScopeOpen optionally preceded by a Python scope owner),
     /// push a block scope onto the current stack
     ///
     /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::ReadyForNewBlock]
     /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::ReadyForNewBlock]
-    PushBlockScope(Option<PyTcRef<BlockScopeBuilder>>, ParseSpan),
+    OpenManualBlockScope(Option<PyTcRef<BlockScopeBuilder>>, ParseSpan),
 
     /// If an eval-bracket emits a Block directly, or a raw scope owner takes raw text and produces Block, push it onto the stack
     /// 
@@ -140,7 +140,7 @@ pub(crate) enum InterpBlockTransition {
     /// On encountering a scope close, pop the current block from the scope
     ///
     /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::ReadyForNewBlock]
-    PopBlockScope(ParseSpan),
+    CloseManualBlockScope(ParseSpan),
 }
 
 #[derive(Debug)]
@@ -288,7 +288,7 @@ impl<'a> InterpState<'a> {
         match self.block_stack.pop() {
             // No open blocks on the stack => process the transition
             None => self.handle_transition(py, globals, transitions),
-            Some(InterpBlockScopeState { scope_start, .. }) => {
+            Some(InterpManualBlockScopeState { scope_start, .. }) => {
                 return Err(InterpError::EndedInsideScope { scope_start })
             }
         }
@@ -327,7 +327,7 @@ impl<'a> InterpState<'a> {
                     CodeOpen(span, n_hashes) => (Some(StartBlockLevelCode(span, n_hashes)), None),
 
                     // PushBlock with no code managing it
-                    BlockScopeOpen(span) => (Some(PushBlockScope(None, span)), None),
+                    BlockScopeOpen(span) => (Some(OpenManualBlockScope(None, span)), None),
 
                     // PushInlineScope with no code managing it
                     InlineScopeOpen(span) => (
@@ -350,7 +350,7 @@ impl<'a> InterpState<'a> {
 
                     // Try a scope close
                     ScopeClose(span) => match self.block_stack.last() {
-                        Some(_) => (Some(PopBlockScope(span)), None),
+                        Some(_) => (Some(CloseManualBlockScope(span)), None),
                         None => Err(InterpError::ScopeCloseOutsideScope(span))?,
                     },
 
@@ -395,11 +395,11 @@ impl<'a> InterpState<'a> {
                         use EvalBracketResult::*;
 
                         let block_transition = match res {
-                            NeededBlockBuilder(b) => PushBlockScope(Some(b), code_span),
+                            NeededBlockBuilder(b) => OpenManualBlockScope(Some(b), code_span),
                             NeededInlineBuilder(i) => StartParagraph(
                                 InterpParaTransition::PushInlineScope(Some(i), code_span),
                             ),
-                            NeededRawBuilder(r, n_hashes) => StartRawScope(r, code_span, n_hashes),
+                            NeededRawBuilder(r, n_hashes) => OpenRawScope(r, code_span, n_hashes),
                             Block(b) => PushBlock(b),
                             Inline(i) => {
                                 StartParagraph(InterpParaTransition::PushInlineContent(
@@ -483,7 +483,7 @@ impl<'a> InterpState<'a> {
                     self.push_to_topmost_block(py, para_state.para().as_ref(py))?;
                     S::ReadyForNewBlock
                 }
-                (S::WritingPara(para_state), T::EndParagraphAndPopBlock(scope_close_span)) => {
+                (S::WritingPara(para_state), T::EndParagraphAndCloseManualBlockScope(scope_close_span)) => {
                     // End paragraph i.e. push paragraph onto topmost block
                     self.push_to_topmost_block(py, para_state.para().as_ref(py))?;
                     // Pop block
@@ -517,15 +517,15 @@ impl<'a> InterpState<'a> {
                 
                 (
                     S::BuildingCode { .. },
-                    T::StartRawScope(r, builder_span, expected_n_hashes)
+                    T::OpenRawScope(r, builder_span, expected_n_hashes)
                 ) => {
                     S::BuildingRawText { builder: r, text: "".into(), builder_span, expected_n_hashes }
                 }
                 (
                     S::ReadyForNewBlock | S::BuildingCode { .. },
-                    T::PushBlockScope(builder, scope_start),
+                    T::OpenManualBlockScope(builder, scope_start),
                 ) => {
-                    self.block_stack.push(InterpBlockScopeState {
+                    self.block_stack.push(InterpManualBlockScopeState {
                         builder,
                         children: Py::new(py, BlockScope::new_empty(py))
                             .err_as_interp_internal(py)?,
@@ -533,7 +533,7 @@ impl<'a> InterpState<'a> {
                     });
                     S::ReadyForNewBlock
                 }
-                (S::ReadyForNewBlock, T::PopBlockScope(scope_close_span)) => {
+                (S::ReadyForNewBlock, T::CloseManualBlockScope(scope_close_span)) => {
                     let popped_scope = self.block_stack.pop();
                     match popped_scope {
                         Some(popped_scope) => {
