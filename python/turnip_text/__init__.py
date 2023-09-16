@@ -23,7 +23,7 @@ __all__ = [
     "parse_str_native",
 ]
 
-from ._native import (
+from ._native import (  # type: ignore
     BlockScope,
     InlineScope,
     Paragraph,
