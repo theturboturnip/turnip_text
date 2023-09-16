@@ -1,7 +1,7 @@
 import html
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import List
+from typing import Iterator, List
 
 from turnip_text import Block, BlockScope, Inline, Paragraph, UnescapedText
 from turnip_text.renderers import Plugin, Renderer
@@ -70,11 +70,11 @@ class MarkdownRenderer(Renderer):
     #         super().emit_block(b)
 
     @property
-    def in_html_mode(self):
+    def in_html_mode(self) -> bool:
         return self.html_mode_stack[-1]
     
     @contextmanager
-    def html_mode(self):
+    def html_mode(self) -> Iterator[None]:
         self.html_mode_stack.append(True)
 
         try:
