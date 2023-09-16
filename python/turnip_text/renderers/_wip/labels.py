@@ -6,6 +6,8 @@ The content it refers to is one of a bunch of types:
 - floats, like figures
 - a section or other structural point
 - text
+- footnotes?
+- citation marks?
 - any custom types that may or may not be floats: code listings, tables, equations, e.g. my hypotheses for the mphil diss
 
 References to specific text are a special case: the user needs to choose how to refer back to them, maybe by closest-structural-counter, maybe they're in some float (is there a floating quote environment?), maybe by page...

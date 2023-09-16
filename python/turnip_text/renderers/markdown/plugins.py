@@ -554,9 +554,10 @@ class MarkdownListPlugin(Plugin[MarkdownRenderer]):
             def emit_elem() -> Generator[None, None, None]:
                 for item in list.items:
                     renderer.emit_raw("<li>")
+                    renderer.emit_newline()
                     with renderer.indent(4):
-                        renderer.emit_break_sentence()
                         renderer.emit_block(item.contents)
+                    renderer.emit_newline()
                     renderer.emit_raw("</li>")
                     yield None
                     

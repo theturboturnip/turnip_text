@@ -449,6 +449,12 @@ class Renderer(abc.ABC):
     document: StringIO
 
     _indent: str = ""
+    # After emitting a newline with emit_newline, this is set.
+    # The next call to emit_raw will emit _indent.
+    # This is important if you want to change the indent after something has already emitted a newline,
+    # e.g. if you wrap emit_paragraph() in indent(4), the emit_paragraph() will emit a final newline but *not* immediately emit the indent of 4, so subsequent emissions are nicely indented.
+    # In the same way, if you emit a newline *then* change the indent, the next emitted item will have the new indent applied.
+    _need_indent: bool = False
 
     def __init__(self: Self, plugins: Sequence[Plugin[Self]]) -> None:
         super().__init__()
@@ -495,7 +501,14 @@ class Renderer(abc.ABC):
         """
         The function on which all emitters are based.
         """
+        if self._need_indent:
+            self.document.write(self._indent)
+            self._need_indent = False
         self.document.write(x)
+
+    def emit_newline(self) -> None:
+        self.document.write("\n")
+        self._need_indent = True
 
     # TODO pass a generator instead of emit_t, ts!
     def emit_join(self, emit_t: Callable[[T], None], ts: Iterable[T], emit_join: Callable[[], None]) -> None:
@@ -517,14 +530,12 @@ class Renderer(abc.ABC):
             except StopIteration:
                 break
     
-    def emit_line_break(self) -> None:
-        self.emit_raw("\n" + self._indent)
-
     def emit_break_sentence(self) -> None:
-        self.emit_line_break()
+        self.emit_newline()
     
     def emit_break_paragraph(self) -> None:
-        self.emit_raw("\n\n" + self._indent)
+        self.emit_newline()
+        self.emit_newline()
 
     @abc.abstractmethod
     def emit_unescapedtext(self, t: UnescapedText) -> None:

@@ -47,10 +47,10 @@ class MarkdownRenderer(Renderer):
     def emit_paragraph(self, p: Paragraph) -> None:
         if self.in_html_mode:
             self.emit_raw("<p>")
+            self.emit_newline()
             with self.indent(4):
-                self.emit_line_break()
                 super().emit_paragraph(p)
-            self.emit_line_break()
+                # emit_paragraph already ends with a newline
             self.emit_raw("</p>")
         else:
             super().emit_paragraph(p)
