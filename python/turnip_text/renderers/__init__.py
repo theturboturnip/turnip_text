@@ -21,6 +21,7 @@ from typing import (
     Type,
     TypedDict,
     TypeVar,
+    Union,
 )
 
 from turnip_text import (
@@ -180,6 +181,9 @@ class Plugin(Generic[TRenderer]):
         ...
 
     # TODO improve/remove amble handlers - these are better suited with custom blocks
+    # They could be improved by making them operate on the document tree directly?
+    # Maybe instead of being called on render, they're called in a specific order with MutableState before and after parsing the tree and they return Block.
+    # This would mean they can return sections etc!
 
     def _preamble_handlers(self) -> Iterable[Tuple[str, Callable[[TRenderer], None]]]:
         return ()
@@ -318,7 +322,7 @@ class Plugin(Generic[TRenderer]):
 
         return property(Plugin._stateless(f))
 
-
+# TODO: annoyingly, vscode doesn't auto-import these. Why?
 stateful = Plugin._stateful
 stateful_property = Plugin._stateful_property
 stateless = Plugin._stateless
@@ -362,7 +366,9 @@ class StatelessContext(Generic[TRenderer]):
 class MutableState(Generic[TRenderer]):
     _frozen: bool = False  # Set to True when rendering the document, which disables functions annotated with @stateful.
 
-    def parse_file(self, path: "PathLike[Any]") -> BlockScope:
+    def parse_file(self, path: Union[str, bytes, PathLike]) -> BlockScope:
+        # TODO this should include a field `doc` which is itself, so longer code blocks can use properties.
+        # e.g. right now if you do this then to use bound properties you have to do `footnote.__get__(None) @ blah` inside the document
         return parse_file_native(str(path), self.__dict__)
     
     def __getattr__(self, name: str) -> Any:
@@ -456,6 +462,7 @@ class Renderer(abc.ABC):
     # In the same way, if you emit a newline *then* change the indent, the next emitted item will have the new indent applied.
     _need_indent: bool = False
 
+    # TODO maybe this needs to be covariant in self?
     def __init__(self: Self, plugins: Sequence[Plugin[Self]]) -> None:
         super().__init__()
 
@@ -602,6 +609,7 @@ class Renderer(abc.ABC):
         # TODO could be extended by e.g. latex to ensure you get sentence-break-whitespace at the end of each sentence?
         for i in s:
             self.emit_inline(i)
+        # TODO this shouldn't be here, surely. it should be in emit_paragraph, *joining* sentences instead of *ending* them
         self.emit_break_sentence()
 
     def push_indent(self, n: int) -> None:

@@ -413,6 +413,7 @@ class LatexUrlPlugin(Plugin[LatexRenderer]):
     def _emit_url(
         self, renderer: LatexRenderer, ctx: StatelessContext[LatexRenderer], url: NamedUrl
     ) -> None:
+        # TODO Come on, now. That's just bad form.
         assert "}" not in url.url
         assert "#" not in url.url
         if url.name is None:
