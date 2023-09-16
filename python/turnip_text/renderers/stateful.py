@@ -516,9 +516,12 @@ class Renderer(abc.ABC):
                 next(emit_gen)
             except StopIteration:
                 break
+    
+    def emit_line_break(self) -> None:
+        self.emit_raw("\n" + self._indent)
 
     def emit_break_sentence(self) -> None:
-        self.emit_raw("\n" + self._indent)
+        self.emit_line_break()
     
     def emit_break_paragraph(self) -> None:
         self.emit_raw("\n\n" + self._indent)

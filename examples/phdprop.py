@@ -41,6 +41,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-olatex", type=str)
     parser.add_argument("-omd", type=str)
+    parser.add_argument("-ohtml", type=str)
     args = parser.parse_args()
 
     r_latex = LatexRenderer(
@@ -70,6 +71,24 @@ if __name__ == "__main__":
         ]
     )
 
+    r_html = MarkdownRenderer(
+        [
+            MarkdownCitationAsHTMLPlugin(),
+            MarkdownFootnotePlugin(),
+            MarkdownSectionPlugin(),
+            MarkdownFormatPlugin(),
+            MarkdownListPlugin(),
+            MarkdownUrlPlugin(),
+        ],
+        start_in_html_mode=True
+    )
+    r_html.request_postamble_order(
+        [
+            MarkdownFootnotePlugin._MARKDOWN_FOOTNOTE_POSTAMBLE_ID,
+            MarkdownCitationAsHTMLPlugin._BIBLIOGRAPHY_POSTAMBLE_ID,
+        ]
+    )
+
     doc_block = r_latex.parse_file(Path("./examples/phdprop.ttxt"))
     rendered_latex = r_latex.render_doc(doc_block)
     if args.olatex:
@@ -85,5 +104,13 @@ if __name__ == "__main__":
             f.write(rendered_markdown.getvalue())
     else:
         print(rendered_markdown.getvalue())
+
+    doc_block = r_html.parse_file(Path("./examples/phdprop.ttxt"))
+    rendered_html = r_html.render_doc(doc_block)
+    if args.ohtml:
+        with open(args.ohtml, "w") as f:
+            f.write(rendered_html.getvalue())
+    else:
+        print(rendered_html.getvalue())
 
     # print(json.dumps(doc_block, indent=4, cls=CustomEncoder))

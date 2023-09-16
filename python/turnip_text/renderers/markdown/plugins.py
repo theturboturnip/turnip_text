@@ -54,7 +54,7 @@ class FootnoteAnchor(Inline):
 
 @dataclass(frozen=True)
 class HeadedBlock(Block):
-    level: int
+    level: int # One-indexed
     name: UnescapedText
     contents: BlockScope
     # Numbering
@@ -95,7 +95,8 @@ class DisplayListItem(Block):
 
 @dataclass(frozen=True)
 class Formatted(Inline):
-    format_type: str  # e.g. "*", "**"
+    markdown_format: str  # e.g. "*", "**"
+    html_format: str  # e.g. "b", "i"
     items: InlineScope
 
 
@@ -128,6 +129,7 @@ class MarkdownCitationAsFootnotePlugin(
     ) -> None:
         # TODO what happens with unmarkdownable labels? e.g. labels with backslash or something. need to check that when loading.
         # TODO also maybe people wouldn't want those labels being exposed?
+        assert not renderer.in_html_mode
 
         for label, opt_note in citation.labels:
             if opt_note is None:
@@ -220,6 +222,7 @@ class MarkdownCitationAsHTMLPlugin(Plugin[MarkdownRenderer], CitationPluginInter
                 f" : cite {label}</a>"
             )
 
+        # TODO in HTML mode we should emit these as a list?
         renderer.emit_join(
             emit_individual,
             self._referenced_citations,
@@ -278,12 +281,26 @@ class MarkdownFootnotePlugin(Plugin[MarkdownRenderer], FootnotePluginInterface):
         footnote: FootnoteAnchor,
     ) -> None:
         footnote_num = self._footnote_ref_order.index(footnote.label)
-        renderer.emit_raw(f"[^{footnote_num + 1}]")
+        if renderer.in_html_mode:
+            renderer.emit(
+                ctx.url(f"#footnote-{footnote_num+1}") @ f"^{footnote_num+1}"
+            )
+        else:
+            renderer.emit_raw(f"[^{footnote_num + 1}]")
 
     def _emit_footnotes(self, renderer: MarkdownRenderer) -> None:
         def emit_individual(num_label: Tuple[int, str]) -> None:
             num, label = num_label
-            renderer.emit(f"[^{num + 1}]: ", self._footnotes[label])
+            if renderer.in_html_mode:
+                renderer.emit(
+                    f'<a id="footnote-{num+1}">',
+                    UnescapedText(f"^{num+1}: "),
+                    self._footnotes[label],
+                    "</a>"
+                )
+            else:
+                renderer.emit(f"[^{num + 1}]: ", self._footnotes[label])
+
 
         return renderer.emit_join(
             emit_individual,
@@ -339,19 +356,34 @@ class MarkdownSectionPlugin(Plugin[MarkdownRenderer], SectionPluginInterface):
         ctx: StatelessContext[MarkdownRenderer],
         block: HeadedBlock,
     ) -> None:
-        if block.label:
-            raise NotImplementedError("Section labelling not supported")
-
-        header = "#" * block.level + " "
-        if block.use_num:
-            header += ".".join(str(n) for n in block.num)
-            header += " "
-        renderer.emit(
-            header,
-            block.name
-        )
-        renderer.emit_break_paragraph()
-        renderer.emit_blockscope(block.contents)
+        if renderer.in_html_mode:
+            tag = f"h{block.level}"
+            header = f"<{tag}>"
+            if block.label:
+                header += f'<a id="{block.label}"></a>'
+            if block.use_num:
+                header += ".".join(str(n) for n in block.num)
+                header += " "
+            renderer.emit(
+                header,
+                block.name,
+                f"</{tag}>"
+            )
+            renderer.emit_break_paragraph()
+            renderer.emit_blockscope(block.contents)
+        else:
+            header = "#" * block.level + " "
+            if block.label:
+                header += f'<a id="{block.label}"></a>'
+            if block.use_num:
+                header += ".".join(str(n) for n in block.num)
+                header += " "
+            renderer.emit(
+                header,
+                block.name
+            )
+            renderer.emit_break_paragraph()
+            renderer.emit_blockscope(block.contents)
 
     # [section_num, subsection_num... etc]
     _current_number: List[int]
@@ -457,12 +489,12 @@ def emph_builder(items: InlineScope) -> Inline:
 @inline_scope_builder
 def italic_builder(items: InlineScope) -> Inline:
     # Use single underscore for italics, double asterisks for bold, double underscore for underlining?
-    return Formatted("_", items)
+    return Formatted("_", "i", items)
 
 
 @inline_scope_builder
 def bold_builder(items: InlineScope) -> Inline:
-    return Formatted("**", items)
+    return Formatted("**", "b", items)
 
 
 class MarkdownFormatPlugin(Plugin[MarkdownRenderer], FormatPluginInterface):
@@ -475,11 +507,18 @@ class MarkdownFormatPlugin(Plugin[MarkdownRenderer], FormatPluginInterface):
         ctx: StatelessContext[MarkdownRenderer],
         item: Formatted,
     ) -> None:
-        renderer.emit(
-            item.format_type,
-            item.items,
-            item.format_type,
-        )
+        if renderer.in_html_mode:
+            renderer.emit(
+                f"<{item.html_format}>",
+                item.items,
+                f"</{item.html_format}>"
+            )
+        else:
+            renderer.emit(
+                item.markdown_format,
+                item.items,
+                item.markdown_format,
+            )
 
     emph = emph_builder
     italic = italic_builder
@@ -511,26 +550,43 @@ class MarkdownListPlugin(Plugin[MarkdownRenderer]):
         ctx: StatelessContext[MarkdownRenderer],
         list: DisplayList,
     ) -> None:
-        if list.numbered:
-            def emit_numbered() -> Generator[None, None, None]:
-                for idx, item in enumerate(list.items):
-                    indent = f"{idx+1}. "
-                    renderer.emit_raw(indent)
-                    with renderer.indent(len(indent)):
+        if renderer.in_html_mode:
+            def emit_elem() -> Generator[None, None, None]:
+                for item in list.items:
+                    renderer.emit_raw("<li>")
+                    with renderer.indent(4):
+                        renderer.emit_break_sentence()
                         renderer.emit_block(item.contents)
+                    renderer.emit_raw("</li>")
                     yield None
-
-            renderer.emit_join_gen(emit_numbered(), renderer.emit_break_sentence)
+                    
+            tag = "ol" if list.numbered else "ul"
+            renderer.emit_raw(f"<{tag}>")
+            with renderer.indent(4):
+                renderer.emit_break_sentence()
+                renderer.emit_join_gen(emit_elem(), renderer.emit_break_sentence)
+            renderer.emit_raw(f"</{tag}>")
         else:
-            def emit_dashed() -> Generator[None, None, None]:
-                for idx, item in enumerate(list.items):
-                    indent = f"- "
-                    renderer.emit_raw(indent)
-                    with renderer.indent(len(indent)):
-                        renderer.emit_block(item.contents)
-                    yield None
+            if list.numbered:
+                def emit_numbered() -> Generator[None, None, None]:
+                    for idx, item in enumerate(list.items):
+                        indent = f"{idx+1}. "
+                        renderer.emit_raw(indent)
+                        with renderer.indent(len(indent)):
+                            renderer.emit_block(item.contents)
+                        yield None
 
-            renderer.emit_join_gen(emit_dashed(), renderer.emit_break_sentence)
+                renderer.emit_join_gen(emit_numbered(), renderer.emit_break_sentence)
+            else:
+                def emit_dashed() -> Generator[None, None, None]:
+                    for idx, item in enumerate(list.items):
+                        indent = f"- "
+                        renderer.emit_raw(indent)
+                        with renderer.indent(len(indent)):
+                            renderer.emit_block(item.contents)
+                        yield None
+
+                renderer.emit_join_gen(emit_dashed(), renderer.emit_break_sentence)
 
     @property
     @stateless
@@ -580,14 +636,24 @@ class MarkdownUrlPlugin(Plugin[MarkdownRenderer]):
         ctx: StatelessContext[MarkdownRenderer],
         url: NamedUrl,
     ) -> None:
-        assert ")" not in url.url
-        renderer.emit_raw("[")
-        if url.name is None:
-            # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal markdown
-            renderer.emit_unescapedtext(UnescapedText(url.url))
+        if renderer.in_html_mode:
+            assert ">" not in url.url and "<" not in url.url
+            renderer.emit_raw(f'<a href="{url.url}">')
+            if url.name is None:
+                # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal
+                renderer.emit_unescapedtext(UnescapedText(url.url))
+            else:
+                renderer.emit_inlinescope(url.name)
+            renderer.emit_raw("</a>")
         else:
-            renderer.emit_inlinescope(url.name)
-        renderer.emit_raw(f"]({url.url})")
+            assert ")" not in url.url
+            renderer.emit_raw("[")
+            if url.name is None:
+                # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal markdown
+                renderer.emit_unescapedtext(UnescapedText(url.url))
+            else:
+                renderer.emit_inlinescope(url.name)
+            renderer.emit_raw(f"]({url.url})")
 
     @stateless
     def url(
