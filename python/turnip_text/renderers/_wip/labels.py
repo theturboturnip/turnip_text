@@ -38,7 +38,7 @@ from turnip_text import (
     UnescapedText,
     coerce_to_inline_scope,
 )
-from turnip_text.renderers.stateful import StatelessContext
+from turnip_text.renderers import StatelessContext
 
 # e.g. arabic, roman numerals (lower and upper), alphabetic
 Numbering = Mapping[int, UnescapedText]
