@@ -1,11 +1,11 @@
 [project]
 name = "turnip_text"
-version = "0.0.3"
+version = "0.0.4"
 description = "Document description language that allows embedded Python to describe document structure"
 license = { text = "MIT OR Apache-2.0" }
 readme = "README.md"
 authors = [{ name = "Samuel Stark", email = "popgoestoast@gmail.com" }]
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -17,6 +17,7 @@ classifiers = [
 [project.optional-dependencies]
 typing = ["mypy"]
 fmt = ["black"]
+test = ["pytest"]
 
 [tool.maturin]
 python-source = "python"

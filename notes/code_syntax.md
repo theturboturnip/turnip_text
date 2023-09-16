@@ -34,7 +34,7 @@ If an eval-bracket `[]` is opened outside of a paragraph, the contents are evalu
 
   test_inline.render_inline(["inline text to annotate"])
   ```
-  - otherwise the result is treated as the start of a new paragraph. The python object is placed directly into the sentence, and will be stringified in the finalization phase. (TODO this isn't the case anymore, now it's rejected because it isn't Inline. Need type coersion for this)
+  - otherwise the result is treated as the start of a new paragraph. The python object is placed directly into the sentence, and will be stringified in the finalization phase.
 
   ```
   [5+7]

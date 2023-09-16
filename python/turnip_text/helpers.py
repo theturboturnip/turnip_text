@@ -1,19 +1,25 @@
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, Union
 
 from turnip_text import (
     Block,
     BlockScope,
     BlockScopeBuilder,
+    CoercibleToBlockScope,
+    CoercibleToInlineScope,
     Inline,
     InlineScope,
     InlineScopeBuilder,
     RawScopeBuilder,
+    coerce_to_block_scope,
+    coerce_to_inline_scope,
 )
+
+# TODO tests for the helpers
 
 
 class block_scope_builder(BlockScopeBuilder):
     """
-    Decorator which allows functions-returning-functions to fit the BlockScopeBuilder typeclass.
+    Decorator which allows a function to fit the BlockScopeBuilder typeclass.
 
     e.g. one could define a function
     ```python
@@ -29,6 +35,11 @@ class block_scope_builder(BlockScopeBuilder):
     The contents of greg
     }
     ```
+
+    It also supports the matmul operator, which tries to coerce the right-hand-side into a BlockScope before calling the function:
+    ```python
+    block(name="greg") @ "The contents of greg"
+    ```
     """
 
     func: Callable[[BlockScope], Optional[Block]]
@@ -42,7 +53,7 @@ class block_scope_builder(BlockScopeBuilder):
 
 class inline_scope_builder(InlineScopeBuilder):
     """
-    Decorator which ensures functions fit the InlineScopeBuilder typeclass
+    Decorator which allows a function to fit the InlineScopeBuilder typeclass.
 
     e.g. one could define a function
     ```python
@@ -55,6 +66,11 @@ class inline_scope_builder(InlineScopeBuilder):
     which allows turnip-text as so:
     ```!text
     [inline("!")]{surprise}
+    ```
+
+    It also supports the matmul operator, which tries to coerce the right-hand-side into an InlineScope before calling the function:
+    ```python
+    inline("!") @ "surprise"
     ```
     """
 
@@ -69,26 +85,36 @@ class inline_scope_builder(InlineScopeBuilder):
 
 class raw_scope_builder(RawScopeBuilder):
     """
-    Decorator which allows functions to fit the RawScopeBuilder typeclass.
+    Decorator which allows a function to fit the RawScopeBuilder typeclass.
 
     e.g. one could define a function
     ```python
-    def math(name=""):
-        @raw_scope_builder
-        def inner(raw_text: str) -> Inline:
-            return ...
-        return inner
+    @raw_scope_builder
+    def math(raw_text: str) -> Inline:
+        ...
     ```
     which allows turnip-text as so:
     ```!text
-    [math()]#{\sin\(x\)}#
+    [math]#{\\sin x}#
+    ```
+
+    It also supports the matmul operator, which checks the right-hand-side is a str before calling the function:
+    ```python
+    math @ r"\\sin x"
     ```
     """
 
-    func: Callable[[str], Inline]
+    func: Callable[[str], Union[Block, Inline]]
 
-    def __init__(self, func: Callable[[str], Inline]) -> None:
+    def __init__(self, func: Callable[[str], Union[Block, Inline]]) -> None:
         self.func = func
 
-    def build_from_inlines(self, raw: str) -> Inline:
+    def build_from_raw(self, raw: str) -> Union[Block, Inline]:
         return self.func(raw)
+
+    def __matmul__(self, maybe_str: Any) -> Union[Block, Inline]:
+        if isinstance(maybe_str, str):
+            return self.func(maybe_str)
+        raise TypeError(
+            f"Invoked RawScopeBuilder on {maybe_str}, which wasn't a string"
+        )

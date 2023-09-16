@@ -2,6 +2,7 @@ use crate::lexer::{units_to_tokens, TTToken, Unit};
 use crate::tests::test_lexer::TextStream;
 
 use lexer_rs::Lexer;
+use regex::Regex;
 
 use crate::python::interop::{
     BlockScope, InlineScope, Paragraph, RawText, Sentence, UnescapedText,
@@ -33,7 +34,7 @@ impl From<ParseSpan> for TestParserSpan {
 }
 
 /// A type mimicking [InterpError] for test purposes
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum TestInterpError {
     CodeCloseOutsideCode(TestParserSpan),
     ScopeCloseOutsideScope(TestParserSpan),
@@ -72,78 +73,142 @@ pub enum TestInterpError {
         code_span: TestParserSpan,
     },
     PythonErr {
-        pyerr: String,
+        pyerr: Regex,
         code_span: TestParserSpan,
     },
     InternalPythonErr {
-        pyerr: String,
+        pyerr: Regex,
     },
-    InternalErr(String),
+    InternalErr(Regex),
     EscapedNewlineOutsideParagraph {
         newline: TestParserSpan,
     },
 }
-impl TestInterpError {
-    /// Convert [InterpError] to [TestInterpError]
-    ///
-    /// This is a lossy transformation, ignoring byte offsets in spans, but is good enough for testing
-    pub fn from_interp_error(p: InterpError) -> Self {
-        match p {
-            InterpError::CodeCloseOutsideCode(span) => Self::CodeCloseOutsideCode(span.into()),
-            InterpError::ScopeCloseOutsideScope(span) => Self::ScopeCloseOutsideScope(span.into()),
-            InterpError::RawScopeCloseOutsideRawScope(span) => {
-                Self::RawScopeCloseOutsideRawScope(span.into())
+impl PartialEq<InterpError> for TestInterpError {
+    fn eq(&self, other: &InterpError) -> bool {
+        match (self, other) {
+            (Self::CodeCloseOutsideCode(l0), InterpError::CodeCloseOutsideCode(r0)) => {
+                (*l0) == (*r0).into()
             }
-            InterpError::EndedInsideCode { code_start } => Self::EndedInsideCode {
-                code_start: code_start.into(),
-            },
-            InterpError::EndedInsideRawScope { raw_scope_start } => Self::EndedInsideRawScope {
-                raw_scope_start: raw_scope_start.into(),
-            },
-            InterpError::EndedInsideScope { scope_start } => Self::EndedInsideScope {
-                scope_start: scope_start.into(),
-            },
-            InterpError::BlockScopeOpenedMidPara { scope_start } => Self::BlockScopeOpenedMidPara {
-                scope_start: scope_start.into(),
-            },
-            InterpError::BlockOwnerCodeMidPara { code_span } => Self::BlockOwnerCodeMidPara {
-                code_span: code_span.into(),
-            },
-            InterpError::BlockCodeMidPara { code_span } => Self::BlockCodeMidPara {
-                code_span: code_span.into(),
-            },
-            InterpError::BlockCodeFromRawScopeMidPara { code_span } => Self::BlockCodeFromRawScopeMidPara {
-                code_span: code_span.into()
-            },
-            InterpError::SentenceBreakInInlineScope { scope_start, .. } => {
+            (Self::ScopeCloseOutsideScope(l0), InterpError::ScopeCloseOutsideScope(r0)) => {
+                (*l0) == (*r0).into()
+            }
+            (
+                Self::RawScopeCloseOutsideRawScope(l0),
+                InterpError::RawScopeCloseOutsideRawScope(r0),
+            ) => (*l0) == (*r0).into(),
+            (
+                Self::EndedInsideCode {
+                    code_start: l_code_start,
+                },
+                InterpError::EndedInsideCode {
+                    code_start: r_code_start,
+                },
+            ) => (*l_code_start) == (*r_code_start).into(),
+            (
+                Self::EndedInsideRawScope {
+                    raw_scope_start: l_raw_scope_start,
+                },
+                InterpError::EndedInsideRawScope {
+                    raw_scope_start: r_raw_scope_start,
+                },
+            ) => (*l_raw_scope_start) == (*r_raw_scope_start).into(),
+            (
+                Self::EndedInsideScope {
+                    scope_start: l_scope_start,
+                },
+                InterpError::EndedInsideScope {
+                    scope_start: r_scope_start,
+                },
+            ) => (*l_scope_start) == (*r_scope_start).into(),
+            (
+                Self::BlockScopeOpenedMidPara {
+                    scope_start: l_scope_start,
+                },
+                InterpError::BlockScopeOpenedMidPara {
+                    scope_start: r_scope_start,
+                },
+            ) => (*l_scope_start) == (*r_scope_start).into(),
+            (
+                Self::BlockOwnerCodeMidPara {
+                    code_span: l_code_span,
+                },
+                InterpError::BlockOwnerCodeMidPara {
+                    code_span: r_code_span,
+                },
+            ) => (*l_code_span) == (*r_code_span).into(),
+            (
+                Self::BlockCodeMidPara {
+                    code_span: l_code_span,
+                },
+                InterpError::BlockCodeMidPara {
+                    code_span: r_code_span,
+                },
+            ) => (*l_code_span) == (*r_code_span).into(),
+            (
+                Self::BlockCodeFromRawScopeMidPara {
+                    code_span: l_code_span,
+                },
+                InterpError::BlockCodeFromRawScopeMidPara {
+                    code_span: r_code_span,
+                },
+            ) => (*l_code_span) == (*r_code_span).into(),
+            (
                 Self::SentenceBreakInInlineScope {
-                    scope_start: scope_start.into(),
-                }
-            }
-            InterpError::ParaBreakInInlineScope { scope_start, .. } => {
+                    scope_start: l_scope_start,
+                },
+                InterpError::SentenceBreakInInlineScope {
+                    scope_start: r_scope_start,
+                },
+            ) => (*l_scope_start) == (*r_scope_start).into(),
+            (
                 Self::ParaBreakInInlineScope {
-                    scope_start: scope_start.into(),
-                }
-            }
-            InterpError::BlockOwnerCodeHasNoScope { code_span } => Self::BlockOwnerCodeHasNoScope {
-                code_span: code_span.into(),
-            },
-            InterpError::InlineOwnerCodeHasNoScope { code_span } => {
+                    scope_start: l_scope_start,
+                },
+                InterpError::ParaBreakInInlineScope {
+                    scope_start: r_scope_start,
+                    ..
+                },
+            ) => (*l_scope_start) == (*r_scope_start).into(),
+            (
+                Self::BlockOwnerCodeHasNoScope {
+                    code_span: l_code_span,
+                },
+                InterpError::BlockOwnerCodeHasNoScope {
+                    code_span: r_code_span,
+                },
+            ) => (*l_code_span) == (*r_code_span).into(),
+            (
                 Self::InlineOwnerCodeHasNoScope {
-                    code_span: code_span.into(),
-                }
-            }
-            InterpError::PythonErr { pyerr, code_span } => Self::PythonErr {
-                pyerr,
-                code_span: code_span.into(),
-            },
-            InterpError::InternalPythonErr { pyerr } => Self::InternalPythonErr { pyerr },
-            InterpError::InternalErr(s) => Self::InternalErr(s),
-            InterpError::EscapedNewlineOutsideParagraph { newline } => {
-                Self::EscapedNewlineOutsideParagraph {
-                    newline: newline.into(),
-                }
-            }
+                    code_span: l_code_span,
+                },
+                InterpError::InlineOwnerCodeHasNoScope {
+                    code_span: r_code_span,
+                },
+            ) => (*l_code_span) == (*r_code_span).into(),
+
+            (
+                Self::PythonErr {
+                    pyerr: l_pyerr,
+                    code_span: l_code_span,
+                },
+                InterpError::PythonErr {
+                    pyerr: r_pyerr,
+                    code_span: r_code_span,
+                },
+            ) => dbg!(l_pyerr).is_match(&dbg!(r_pyerr)) && (*l_code_span) == (*r_code_span).into(),
+            (
+                Self::InternalPythonErr { pyerr: l_pyerr },
+                InterpError::InternalPythonErr { pyerr: r_pyerr },
+            ) => l_pyerr.is_match(&r_pyerr),
+
+            (Self::InternalErr(l0), InterpError::InternalErr(r0)) => l0.is_match(&r0),
+
+            (
+                Self::EscapedNewlineOutsideParagraph { newline: l_newline },
+                InterpError::EscapedNewlineOutsideParagraph { newline: r_newline },
+            ) => (*l_newline) == (*r_newline).into(),
+            _ => false,
         }
     }
 }
@@ -275,7 +340,9 @@ pub fn generate_globals<'interp>(py: Python<'interp>) -> Option<&'interp PyDict>
 
     let result = py.run(
         r#"
-from turnip_text import InlineScope, UnescapedText, BlockScope
+# The Rust module name is _native, which is included under turnip_text, so Python IDEs don't try to import directly from it.
+# This means we use _native instead of turnip_text as the module name here.
+from _native import InlineScope, UnescapedText, BlockScope
 
 class FauxBlock:
     is_block = True
@@ -319,8 +386,7 @@ TEST_RAW_BLOCK_BUILDER = TestRawBlockBuilder()
 
 TEST_BLOCK_SWALLOWER = TestBlockSwallower()
 
-def test_inline_of(x):
-    return UnescapedText(str(x))
+TEST_PROPERTY = property(lambda x: 5)
 
 "#,
         Some(globals),
@@ -364,7 +430,7 @@ pub fn expect_parse_tokens(
     // Second step: parse
     // Need to do this safely so that we don't panic inside Python::with_gil.
     // I'm not 100% sure but I'm afraid it will poison the GIL and break subsequent tests.
-    let root: Result<Result<TestBlock, TestInterpError>, _> = {
+    let root: Result<Result<TestBlock, InterpError>, _> = {
         // Catch all non-abort panics while running the interpreter
         // and handling the output
         panic::catch_unwind(|| {
@@ -377,13 +443,21 @@ pub fn expect_parse_tokens(
                     (bs as &dyn PyToTest<TestBlock>).as_test(py)
                 })
             })
-            .map_err(TestInterpError::from_interp_error)
         })
         // Unlock mutex
     };
     // If any of the python-related code tried to panic, re-panic here now the mutex is unlocked
     match root {
-        Ok(root) => assert_eq!(root, expected_parse),
+        Ok(root) => {
+            if root.is_ok() != expected_parse.is_ok() {
+                panic!("assertion failed, expected\n\t{expected_parse:?}\ngot\n\t{root:?}\n(mismatching success)");
+            } else {
+                match root {
+                    Ok(r) => assert_eq!(expected_parse.unwrap(), r),
+                    Err(e) => assert_eq!(expected_parse.unwrap_err(), e),
+                }
+            }
+        }
         Err(e) => panic!("{:?}", e),
     }
 }
@@ -412,7 +486,7 @@ It was popularised in the 1960s with the release of Letraset sheets containing L
 #[test]
 pub fn test_inline_code() {
     expect_parse(
-        r#"Number of values in (1,2,3): [test_inline_of(len((1,2,3)))]"#,
+        r#"Number of values in (1,2,3): [len((1,2,3))]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
@@ -423,7 +497,7 @@ pub fn test_inline_code() {
 #[test]
 pub fn test_inline_code_with_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): [[ test_inline_of(len((1,2,3))) ]]"#,
+        r#"Number of values in (1,2,3): [[ len((1,2,3)) ]]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
@@ -434,7 +508,7 @@ pub fn test_inline_code_with_extra_delimiter() {
 #[test]
 pub fn test_inline_code_with_long_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): [[[[[ test_inline_of(len((1,2,3))) ]]]]]"#,
+        r#"Number of values in (1,2,3): [[[[[ len((1,2,3)) ]]]]]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
@@ -445,7 +519,7 @@ pub fn test_inline_code_with_long_extra_delimiter() {
 #[test]
 pub fn test_inline_code_with_escaped_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): \[[ test_inline_of(len((1,2,3))) ]\]"#,
+        r#"Number of values in (1,2,3): \[[ len((1,2,3)) ]\]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): ["),
             test_text("3"),
@@ -467,7 +541,7 @@ pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
 #[test]
 pub fn test_inline_list_with_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): [[ test_inline_of(len([1,2,3])) ]]"#,
+        r#"Number of values in (1,2,3): [[ len([1,2,3]) ]]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
@@ -583,8 +657,7 @@ It was the best of the times, it was the blurst of times
 }
 "#,
         Err(TestInterpError::PythonErr {
-            pyerr: "TypeError : Expected object fitting typeclass BlockScopeBuilder, didn't get it. Got None"
-                .into(),
+            pyerr: Regex::new(r"TypeError : Expected object fitting typeclass BlockScopeBuilder, didn't get it. Got None").unwrap(),
             code_span: TestParserSpan {
                 start: (1, 1),
                 end: (2, 1),
@@ -609,8 +682,8 @@ pub fn test_owned_inline_scope_with_non_inline_builder() {
         r"[None]{special text}",
         Err(TestInterpError::PythonErr {
             pyerr:
-                "TypeError : Expected object fitting typeclass InlineScopeBuilder, didn't get it. Got None"
-                    .into(),
+                Regex::new("TypeError : Expected object fitting typeclass InlineScopeBuilder, didn't get it. Got None"
+                    ).unwrap(),
             code_span: TestParserSpan {
                 start: (1, 1),
                 end: (1, 8),
@@ -643,8 +716,8 @@ pub fn test_owned_inline_raw_scope_with_non_raw_builder() {
 import os
 }#"#,
         Err(TestInterpError::PythonErr {
-            pyerr: "TypeError : Expected object fitting typeclass RawScopeBuilder, didn't get it. Got None"
-                .into(),
+            pyerr: Regex::new("TypeError : Expected object fitting typeclass RawScopeBuilder, didn't get it. Got None"
+        ).unwrap(),
             code_span: TestParserSpan {
                 start: (1, 1),
                 end: (1, 9),
@@ -689,9 +762,9 @@ It was the blurst of times."#,
 pub fn test_special_with_escaped_backslash() {
     expect_parse(
         r#"About to see a backslash! \\#"#,
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            test_text(r#"About to see a backslash! \"#),
-        ]])])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text(
+            r#"About to see a backslash! \"#,
+        )]])])),
     )
 }
 
@@ -729,7 +802,7 @@ newline"#,
 #[test]
 pub fn test_newline_in_code() {
     expect_parse(
-        "[test_inline_of(len((1,\r\n2)))]",
+        "[len((1,\r\n2))]",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
             "2",
         )])])),
@@ -881,7 +954,7 @@ because you may need it to split up words in sentences."#,
 #[test]
 pub fn test_emit_block_from_code() {
     expect_parse(
-        "[TEST_BLOCK]", 
+        "[TEST_BLOCK]",
         Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
     )
 }
@@ -890,8 +963,13 @@ pub fn test_emit_block_from_code() {
 pub fn test_cant_emit_block_from_code_inside_paragraph() {
     expect_parse(
         "Lorem ipsum!
-I'm in a [TEST_BLOCK]", 
-        Err(TestInterpError::BlockCodeMidPara { code_span: TestParserSpan { start: (2, 10), end: (2, 22) } }),
+I'm in a [TEST_BLOCK]",
+        Err(TestInterpError::BlockCodeMidPara {
+            code_span: TestParserSpan {
+                start: (2, 10),
+                end: (2, 22),
+            },
+        }),
     )
 }
 
@@ -908,7 +986,7 @@ pub fn test_raw_scope_emitting_inline_from_block_level() {
     expect_parse(
         "[TEST_RAW_INLINE_BUILDER]#{some raw stuff that goes in a block!}#",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::TestOwnedRaw("some raw stuff that goes in a block!".into())
+            TestInline::TestOwnedRaw("some raw stuff that goes in a block!".into()),
         ]])])),
     )
 }
@@ -927,7 +1005,7 @@ pub fn test_raw_scope_emitting_inline_inside_paragraph() {
         "Inside a paragraph, you can [TEST_RAW_INLINE_BUILDER]#{insert an inline raw!}#",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Inside a paragraph, you can "),
-            TestInline::TestOwnedRaw("insert an inline raw!".into())
+            TestInline::TestOwnedRaw("insert an inline raw!".into()),
         ]])])),
     )
 }
@@ -937,19 +1015,19 @@ pub fn test_emitting_none_at_block() {
     expect_parse(
         "
 [None]
-", 
-    Ok(test_doc(vec![]))
+",
+        Ok(test_doc(vec![])),
     )
 }
 
 #[test]
 pub fn test_emitting_none_inline() {
     expect_parse(
-        "Check it out, there's [None]!", 
-    Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-        test_text("Check it out, there's "),
-        test_text("!")
-    ]])]))
+        "Check it out, there's [None]!",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("Check it out, there's "),
+            test_text("!"),
+        ]])])),
     )
 }
 
@@ -958,8 +1036,75 @@ pub fn test_assign_and_recall() {
     expect_parse(
         "[x = 5]
 
-[test_inline_of(x)]",
-    Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text("5")]])]))
+[x]",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text(
+            "5",
+        )]])])),
+    )
+}
+
+#[test]
+pub fn test_emit_none() {
+    expect_parse("[None]", Ok(test_doc(vec![])))
+}
+
+#[test]
+pub fn test_cant_eval_none_for_block_builder() {
+    expect_parse(
+        "[None]{
+    That doesn't make any sense! The owner can't be None
+}",
+        Err(TestInterpError::PythonErr {
+            pyerr: Regex::new("TypeError : Expected object fitting typeclass BlockScopeBuilder, didn't get it. Got None").unwrap(),
+            code_span: TestParserSpan {
+                start: (1, 1),
+                end: (2, 1),
+            },
+        }),
+    )
+}
+
+#[test]
+pub fn test_cant_assign_for_block_builder() {
+    expect_parse(
+        "[x = 5]{
+    That doesn't make any sense! The owner can't be an abstract concept of x being something
+}",
+        Err(TestInterpError::PythonErr {
+            pyerr: Regex::new("TypeError : Expected object fitting typeclass BlockScopeBuilder, didn't get it. Got None").unwrap(),
+            code_span: TestParserSpan {
+                start: (1, 1),
+                end: (2, 1),
+            },
+        }),
+    )
+}
+
+#[test]
+pub fn test_cant_assign_for_raw_builder() {
+    expect_parse(
+        "[x = 5]#{That doesn't make any sense! The owner can't be an abstract concept of x being something}#",
+        Err(TestInterpError::PythonErr {
+            pyerr: Regex::new("TypeError : Expected object fitting typeclass RawScopeBuilder, didn't get it. Got None").unwrap(),
+            code_span: TestParserSpan {
+                start: (1, 1),
+                end: (1, 10),
+            },
+        }),
+    )
+}
+
+#[test]
+pub fn test_cant_assign_for_inline_builder() {
+    expect_parse(
+        "[x = 5]{That doesn't make any sense! The owner can't be an abstract concept of x being something}",
+        Err(TestInterpError::PythonErr {
+            pyerr: Regex::new("TypeError : Expected object fitting typeclass InlineScopeBuilder, didn't get it. Got None").unwrap(),
+            code_span: TestParserSpan {
+                start: (1, 1),
+                end: (1, 9),
+            },
+        }),
     )
 }
 
@@ -970,9 +1115,12 @@ pub fn test_syntax_errs_passed_thru() {
     expect_parse(
         "[1invalid]",
         Err(TestInterpError::PythonErr {
-            pyerr: "SyntaxError : invalid syntax (<string>, line 1)".into(),
-            code_span: TestParserSpan { start: (1, 1), end: (1, 11) }
-        })
+            pyerr: Regex::new("^SyntaxError : invalid syntax").unwrap(),
+            code_span: TestParserSpan {
+                start: (1, 1),
+                end: (1, 11),
+            },
+        }),
     )
 }
 
@@ -981,7 +1129,8 @@ pub fn test_block_scope_builder_return_none() {
     expect_parse(
         "[TEST_BLOCK_SWALLOWER]{
 stuff that gets swallowed
-}", Ok(test_doc(vec![]))
+}",
+        Ok(test_doc(vec![])),
     )
 }
 
@@ -989,6 +1138,17 @@ stuff that gets swallowed
 pub fn test_block_scope_builder_return_none_with_end_inside_para() {
     expect_parse(
         "[TEST_BLOCK_SWALLOWER]{
-stuff that gets swallowed}", Ok(test_doc(vec![]))
+stuff that gets swallowed}",
+        Ok(test_doc(vec![])),
+    )
+}
+
+#[test]
+pub fn test_property_calls_get() {
+    expect_parse(
+        "[TEST_PROPERTY]",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text(
+            "5",
+        )]])])),
     )
 }

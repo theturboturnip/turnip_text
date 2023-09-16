@@ -1,19 +1,23 @@
 use std::path::Path;
 
 use pyo3::{
-    exceptions::PyRuntimeError,
+    exceptions::{PyRuntimeError, PyTypeError},
     intern,
     prelude::*,
-    types::{PyDict, PyIterator, PyList, PyString},
+    types::{PyDict, PyFloat, PyIterator, PyList, PyLong, PyString},
 };
 
 use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
 
 #[pymodule]
-#[pyo3(name="_native")]
+#[pyo3(name = "_native")]
 pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_file, m)?)?;
     m.add_function(wrap_pyfunction!(parse_str, m)?)?;
+    m.add_function(wrap_pyfunction!(coerce_to_inline, m)?)?;
+    m.add_function(wrap_pyfunction!(coerce_to_inline_scope, m)?)?;
+    m.add_function(wrap_pyfunction!(coerce_to_block, m)?)?;
+    m.add_function(wrap_pyfunction!(coerce_to_block_scope, m)?)?;
 
     // Primitives
     m.add_class::<UnescapedText>()?;
@@ -51,6 +55,128 @@ fn parse_str<'py>(
     // crate::cli::parse_str already surfaces the error to the user - we can just return a generic error
     crate::cli::parse_str(py, locals.unwrap_or_else(|| PyDict::new(py)), data)
         .map_err(|_| PyRuntimeError::new_err("parse failed, see stdout"))
+}
+
+#[pyfunction]
+pub fn coerce_to_inline<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResult<PyObject> {
+    Ok(coerce_to_inline_pytcref(py, obj)?.unbox())
+}
+
+pub fn coerce_to_inline_pytcref<'py>(
+    py: Python<'py>,
+    obj: &'py PyAny,
+) -> PyResult<PyTcRef<Inline>> {
+    // 1. if it's already Inline, return it
+    if let Ok(inl) = PyTcRef::of(obj) {
+        return Ok(inl);
+    }
+    // 2. if it's a List of Inline, return InlineScope(it)
+    // Here we first check if it's a list, then if so try to create an Inline - this will verify if it's a list of Inlines.
+    if let Ok(py_list) = obj.downcast::<PyList>() {
+        if let Ok(inline_scope) = InlineScope::new(py, Some(py_list)) {
+            let inline_scope = Py::new(py, inline_scope)?;
+            return PyTcRef::of(inline_scope.as_ref(py));
+        }
+    }
+    // 3. if it's str, return UnescapedText(it)
+    if let Ok(py_str) = obj.downcast::<PyString>() {
+        let unescaped_text = Py::new(py, UnescapedText::new(py_str))?;
+        return PyTcRef::of(unescaped_text.as_ref(py));
+    }
+    // 4. if it's float, return UnescapedText(str(it))
+    // 5. if it's int, return UnescapedText(str(it))
+    if obj.downcast::<PyFloat>().is_ok() || obj.downcast::<PyLong>().is_ok() {
+        let str_of_obj = obj.str()?;
+        let unescaped_text = Py::new(py, UnescapedText::new(str_of_obj))?;
+        return PyTcRef::of(unescaped_text.as_ref(py));
+    }
+    // 6. otherwise fail with TypeError
+    Err(PyTypeError::new_err("Failed to coerce object to Inline: was not an Inline, list of Inline (coercible to InlineScope), str, float, or int."))
+}
+
+#[pyfunction]
+pub fn coerce_to_inline_scope<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResult<Py<InlineScope>> {
+    // 1. if it's already InlineScope, return it
+    if let Ok(inline_scope) = obj.extract() {
+        return Ok(inline_scope);
+    }
+    // 2. attempt coercion to inline, if it fails return typeerror
+    let obj = coerce_to_inline(py, obj)?;
+    // 3. if the coercion produced InlineScope, return that
+    if let Ok(inline_scope) = obj.extract(py) {
+        return Ok(inline_scope);
+    }
+    // 4. otherwise return InlineScope([that])
+    return Ok(Py::new(
+        py,
+        InlineScope::new(py, Some(PyList::new(py, [obj])))?,
+    )?);
+}
+
+#[pyfunction]
+pub fn coerce_to_block<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResult<PyObject> {
+    Ok(coerce_to_block_pytcref(py, obj)?.unbox())
+}
+
+pub fn coerce_to_block_pytcref<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResult<PyTcRef<Block>> {
+    // 1. if it's already Block, return it
+    if let Ok(block) = PyTcRef::of(obj) {
+        return Ok(block);
+    }
+    // 2. if it's a list of Block, wrap it in a BlockScope and return it
+    // Here we first check if it's a list, then if so try to create a BlockScope - this will verify if it's a list of Blocks.
+    if let Ok(py_list) = obj.downcast::<PyList>() {
+        if let Ok(block_scope) = BlockScope::new(py, Some(py_list)) {
+            let block_scope = Py::new(py, block_scope)?;
+            return PyTcRef::of(block_scope.as_ref(py));
+        }
+    }
+    // 3. if it's a Sentence, wrap it in a list -> Paragraph
+    if let Ok(sentence) = obj.extract::<Py<Sentence>>() {
+        let paragraph = Py::new(
+            py,
+            Paragraph::new(py, Some(PyList::new(py, [sentence]).into()))?,
+        )?;
+        return PyTcRef::of(paragraph.as_ref(py));
+    }
+    // 4. if it can be coerced to an Inline, wrap that in list -> Sentence -> list -> Paragraph and return it
+    if let Ok(inl) = coerce_to_inline(py, obj) {
+        let paragraph = Py::new(
+            py,
+            Paragraph::new(
+                py,
+                Some(PyList::new(
+                    py,
+                    [Py::new(
+                        py,
+                        Sentence::new(py, Some(PyList::new(py, [inl])))?,
+                    )?],
+                )),
+            )?,
+        )?;
+        return PyTcRef::of(paragraph.as_ref(py));
+    }
+    // 5. otherwise fail with TypeError
+    Err(PyTypeError::new_err("Failed to coerce object to Block: was not a Block, list of Blocks (coercible to BlockScope), Paragraph, Sentence, or coercible to Inline."))
+}
+
+#[pyfunction]
+pub fn coerce_to_block_scope<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResult<Py<BlockScope>> {
+    // 1. if it's already a BlockScope, return it
+    if let Ok(block_scope) = obj.extract() {
+        return Ok(block_scope);
+    }
+    // 2. attempt coercion to block, if it fails return typeerror
+    let obj = coerce_to_block(py, obj)?;
+    // 3. if the coercion produced BlockScope, return that
+    if let Ok(block_scope) = obj.extract(py) {
+        return Ok(block_scope);
+    }
+    // 4. otherwise return BlockScope([that])
+    return Ok(Py::new(
+        py,
+        BlockScope::new(py, Some(PyList::new(py, [obj])))?,
+    )?);
 }
 
 /// Typeclass for block elements within the document tree e.g. paragraphs, block scopes.
@@ -191,7 +317,7 @@ impl RawScopeBuilder {
     fn marker_func_name(py: Python<'_>) -> &PyString {
         intern!(py, "build_from_raw")
     }
-    /// Calls builder.build_from_raw(raw), could be inline or block 
+    /// Calls builder.build_from_raw(raw), could be inline or block
     pub fn call_build_from_raw<'py>(
         py: Python<'py>,
         builder: &PyTcRef<Self>,
@@ -220,14 +346,14 @@ impl PyTypeclass for RawScopeBuilder {
 pub struct UnescapedText(pub Py<PyString>);
 impl UnescapedText {
     pub fn new_rs(py: Python, s: &str) -> Self {
-        Self::new(PyString::new(py, s).into_py(py))
+        Self::new(PyString::new(py, s))
     }
 }
 #[pymethods]
 impl UnescapedText {
     #[new]
-    pub fn new(data: Py<PyString>) -> Self {
-        Self(data)
+    pub fn new(data: &PyString) -> Self {
+        Self(data.into())
     }
     #[getter]
     pub fn text(&self) -> PyResult<Py<PyString>> {
@@ -281,9 +407,9 @@ impl Sentence {
 impl Sentence {
     #[new]
     #[pyo3(signature = (list=None))]
-    pub fn new(py: Python, list: Option<Py<PyList>>) -> PyResult<Self> {
+    pub fn new(py: Python, list: Option<&PyList>) -> PyResult<Self> {
         match list {
-            Some(list) => Ok(Self(PyTypeclassList::from(py, list)?)),
+            Some(list) => Ok(Self(PyTypeclassList::from(list)?)),
             None => Ok(Self(PyTypeclassList::new(py))),
         }
     }
@@ -315,9 +441,9 @@ impl Paragraph {
 impl Paragraph {
     #[new]
     #[pyo3(signature = (list=None))]
-    pub fn new(py: Python, list: Option<Py<PyList>>) -> PyResult<Self> {
+    pub fn new(py: Python, list: Option<&PyList>) -> PyResult<Self> {
         match list {
-            Some(list) => Ok(Self(PyInstanceList::from(py, list)?)),
+            Some(list) => Ok(Self(PyInstanceList::from(list)?)),
             None => Ok(Self(PyInstanceList::new(py))),
         }
     }
@@ -354,9 +480,9 @@ impl BlockScope {
 impl BlockScope {
     #[new]
     #[pyo3(signature = (list=None))]
-    pub fn new(py: Python, list: Option<Py<PyList>>) -> PyResult<Self> {
+    pub fn new(py: Python, list: Option<&PyList>) -> PyResult<Self> {
         match list {
-            Some(list) => Ok(Self(PyTypeclassList::from(py, list)?)),
+            Some(list) => Ok(Self(PyTypeclassList::from(list)?)),
             None => Ok(Self(PyTypeclassList::new(py))),
         }
     }
@@ -393,9 +519,9 @@ impl InlineScope {
 impl InlineScope {
     #[new]
     #[pyo3(signature = (list=None))]
-    pub fn new(py: Python, list: Option<Py<PyList>>) -> PyResult<Self> {
+    pub fn new(py: Python, list: Option<&PyList>) -> PyResult<Self> {
         match list {
-            Some(list) => Ok(Self(PyTypeclassList::from(py, list)?)),
+            Some(list) => Ok(Self(PyTypeclassList::from(list)?)),
             None => Ok(Self(PyTypeclassList::new(py))),
         }
     }
@@ -416,3 +542,67 @@ impl InlineScope {
         self.0.append_checked(node)
     }
 }
+
+/// This is used for implicit structure.
+/// It's created by Python code just with the Header and Weight, and the Weight is used to implicitly open and close scopes
+/// 
+/// ```text
+/// [section("Blah")] # -> ImplicitStructure(header=Section(), weight=10)
+/// 
+/// # This paragraph is implicitly included as a child of ImplicitStructure().children
+/// some text
+/// 
+/// [subsection("Sub-Blah")] # -> ImplicitStructure(header=Subsection(), weight=20)
+/// # the weight is greater than for the Section -> the subsection is implicitly included as a child of section
+/// 
+/// Some other text in a subsection
+/// 
+/// [section("Blah 2")] # -> ImplicitStructure(header=Section(), weight=10)
+/// # the weight is <=subsection -> subsection 1.1 automatically ends
+/// # the weight is <=section -> section 1 automatically ends
+/// 
+/// Some other text in a second section
+/// ```
+/// 
+/// There can be weird interactions with manual scopes.
+/// It may be confusing for a renderer to find Section containing Manual Scope containing Subsection,
+/// having the Subsection not as a direct child of the Section.
+/// Thus we allow manual scopes to be opened and closed as usual, but we don't allow ImplicitStructures *within* them.
+/// Effectively ImplicitStructure must only exist at the "top level" - they may be enclosed by ImplicitStructures, but nothing else.
+/// [TODO] this means subfiles need to emit lists of blocks directly into the enclosing BlockScope,
+/// as otherwise you couldn't have an ImplicitStructures inside them at all - they'd all be implicitly contained by a BlockScope
+/// 
+/// An example error from mixing explicit and implicit scoping:
+/// ```text
+/// [section("One")]
+/// 
+/// this text is clearly in section 1
+/// 
+/// {
+///     [subsection("One.One")]
+/// 
+///     this text is clearly in subsection 1.1...
+/// } # Maybe this should be an error? but then it's only a problem if there's bare text underneath...
+/// 
+/// but where is this?? # This is really the error.
+/// 
+/// [subsection("One.Two")]
+/// 
+/// this text is clearly in subsection 1.2
+/// ```
+#[pyclass]
+#[derive(Debug,Clone)]
+pub struct ImplicitStructure {
+    pub header: Paragraph,
+    pub children: BlockScope,
+    pub weight: i64,
+}
+#[pymethods]
+impl ImplicitStructure {
+    #[getter]
+    pub fn is_block(&self) -> bool {
+        true
+    }
+}
+
+// 

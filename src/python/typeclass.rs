@@ -13,7 +13,7 @@ impl<T: PyClass> PyTypeclass for PyInstanceTypeclass<T> {
     const NAME: &'static str = T::NAME;
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
-        obj.is_instance_of::<T>()
+        Ok(obj.is_instance_of::<T>())
     }
 }
 
@@ -36,6 +36,10 @@ impl<T: PyTypeclass> PyTcRef<T> {
     pub fn as_ref<'py>(&'py self, py: Python<'py>) -> &'py PyAny {
         self.0.as_ref(py)
     }
+
+    pub fn unbox(self) -> PyObject {
+        self.0
+    }
 }
 
 /// Wrapper for [PyList] which provides the [append_checked] function,
@@ -48,8 +52,8 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
     }
 
     /// Given a pre-existing Python list, pass in
-    pub fn from(py: Python, list: Py<PyList>) -> PyResult<Self> {
-        for obj in list.as_ref(py) {
+    pub fn from(list: &PyList) -> PyResult<Self> {
+        for obj in list {
             if !T::fits_typeclass(obj)? {
                 let obj_repr = obj.repr()?;
                 return Err(PyTypeError::new_err(format!(
@@ -59,7 +63,7 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
                 )));
             }
         }
-        Ok(Self(list, PhantomData::default()))
+        Ok(Self(list.into(), PhantomData::default()))
     }
 
     pub fn append_checked(&self, val: &PyAny) -> PyResult<()> {

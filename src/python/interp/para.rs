@@ -399,7 +399,7 @@ impl InterpParaState {
                     (
                         S::SentenceStart,
                         (
-                            Some(InterpBlockTransition::EndParagraphAndPopBlock(
+                            Some(InterpBlockTransition::EndParagraphAndCloseManualBlockScope(
                                 scope_end_span,
                             )),
                             None,
@@ -556,15 +556,15 @@ impl InterpParaState {
                         use EvalBracketResult::*;
 
                         let inl_transition = match res {
-                            BlockBuilder(_) => {
+                            NeededBlockBuilder(_) => {
                                 return Err(InterpError::BlockOwnerCodeMidPara { code_span })
                             }
                             Block(_) => {
                                 return Err(InterpError::BlockCodeMidPara { code_span });
                             }
-                            InlineBuilder(i) => PushInlineScope(Some(i), code_span),
-                            RawBuilder(r, n_hashes) => StartRawScope(Some(r), code_span, n_hashes),
-                            // TODO If the object is not already Inline, check if it's Block or BlockScopeBuilder or InlineScopeBuilder or RawScopeBuilder, stringify it, then put in an Unescaped box?
+                            NeededInlineBuilder(i) => PushInlineScope(Some(i), code_span),
+                            NeededRawBuilder(r, n_hashes) => StartRawScope(Some(r), code_span, n_hashes),
+                            // This includes coerced objects - e.g. eval bracket returning a string gets wrapped in UnescapedText automatically
                             Inline(i) => PushInlineContent(InlineNodeToCreate::PythonObject(i)),
                             PyNone => EmitNone,
                         };
