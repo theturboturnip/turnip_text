@@ -15,13 +15,15 @@ class RawMarkdown(Inline):
 class MarkdownRenderer(Renderer):
     html_mode_stack: List[bool]
 
-    def __init__(self, plugins: List[Plugin["MarkdownRenderer"]], start_in_html_mode: bool=False) -> None:
+    def __init__(self, plugins: List[Plugin["MarkdownRenderer"]], html_mode_only: bool=False) -> None:
         super().__init__(plugins)
         self.emit_dispatch.add_custom_inline(
             RawMarkdown, lambda r, ctx, raw: r._emit_raw_markdown(raw)
         )
-        # We're initially in Markdown mode, not HTML mode
-        self.html_mode_stack = [start_in_html_mode]
+        # Once you're in HTML mode, you can't drop down to Markdown mode again.
+        # If they asked for HTML mode only, just make that the first entry in the stack.
+        # If they didn't, we start in Markdown mode.
+        self.html_mode_stack = [html_mode_only]
 
     def _emit_raw_markdown(self, r: RawMarkdown) -> None:
         self.emit_raw(r.md)
