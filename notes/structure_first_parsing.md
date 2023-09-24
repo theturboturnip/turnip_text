@@ -13,6 +13,8 @@ The formatting pass is renderer independent and isn't just passive "for this ver
     - TODO this can be converted to ASCII and whatever format certain things want thru "
   - Need to consider how e.g. appendices interact with this.
   - Need to consider how to define what the top-level is. Already have issues trying to reuse renderers/plugins with "are we using chapters or not?", and it would be nice to be able to say "please publish this sub-section as a standalone markdown file" while rebinding sub-section -> top-level.
+  - Could do something by making subfiles only able to declare sections above a certain weight? "I'm inside a thing of weight blah, so the subfile can't break out of that"...
+  - Maybe if the weights were integers - not 10 apart, but 1 apart - then you just subtract from the weight if you then want to push it up. Hell, you could even look at the min/max weight in any given document before the counting phase and use that to correct any structures.
 - We want metadata
   - This isn't necessary for structure-first but we should really have it.
 - We need a counter system
@@ -34,3 +36,6 @@ The formatting pass is renderer independent and isn't just passive "for this ver
   - DocParser - collates a set of plugins, the counter hierarchy, and how counters should be translated into labels
   - RendererPlugins - register visitor functions for the counting phase and renderer functions for the renderer phase.
     - the visitor function is used for e.g. gathering a final ordered list of figures/todo items/sections, and associating a chapter heading with the counter it needs. This gathers INTERNAL state, and the INTERNAL state necessary changes depending on which renderer you use!
+    - TODO are visitor functions on entry or exit?
+    - For now, entry only.
+  - TODO at some point do validity regexp
