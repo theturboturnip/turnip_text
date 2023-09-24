@@ -5,7 +5,7 @@ use crate::{
     python::{
         interop::{
             coerce_to_inline_pytcref, Block, BlockScopeBuilder, Inline, InlineScopeBuilder,
-            RawScopeBuilder,
+            RawScopeBuilder, DocSegment,
         },
         typeclass::PyTcRef,
     },
@@ -18,7 +18,7 @@ pub enum EvalBracketContext {
     NeedBlockBuilder,
     NeedInlineBuilder,
     NeedRawBuilder { n_hashes: usize },
-    WantBlockOrInlineOrNone,
+    WantDocSegmentOrBlockOrInlineOrNone,
 }
 pub enum EvalBracketResult {
     /// A BlockScopeBuilder which was Needed because the final token was a [TTToken::CodeCloseOwningBlock]
@@ -27,6 +27,8 @@ pub enum EvalBracketResult {
     NeededInlineBuilder(PyTcRef<InlineScopeBuilder>),
     /// A RawScopeBuilder which was Needed because the final token was a [TTToken::CodeCloseOwningRaw]
     NeededRawBuilder(PyTcRef<RawScopeBuilder>, usize),
+    /// An object implementing DocSegment
+    DocSegment(PyTcRef<DocSegment>),
     /// An object implementing Block
     Block(PyTcRef<Block>),
     /// An object implementing Inline, or which was coerced to something implementing Inline
@@ -80,7 +82,7 @@ impl EvalBracketResult {
             EvalBracketContext::NeedRawBuilder { n_hashes } => {
                 EvalBracketResult::NeededRawBuilder(PyTcRef::of(raw_res)?, n_hashes)
             }
-            EvalBracketContext::WantBlockOrInlineOrNone => {
+            EvalBracketContext::WantDocSegmentOrBlockOrInlineOrNone => {
                 if raw_res.is_none() {
                     EvalBracketResult::PyNone
                 } else {
@@ -104,7 +106,9 @@ impl EvalBracketResult {
                     // If we always coerce to inline, then the wrapping in Paragraph and Sentence happens naturally in the interpreter.
                     // => We check if it's a block, and if it isn't we try to coerce to inline.
 
-                    if let Ok(blk) = PyTcRef::of(raw_res) {
+                    if let Ok(doc_seg) = PyTcRef::of(raw_res) {
+                        EvalBracketResult::DocSegment(doc_seg)
+                    } else if let Ok(blk) = PyTcRef::of(raw_res) {
                         EvalBracketResult::Block(blk)
                     } else {
                         EvalBracketResult::Inline(coerce_to_inline_pytcref(py, raw_res)?)
@@ -116,12 +120,12 @@ impl EvalBracketResult {
     }
 }
 
-/// If the code is closed, evaluates the result and checks it matches the type of code close:
+/// When eval-brackets are closed, evaluates the result and checks it matches the type of close:
 /// - [TTToken::CodeCloseOwningBlock] -> block builder
 /// - [TTToken::CodeCloseOwningInline] -> inline builder
 /// - [TTToken::CodeCloseOwningRaw] -> raw builder
 /// - [TTToken::CodeClose] -> block | inline | none
-pub fn handle_code_mode(
+pub fn eval_brackets(
     data: &str,
     tok: TTToken,
     code: &mut String,
@@ -139,7 +143,7 @@ pub fn handle_code_mode(
                     start: code_start.start,
                     end: close_span.end,
                 },
-                EvalBracketContext::WantBlockOrInlineOrNone,
+                EvalBracketContext::WantDocSegmentOrBlockOrInlineOrNone,
             )
         }
         TTToken::CodeCloseOwningBlock(close_span, n_close_brackets)

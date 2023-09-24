@@ -20,6 +20,7 @@ from turnip_text import (
     Block,
     BlockScope,
     BlockScopeBuilder,
+    DocSegment,
     Inline,
     InlineScope,
     InlineScopeBuilder,
@@ -64,9 +65,13 @@ class CiteAuthor(Inline):
     citekey: str
 
 
-# TODO Bibliography needs to have a level-0 heading
-class Bibliography(Block):
-    pass
+class Bibliography(DocSegment):
+    def __init__(self) -> None:
+        super().__init__(weight=0)
+
+    @property
+    def header(self) -> Sequence[Block | Inline]:
+        return (UnescapedText("Bibliography"),)
 
 
 @dataclass(frozen=True)
@@ -114,14 +119,15 @@ class CitationDocPlugin(DocPlugin):
     _has_citations: bool = False
     _has_bib: bool = False
 
-    def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
+    def _doc_nodes(self) -> Sequence[type[Block] | type[Inline] | type[DocSegment]]:
         return (
             Citation,
             CiteAuthor,
             Bibliography,
         )
 
-    def _mutate_document(self, doc: DocState, fmt: FormatContext, block: BlockScope):
+    def _mutate_document(self, doc: DocState, fmt: FormatContext, toplevel_contents: BlockScope, toplevel_segments: List[DocSegment]):
+        # TODO AAAAAAA FUCK List[DocSegment] DOESNT HAVE CHECKING YOU DUMBASS
         if not self._has_bib:
             raise NotImplementedError("Need to insert a bibliography into the document")
 
@@ -138,7 +144,7 @@ class CitationDocPlugin(DocPlugin):
     
     @property
     @stateful
-    def bibliography(self, doc: DocState) -> Bibliography:
+    def bibliography(self, doc: DocState) -> DocSegment:
         self._has_bib = True
         return Bibliography()
 

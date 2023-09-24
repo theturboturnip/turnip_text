@@ -6,6 +6,8 @@ from typing import (
     List,
     Optional,
     Protocol,
+    Sequence,
+    Tuple,
     Union,
     runtime_checkable,
 )
@@ -19,29 +21,49 @@ class Inline(Protocol):
 class Block(Protocol):
     is_block: bool = True
 
-class BlockScopeBuilder(abc.ABC):
-    @abc.abstractmethod
-    def build_from_blocks(self, bs: BlockScope) -> Optional[Block]:
+
+class DocSegment(abc.ABC):
+    is_doc_segment: bool = True
+
+    def __init__(self, weight: int) -> None:
         ...
 
-    def __matmul__(self, maybe_b: 'CoercibleToBlockScope') -> Optional[Block]:
+    @abc.abstractproperty
+    def header(self) -> Sequence[Block | Inline]: ...
+    @property
+    def weight(self) -> int: ...
+    @property
+    def blocks(self) -> BlockScope: ...
+    @property
+    def subsegments(self) -> Iterator["DocSegment"]: ...
+
+    def push_subsegment(self, subsegment: "DocSegment"): ...
+
+class BlockScopeBuilder(abc.ABC):
+    @abc.abstractmethod
+    def build_from_blocks(self, bs: BlockScope) -> Optional[Block | DocSegment]:
+        ...
+
+    def __matmul__(self, maybe_b: 'CoercibleToBlockScope') -> Optional[Block | DocSegment]:
         bs = coerce_to_block_scope(maybe_b)
         return self.build_from_blocks(bs)
 
 
 class InlineScopeBuilder(abc.ABC):
     @abc.abstractmethod
-    def build_from_inlines(self, inls: InlineScope) -> Inline:
+    def build_from_inlines(self, inls: InlineScope) -> Inline | DocSegment:
         ...
 
-    def __matmul__(self, maybe_inls: 'CoercibleToInlineScope') -> Inline:
+    def __matmul__(self, maybe_inls: 'CoercibleToInlineScope') -> Inline | DocSegment:
         inls = coerce_to_inline_scope(maybe_inls)
         return self.build_from_inlines(inls)
-    
+
+
 @runtime_checkable
 class RawScopeBuilder(Protocol):
     def build_from_raw(self, raw: str) -> Union[Inline, Block]:
         ...
+
 
 # The types that can be coerced into an Inline, in the order they are checked and attempted.
 # List[Inline] is coerced by wrapping it in an InlineScope
@@ -63,8 +85,10 @@ CoercibleToBlock = Union[
 # The types that can be coerced into a BlockScope, in the order they are checked and attempted
 CoercibleToBlockScope = Union[BlockScope, CoercibleToBlock]
 
-def parse_file_native(path: str, locals: Dict[str, Any]) -> BlockScope: ...
-def parse_str_native(data: str, locals: Dict[str, Any]) -> BlockScope: ...
+# Parsers return a BlockScope of the top-level content, then a DocSegment tree
+def parse_file_native(path: str, locals: Dict[str, Any]) -> Tuple[BlockScope, List[DocSegment]]: ...
+def parse_str_native(data: str, locals: Dict[str, Any]) -> Tuple[BlockScope, List[DocSegment]]: ...
+
 def coerce_to_inline(obj: CoercibleToInline) -> Inline: ...
 def coerce_to_inline_scope(obj: CoercibleToInlineScope) -> InlineScope: ...
 def coerce_to_block(obj: CoercibleToBlock) -> Block: ...

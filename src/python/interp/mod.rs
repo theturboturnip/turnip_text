@@ -1,42 +1,58 @@
 #![allow(dead_code)]
 
-use pyo3::{prelude::*, types::PyDict};
+use pyo3::{prelude::*, types::{PyDict, PyList}};
 use thiserror::Error;
 
 use crate::{
     lexer::{Escapable, TTToken},
-    python::{interop::*, typeclass::PyTcRef},
+    python::{interop::*, typeclass::{PyTcRef, PyTcUnionRef}},
     util::ParseSpan,
 };
 
 mod para;
 use self::para::{InterpParaState, InterpParaTransition};
 
+mod eval_bracket;
+use eval_bracket::{EvalBracketResult, eval_brackets};
+
+use super::typeclass::PyTypeclassList;
+
 pub struct InterpState<'a> {
     /// FSM state
     block_state: InterpBlockState,
     /// Overrides InterpBlockState and raw_state - if Some(state), we are in "comment mode" and all other state machines are paused
     comment_state: Option<InterpCommentState>,
-    /// Stack of block scopes
+    /// Top level content of the document
+    /// All text leading up to the first DocSegment
+    toplevel_content: Py<BlockScope>,
+    /// The top level segments
+    toplevel_segments: PyTypeclassList<DocSegment>,
+    /// The stack of DocSegments leading up to the current doc segment.
+    segment_stack: Vec<PyTcRef<DocSegment>>,
+    /// Stack of block scopes. Either part of toplevel_content if segment_stack is empty, or part of segment_stack[-1].blocks otherwise.
     block_stack: Vec<InterpManualBlockScopeState>,
-    /// Root of the document
-    root: Py<BlockScope>,
     /// Raw text data
     data: &'a str,
 }
 impl<'a> InterpState<'a> {
     pub fn new<'interp>(py: Python<'interp>, data: &'a str) -> InterpResult<Self> {
-        let root = Py::new(py, BlockScope::new_empty(py)).err_as_interp_internal(py)?;
+        let toplevel_content = Py::new(py, BlockScope::new_empty(py)).err_as_interp_internal(py)?;
+        let toplevel_segments = PyTypeclassList::new(py);
         Ok(Self {
             block_state: InterpBlockState::ReadyForNewBlock,
             comment_state: None,
+            toplevel_content,
+            toplevel_segments,
+            segment_stack: vec![],
             block_stack: vec![],
-            root,
             data,
         })
     }
-    pub fn root(&self) -> Py<BlockScope> {
-        self.root.clone()
+    pub fn toplevel(&self, py: Python<'_>) -> (Py<BlockScope>, Py<PyList>) {
+        (
+            self.toplevel_content.clone(),
+            self.toplevel_segments.list(py).into()
+        )
     }
 }
 
@@ -78,12 +94,14 @@ struct InterpManualBlockScopeState {
     scope_start: ParseSpan,
 }
 impl InterpManualBlockScopeState {
-    fn build_to_block(self, py: Python, scope_end: ParseSpan) -> InterpResult<Option<PyTcRef<Block>>> {
+    fn build_to_block(self, py: Python, scope_end: ParseSpan) -> InterpResult<Option<PyTcUnionRef<Block, DocSegment>>> {
         let scope = ParseSpan::new(self.scope_start.start, scope_end.end);
         match self.builder {
             Some(builder) => BlockScopeBuilder::call_build_from_blocks(py, builder, self.children)
                 .err_as_interp(py, scope),
-            None => Ok(Some(PyTcRef::of(self.children.as_ref(py)).expect("Internal error: InterpBlockScopeState::children, a BlockScope, somehow doesn't fit the Block typeclass"))),
+            None => Ok(Some(
+                PyTcUnionRef::of(self.children.as_ref(py)).expect("Internal error: InterpBlockScopeState::children, a BlockScope, somehow doesn't fit the Block typeclass")
+            )),
         }
     }
 }
@@ -124,6 +142,8 @@ pub(crate) enum InterpBlockTransition {
     /// - [InterpBlockState::WritingPara] -> [InterpBlockState::ReadyForNewBlock]
     EndParagraphAndCloseManualBlockScope(ParseSpan),
 
+    /// On encountering a DocSegment emitted by code at the very start of a paragraph
+
     /// On encountering a block scope owner (i.e. a BlockScopeOpen optionally preceded by a Python scope owner),
     /// push a block scope onto the current stack
     ///
@@ -137,7 +157,13 @@ pub(crate) enum InterpBlockTransition {
     /// - [InterpBlockState::BuildingRawText] -> [InterpBlockState::ReadyForNewBlock]
     PushBlock(PyTcRef<Block>),
 
-    /// On encountering a scope close, pop the current block from the scope
+    /// If an eval-bracket emits a DocSegment directly, push it onto the segment stack
+    /// 
+    /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::ReadyForNewBlock]
+    PushDocSegment(PyTcRef<DocSegment>),
+
+    /// On encountering a scope close, pop the current block from the scope.
+    /// May trigger a BlockScopeBuilder, which may then emit a block or a DocSegment directly into the tree.
     ///
     /// - [InterpBlockState::ReadyForNewBlock] -> [InterpBlockState::ReadyForNewBlock]
     CloseManualBlockScope(ParseSpan),
@@ -198,6 +224,8 @@ pub enum InterpError {
     BlockOwnerCodeMidPara { code_span: ParseSpan },
     #[error("A Python `Block` was returned by code inside a paragraph")]
     BlockCodeMidPara { code_span: ParseSpan },
+    #[error("A Python `DocSegment` was returned by code inside a paragraph")]
+    DocSegmentCodeMidPara { code_span: ParseSpan },
     #[error("A Python `Block` was returned by a RawScopeBuilder inside a paragraph")]
     BlockCodeFromRawScopeMidPara { code_span: ParseSpan },
     #[error("Inline scope contained sentence break")]
@@ -382,7 +410,7 @@ impl<'a> InterpState<'a> {
                 code_start,
                 expected_close_len,
             } => {
-                match handle_code_mode(
+                match eval_brackets(
                     self.data,
                     tok,
                     code,
@@ -400,6 +428,7 @@ impl<'a> InterpState<'a> {
                                 InterpParaTransition::PushInlineScope(Some(i), code_span),
                             ),
                             NeededRawBuilder(r, n_hashes) => OpenRawScope(r, code_span, n_hashes),
+                            DocSegment(s) => PushDocSegment(s),
                             Block(b) => PushBlock(b),
                             Inline(i) => {
                                 StartParagraph(InterpParaTransition::PushInlineContent(
@@ -420,13 +449,21 @@ impl<'a> InterpState<'a> {
                     // Make sure the RawScopeBuilder produces something that's either Inline or Block
                     let to_emit = RawScopeBuilder::call_build_from_raw(py, builder, text).err_as_interp(py, *builder_span)?;
                     
-                    let to_emit_as_py = to_emit.as_ref(py);
-                    if let Ok(block) = PyTcRef::of(to_emit_as_py) {
-                        (Some(PushBlock(block)), None)
-                    } else if let Ok(inl) = PyTcRef::of(to_emit_as_py) {
-                        (Some(StartParagraph(InterpParaTransition::PushInlineContent(InlineNodeToCreate::PythonObject(inl)))), None)
-                    } else {
-                        unreachable!()
+                    match to_emit {
+                        PyTcUnionRef::A(inl) => (
+                            Some(
+                                StartParagraph(
+                                    InterpParaTransition::PushInlineContent(
+                                        InlineNodeToCreate::PythonObject(inl)
+                                    )
+                                )
+                            ),
+                            None
+                        ),
+                        PyTcUnionRef::B(block) => (
+                            Some(PushBlock(block)),
+                            None
+                        )
                     }
                 }
                 _ => {
@@ -491,7 +528,12 @@ impl<'a> InterpState<'a> {
                     match popped_scope {
                         Some(popped_scope) => {
                             match popped_scope.build_to_block(py, scope_close_span)? {
-                                Some(block) => self.push_to_topmost_block(py, block.as_ref(py))?,
+                                Some(PyTcUnionRef::A(block)) => {
+                                    self.push_to_topmost_block(py, block.as_ref(py))?
+                                },
+                                Some(PyTcUnionRef::B(subsegment)) => {
+                                    self.push_segment(py, subsegment)?
+                                },
                                 None => {}
                             }
                         }
@@ -505,6 +547,14 @@ impl<'a> InterpState<'a> {
                     T::PushBlock(b)
                 ) => {
                     self.push_to_topmost_block(py, b.as_ref(py))?;
+                    S::ReadyForNewBlock
+                }
+
+                (
+                    S::BuildingCode { .. },
+                    T::PushDocSegment(segment)
+                ) => {
+                    self.push_segment(py, segment)?;
                     S::ReadyForNewBlock
                 }
 
@@ -538,7 +588,12 @@ impl<'a> InterpState<'a> {
                     match popped_scope {
                         Some(popped_scope) => {
                             match popped_scope.build_to_block(py, scope_close_span)? {
-                                Some(block) => self.push_to_topmost_block(py, block.as_ref(py))?,
+                                Some(PyTcUnionRef::A(block)) => {
+                                    self.push_to_topmost_block(py, block.as_ref(py))?
+                                },
+                                Some(PyTcUnionRef::B(subsegment)) => {
+                                    self.push_segment(py, subsegment)?
+                                },
                                 None => {}
                             }
                         }
@@ -576,17 +631,53 @@ impl<'a> InterpState<'a> {
         Ok(())
     }
 
+    fn push_segment(&mut self, py: Python, subsegment: PyTcRef<DocSegment>) -> InterpResult<()> {
+        if !self.block_stack.is_empty() {
+            return Err() // TODO can't push a new segment with not-closed braces pending
+        }
+
+        let subsegment_weight = DocSegment::get_weight(py, &subsegment).err_as_interp_internal(py)?;
+
+        let mut curr_toplevel_weight = match self.segment_stack.last() {
+            Some(segment) => DocSegment::get_weight(py, segment).err_as_interp_internal(py)?,
+            None => i64::MIN
+        };
+        while curr_toplevel_weight >= subsegment_weight {
+            // Pop from self.segment_stack until the toplevel weight < subsegment_weight
+            self.segment_stack.pop();
+            curr_toplevel_weight = match self.segment_stack.last() {
+                Some(segment) => DocSegment::get_weight(py, segment).err_as_interp_internal(py)?,
+                None => i64::MIN
+            };
+        }
+
+        // We know the thing at the top of the segment stack has a weight < subsegment_weight
+        match self.segment_stack.last() {
+            None => {
+                self.segment_stack.push(subsegment);
+                Ok(())
+            }
+            Some(segment) => {
+                DocSegment::push_subsegment(py, segment, subsegment).err_as_interp_internal(py)
+            }
+        }
+    }
+
     fn push_to_topmost_block(&self, py: Python, block: &PyAny) -> InterpResult<()> {
         {
+            // Figure out which block is actually the topmost block.
+            // If the block stack has elements, add it to the topmost element.
+            // If the block stack is empty, and there are elements on the DocSegment stack, take the topmost element of the DocSegment stack
+            // If the block stack is empty and the segment stack is empty add to toplevel content.
             let child_list_ref = match self.block_stack.last() {
                 Some(b) => &b.children,
-                None => &self.root,
+                None => match self.segment_stack.last() {
+                    Some(segment) => &DocSegment::blocks_of(py, segment).err_as_interp_internal(py)?,
+                    None => &self.toplevel_content
+                }
             };
             child_list_ref.borrow_mut(py).push_block(block)
         }
         .err_as_interp_internal(py)
     }
 }
-
-mod eval_bracket;
-use eval_bracket::{EvalBracketResult, handle_code_mode};

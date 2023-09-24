@@ -4,8 +4,8 @@ use crate::{
     lexer::{Escapable, TTToken},
     python::{
         interop::*,
-        interp::{handle_code_mode, EvalBracketResult, InterpError, MapInterpResult},
-        typeclass::PyTcRef,
+        interp::{eval_brackets, EvalBracketResult, InterpError, MapInterpResult},
+        typeclass::{PyTcRef, PyTcUnionRef},
     },
     util::ParseSpan,
 };
@@ -542,7 +542,7 @@ impl InterpParaState {
                 code_start,
                 expected_n_hashes,
             } => {
-                match handle_code_mode(
+                match eval_brackets(
                     data,
                     tok,
                     code,
@@ -558,6 +558,11 @@ impl InterpParaState {
                         let inl_transition = match res {
                             NeededBlockBuilder(_) => {
                                 return Err(InterpError::BlockOwnerCodeMidPara { code_span })
+                            }
+                            // This is inline code because we're already deep into a paragraph at this point.
+                            // Definitely can't emit a segment here.
+                            DocSegment(_) => {
+                                return Err(InterpError::DocSegmentCodeMidPara { code_span });
                             }
                             Block(_) => {
                                 return Err(InterpError::BlockCodeMidPara { code_span });
@@ -583,13 +588,15 @@ impl InterpParaState {
                     Some(builder) => {
                         let to_emit = RawScopeBuilder::call_build_from_raw(py, builder, text).err_as_interp(py, *raw_start)?;
                     
-                        let to_emit_as_py = to_emit.as_ref(py);
-                        if let Ok(_) = PyTcRef::<Block>::of(to_emit_as_py) {
-                            return Err(InterpError::BlockCodeFromRawScopeMidPara{ code_span: *raw_start })
-                        } else if let Ok(inl) = PyTcRef::of(to_emit_as_py) {
-                            Some(PushInlineContent(InlineNodeToCreate::PythonObject(inl)))
-                        } else {
-                            unreachable!()
+                        match to_emit {
+                            PyTcUnionRef::A(inl) => Some(
+                                PushInlineContent(
+                                    InlineNodeToCreate::PythonObject(inl)
+                                )
+                            ),
+                            PyTcUnionRef::B(block) => return Err(
+                                InterpError::BlockCodeFromRawScopeMidPara{ code_span: *raw_start }
+                            ),
                         }
                     },
                     None => Some(

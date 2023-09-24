@@ -1,7 +1,7 @@
 use annotate_snippets::{display_list::DisplayList, snippet::*};
 use anyhow::bail;
 use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
-use pyo3::{prelude::*, types::PyDict};
+use pyo3::{prelude::*, types::{PyDict, PyList}};
 
 use crate::{
     lexer::{LexError, LexPosn, LexToken, Unit, units_to_tokens},
@@ -278,11 +278,11 @@ fn display_cli_feedback<T: GivesCliFeedback>(data: &str, err: &T) {
     let dl = DisplayList::from(err.get_snippet(&data));
     eprintln!("{}", dl);
 }
-pub fn parse_file(py: Python, globals: &PyDict, path: &std::path::Path) -> anyhow::Result<Py<BlockScope>> {
+pub fn parse_file(py: Python, globals: &PyDict, path: &std::path::Path) -> anyhow::Result<(Py<BlockScope>, Py<PyList>)> {
     let data = std::fs::read_to_string(path)?;
     parse_str(py, globals, &data)
 }
-pub fn parse_str(py: Python, globals: &PyDict, data: &str) -> anyhow::Result<Py<BlockScope>> {
+pub fn parse_str(py: Python, globals: &PyDict, data: &str) -> anyhow::Result<(Py<BlockScope>, Py<PyList>)> {
     let mut units = vec![];
     let lexer = LexerOfStr::<LexPosn, LexToken, LexError>::new(data);
 
@@ -299,7 +299,7 @@ pub fn parse_str(py: Python, globals: &PyDict, data: &str) -> anyhow::Result<Py<
     let tokens = units_to_tokens(units);
 
     match interp_data(py, globals, &data, tokens.into_iter()) {
-        Ok(root) => Ok(root),
+        Ok(toplevel) => Ok(toplevel),
         Err(err) => {
             display_cli_feedback(&data, &err);
             bail!(err)

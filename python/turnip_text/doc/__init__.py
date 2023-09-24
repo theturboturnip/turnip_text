@@ -22,7 +22,7 @@ from typing import (
     Union,
 )
 
-from turnip_text import Block, BlockScope, Inline, parse_file_native
+from turnip_text import Block, BlockScope, DocSegment, Inline, parse_file_native
 
 __all__ = [
     "Document",
@@ -48,6 +48,7 @@ class Document:
     counted_anchor_kinds: Set[str]
     fmt: "FormatContext"
     block: BlockScope
+    segments: List[DocSegment]
 
 
 def parse(path: Union[str, bytes, PathLike], plugins: Sequence["DocPlugin"]) -> Document:
@@ -60,11 +61,11 @@ def parse(path: Union[str, bytes, PathLike], plugins: Sequence["DocPlugin"]) -> 
         counters.update(p._countables())
 
     # First pass: parsing
-    block = doc.parse_file_to_block(path)
+    block, segments = doc.parse_file_to_block(path)
 
     # Second pass: modifying the document
     for p in plugins:
-        p._mutate_document(doc, fmt, block)
+        p._mutate_document(doc, fmt, block, segments)
 
     # Now freeze the document so further passes don't mutate it.
     doc._frozen = True
@@ -73,7 +74,8 @@ def parse(path: Union[str, bytes, PathLike], plugins: Sequence["DocPlugin"]) -> 
         exported_nodes,
         counters,
         fmt,
-        block
+        block,
+        segments
     )
 
 class DocPlugin:
@@ -106,9 +108,9 @@ class DocPlugin:
         """
         return []
     
-    def _mutate_document(self, doc: "DocState", fmt: "FormatContext", block: BlockScope):
+    def _mutate_document(self, doc: "DocState", fmt: "FormatContext", toplevel_contents: BlockScope, toplevel_segments: List[DocSegment]):
         """
-        TODO need to figure the fuck out how you add stuff to a document with BlockScope!
+        Mutate the toplevel_contents or toplevel_segments to add things as you please.
         """
         ...
 
@@ -337,7 +339,7 @@ class DocState:
         self.doc = self
         self.fmt = fmt
     
-    def parse_file_to_block(self, path: Union[str, bytes, PathLike]) -> BlockScope:
+    def parse_file_to_block(self, path: Union[str, bytes, PathLike]) -> Tuple[BlockScope, List[DocSegment]]:
         return parse_file_native(str(path), self.__dict__)
 
     def __getattr__(self, name: str) -> Any:

@@ -7,7 +7,7 @@ use pyo3::{
     types::{PyDict, PyFloat, PyIterator, PyList, PyLong, PyString},
 };
 
-use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
+use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList, PyTcUnionRef};
 
 #[pymodule]
 #[pyo3(name = "_native")]
@@ -36,7 +36,7 @@ fn parse_file<'py>(
     py: Python<'py>,
     path: &str,
     locals: Option<&PyDict>,
-) -> PyResult<Py<BlockScope>> {
+) -> PyResult<(Py<BlockScope>, Py<PyList>)> {
     // crate::cli::parse_file already surfaces the error to the user - we can just return a generic error
     crate::cli::parse_file(
         py,
@@ -51,7 +51,7 @@ fn parse_str<'py>(
     py: Python<'py>,
     data: &str,
     locals: Option<&PyDict>,
-) -> PyResult<Py<BlockScope>> {
+) -> PyResult<(Py<BlockScope>, Py<PyList>)> {
     // crate::cli::parse_str already surfaces the error to the user - we can just return a generic error
     crate::cli::parse_str(py, locals.unwrap_or_else(|| PyDict::new(py)), data)
         .map_err(|_| PyRuntimeError::new_err("parse failed, see stdout"))
@@ -222,21 +222,6 @@ impl PyTypeclass for Inline {
     }
 }
 
-/// Typeclass used internally for things that can be emitted directly from eval-brackets:
-/// i.e. an Inline or a Block.
-/// Must be one or the other - doesn't make sense for something to be both, because it doesn't know what context it would be rendered in.
-#[derive(Debug, Clone)]
-pub struct InlineXorBlock {}
-impl PyTypeclass for InlineXorBlock {
-    const NAME: &'static str = "Inline XOR Block (not both)";
-
-    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
-        let is_inline = Inline::fits_typeclass(obj)?;
-        let is_block = Block::fits_typeclass(obj)?;
-        Ok(is_inline ^ is_block)
-    }
-}
-
 /// Typeclass representing the "builder" of a block scope, which may modify how that scope is rendered.
 ///
 /// Requires a method
@@ -253,7 +238,7 @@ impl BlockScopeBuilder {
         py: Python<'py>,
         builder: PyTcRef<Self>,
         blocks: Py<BlockScope>,
-    ) -> PyResult<Option<PyTcRef<Block>>> {
+    ) -> PyResult<Option<PyTcUnionRef<Block, DocSegment>>> {
         let output = builder
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
@@ -261,7 +246,7 @@ impl BlockScopeBuilder {
         if output.is_none() {
             Ok(None)
         } else {
-            Ok(Some(PyTcRef::of(output)?))
+            Ok(Some(PyTcUnionRef::of(output)?))
         }
     }
 }
@@ -322,12 +307,12 @@ impl RawScopeBuilder {
         py: Python<'py>,
         builder: &PyTcRef<Self>,
         raw: &String,
-    ) -> PyResult<PyTcRef<InlineXorBlock>> {
+    ) -> PyResult<PyTcUnionRef<Inline, Block>> {
         let output = builder
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
             .call1((raw,))?;
-        PyTcRef::of(output)
+        PyTcUnionRef::of(output)
     }
 }
 impl PyTypeclass for RawScopeBuilder {
@@ -547,17 +532,17 @@ impl InlineScope {
 /// It's created by Python code just with the Header and Weight, and the Weight is used to implicitly open and close scopes
 /// 
 /// ```text
-/// [section("Blah")] # -> ImplicitStructure(header=Section(), weight=10)
+/// [heading("Blah")] # -> DocSegment(weight=0)
 /// 
-/// # This paragraph is implicitly included as a child of ImplicitStructure().children
+/// # This paragraph is implicitly included as a child of DocSegment().text
 /// some text
 /// 
-/// [subsection("Sub-Blah")] # -> ImplicitStructure(header=Subsection(), weight=20)
-/// # the weight is greater than for the Section -> the subsection is implicitly included as a child of section
+/// [subheading("Sub-Blah")] # -> DocSegment(weight=1)
+/// # the weight is greater than for the Section -> the subsection is implicitly included as a subsegment of section
 /// 
 /// Some other text in a subsection
 /// 
-/// [section("Blah 2")] # -> ImplicitStructure(header=Section(), weight=10)
+/// [heading("Blah 2")] # -> DocSegment(weight=0)
 /// # the weight is <=subsection -> subsection 1.1 automatically ends
 /// # the weight is <=section -> section 1 automatically ends
 /// 
@@ -567,10 +552,10 @@ impl InlineScope {
 /// There can be weird interactions with manual scopes.
 /// It may be confusing for a renderer to find Section containing Manual Scope containing Subsection,
 /// having the Subsection not as a direct child of the Section.
-/// Thus we allow manual scopes to be opened and closed as usual, but we don't allow ImplicitStructures *within* them.
-/// Effectively ImplicitStructure must only exist at the "top level" - they may be enclosed by ImplicitStructures, but nothing else.
-/// [TODO] this means subfiles need to emit lists of blocks directly into the enclosing BlockScope,
-/// as otherwise you couldn't have an ImplicitStructures inside them at all - they'd all be implicitly contained by a BlockScope
+/// Thus we allow manual scopes to be opened and closed as usual, but we don't allow DocSegments *within* them.
+/// Effectively DocSegments must only exist at the "top level" - they may be enclosed by DocSegments directly, but nothing else.
+/// TODO this means subfiles need to emit lists of blocks directly into the enclosing BlockScope,
+/// as otherwise you couldn't have an DocSegments inside them at all - they'd all be implicitly contained by a BlockScope
 /// 
 /// An example error from mixing explicit and implicit scoping:
 /// ```text
@@ -590,19 +575,33 @@ impl InlineScope {
 /// 
 /// this text is clearly in subsection 1.2
 /// ```
-#[pyclass]
-#[derive(Debug,Clone)]
-pub struct ImplicitStructure {
-    pub header: Paragraph,
-    pub children: BlockScope,
-    pub weight: i64,
-}
-#[pymethods]
-impl ImplicitStructure {
-    #[getter]
-    pub fn is_block(&self) -> bool {
-        true
+#[derive(Debug, Clone)]
+pub struct DocSegment {}
+impl DocSegment {
+    fn marker_bool_name(py: Python<'_>) -> &PyString {
+        intern!(py, "is_doc_segment")
+    }
+
+    pub fn get_weight<'py>(py: Python<'py>, segment: &PyTcRef<Self>) -> PyResult<i64> {
+        Ok(segment.as_ref(py).getattr(intern!(py, "weight"))?.extract()?)
+    }
+    pub fn blocks_of<'py>(py: Python<'py>, segment: &PyTcRef<Self>) -> PyResult<Py<BlockScope>> {
+        // TODO this sucks and we should downcast the &PyAny blocks to BlockScope.
+        segment.as_ref(py).getattr(intern!(py, "blocks"))?
+    }
+    pub fn push_subsegment<'py>(py: Python<'py>, segment: &PyTcRef<Self>, subsegment: PyTcRef<Self>) -> PyResult<()> {
+        segment.as_ref(py).call_method1(intern!(py, "push_subsegment"), (subsegment.as_ref(py),)).map(|_| ())
     }
 }
+impl PyTypeclass for DocSegment {
+    const NAME: &'static str = "DocSegment";
 
-// 
+    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
+        let attr_name = Self::marker_bool_name(obj.py());
+        if matches!(obj.hasattr(attr_name), Ok(true)) {
+            obj.getattr(attr_name)?.is_true()
+        } else {
+            Ok(false)
+        }
+    }
+}

@@ -15,6 +15,8 @@ The formatting pass is renderer independent and isn't just passive "for this ver
   - Need to consider how to define what the top-level is. Already have issues trying to reuse renderers/plugins with "are we using chapters or not?", and it would be nice to be able to say "please publish this sub-section as a standalone markdown file" while rebinding sub-section -> top-level.
   - Could do something by making subfiles only able to declare sections above a certain weight? "I'm inside a thing of weight blah, so the subfile can't break out of that"...
   - Maybe if the weights were integers - not 10 apart, but 1 apart - then you just subtract from the weight if you then want to push it up. Hell, you could even look at the min/max weight in any given document before the counting phase and use that to correct any structures.
+  - LESSON LEARNED FROM ATTEMPT 1: DocSegment can't be subclassed, and has to have the same gather-create pattern that blocks have instead of mutating existing DocSegments.
+  - This is because for consistent protection when mutating, we need it to be subclassed, but we can't have it be subclassed because a) that screws with the type dispatch for rendering and b) it makes interacting with them through rust extremely painful
 - We want metadata
   - This isn't necessary for structure-first but we should really have it.
 - We need a counter system

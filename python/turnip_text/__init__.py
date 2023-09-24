@@ -1,5 +1,13 @@
 import abc
-from typing import List, Optional, Protocol, Union, runtime_checkable
+from typing import (
+    Iterator,
+    List,
+    Optional,
+    Protocol,
+    Sequence,
+    Union,
+    runtime_checkable,
+)
 
 __all__ = [
     "Block",
@@ -46,23 +54,55 @@ class Inline(Protocol):
 class Block(Protocol):
     is_block: bool = True
 
+class DocSegment(abc.ABC):
+    is_doc_segment: bool = True
+    _blocks: BlockScope
+    _subsegments: List["DocSegment"]
+    _weight: int
+
+    def __init__(self, weight: int) -> None:
+        super().__init__()
+        self._blocks = BlockScope()
+        self._subsegments = []
+        self._weight = weight
+
+    @abc.abstractproperty
+    def header(self) -> Sequence[Block | Inline]: ...
+
+    @property
+    def weight(self) -> int:
+        return self._weight
+    
+    @property
+    def blocks(self) -> BlockScope:
+        return self._blocks
+    
+    @property
+    def subsegments(self) -> Iterator["DocSegment"]:
+        return iter(self._subsegments)
+
+    def push_subsegment(self, subsegment: "DocSegment"):
+        if subsegment.weight <= self.weight:
+            raise ValueError(f"Can't push subsegment {subsegment} (weight: {subsegment.weight}) into segment {self} (weight {self._weight}) - subsegment weight must be larger")
+        self._subsegments.append(subsegment)
+
 
 class BlockScopeBuilder(abc.ABC):
     @abc.abstractmethod
-    def build_from_blocks(self, bs: BlockScope) -> Optional[Block]:
+    def build_from_blocks(self, bs: BlockScope) -> Optional[Block | DocSegment]:
         ...
 
-    def __matmul__(self, maybe_b: 'CoercibleToBlockScope') -> Optional[Block]:
+    def __matmul__(self, maybe_b: 'CoercibleToBlockScope') -> Optional[Block | DocSegment]:
         bs = coerce_to_block_scope(maybe_b)
         return self.build_from_blocks(bs)
 
 
 class InlineScopeBuilder(abc.ABC):
     @abc.abstractmethod
-    def build_from_inlines(self, inls: InlineScope) -> Inline:
+    def build_from_inlines(self, inls: InlineScope) -> Inline | DocSegment:
         ...
 
-    def __matmul__(self, maybe_inls: 'CoercibleToInlineScope') -> Inline:
+    def __matmul__(self, maybe_inls: 'CoercibleToInlineScope') -> Inline | DocSegment:
         inls = coerce_to_inline_scope(maybe_inls)
         return self.build_from_inlines(inls)
     

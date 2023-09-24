@@ -7,6 +7,8 @@ pub trait PyTypeclass {
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool>;
 }
 
+
+
 #[derive(Debug, Clone)]
 pub struct PyInstanceTypeclass<T: PyClass>(PhantomData<T>);
 impl<T: PyClass> PyTypeclass for PyInstanceTypeclass<T> {
@@ -14,6 +16,41 @@ impl<T: PyClass> PyTypeclass for PyInstanceTypeclass<T> {
 
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
         Ok(obj.is_instance_of::<T>())
+    }
+}
+
+pub enum PyTcUnionRef<TA: PyTypeclass, TB: PyTypeclass> {
+    A(PyTcRef<TA>),
+    B(PyTcRef<TB>)
+}
+impl<TA: PyTypeclass, TB: PyTypeclass> PyTcUnionRef<TA, TB> {
+    pub fn of(val: &PyAny) -> PyResult<Self> {
+        let is_a = TA::fits_typeclass(val)?;
+        let is_b = TA::fits_typeclass(val)?;
+
+        if is_a && is_b {
+            let obj_repr = val.repr()?;
+            Err(PyTypeError::new_err(format!(
+                "Expected object fitting either typeclass {} or {}, got {} which fits both.",
+                TA::NAME,
+                TB::NAME,
+                obj_repr.to_str()?
+            )))
+        } else if (!is_a) && (!is_b) {
+            let obj_repr = val.repr()?;
+            Err(PyTypeError::new_err(format!(
+                "Expected object fitting either typeclass {} or {}, got {} which fits neither.",
+                TA::NAME,
+                TB::NAME,
+                obj_repr.to_str()?
+            )))
+        } else {
+            if is_a {
+                Ok(Self::A(PyTcRef::of_unchecked(val)))
+            } else {
+                Ok(Self::B(PyTcRef::of_unchecked(val)))
+            }
+        }
     }
 }
 
@@ -31,6 +68,10 @@ impl<T: PyTypeclass> PyTcRef<T> {
                 obj_repr.to_str()?
             )))
         }
+    }
+
+    fn of_unchecked(val: &PyAny) -> Self {
+        Self(val.into(), PhantomData::default())
     }
 
     pub fn as_ref<'py>(&'py self, py: Python<'py>) -> &'py PyAny {

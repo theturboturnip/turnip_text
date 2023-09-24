@@ -26,6 +26,7 @@ from typing import (
 from turnip_text import (
     Block,
     BlockScope,
+    DocSegment,
     Inline,
     InlineScope,
     Paragraph,
@@ -40,14 +41,15 @@ from turnip_text.render.counters import CounterSet
 T = TypeVar("T")
 P = ParamSpec("P")
 TReturn = TypeVar("TReturn")
-TNode = TypeVar("TNode", Block, Inline)
+TNode = TypeVar("TNode", Block, Inline, DocSegment)
 
 
 class DynamicNodeDispatch(Generic[P, TReturn]):
     _table: Dict[
-        Type[Block | Inline], Union[
+        Type[Block | Inline | DocSegment], Union[
             Callable[Concatenate[Block, P], TReturn],
-            Callable[Concatenate[Inline, P], TReturn]
+            Callable[Concatenate[Inline, P], TReturn],
+            Callable[Concatenate[DocSegment, P], TReturn],
         ]
     ]
 
@@ -81,7 +83,7 @@ class DynamicNodeDispatch(Generic[P, TReturn]):
         else:
             return f # type: ignore
         
-    def keys(self) -> Iterable[Type[Block | Inline]]:
+    def keys(self) -> Iterable[Type[Block | Inline | DocSegment]]:
         return self._table.keys()
     
 TRenderer_contra = TypeVar("TRenderer_contra", bound="Renderer", contravariant=True)
@@ -114,7 +116,7 @@ class RendererHandlers(Generic[TRenderer_contra]):
     ):
         self.emitters.register_handler(type, renderer)
 
-    def visit(self, n: Block | Inline) -> Any:
+    def visit(self, n: Block | Inline | DocSegment) -> Any:
         f = self.visitors.get_handler(n) # type: ignore
         if f is None:
             return None
@@ -133,7 +135,7 @@ class Writable(Protocol):
 class Renderer:
     fmt: FormatContext
     handlers: RendererHandlers
-    visit_results: Dict[Block | Inline, Any]
+    visit_results: Dict[Block | Inline | DocSegment, Any]
     write_to: Writable
 
     _indent: str = ""
@@ -144,7 +146,7 @@ class Renderer:
     # In the same way, if you emit a newline *then* change the indent, the next emitted item will have the new indent applied.
     _need_indent: bool = False
 
-    def __init__(self, fmt: FormatContext, handlers: RendererHandlers, visit_results: Dict[Block | Inline, Any], write_to: Writable) -> None:
+    def __init__(self, fmt: FormatContext, handlers: RendererHandlers, visit_results: Dict[Block | Inline | DocSegment, Any], write_to: Writable) -> None:
         self.fmt = fmt
         self.handlers = handlers
         self.visit_results = visit_results
@@ -197,9 +199,9 @@ class Renderer:
             raise RuntimeError(f"Some counters are not declared in the CounterSet, but are used by the document: {missing_doc_counters}")
 
         # The visitor/counter pass
-        visit_results: Dict[Block | Inline, Any] = {}
+        visit_results: Dict[Block | Inline | DocSegment, Any] = {}
         anchor_counters: Dict[Anchor, Tuple[UnescapedText, ...]] = {}
-        dfs_queue: List[Block | Inline] = [doc.block]
+        dfs_queue: List[Block | Inline | DocSegment] = [doc.block]
         while dfs_queue:
             node = dfs_queue.pop()
 
@@ -213,13 +215,17 @@ class Renderer:
             if visit_result is not None:
                 visit_results[node] = visit_result
 
-            children: Iterable[Block | Inline]
+            # Extract children as a reversed iterator.
+            # reversed is important because we pop the last thing in the queue off first.
+            children: Iterable[Block | Inline | DocSegment]
             if isinstance(node, (BlockScope, InlineScope)):
-                children = node
+                children = reversed(tuple(*node))
+            elif isinstance(node, DocSegment):
+                children = reversed((*node.header, node.blocks, *node.subsegments))
             elif node is None:
                 children = None
             else:
-                children = getattr(node, "contents", None) # type: ignore
+                children = reversed(getattr(node, "contents", None)) # type: ignore
             if children is not None:
                 dfs_queue.extend(children)
 
@@ -309,6 +315,9 @@ class Renderer:
 
     def emit_block(self: Self, b: Block) -> None:
         self.handlers.emit(b, self.visit_results.get(b, None), self, self.fmt)
+
+    def emit_segment(self: Self, s: DocSegment) -> None:
+        self.handlers.emit(s, self.visit_results.get(s, None), self, self.fmt)
 
     def emit_blockscope(self, bs: BlockScope) -> None:
         # Default: join paragraphs with self.PARAGRAPH_SEP

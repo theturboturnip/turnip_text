@@ -1,4 +1,4 @@
-use pyo3::{prelude::*, types::PyDict};
+use pyo3::{prelude::*, types::{PyDict, PyList}};
 
 use crate::lexer::TTToken;
 
@@ -25,10 +25,10 @@ pub fn interp_data(
     globals: &PyDict,
     data: &str,
     toks: impl Iterator<Item = TTToken>,
-) -> InterpResult<Py<BlockScope>> {
+) -> InterpResult<(Py<BlockScope>, Py<PyList>)> {
     let mut st = InterpState::new(py, data)?;
     let res: InterpResult<()> = toks.map(|t| st.handle_token(py, globals, t)).collect();
     res?;
     st.finalize(py, globals)?;
-    Ok(st.root())
+    Ok(st.toplevel(py))
 }

@@ -3,8 +3,8 @@ import json
 from pathlib import Path
 
 from turnip_text import *
-from turnip_text.renderers.latex import LatexRenderer
-from turnip_text.renderers.latex.plugins import (
+from turnip_text.render.latex import LatexRenderer
+from turnip_text.render.latex.plugins import (
     LatexCitationPlugin,
     LatexFootnotePlugin,
     LatexFormatPlugin,
@@ -12,8 +12,8 @@ from turnip_text.renderers.latex.plugins import (
     LatexSectionPlugin,
     LatexUrlPlugin,
 )
-from turnip_text.renderers.markdown.base import MarkdownRenderer
-from turnip_text.renderers.markdown.plugins import (
+from turnip_text.render.markdown.base import MarkdownRenderer
+from turnip_text.render.markdown.plugins import (
     MarkdownCitationAsFootnotePlugin,
     MarkdownCitationAsHTMLPlugin,
     MarkdownFootnotePlugin,
