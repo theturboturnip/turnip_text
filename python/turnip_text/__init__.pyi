@@ -1,3 +1,4 @@
+import abc
 from typing import (
     Any,
     Dict,
@@ -17,6 +18,30 @@ class Inline(Protocol):
 @runtime_checkable
 class Block(Protocol):
     is_block: bool = True
+
+class BlockScopeBuilder(abc.ABC):
+    @abc.abstractmethod
+    def build_from_blocks(self, bs: BlockScope) -> Optional[Block]:
+        ...
+
+    def __matmul__(self, maybe_b: 'CoercibleToBlockScope') -> Optional[Block]:
+        bs = coerce_to_block_scope(maybe_b)
+        return self.build_from_blocks(bs)
+
+
+class InlineScopeBuilder(abc.ABC):
+    @abc.abstractmethod
+    def build_from_inlines(self, inls: InlineScope) -> Inline:
+        ...
+
+    def __matmul__(self, maybe_inls: 'CoercibleToInlineScope') -> Inline:
+        inls = coerce_to_inline_scope(maybe_inls)
+        return self.build_from_inlines(inls)
+    
+@runtime_checkable
+class RawScopeBuilder(Protocol):
+    def build_from_raw(self, raw: str) -> Union[Inline, Block]:
+        ...
 
 # The types that can be coerced into an Inline, in the order they are checked and attempted.
 # List[Inline] is coerced by wrapping it in an InlineScope
