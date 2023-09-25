@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use pyo3::{
-    exceptions::{PyRuntimeError, PyTypeError},
+    exceptions::{PyRuntimeError, PyTypeError, PyValueError},
     intern,
     prelude::*,
     types::{PyDict, PyFloat, PyIterator, PyList, PyLong, PyString},
@@ -36,7 +36,7 @@ fn parse_file<'py>(
     py: Python<'py>,
     path: &str,
     locals: Option<&PyDict>,
-) -> PyResult<(Py<BlockScope>, Py<PyList>)> {
+) -> PyResult<Py<DocSegment>> {
     // crate::cli::parse_file already surfaces the error to the user - we can just return a generic error
     crate::cli::parse_file(
         py,
@@ -51,7 +51,7 @@ fn parse_str<'py>(
     py: Python<'py>,
     data: &str,
     locals: Option<&PyDict>,
-) -> PyResult<(Py<BlockScope>, Py<PyList>)> {
+) -> PyResult<Py<DocSegment>> {
     // crate::cli::parse_str already surfaces the error to the user - we can just return a generic error
     crate::cli::parse_str(py, locals.unwrap_or_else(|| PyDict::new(py)), data)
         .map_err(|_| PyRuntimeError::new_err("parse failed, see stdout"))
@@ -222,6 +222,32 @@ impl PyTypeclass for Inline {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DocSegmentHeader {}
+impl DocSegmentHeader {
+    fn marker_bool_name(py: Python<'_>) -> &PyString {
+        intern!(py, "is_segment_header")
+    }
+    fn weight_field_name(py: Python<'_>) -> &PyString {
+        intern!(py, "weight")
+    }
+    pub fn get_weight(py: Python<'_>, header: &PyAny) -> PyResult<i64> {
+        header.getattr(DocSegmentHeader::weight_field_name(py))?.extract()
+    }
+}
+impl PyTypeclass for DocSegmentHeader {
+    const NAME: &'static str = "DocSegmentHeader";
+
+    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
+        let attr_name = Self::marker_bool_name(obj.py());
+        if matches!(obj.hasattr(attr_name), Ok(true)) {
+            obj.getattr(attr_name)?.is_true()
+        } else {
+            Ok(false)
+        }
+    }
+}
+
 /// Typeclass representing the "builder" of a block scope, which may modify how that scope is rendered.
 ///
 /// Requires a method
@@ -238,7 +264,7 @@ impl BlockScopeBuilder {
         py: Python<'py>,
         builder: PyTcRef<Self>,
         blocks: Py<BlockScope>,
-    ) -> PyResult<Option<PyTcUnionRef<Block, DocSegment>>> {
+    ) -> PyResult<Option<PyTcUnionRef<Block, DocSegmentHeader>>> {
         let output = builder
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
@@ -322,6 +348,39 @@ impl PyTypeclass for RawScopeBuilder {
         obj.hasattr(Self::marker_func_name(obj.py()))
     }
 }
+
+// /// Typeclass representing the "builder" of a document segment header.
+// ///
+// /// Requires a method
+// /// ```python
+// /// def build_doc_segment_header(self, contents: BlockScope) -> DocSegmentHeader: ...
+// /// ```
+// #[derive(Debug, Clone)]
+// pub struct DocSegmentBuilder {}
+// impl DocSegmentBuilder {
+//     fn marker_func_name(py: Python<'_>) -> &PyString {
+//         intern!(py, "build_doc_segment")
+//     }
+//     /// Calls builder.build_doc_segment_header(contents), should return DocSegmentHeader
+//     pub fn call_build_doc_segment<'py>(
+//         py: Python<'py>,
+//         builder: &PyTcRef<Self>,
+//         header: Py<BlockScope>,
+//     ) -> PyResult<(PyTcRef<DocSegmentHeader>, i64)> {
+//         let output = builder
+//             .as_ref(py)
+//             .getattr(Self::marker_func_name(py))?
+//             .call1((header,))?;
+//         Ok((PyTcRef::of(output)?, DocSegmentHeader::get_weight(py, output)?))
+//     }
+// }
+// impl PyTypeclass for DocSegmentBuilder {
+//     const NAME: &'static str = "DocSegmentBuilder";
+
+//     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
+//         obj.hasattr(Self::marker_func_name(obj.py()))
+//     }
+// }
 
 /// Represents plain inline text that has not yet been "escaped" for rendering.
 ///
@@ -532,19 +591,19 @@ impl InlineScope {
 /// It's created by Python code just with the Header and Weight, and the Weight is used to implicitly open and close scopes
 /// 
 /// ```text
-/// [heading("Blah")] # -> DocSegment(weight=0)
+/// [heading("Blah")] # -> DocSegmentBuilder(weight=0)
 /// 
 /// # This paragraph is implicitly included as a child of DocSegment().text
 /// some text
 /// 
-/// [subheading("Sub-Blah")] # -> DocSegment(weight=1)
+/// [subheading("Sub-Blah")] # -> DocSegmentBuilder(weight=1)
 /// # the weight is greater than for the Section -> the subsection is implicitly included as a subsegment of section
 /// 
 /// Some other text in a subsection
 /// 
-/// [heading("Blah 2")] # -> DocSegment(weight=0)
-/// # the weight is <=subsection -> subsection 1.1 automatically ends
-/// # the weight is <=section -> section 1 automatically ends
+/// [heading("Blah 2")] # -> DocSegmentBuilder(weight=0)
+/// # the weight is <=subsection -> subsection 1.1 automatically ends, subheading.build_doc_segment() called
+/// # the weight is <=section -> section 1 automatically ends, heading.build_doc_segment() called
 /// 
 /// Some other text in a second section
 /// ```
@@ -575,33 +634,83 @@ impl InlineScope {
 /// 
 /// this text is clearly in subsection 1.2
 /// ```
+#[pyclass]
 #[derive(Debug, Clone)]
-pub struct DocSegment {}
+pub struct DocSegment {
+    pub header: Option<PyTcRef<DocSegmentHeader>>,
+    contents: Py<BlockScope>,
+    subsegments: PyInstanceList<DocSegment>,
+}
 impl DocSegment {
-    fn marker_bool_name(py: Python<'_>) -> &PyString {
-        intern!(py, "is_doc_segment")
+    pub fn new_no_header(py: Python, contents: Py<BlockScope>, subsegments: PyInstanceList<DocSegment>) -> PyResult<Self> {
+        Self::new_checked(
+            py,
+            None,
+            contents,
+            subsegments
+        )
     }
+    pub fn new_checked(py: Python, header: Option<PyTcRef<DocSegmentHeader>>, contents: Py<BlockScope>, subsegments: PyInstanceList<DocSegment>) -> PyResult<Self> {
+        match &header {
+            Some(h) => {
+                let weight = DocSegmentHeader::get_weight(py, h.as_ref(py))?;
+                for subsegment in subsegments.list(py).iter() {
+                    let subsegment: Py<DocSegment> = subsegment.extract()?;
+                    match &subsegment.borrow(py).header {
+                        Some(subh) => {
+                            let subweight = DocSegmentHeader::get_weight(py, subh.as_ref(py))?;
+                            if subweight <= weight {
+                                return Err(PyValueError::new_err(format!("Trying to create a DocSegment with weight {weight} but one of the provided subsegments has weight {subweight} which is smaller. Only larger subweights are allowed.")))
+                            }
+                        }
+                        None => return Err(PyValueError::new_err(format!("Trying to create a DocSegment but a subsegement doesn't have a header. All subsegments must have headers.")))
+                    };
+                }
+            }
+            None => {}
+        }
 
-    pub fn get_weight<'py>(py: Python<'py>, segment: &PyTcRef<Self>) -> PyResult<i64> {
-        Ok(segment.as_ref(py).getattr(intern!(py, "weight"))?.extract()?)
-    }
-    pub fn blocks_of<'py>(py: Python<'py>, segment: &PyTcRef<Self>) -> PyResult<Py<BlockScope>> {
-        // TODO this sucks and we should downcast the &PyAny blocks to BlockScope.
-        segment.as_ref(py).getattr(intern!(py, "blocks"))?
-    }
-    pub fn push_subsegment<'py>(py: Python<'py>, segment: &PyTcRef<Self>, subsegment: PyTcRef<Self>) -> PyResult<()> {
-        segment.as_ref(py).call_method1(intern!(py, "push_subsegment"), (subsegment.as_ref(py),)).map(|_| ())
+        Ok(Self {
+            header,
+            contents,
+            subsegments
+        })
     }
 }
-impl PyTypeclass for DocSegment {
-    const NAME: &'static str = "DocSegment";
-
-    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
-        let attr_name = Self::marker_bool_name(obj.py());
-        if matches!(obj.hasattr(attr_name), Ok(true)) {
-            obj.getattr(attr_name)?.is_true()
-        } else {
-            Ok(false)
-        }
+#[pymethods]
+impl DocSegment {
+    #[new]
+    pub fn new(header: &PyAny, contents: Py<BlockScope>, subsegments: &PyList) -> PyResult<Self> {
+        Ok(Self {
+            header: Some(PyTcRef::of(header)?),
+            contents,
+            subsegments: PyInstanceList::from(subsegments)?
+        })
+    }
+    #[getter]
+    pub fn header<'py>(&'py self, py: Python<'py>) -> Option<&'py PyAny> {
+        self.header.as_ref().map(|obj| obj.as_ref(py))
+    }
+    #[getter]
+    pub fn contents<'py>(&'py self, py: Python<'py>) -> &'py PyAny {
+        self.contents.as_ref(py)
+    }
+    #[getter]
+    pub fn subsegements<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
+        PyIterator::from_object(py, self.subsegments.list(py))
+    }
+    pub fn push_subsegment(&self, py: Python<'_>, subsegment: Py<DocSegment>) -> PyResult<()> {
+        match (&self.header, &subsegment.borrow(py).header) {
+            (Some(header), Some(subheader)) => {
+                let weight = DocSegmentHeader::get_weight(py, header.as_ref(py))?;
+                let subweight = DocSegmentHeader::get_weight(py, subheader.as_ref(py))?;
+                if subweight <= weight {
+                    return Err(PyValueError::new_err(format!("Trying to add to a DocSegment with weight {weight} but the provided subsegment has weight {subweight} which is smaller. Only larger subweights are allowed.")))
+                }
+            }
+            (_, None) => return Err(PyValueError::new_err(format!("Trying to add to a DocSegment but the subsegement doesn't have a header. All subsegments must have headers."))),
+            _ => {}
+        };
+        self.subsegments.append_checked(subsegment.as_ref(py))
     }
 }

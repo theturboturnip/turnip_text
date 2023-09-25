@@ -22,7 +22,14 @@ from typing import (
     Union,
 )
 
-from turnip_text import Block, BlockScope, DocSegment, Inline, parse_file_native
+from turnip_text import (
+    Block,
+    BlockScope,
+    DocSegment,
+    DocSegmentHeader,
+    Inline,
+    parse_file_native,
+)
 
 __all__ = [
     "Document",
@@ -44,28 +51,27 @@ T = TypeVar("T")
 
 @dataclass
 class Document:
-    exported_nodes: Set[Type[Union[Block, Inline]]]
+    exported_nodes: Set[Type[Union[Block, Inline, DocSegmentHeader]]]
     counted_anchor_kinds: Set[str]
     fmt: "FormatContext"
-    block: BlockScope
-    segments: List[DocSegment]
+    toplevel: DocSegment
 
 
 def parse(path: Union[str, bytes, PathLike], plugins: Sequence["DocPlugin"]) -> Document:
     fmt, doc = DocPlugin._make_contexts(plugins)
 
-    exported_nodes: Set[Type[Union[Block, Inline]]] = set()
+    exported_nodes: Set[Type[Union[Block, Inline, DocSegmentHeader]]] = set()
     counters: Set[str] = set()
     for p in plugins:
         exported_nodes.update(p._doc_nodes())
         counters.update(p._countables())
 
     # First pass: parsing
-    block, segments = doc.parse_file_to_block(path)
+    doc_toplevel = doc.parse_file_to_block(path)
 
     # Second pass: modifying the document
     for p in plugins:
-        p._mutate_document(doc, fmt, block, segments)
+        doc_toplevel = p._mutate_document(doc, fmt, doc_toplevel)
 
     # Now freeze the document so further passes don't mutate it.
     doc._frozen = True
@@ -74,8 +80,7 @@ def parse(path: Union[str, bytes, PathLike], plugins: Sequence["DocPlugin"]) -> 
         exported_nodes,
         counters,
         fmt,
-        block,
-        segments
+        doc_toplevel
     )
 
 class DocPlugin:
@@ -96,7 +101,7 @@ class DocPlugin:
         return type(self).__name__
     
     @abc.abstractmethod
-    def _doc_nodes(self) -> Sequence[Type[Union[Block, Inline]]]:
+    def _doc_nodes(self) -> Sequence[Type[Union[Block, Inline, DocSegmentHeader]]]:
         """
         Tell the Document what nodes this plugin exports
         """
@@ -108,11 +113,12 @@ class DocPlugin:
         """
         return []
     
-    def _mutate_document(self, doc: "DocState", fmt: "FormatContext", toplevel_contents: BlockScope, toplevel_segments: List[DocSegment]):
+    def _mutate_document(self, doc: "DocState", fmt: "FormatContext", toplevel: DocSegment) -> DocSegment:
         """
         Mutate the toplevel_contents or toplevel_segments to add things as you please.
+        You may make a copy and return it
         """
-        ...
+        return toplevel
 
     def _interface(self) -> Dict[str, Any]:
         """
@@ -339,7 +345,7 @@ class DocState:
         self.doc = self
         self.fmt = fmt
     
-    def parse_file_to_block(self, path: Union[str, bytes, PathLike]) -> Tuple[BlockScope, List[DocSegment]]:
+    def parse_file_to_block(self, path: Union[str, bytes, PathLike]) -> DocSegment:
         return parse_file_native(str(path), self.__dict__)
 
     def __getattr__(self, name: str) -> Any:

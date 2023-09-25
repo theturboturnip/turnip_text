@@ -5,7 +5,7 @@ use crate::{
     python::{
         interop::{
             coerce_to_inline_pytcref, Block, BlockScopeBuilder, Inline, InlineScopeBuilder,
-            RawScopeBuilder, DocSegment,
+            RawScopeBuilder, DocSegmentHeader,
         },
         typeclass::PyTcRef,
     },
@@ -27,8 +27,8 @@ pub enum EvalBracketResult {
     NeededInlineBuilder(PyTcRef<InlineScopeBuilder>),
     /// A RawScopeBuilder which was Needed because the final token was a [TTToken::CodeCloseOwningRaw]
     NeededRawBuilder(PyTcRef<RawScopeBuilder>, usize),
-    /// An object implementing DocSegment
-    DocSegment(PyTcRef<DocSegment>),
+    /// An object implementing DocSegmentHeader
+    DocSegmentHeader(PyTcRef<DocSegmentHeader>),
     /// An object implementing Block
     Block(PyTcRef<Block>),
     /// An object implementing Inline, or which was coerced to something implementing Inline
@@ -107,7 +107,7 @@ impl EvalBracketResult {
                     // => We check if it's a block, and if it isn't we try to coerce to inline.
 
                     if let Ok(doc_seg) = PyTcRef::of(raw_res) {
-                        EvalBracketResult::DocSegment(doc_seg)
+                        EvalBracketResult::DocSegmentHeader(doc_seg)
                     } else if let Ok(blk) = PyTcRef::of(raw_res) {
                         EvalBracketResult::Block(blk)
                     } else {

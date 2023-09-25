@@ -26,7 +26,7 @@ pub enum PyTcUnionRef<TA: PyTypeclass, TB: PyTypeclass> {
 impl<TA: PyTypeclass, TB: PyTypeclass> PyTcUnionRef<TA, TB> {
     pub fn of(val: &PyAny) -> PyResult<Self> {
         let is_a = TA::fits_typeclass(val)?;
-        let is_b = TA::fits_typeclass(val)?;
+        let is_b = TB::fits_typeclass(val)?;
 
         if is_a && is_b {
             let obj_repr = val.repr()?;

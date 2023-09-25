@@ -561,8 +561,8 @@ impl InterpParaState {
                             }
                             // This is inline code because we're already deep into a paragraph at this point.
                             // Definitely can't emit a segment here.
-                            DocSegment(_) => {
-                                return Err(InterpError::DocSegmentCodeMidPara { code_span });
+                            DocSegmentHeader(_) => {
+                                return Err(InterpError::DocSegmentHeaderMidPara { code_span });
                             }
                             Block(_) => {
                                 return Err(InterpError::BlockCodeMidPara { code_span });
@@ -594,7 +594,7 @@ impl InterpParaState {
                                     InlineNodeToCreate::PythonObject(inl)
                                 )
                             ),
-                            PyTcUnionRef::B(block) => return Err(
+                            PyTcUnionRef::B(_) => return Err(
                                 InterpError::BlockCodeFromRawScopeMidPara{ code_span: *raw_start }
                             ),
                         }

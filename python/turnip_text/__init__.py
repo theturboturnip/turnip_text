@@ -33,6 +33,7 @@ __all__ = [
 
 from ._native import (  # type: ignore
     BlockScope,
+    DocSegment,
     InlineScope,
     Paragraph,
     RawText,
@@ -54,37 +55,11 @@ class Inline(Protocol):
 class Block(Protocol):
     is_block: bool = True
 
-class DocSegment(abc.ABC):
-    is_doc_segment: bool = True
-    _blocks: BlockScope
-    _subsegments: List["DocSegment"]
-    _weight: int
 
-    def __init__(self, weight: int) -> None:
-        super().__init__()
-        self._blocks = BlockScope()
-        self._subsegments = []
-        self._weight = weight
-
-    @abc.abstractproperty
-    def header(self) -> Sequence[Block | Inline]: ...
-
-    @property
-    def weight(self) -> int:
-        return self._weight
-    
-    @property
-    def blocks(self) -> BlockScope:
-        return self._blocks
-    
-    @property
-    def subsegments(self) -> Iterator["DocSegment"]:
-        return iter(self._subsegments)
-
-    def push_subsegment(self, subsegment: "DocSegment"):
-        if subsegment.weight <= self.weight:
-            raise ValueError(f"Can't push subsegment {subsegment} (weight: {subsegment.weight}) into segment {self} (weight {self._weight}) - subsegment weight must be larger")
-        self._subsegments.append(subsegment)
+@runtime_checkable
+class DocSegmentHeader(Protocol):
+    is_segment_header: bool = True
+    weight: int = 0
 
 
 class BlockScopeBuilder(abc.ABC):

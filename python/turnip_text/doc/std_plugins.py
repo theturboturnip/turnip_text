@@ -21,6 +21,7 @@ from turnip_text import (
     BlockScope,
     BlockScopeBuilder,
     DocSegment,
+    DocSegmentHeader,
     Inline,
     InlineScope,
     InlineScopeBuilder,
@@ -65,13 +66,8 @@ class CiteAuthor(Inline):
     citekey: str
 
 
-class Bibliography(DocSegment):
-    def __init__(self) -> None:
-        super().__init__(weight=0)
-
-    @property
-    def header(self) -> Sequence[Block | Inline]:
-        return (UnescapedText("Bibliography"),)
+class Bibliography(DocSegmentHeader):
+    pass
 
 
 @dataclass(frozen=True)
@@ -119,17 +115,17 @@ class CitationDocPlugin(DocPlugin):
     _has_citations: bool = False
     _has_bib: bool = False
 
-    def _doc_nodes(self) -> Sequence[type[Block] | type[Inline] | type[DocSegment]]:
+    def _doc_nodes(self) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
         return (
             Citation,
             CiteAuthor,
             Bibliography,
         )
 
-    def _mutate_document(self, doc: DocState, fmt: FormatContext, toplevel_contents: BlockScope, toplevel_segments: List[DocSegment]):
-        # TODO AAAAAAA FUCK List[DocSegment] DOESNT HAVE CHECKING YOU DUMBASS
+    def _mutate_document(self, doc: DocState, fmt: FormatContext, toplevel: DocSegment):
         if not self._has_bib:
-            raise NotImplementedError("Need to insert a bibliography into the document")
+            toplevel.push_subsegment(DocSegment(Bibliography(), BlockScope(), []))
+        return toplevel
 
     @stateful
     def cite(
@@ -144,7 +140,7 @@ class CitationDocPlugin(DocPlugin):
     
     @property
     @stateful
-    def bibliography(self, doc: DocState) -> DocSegment:
+    def bibliography(self, doc: DocState) -> DocSegmentHeader:
         self._has_bib = True
         return Bibliography()
 
@@ -155,7 +151,7 @@ class FootnoteDocPlugin(DocPlugin):
     def __init__(self):
         self._footnotes = {}
 
-    def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
+    def _doc_nodes(self) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
         return super()._doc_nodes()
     
     def _countables(self) -> Sequence[str]:

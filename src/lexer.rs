@@ -3,7 +3,7 @@ use lexer_rs::SimpleParseError;
 use lexer_rs::{CharStream, Lexer, LexerParseResult};
 
 use crate::lexer_charofs_row_col::LineColumnChar;
-use crate::util::{ParsePosn, ParseSpan};
+use crate::util::ParseSpan;
 
 /// Sequences that can define the start of a [SimpleToken]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -132,7 +132,7 @@ pub enum Unit {
     /// '\' that does not participate in a [Self::Escaped]
     ///
     /// TODO - A LaTeX-output backend could choose to disallow plain backslashes, as they would interact with LaTeX in potentially unexpected ways.
-    Backslash(ParsePosn),
+    Backslash(ParseSpan),
     /// N `[` characters not preceded by a backslash
     CodeOpen(ParseSpan, usize),
     /// N `]` characters not preceded by a backslash
@@ -194,7 +194,10 @@ impl Unit {
                             let span = ParseSpan::from_lex(start, end);
                             Ok(Some((end, Self::Escaped(span, escapable))))
                         }
-                        None => Ok(Some((state_after_seq, Self::Backslash(state.into())))),
+                        None => {
+                            let end = stream.consumed(state, 1);
+                            Ok(Some((state_after_seq, Self::Backslash(ParseSpan::from_lex(start, end)))))
+                        },
                     }
                 }
                 // CRLF or (CR outside CRLF) or (LF outside CRLF) => Newline()
@@ -312,7 +315,7 @@ pub enum TTToken {
     /// See [Unit::Escaped]
     Escaped(ParseSpan, Escapable),
     /// See [Unit::Backslash]
-    Backslash(ParsePosn),
+    Backslash(ParseSpan),
     /// N `[` characters not preceded by a backslash
     CodeOpen(ParseSpan, usize),
     /// N `]` characters not preceded by a backslash, not followed by a scope open
@@ -438,6 +441,27 @@ impl TTToken {
 
             // Raw scope close
             (Unit::Hashes(s, n), _, _) => (TTToken::Hashes(*s, *n), 1),
+        }
+    }
+
+    pub fn token_span(&self) -> ParseSpan {
+        match *self {
+            TTToken::Newline(span) => span,
+            TTToken::Escaped(span, _) => span,
+            TTToken::Backslash(span) => span,
+            TTToken::CodeOpen(span, _) => span,
+            TTToken::CodeClose(span, _) => span,
+            TTToken::CodeCloseOwningInline(span, _) => span,
+            TTToken::CodeCloseOwningRaw(span, _, _) => span,
+            TTToken::CodeCloseOwningBlock(span, _) => span,
+            TTToken::InlineScopeOpen(span) => span,
+            TTToken::BlockScopeOpen(span) => span,
+            TTToken::ScopeClose(span) => span,
+            TTToken::RawScopeOpen(span, _) => span,
+            TTToken::RawScopeClose(span, _) => span,
+            TTToken::Hashes(span, _) => span,
+            TTToken::OtherText(span) => span,
+            TTToken::Whitespace(span) => span,
         }
     }
 

@@ -1,11 +1,11 @@
 use annotate_snippets::{display_list::DisplayList, snippet::*};
 use anyhow::bail;
 use lexer_rs::{Lexer, LexerOfStr, PosnInCharStream};
-use pyo3::{prelude::*, types::{PyDict, PyList}};
+use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
     lexer::{LexError, LexPosn, LexToken, Unit, units_to_tokens},
-    util::ParseSpan, python::{InterpError, interp_data, interop::BlockScope},
+    util::ParseSpan, python::{InterpError, interp_data, interop::DocSegment},
 };
 
 pub trait GivesCliFeedback {
@@ -270,6 +270,88 @@ impl GivesCliFeedback for InterpError {
                 AnnotationType::Error,
                 newline
             ),
+            DocSegmentHeaderMidPara { code_span } => snippet_from_parse_span(
+                file_src,
+                "An eval-bracket returned a DocSegmentHeader inside a Paragraph. DocSegmentHeaders are block-level only.",
+                "Eval-bracket here",
+                AnnotationType::Error,
+                code_span
+            ),
+            DocSegmentHeaderMidScope { code_span, block_close_span, enclosing_scope_start } => {
+                match block_close_span {
+                    Some(block_close_span) => {
+                        Snippet {
+                            title: Some(Annotation {
+                                label: Some("A BlockScopeBuilder inside a block scope returned a DocSegmentHeader."),
+                                id: None,
+                                annotation_type: AnnotationType::Error
+                            }),
+                            footer: vec![Annotation{
+                                label: Some("DocSegmentHeaders are only allowed at the top level"),
+                                id: None,
+                                annotation_type: AnnotationType::Error
+                            }],
+                            slices: vec![Slice {
+                                source: file_src,
+                                line_start: 1,
+                                origin: None,
+                                fold: true,
+                                annotations: vec![
+                                    annotation_from_parse_span(
+                                        "BlockScopeBuilder created here",
+                                        AnnotationType::Note,
+                                        code_span,
+                                    ),
+                                    annotation_from_parse_span(
+                                        "Block closed here, calling build_from_blocks",
+                                        AnnotationType::Note,
+                                        block_close_span,
+                                    ),
+                                    annotation_from_parse_span(
+                                        "Enclosing scope starts here",
+                                        AnnotationType::Note,
+                                        enclosing_scope_start
+                                    )
+                                ],
+                            }],
+                            opt: Default::default()
+                        }
+                    }
+                    None => {
+                        Snippet {
+                            title: Some(Annotation {
+                                label: Some("An eval-bracket inside a block scope returned a DocSegmentHeader."),
+                                id: None,
+                                annotation_type: AnnotationType::Error
+                            }),
+                            footer: vec![Annotation{
+                                label: Some("DocSegmentHeaders are only allowed at the top level"),
+                                id: None,
+                                annotation_type: AnnotationType::Error
+                            }],
+                            slices: vec![Slice {
+                                source: file_src,
+                                line_start: 1,
+                                origin: None,
+                                fold: true,
+                                annotations: vec![
+                                    annotation_from_parse_span(
+                                        "Code executed here",
+                                        AnnotationType::Note,
+                                        code_span,
+                                    ),
+                                    annotation_from_parse_span(
+                                        "Enclosing scope starts here",
+                                        AnnotationType::Note,
+                                        enclosing_scope_start
+                                    )
+                                ],
+                            }],
+                            opt: Default::default()
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -278,11 +360,11 @@ fn display_cli_feedback<T: GivesCliFeedback>(data: &str, err: &T) {
     let dl = DisplayList::from(err.get_snippet(&data));
     eprintln!("{}", dl);
 }
-pub fn parse_file(py: Python, globals: &PyDict, path: &std::path::Path) -> anyhow::Result<(Py<BlockScope>, Py<PyList>)> {
+pub fn parse_file(py: Python, globals: &PyDict, path: &std::path::Path) -> anyhow::Result<Py<DocSegment>> {
     let data = std::fs::read_to_string(path)?;
     parse_str(py, globals, &data)
 }
-pub fn parse_str(py: Python, globals: &PyDict, data: &str) -> anyhow::Result<(Py<BlockScope>, Py<PyList>)> {
+pub fn parse_str(py: Python, globals: &PyDict, data: &str) -> anyhow::Result<Py<DocSegment>> {
     let mut units = vec![];
     let lexer = LexerOfStr::<LexPosn, LexToken, LexError>::new(data);
 

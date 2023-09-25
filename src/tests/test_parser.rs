@@ -83,6 +83,10 @@ pub enum TestInterpError {
     EscapedNewlineOutsideParagraph {
         newline: TestParserSpan,
     },
+
+    DocSegmentHeaderMidPara { code_span: TestParserSpan },
+
+    DocSegmentHeaderMidScope { code_span: TestParserSpan, block_close_span: Option<TestParserSpan>, enclosing_scope_start: TestParserSpan },
 }
 impl PartialEq<InterpError> for TestInterpError {
     fn eq(&self, other: &InterpError) -> bool {
@@ -208,6 +212,26 @@ impl PartialEq<InterpError> for TestInterpError {
                 Self::EscapedNewlineOutsideParagraph { newline: l_newline },
                 InterpError::EscapedNewlineOutsideParagraph { newline: r_newline },
             ) => (*l_newline) == (*r_newline).into(),
+
+            (
+                Self::DocSegmentHeaderMidPara { code_span: l_code_span },
+                InterpError::DocSegmentHeaderMidPara { code_span: r_code_span }
+            ) => (*l_code_span) == (*r_code_span).into(),
+
+            (
+                Self::DocSegmentHeaderMidScope {
+                    code_span: l_code_span,
+                    block_close_span: l_block_close_span,
+                    enclosing_scope_start: l_enclosing_scope_start
+                },
+                InterpError::DocSegmentHeaderMidScope {
+                    code_span: r_code_span,
+                    block_close_span: r_block_close_span ,
+                    enclosing_scope_start: r_enclosing_scope_start
+                }
+            ) => ((*l_code_span) == (*r_code_span).into()) &&
+                 ((*l_block_close_span) == (*r_block_close_span).map(|s| s.into())) &&
+                 ((*l_enclosing_scope_start) == (*r_enclosing_scope_start).into()),
             _ => false,
         }
     }
@@ -387,6 +411,14 @@ TEST_RAW_BLOCK_BUILDER = TestRawBlockBuilder()
 TEST_BLOCK_SWALLOWER = TestBlockSwallower()
 
 TEST_PROPERTY = property(lambda x: 5)
+
+class TestDocSegmentHeader:
+    is_segment_header = True
+    weight = 0
+
+class TestDocSegmentBuilder:
+    def build_from_blocks(self, contents):
+        return TestDocSegmentHeader()
 
 "#,
         Some(globals),
@@ -1152,3 +1184,51 @@ pub fn test_property_calls_get() {
         )]])])),
     )
 }
+
+#[test]
+pub fn test_no_emit_doc_segment_header_in_block_scope() {
+    expect_parse(
+        "{
+[TestDocSegmentHeader()]
+}", 
+        Err(TestInterpError::DocSegmentHeaderMidScope { 
+            code_span: TestParserSpan { start: (2, 1), end: (2, 20) },
+            block_close_span: None,
+            enclosing_scope_start: TestParserSpan { start: (1,1), end: (2, 1) }
+        })
+    )
+}
+
+#[test]
+pub fn test_no_build_doc_segment_header_in_block_scope() {
+    expect_parse(
+        "{
+[TestDocSegmentBuilder()]{
+    Sometimes docsegmentheaders can be built, too!
+    But if they're in a block scope it shouldn't be allowed :(
+}
+}", 
+        Err(TestInterpError::DocSegmentHeaderMidScope { 
+            code_span: TestParserSpan { start: (2, 1), end: (3, 1) },
+            block_close_span: Some(TestParserSpan {
+                start: (5, 1),
+                end: (5, 2)
+            }),
+            enclosing_scope_start: TestParserSpan { start: (1,1), end: (1,2) }
+        })
+    )
+}
+
+#[test]
+pub fn test_no_emit_doc_segment_header_in_para() {
+    expect_parse(
+        "And as I was saying [TestDocSegmentHeader()]", 
+        Err(TestInterpError::DocSegmentHeaderMidPara { code_span: TestParserSpan {
+            start: (1, 21),
+            end: (1, 40)
+        } })
+    )
+}
+
+
+// TODO MORE TESTS FOR DOC STURCURE. OH FUCK I NEED TO CHANGE THE TEST HARNESS
