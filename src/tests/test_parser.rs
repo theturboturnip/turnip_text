@@ -1241,7 +1241,7 @@ pub fn test_no_emit_doc_segment_header_in_block_scope() {
 [TestDocSegmentHeader()]
 }", 
         Err(TestInterpError::DocSegmentHeaderMidScope { 
-            code_span: TestParserSpan { start: (2, 1), end: (2, 20) },
+            code_span: TestParserSpan { start: (2, 1), end: (2, 25) },
             block_close_span: None,
             enclosing_scope_start: TestParserSpan { start: (1, 1), end: (2, 1) }
         })

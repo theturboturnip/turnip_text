@@ -192,12 +192,12 @@ pub(crate) enum InterpBlockTransition {
     /// 
     /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::ReadyForNewBlock]
     /// - [InterpBlockState::BuildingRawText] -> [InterpBlockState::ReadyForNewBlock]
-    PushBlock(PyTcRef<Block>),
+    PushBlock(ParseSpan, PyTcRef<Block>),
 
     /// If an eval-bracket emits a DocSegmentHeader directly, push it onto the segment stack
     /// 
     /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::ReadyForNewBlock]
-    PushDocSegmentHeader(PyTcRef<DocSegmentHeader>),
+    PushDocSegmentHeader(ParseSpan, PyTcRef<DocSegmentHeader>),
 
     /// On encountering a scope close, pop the current block from the scope.
     /// May trigger a BlockScopeBuilder, which may then emit a block or a DocSegment directly into the tree.
@@ -462,14 +462,13 @@ impl<'a> InterpState<'a> {
                         use EvalBracketResult::*;
 
                         let block_transition = match res {
-                            // TODO THIS IS FUCKING BROKEN AND I DON'T KNOW FUCKING WHY AND I FUCKING HATE EVERYTHING
                             NeededBlockBuilder(b) => OpenManualBlockScope(Some((b, code_span)), tok.token_span()),
                             NeededInlineBuilder(i) => StartParagraph(
                                 InterpParaTransition::PushInlineScope(Some(i), code_span),
                             ),
                             NeededRawBuilder(r, n_hashes) => OpenRawScope(r, code_span, n_hashes),
-                            DocSegmentHeader(s) => PushDocSegmentHeader(s),
-                            Block(b) => PushBlock(b),
+                            DocSegmentHeader(s) => PushDocSegmentHeader(code_span, s),
+                            Block(b) => PushBlock(code_span, b),
                             Inline(i) => {
                                 StartParagraph(InterpParaTransition::PushInlineContent(
                                     InlineNodeToCreate::PythonObject(
@@ -501,7 +500,7 @@ impl<'a> InterpState<'a> {
                             None
                         ),
                         PyTcUnionRef::B(block) => (
-                            Some(PushBlock(block)),
+                            Some(PushBlock(builder_span.clone(), block)),
                             None
                         )
                     }
@@ -585,17 +584,17 @@ impl<'a> InterpState<'a> {
 
                 (
                     S::BuildingCode { .. } | S::BuildingRawText { .. },
-                    T::PushBlock(b)
+                    T::PushBlock(_code_span, b)
                 ) => {
                     self.push_to_topmost_block(py, b.as_ref(py))?;
                     S::ReadyForNewBlock
                 }
 
                 (
-                    S::BuildingCode { code_start, .. },
-                    T::PushDocSegmentHeader(segment)
+                    S::BuildingCode { .. },
+                    T::PushDocSegmentHeader(code_span, segment)
                 ) => {
-                    self.push_segment_header(py, segment, code_start.clone(), None)?;
+                    self.push_segment_header(py, segment, code_span.clone(), None)?;
                     S::ReadyForNewBlock
                 }
 
