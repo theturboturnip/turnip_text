@@ -638,8 +638,8 @@ impl InlineScope {
 #[derive(Debug, Clone)]
 pub struct DocSegment {
     pub header: Option<PyTcRef<DocSegmentHeader>>,
-    contents: Py<BlockScope>,
-    subsegments: PyInstanceList<DocSegment>,
+    pub contents: Py<BlockScope>,
+    pub subsegments: PyInstanceList<DocSegment>,
 }
 impl DocSegment {
     pub fn new_no_header(py: Python, contents: Py<BlockScope>, subsegments: PyInstanceList<DocSegment>) -> PyResult<Self> {
