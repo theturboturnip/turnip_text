@@ -7,7 +7,7 @@ from turnip_text.doc.anchors import Anchor
 
 class VisitableNode(Protocol):
     contents: Iterable[Block | Inline] | None
-    anchor: Anchor | None = None # Optional field, accessed with getattr, assumed to be None if not present.
+    anchor: Anchor | None = None  # Optional field, accessed with getattr, assumed to be None if not present.
 
 
 @dataclass(frozen=True)

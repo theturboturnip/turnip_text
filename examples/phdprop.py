@@ -80,7 +80,7 @@ if __name__ == "__main__":
             MarkdownListPlugin(),
             MarkdownUrlPlugin(),
         ],
-        html_mode_only=True
+        html_mode_only=True,
     )
     r_html.request_postamble_order(
         [

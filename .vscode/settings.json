@@ -9,7 +9,6 @@
     },
     "python.linting.mypyEnabled": true,
     "rust-analyzer.cargo.noDefaultFeatures": true,
-    "python.formatting.provider": "black",
     "isort.args": [
         "--profile", "black"
     ],
@@ -20,7 +19,8 @@
         "editor.formatOnSaveMode": "file",
         "editor.codeActionsOnSave": {
             "source.organizeImports": true
-        }
+        },
+        "editor.defaultFormatter": "ms-python.black-formatter"
     },
     "[rust]": {
         "editor.formatOnSave": true,

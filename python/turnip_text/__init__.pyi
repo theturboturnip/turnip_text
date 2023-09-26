@@ -16,43 +16,34 @@ from typing import (
 class Inline(Protocol):
     is_inline: bool = True
 
-
 @runtime_checkable
 class Block(Protocol):
     is_block: bool = True
-
 
 @runtime_checkable
 class DocSegmentHeader(Protocol):
     is_segment_header: bool = True
     weight: int = 0
 
-
 class BlockScopeBuilder(abc.ABC):
     @abc.abstractmethod
-    def build_from_blocks(self, bs: BlockScope) -> Optional[Block | DocSegment]:
-        ...
-
-    def __matmul__(self, maybe_b: 'CoercibleToBlockScope') -> Optional[Block | DocSegment]:
+    def build_from_blocks(self, bs: BlockScope) -> Optional[Block | DocSegment]: ...
+    def __matmul__(
+        self, maybe_b: "CoercibleToBlockScope"
+    ) -> Optional[Block | DocSegment]:
         bs = coerce_to_block_scope(maybe_b)
         return self.build_from_blocks(bs)
 
-
 class InlineScopeBuilder(abc.ABC):
     @abc.abstractmethod
-    def build_from_inlines(self, inls: InlineScope) -> Inline | DocSegment:
-        ...
-
-    def __matmul__(self, maybe_inls: 'CoercibleToInlineScope') -> Inline | DocSegment:
+    def build_from_inlines(self, inls: InlineScope) -> Inline | DocSegment: ...
+    def __matmul__(self, maybe_inls: "CoercibleToInlineScope") -> Inline | DocSegment:
         inls = coerce_to_inline_scope(maybe_inls)
         return self.build_from_inlines(inls)
 
-
 @runtime_checkable
 class RawScopeBuilder(Protocol):
-    def build_from_raw(self, raw: str) -> Union[Inline, Block]:
-        ...
-
+    def build_from_raw(self, raw: str) -> Union[Inline, Block]: ...
 
 # The types that can be coerced into an Inline, in the order they are checked and attempted.
 # List[Inline] is coerced by wrapping it in an InlineScope
@@ -77,7 +68,6 @@ CoercibleToBlockScope = Union[BlockScope, CoercibleToBlock]
 # Parsers return a BlockScope of the top-level content, then a DocSegment tree
 def parse_file_native(path: str, locals: Dict[str, Any]) -> DocSegment: ...
 def parse_str_native(data: str, locals: Dict[str, Any]) -> DocSegment: ...
-
 def coerce_to_inline(obj: CoercibleToInline) -> Inline: ...
 def coerce_to_inline_scope(obj: CoercibleToInlineScope) -> InlineScope: ...
 def coerce_to_block(obj: CoercibleToBlock) -> Block: ...
@@ -128,7 +118,12 @@ class InlineScope(Inline):
     def push_inline(self, b: Inline) -> None: ...
 
 class DocSegment:
-    def __init__(self, header: DocSegmentHeader, contents: BlockScope, subsegments: List[DocSegment]): ...
+    def __init__(
+        self,
+        header: DocSegmentHeader,
+        contents: BlockScope,
+        subsegments: List[DocSegment],
+    ): ...
     @property
     def header(self) -> DocSegmentHeader: ...
     @property

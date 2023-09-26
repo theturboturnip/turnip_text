@@ -41,6 +41,7 @@ from turnip_text.helpers import block_scope_builder, inline_scope_builder
 
 # TODO NEED STRUCTURE PLUGINS
 
+
 @dataclass(frozen=True)
 class FootnoteRef(Inline):
     ref: Backref
@@ -54,7 +55,7 @@ class HeadedBlock(UserAnchorBlock):
 
 @dataclass(frozen=True)
 class Citation(UserInline):
-    contents: InlineScope | None # the citation note
+    contents: InlineScope | None  # the citation note
     citekeys: Set[str]
 
     def build_from_inlines(self, inls: InlineScope) -> Inline:
@@ -80,14 +81,14 @@ class NamedUrl(UserInline, InlineScopeBuilder):
 
 
 class DisplayListType(Enum):
-    Enumerate = 0,
-    Itemize = 1,
+    Enumerate = (0,)
+    Itemize = (1,)
 
 
 @dataclass(frozen=True)
 class DisplayList(UserBlock):
     contents: List["DisplayList" | "DisplayListItem"]
-    list_type: DisplayListType # TODO could reuse Numbering from render.counters?
+    list_type: DisplayListType  # TODO could reuse Numbering from render.counters?
 
 
 @dataclass(frozen=True)
@@ -96,13 +97,13 @@ class DisplayListItem(UserBlock):
 
 
 class InlineFormattingType(Enum):
-    Italic = 0,
-    Bold = 1,
-    Underline = 2,
-    Emph = 3, # Usually italic
-    Strong = 4, # Usually bold
-    SingleQuote = 5,
-    DoubleQuote = 6,
+    Italic = (0,)
+    Bold = (1,)
+    Underline = (2,)
+    Emph = (3,)  # Usually italic
+    Strong = (4,)  # Usually bold
+    SingleQuote = (5,)
+    DoubleQuote = (6,)
 
 
 @dataclass(frozen=True)
@@ -115,29 +116,31 @@ class CitationDocPlugin(DocPlugin):
     _has_citations: bool = False
     _has_bib: bool = False
 
-    def _doc_nodes(self) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
+    def _doc_nodes(
+        self,
+    ) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
         return (
             Citation,
             CiteAuthor,
             Bibliography,
         )
 
-    def _mutate_document(self, doc: DocState, fmt: FormatContext, toplevel: DocSegment) -> DocSegment:
+    def _mutate_document(
+        self, doc: DocState, fmt: FormatContext, toplevel: DocSegment
+    ) -> DocSegment:
         if not self._has_bib:
             toplevel.push_subsegment(DocSegment(Bibliography(), BlockScope(), []))
         return toplevel
 
     @stateful
-    def cite(
-        self, doc: DocState, *citekeys: str
-    ) -> Inline:
+    def cite(self, doc: DocState, *citekeys: str) -> Inline:
         self._has_citations = True
         return Citation(citekeys=set(citekeys), contents=None)
 
     @stateless
     def citeauthor(self, fmt: FormatContext, citekey: str) -> Inline:
         return CiteAuthor(citekey)
-    
+
     @property
     @stateful
     def bibliography(self, doc: DocState) -> DocSegmentHeader:
@@ -151,13 +154,13 @@ class FootnoteDocPlugin(DocPlugin):
     def __init__(self) -> None:
         self._footnotes = {}
 
-    def _doc_nodes(self) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
+    def _doc_nodes(
+        self,
+    ) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
         return super()._doc_nodes()
-    
+
     def _countables(self) -> Sequence[str]:
-        return (
-            "footnote",
-        )
+        return ("footnote",)
 
     @property
     @stateful
@@ -166,18 +169,20 @@ class FootnoteDocPlugin(DocPlugin):
         def footnote_builder(contents: InlineScope) -> Inline:
             footnote_id = str(uuid.uuid4())
             self._footnotes[footnote_id] = Paragraph([Sentence([contents])])
-            return FootnoteRef(Backref(id=footnote_id, kind="footnote", label_contents=None))
+            return FootnoteRef(
+                Backref(id=footnote_id, kind="footnote", label_contents=None)
+            )
 
         return footnote_builder
 
     @stateless
     def footnote_ref(self, fmt: FormatContext, footnote_id: str) -> Inline:
-        return FootnoteRef(Backref(id=footnote_id, kind="footnote", label_contents=None))
+        return FootnoteRef(
+            Backref(id=footnote_id, kind="footnote", label_contents=None)
+        )
 
     @stateful
-    def footnote_text(
-        self, doc: DocState, label: str
-    ) -> BlockScopeBuilder:
+    def footnote_text(self, doc: DocState, label: str) -> BlockScopeBuilder:
         # Store the contents of a block scope and associate them with a specific footnote label
         @block_scope_builder
         def handle_block_contents(contents: BlockScope) -> Optional[Block]:
@@ -186,11 +191,10 @@ class FootnoteDocPlugin(DocPlugin):
 
         return handle_block_contents
 
+
 class InlineFormatDocPlugin(DocPlugin):
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
-        return (
-            InlineFormatted,
-        )
+        return (InlineFormatted,)
 
     @inline_scope_builder
     @staticmethod
@@ -205,7 +209,9 @@ class InlineFormatDocPlugin(DocPlugin):
     @inline_scope_builder
     @staticmethod
     def underline(items: InlineScope) -> Inline:
-        return InlineFormatted(contents=items, format_type=InlineFormattingType.Underline)
+        return InlineFormatted(
+            contents=items, format_type=InlineFormattingType.Underline
+        )
 
     @inline_scope_builder
     @staticmethod
@@ -220,20 +226,21 @@ class InlineFormatDocPlugin(DocPlugin):
     @inline_scope_builder
     @staticmethod
     def squote(items: InlineScope) -> Inline:
-        return InlineFormatted(contents=items, format_type=InlineFormattingType.SingleQuote)
+        return InlineFormatted(
+            contents=items, format_type=InlineFormattingType.SingleQuote
+        )
 
     @inline_scope_builder
     @staticmethod
     def enquote(items: InlineScope) -> Inline:
-        return InlineFormatted(contents=items, format_type=InlineFormattingType.DoubleQuote)
+        return InlineFormatted(
+            contents=items, format_type=InlineFormattingType.DoubleQuote
+        )
 
 
 class ListDocPlugin(DocPlugin):
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
-        return (
-            DisplayList,
-            DisplayListItem
-        )
+        return (DisplayList, DisplayListItem)
 
     @block_scope_builder
     @staticmethod
@@ -245,7 +252,7 @@ class ListDocPlugin(DocPlugin):
             )
         return DisplayList(
             list_type=DisplayListType.Enumerate,
-            contents=cast(List[DisplayListItem | DisplayList], items)
+            contents=cast(List[DisplayListItem | DisplayList], items),
         )
 
     @block_scope_builder
@@ -258,7 +265,7 @@ class ListDocPlugin(DocPlugin):
             )
         return DisplayList(
             list_type=DisplayListType.Itemize,
-            contents=cast(List[DisplayListItem | DisplayList], items)
+            contents=cast(List[DisplayListItem | DisplayList], items),
         )
 
     @block_scope_builder
@@ -269,14 +276,10 @@ class ListDocPlugin(DocPlugin):
 
 class UrlDocPlugin(DocPlugin):
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
-        return (
-            NamedUrl,
-        )
+        return (NamedUrl,)
 
     @stateless
-    def url(
-        self, fmt: FormatContext, url: str, name: Optional[str] = None
-    ) -> Inline:
+    def url(self, fmt: FormatContext, url: str, name: Optional[str] = None) -> Inline:
         return NamedUrl(
             contents=(UnescapedText(name),) if name is not None else None,
             url=url,

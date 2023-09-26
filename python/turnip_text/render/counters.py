@@ -11,6 +11,7 @@ class Numbering(Protocol):
     def __getitem__(self, num: int) -> UnescapedText:
         ...
 
+
 class BasicNumbering(Numbering):
     lookup: str
 
@@ -23,6 +24,7 @@ class BasicNumbering(Numbering):
         if num > len(self.lookup):
             raise RuntimeError(f"Can't represent number {num} - too large")
         return UnescapedText(self.lookup[num - 1])
+
 
 # Roman numbering based on https://www.geeksforgeeks.org/python-program-to-convert-integer-to-roman/
 ROMAN_NUMBER_LOWER = [
@@ -41,6 +43,7 @@ ROMAN_NUMBER_LOWER = [
     (1, "i"),
 ]
 
+
 class RomanNumbering(Numbering):
     upper: bool
 
@@ -49,7 +52,9 @@ class RomanNumbering(Numbering):
 
     def __getitem__(self, num: int) -> UnescapedText:
         if num < 0:
-            raise RuntimeError(f"Can't represent negative number {num} with roman numerals")
+            raise RuntimeError(
+                f"Can't represent negative number {num} with roman numerals"
+            )
 
         s = ""
         for divisor, roman in ROMAN_NUMBER_LOWER:
@@ -60,20 +65,23 @@ class RomanNumbering(Numbering):
 
         return UnescapedText(s)
 
+
 class ArabicNumbering(Numbering):
     def __getitem__(self, num: int) -> UnescapedText:
         return UnescapedText(str(num))
-        
+
+
 ARABIC_NUMBERING = ArabicNumbering()
 LOWER_ROMAN_NUMBERING = RomanNumbering(upper=False)
 UPPER_ROMAN_NUMBERING = RomanNumbering(upper=True)
 LOWER_ALPH_NUMBERING = BasicNumbering(string.ascii_lowercase)
 UPPER_ALPH_NUMBERING = BasicNumbering(string.ascii_uppercase)
 
+
 @dataclass
 class Counter(abc.ABC):
     anchor_id: str
-    subcounters: List['Counter']
+    subcounters: List["Counter"]
     numbering: Numbering
 
     value: int = 0
@@ -89,6 +97,7 @@ class Counter(abc.ABC):
         for c in self.subcounters:
             c.reset()
 
+
 class CounterSet:
     # The roots of the tree of labels
     counter_tree_roots: List[Counter]
@@ -100,28 +109,26 @@ class CounterSet:
     def __init__(self, counter_tree_roots: List[Counter]) -> None:
         self.counter_tree_roots = counter_tree_roots
         self.anchor_kind_to_parent_chain = {}
-        CounterSet._build_anchor_id_lookup(self.anchor_kind_to_parent_chain, [], self.counter_tree_roots)
-    
+        CounterSet._build_anchor_id_lookup(
+            self.anchor_kind_to_parent_chain, [], self.counter_tree_roots
+        )
+
     @staticmethod
     def _build_anchor_id_lookup(
         lookup: Dict[str, Tuple[Counter, ...]],
         parents: Sequence[Counter],
-        cs: List[Counter]
+        cs: List[Counter],
     ) -> None:
         for c in cs:
             if c.anchor_id in lookup:
                 raise RuntimeError(f"Counter {c.anchor_id} declared twice")
             chain: Tuple[Counter, ...] = (*parents, c)
             lookup[c.anchor_id] = chain
-            CounterSet._build_anchor_id_lookup(
-                lookup,
-                parents=chain,
-                cs=c.subcounters
-            )
+            CounterSet._build_anchor_id_lookup(lookup, parents=chain, cs=c.subcounters)
 
     def anchor_kinds(self) -> Iterable[str]:
         return self.anchor_kind_to_parent_chain.keys()
-    
+
     def increment_counter(self, anchor_kind: str) -> Tuple[UnescapedText, ...]:
         parent_chain = self.anchor_kind_to_parent_chain[anchor_kind]
 

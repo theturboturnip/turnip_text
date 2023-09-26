@@ -67,7 +67,9 @@ class BlockScopeBuilder(abc.ABC):
     def build_from_blocks(self, bs: BlockScope) -> Optional[Block | DocSegment]:
         ...
 
-    def __matmul__(self, maybe_b: 'CoercibleToBlockScope') -> Optional[Block | DocSegment]:
+    def __matmul__(
+        self, maybe_b: "CoercibleToBlockScope"
+    ) -> Optional[Block | DocSegment]:
         bs = coerce_to_block_scope(maybe_b)
         return self.build_from_blocks(bs)
 
@@ -77,10 +79,11 @@ class InlineScopeBuilder(abc.ABC):
     def build_from_inlines(self, inls: InlineScope) -> Inline | DocSegment:
         ...
 
-    def __matmul__(self, maybe_inls: 'CoercibleToInlineScope') -> Inline | DocSegment:
+    def __matmul__(self, maybe_inls: "CoercibleToInlineScope") -> Inline | DocSegment:
         inls = coerce_to_inline_scope(maybe_inls)
         return self.build_from_inlines(inls)
-    
+
+
 @runtime_checkable
 class RawScopeBuilder(Protocol):
     def build_from_raw(self, raw: str) -> Union[Inline, Block]:

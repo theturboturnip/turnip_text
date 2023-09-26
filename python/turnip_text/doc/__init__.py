@@ -42,12 +42,13 @@ __all__ = [
     "stateful_property",
     "stateless",
     "stateless_property",
-    "BoundProperty"
+    "BoundProperty",
 ]
 
 TDocPlugin = TypeVar("TDocPlugin", bound="DocPlugin")
 P = ParamSpec("P")
 T = TypeVar("T")
+
 
 @dataclass
 class Document:
@@ -57,7 +58,9 @@ class Document:
     toplevel: DocSegment
 
 
-def parse(path: Union[str, bytes, "os.PathLike[Any]"], plugins: Sequence["DocPlugin"]) -> Document:
+def parse(
+    path: Union[str, bytes, "os.PathLike[Any]"], plugins: Sequence["DocPlugin"]
+) -> Document:
     fmt, doc = DocPlugin._make_contexts(plugins)
 
     exported_nodes: Set[Type[Union[Block, Inline, DocSegmentHeader]]] = set()
@@ -76,12 +79,8 @@ def parse(path: Union[str, bytes, "os.PathLike[Any]"], plugins: Sequence["DocPlu
     # Now freeze the document so further passes don't mutate it.
     doc._frozen = True
 
-    return Document(
-        exported_nodes,
-        counters,
-        fmt,
-        doc_toplevel
-    )
+    return Document(exported_nodes, counters, fmt, doc_toplevel)
+
 
 class DocPlugin:
     # Initialized when the plugin is included into the MutableState.
@@ -89,9 +88,7 @@ class DocPlugin:
     __doc: "DocState" = None  # type: ignore
     __fmt: "FormatContext" = None  # type: ignore
 
-    def __init_ctx(
-        self, fmt: "FormatContext", doc: "DocState"
-    ) -> None:
+    def __init_ctx(self, fmt: "FormatContext", doc: "DocState") -> None:
         assert self.__doc is None and self.__fmt is None
         self.__doc = doc
         self.__fmt = fmt
@@ -99,21 +96,23 @@ class DocPlugin:
     @property
     def _plugin_name(self) -> str:
         return type(self).__name__
-    
+
     @abc.abstractmethod
     def _doc_nodes(self) -> Sequence[Type[Union[Block, Inline, DocSegmentHeader]]]:
         """
         Tell the Document what nodes this plugin exports
         """
         return []
-    
+
     def _countables(self) -> Sequence[str]:
         """
         Tell the Document what counters this plugin uses
         """
         return []
-    
-    def _mutate_document(self, doc: "DocState", fmt: "FormatContext", toplevel: DocSegment) -> DocSegment:
+
+    def _mutate_document(
+        self, doc: "DocState", fmt: "FormatContext", toplevel: DocSegment
+    ) -> DocSegment:
         """
         Mutate the toplevel_contents or toplevel_segments to add things as you please.
         You may make a copy and return it
@@ -288,11 +287,13 @@ class DocPlugin:
 
         return property(DocPlugin._stateless(f))
 
+
 # TODO: annoyingly, vscode doesn't auto-import these. Why?
 stateful = DocPlugin._stateful
 stateful_property = DocPlugin._stateful_property
 stateless = DocPlugin._stateless
 stateless_property = DocPlugin._stateless_property
+
 
 class BoundProperty:
     "Emulate PyProperty_Type() in Objects/descrobject.c, as seen in https://docs.python.org/3.8/howto/descriptor.html"
@@ -322,6 +323,7 @@ RESERVED_DOC_PLUGIN_EXPORTS = [
     "fmt",
 ]
 
+
 class FormatContext:
     def __getattr__(self, name: str) -> Any:
         # The FormatContext has various things that we don't know at type-time.
@@ -338,14 +340,16 @@ class DocState:
 
     # These are reserved fields, so plugins can't export them.
     # Evaluated code can call directly out to doc.blah or fmt.blah.
-    doc: 'DocState'
-    fmt: 'FormatContext'
+    doc: "DocState"
+    fmt: "FormatContext"
 
-    def __init__(self, fmt: 'FormatContext') -> None:
+    def __init__(self, fmt: "FormatContext") -> None:
         self.doc = self
         self.fmt = fmt
-    
-    def parse_file_to_block(self, path: Union[str, bytes, "os.PathLike[Any]"]) -> DocSegment:
+
+    def parse_file_to_block(
+        self, path: Union[str, bytes, "os.PathLike[Any]"]
+    ) -> DocSegment:
         return parse_file_native(str(path), self.__dict__)
 
     def __getattr__(self, name: str) -> Any:

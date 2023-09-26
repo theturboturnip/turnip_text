@@ -46,11 +46,12 @@ TNode = TypeVar("TNode", Block, Inline)
 
 class DynamicNodeDispatch(Generic[P, TReturn]):
     _table: Dict[
-        Type[Block | Inline | DocSegmentHeader], Union[
+        Type[Block | Inline | DocSegmentHeader],
+        Union[
             Callable[Concatenate[Block, P], TReturn],
             Callable[Concatenate[Inline, P], TReturn],
             Callable[Concatenate[DocSegmentHeader, P], TReturn],
-        ]
+        ],
     ]
 
     def __init__(self) -> None:
@@ -70,24 +71,28 @@ class DynamicNodeDispatch(Generic[P, TReturn]):
         # and sweep the difference under the rug
         self._table[t] = f
 
-    def get_handler(self, obj: TNode) -> Callable[Concatenate[TNode, P], TReturn] | None:
-        # type-ignores are used here because mypy can't tell we'll always 
+    def get_handler(
+        self, obj: TNode
+    ) -> Callable[Concatenate[TNode, P], TReturn] | None:
+        # type-ignores are used here because mypy can't tell we'll always
         # return a Callable[[T, P], TReturn] for any obj: T.
         # This is because we only ever store T: Callable[[T, P], TReturn] in _table.
         f = self._table.get(type(obj))
         if f is None:
             for t, f in self._table.items():
                 if isinstance(obj, t):
-                    return f # type: ignore
+                    return f  # type: ignore
             return None
         else:
-            return f # type: ignore
-        
+            return f  # type: ignore
+
     def keys(self) -> Iterable[Type[Block | Inline | DocSegmentHeader]]:
         return self._table.keys()
-    
+
+
 TRenderer_contra = TypeVar("TRenderer_contra", bound="Renderer", contravariant=True)
 TVisitorOutcome = TypeVar("TVisitorOutcome")
+
 
 class RendererHandlers(Generic[TRenderer_contra]):
     visitors: DynamicNodeDispatch[[], Any]
@@ -97,7 +102,9 @@ class RendererHandlers(Generic[TRenderer_contra]):
         self,
         type: Type[TNode],
         visitor: Callable[[TNode], TVisitorOutcome],
-        renderer: Callable[[TNode, TVisitorOutcome, TRenderer_contra, FormatContext], None]
+        renderer: Callable[
+            [TNode, TVisitorOutcome, TRenderer_contra, FormatContext], None
+        ],
     ) -> None:
         self.visitors.register_handler(type, visitor)
         self.emitters.register_handler(type, renderer)
@@ -112,29 +119,37 @@ class RendererHandlers(Generic[TRenderer_contra]):
     def register_node_renderer(
         self,
         type: Type[TNode],
-        renderer: Callable[[TNode, None, TRenderer_contra, FormatContext], None]
+        renderer: Callable[[TNode, None, TRenderer_contra, FormatContext], None],
     ) -> None:
         self.emitters.register_handler(type, renderer)
 
     def visit(self, n: Block | Inline | DocSegmentHeader) -> Any:
-        f = self.visitors.get_handler(n) # type: ignore
+        f = self.visitors.get_handler(n)  # type: ignore
         if f is None:
             return None
         return f(n)
 
-    def emit(self, n: TNode, v: TVisitorOutcome, renderer: TRenderer_contra, fmt: FormatContext) -> None:
+    def emit(
+        self,
+        n: TNode,
+        v: TVisitorOutcome,
+        renderer: TRenderer_contra,
+        fmt: FormatContext,
+    ) -> None:
         f = self.emitters.get_handler(n)
         if f is None:
             raise NotImplementedError(f"Didn't have renderer for {n}")
         f(n, v, renderer, fmt)
 
+
 class Writable(Protocol):
     def write(self, s: str, /) -> int:
         ...
 
+
 class Renderer:
     fmt: FormatContext
-    handlers: RendererHandlers # type: ignore[type-arg]
+    handlers: RendererHandlers  # type: ignore[type-arg]
     visit_results: Dict[Block | Inline | DocSegmentHeader, Any]
     write_to: Writable
 
@@ -147,12 +162,12 @@ class Renderer:
     _need_indent: bool = False
 
     def __init__(
-            self,
-            fmt: FormatContext,
-            handlers: RendererHandlers, # type: ignore[type-arg]
-            visit_results: Dict[Block | Inline | DocSegmentHeader, Any],
-            write_to: Writable
-        ) -> None:
+        self,
+        fmt: FormatContext,
+        handlers: RendererHandlers,  # type: ignore[type-arg]
+        visit_results: Dict[Block | Inline | DocSegmentHeader, Any],
+        write_to: Writable,
+    ) -> None:
         self.fmt = fmt
         self.handlers = handlers
         self.visit_results = visit_results
@@ -164,7 +179,7 @@ class Renderer:
         plugins: Sequence["RenderPlugin[TRenderer_contra]"],
         counters: CounterSet,
         doc: Document,
-        write_to_path: str | bytes | "os.PathLike[Any]"
+        write_to_path: str | bytes | "os.PathLike[Any]",
     ) -> None:
         with open(write_to_path, "w", encoding="utf-8") as write_to:
             cls.render(plugins, counters, doc, write_to)
@@ -175,7 +190,7 @@ class Renderer:
         plugins: Sequence["RenderPlugin[TRenderer_contra]"],
         counters: CounterSet,
         doc: Document,
-        write_to: Writable | None=None
+        write_to: Writable | None = None,
     ) -> io.StringIO | None:
         if write_to is None:
             write_to = io.StringIO()
@@ -198,11 +213,17 @@ class Renderer:
 
         missing_renderers = doc.exported_nodes.difference(handlers.emitters.keys())
         if missing_renderers:
-            raise RuntimeError(f"Some node types were not given renderers by any plugin, but are used by the document: {missing_renderers}")
+            raise RuntimeError(
+                f"Some node types were not given renderers by any plugin, but are used by the document: {missing_renderers}"
+            )
 
-        missing_doc_counters = doc.counted_anchor_kinds.difference(counters.anchor_kinds())
+        missing_doc_counters = doc.counted_anchor_kinds.difference(
+            counters.anchor_kinds()
+        )
         if missing_doc_counters:
-            raise RuntimeError(f"Some counters are not declared in the CounterSet, but are used by the document: {missing_doc_counters}")
+            raise RuntimeError(
+                f"Some counters are not declared in the CounterSet, but are used by the document: {missing_doc_counters}"
+            )
 
         # The visitor/counter pass
         visit_results: Dict[Block | Inline | DocSegmentHeader, Any] = {}
@@ -232,17 +253,12 @@ class Renderer:
             elif node is None:
                 children = None
             else:
-                children = reversed(getattr(node, "contents", None)) # type: ignore
+                children = reversed(getattr(node, "contents", None))  # type: ignore
             if children is not None:
                 dfs_queue.extend(children)
 
         # The rendering pass
-        renderer = cls(
-            doc.fmt,
-            handlers,
-            visit_results,
-            write_to
-        )
+        renderer = cls(doc.fmt, handlers, visit_results, write_to)
         renderer.emit_segment(doc.toplevel)
 
         if isinstance(write_to, io.StringIO):
@@ -263,7 +279,12 @@ class Renderer:
         self._need_indent = True
 
     # TODO pass a generator instead of emit_t, ts!
-    def emit_join(self, emit_t: Callable[[T], None], ts: Iterable[T], emit_join: Callable[[], None]) -> None:
+    def emit_join(
+        self,
+        emit_t: Callable[[T], None],
+        ts: Iterable[T],
+        emit_join: Callable[[], None],
+    ) -> None:
         first = True
         for t in ts:
             if not first:
@@ -271,7 +292,9 @@ class Renderer:
             first = False
             emit_t(t)
 
-    def emit_join_gen(self, emit_gen: Generator[None, None, None], emit_join: Callable[[], None]) -> None:
+    def emit_join_gen(
+        self, emit_gen: Generator[None, None, None], emit_join: Callable[[], None]
+    ) -> None:
         first = True
         while True:
             if not first:
@@ -281,10 +304,10 @@ class Renderer:
                 next(emit_gen)
             except StopIteration:
                 break
-    
+
     def emit_break_sentence(self) -> None:
         self.emit_newline()
-    
+
     def emit_break_paragraph(self) -> None:
         self.emit_newline()
         self.emit_newline()
@@ -304,8 +327,8 @@ class Renderer:
     #         self.emit_block(x)
 
     # TODO or i could get even crazier with it - make it expand tuples?
-    def emit(self, *args: Any, joiner: Optional[Callable[[], None]]=None) -> None:
-        first = True            
+    def emit(self, *args: Any, joiner: Optional[Callable[[], None]] = None) -> None:
+        first = True
         for a in args:
             if joiner and not first:
                 joiner()
@@ -324,7 +347,7 @@ class Renderer:
         self.handlers.emit(b, self.visit_results.get(b, None), self, self.fmt)
 
     def emit_segment(self: Self, s: DocSegment) -> None:
-        # TODO need to sort out how to render segments. You don't render the segments, 
+        # TODO need to sort out how to render segments. You don't render the segments,
         self.handlers.emit(s, self.visit_results.get(s, None), self, self.fmt)
 
     def emit_blockscope(self, bs: BlockScope) -> None:
@@ -361,12 +384,15 @@ class Renderer:
     @contextmanager
     def indent(self, n: int) -> Iterator[None]:
         self.push_indent(n)
-        try: 
+        try:
             yield
         finally:
             self.pop_indent(n)
-    
+
+
 class RenderPlugin(Generic[TRenderer_contra]):
     @abc.abstractmethod
-    def _register_node_handlers(self, handlers: RendererHandlers[TRenderer_contra]) -> None:
+    def _register_node_handlers(
+        self, handlers: RendererHandlers[TRenderer_contra]
+    ) -> None:
         raise NotImplementedError()

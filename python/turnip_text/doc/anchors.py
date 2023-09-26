@@ -49,23 +49,27 @@ from turnip_text.doc import DocPlugin, DocState, FormatContext, stateful, statel
 @dataclass(frozen=True)
 class Anchor:
     kind: str
-    id: Optional[str] # If the id is None, you can't backreference this object. Ever.
+    id: Optional[str]  # If the id is None, you can't backreference this object. Ever.
 
     def canonical(self) -> str:
         return f"{self.kind}:{self.id}"
-    
+
     def __str__(self) -> str:
         return self.canonical()
+
 
 @dataclass(frozen=True)
 class Backref(Inline, InlineScopeBuilder):
     id: str
-    kind: Optional[str] # Usually there should be exactly one Anchor for every one ID. This is used to disambiguate otherwise
-    label_contents: Optional[Inline] # Override for label
+    kind: Optional[
+        str
+    ]  # Usually there should be exactly one Anchor for every one ID. This is used to disambiguate otherwise
+    label_contents: Optional[Inline]  # Override for label
 
     def build_from_inlines(self, inls: InlineScope) -> Inline:
         assert self.label_contents is None
         return dataclasses.replace(self, label_contents=inls)
+
 
 # Responsible for keeping track of all the anchors in a document
 class DocAnchorPlugin(DocPlugin):
@@ -78,7 +82,9 @@ class DocAnchorPlugin(DocPlugin):
         return [Backref]
 
     @stateful
-    def register_new_anchor(self, doc: DocState, kind: str, id: Optional[str]) -> Anchor:
+    def register_new_anchor(
+        self, doc: DocState, kind: str, id: Optional[str]
+    ) -> Anchor:
         """
         When inside the document, render an anchor.
         """
@@ -89,7 +95,7 @@ class DocAnchorPlugin(DocPlugin):
         if id is not None:
             self._anchor_id_to_possible_kinds[id][kind] = l
         return l
-    
+
     @stateless
     def lookup_backref(self, fmt: FormatContext, backref: Backref) -> Anchor:
         """
@@ -98,16 +104,22 @@ class DocAnchorPlugin(DocPlugin):
         """
 
         if backref.id not in self._anchor_id_to_possible_kinds:
-            raise ValueError(f"Backref {backref} refers to an ID '{backref.id}' with no anchor!")
-        
+            raise ValueError(
+                f"Backref {backref} refers to an ID '{backref.id}' with no anchor!"
+            )
+
         possible_kinds = self._anchor_id_to_possible_kinds[backref.id]
 
         if backref.kind is None:
             if len(possible_kinds) != 1:
-                raise ValueError(f"Backref {backref} doesn't specify the kind of anchor it's referring to, and there are multiple with that ID: {possible_kinds}")
+                raise ValueError(
+                    f"Backref {backref} doesn't specify the kind of anchor it's referring to, and there are multiple with that ID: {possible_kinds}"
+                )
             only_possible_anchor = next(iter(possible_kinds.values()))
             return only_possible_anchor
         else:
             if backref.kind not in possible_kinds:
-                raise ValueError(f"Backref {backref} specifies an anchor of kind {backref.kind}, which doesn't exist for ID {backref.id}: {possible_kinds}")
+                raise ValueError(
+                    f"Backref {backref} specifies an anchor of kind {backref.kind}, which doesn't exist for ID {backref.id}: {possible_kinds}"
+                )
             return possible_kinds[backref.kind]
