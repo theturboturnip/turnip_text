@@ -78,12 +78,13 @@ class Counter(abc.ABC):
 
     value: int = 0
 
-    def increment(self):
+    def increment(self) -> int:
         self.value += 1
         for c in self.subcounters:
             c.reset()
+        return self.value
 
-    def reset(self):
+    def reset(self) -> None:
         self.value = 0
         for c in self.subcounters:
             c.reset()
@@ -106,7 +107,7 @@ class CounterSet:
         lookup: Dict[str, Tuple[Counter, ...]],
         parents: Sequence[Counter],
         cs: List[Counter]
-    ):
+    ) -> None:
         for c in cs:
             if c.anchor_id in lookup:
                 raise RuntimeError(f"Counter {c.anchor_id} declared twice")

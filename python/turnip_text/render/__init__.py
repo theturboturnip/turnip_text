@@ -27,6 +27,7 @@ from turnip_text import (
     Block,
     BlockScope,
     DocSegment,
+    DocSegmentHeader,
     Inline,
     InlineScope,
     Paragraph,
@@ -35,21 +36,20 @@ from turnip_text import (
 )
 from turnip_text.doc import Document, FormatContext
 from turnip_text.doc.anchors import Anchor
-from turnip_text.doc.user_nodes import VisitableNode
 from turnip_text.render.counters import CounterSet
 
 T = TypeVar("T")
 P = ParamSpec("P")
 TReturn = TypeVar("TReturn")
-TNode = TypeVar("TNode", Block, Inline, DocSegment)
+TNode = TypeVar("TNode", Block, Inline)
 
 
 class DynamicNodeDispatch(Generic[P, TReturn]):
     _table: Dict[
-        Type[Block | Inline | DocSegment], Union[
+        Type[Block | Inline | DocSegmentHeader], Union[
             Callable[Concatenate[Block, P], TReturn],
             Callable[Concatenate[Inline, P], TReturn],
-            Callable[Concatenate[DocSegment, P], TReturn],
+            Callable[Concatenate[DocSegmentHeader, P], TReturn],
         ]
     ]
 
@@ -83,7 +83,7 @@ class DynamicNodeDispatch(Generic[P, TReturn]):
         else:
             return f # type: ignore
         
-    def keys(self) -> Iterable[Type[Block | Inline | DocSegment]]:
+    def keys(self) -> Iterable[Type[Block | Inline | DocSegmentHeader]]:
         return self._table.keys()
     
 TRenderer_contra = TypeVar("TRenderer_contra", bound="Renderer", contravariant=True)
@@ -98,7 +98,7 @@ class RendererHandlers(Generic[TRenderer_contra]):
         type: Type[TNode],
         visitor: Callable[[TNode], TVisitorOutcome],
         renderer: Callable[[TNode, TVisitorOutcome, TRenderer_contra, FormatContext], None]
-    ):
+    ) -> None:
         self.visitors.register_handler(type, visitor)
         self.emitters.register_handler(type, renderer)
 
@@ -106,27 +106,27 @@ class RendererHandlers(Generic[TRenderer_contra]):
         self,
         type: Type[TNode],
         visitor: Callable[[TNode], None],
-    ):
+    ) -> None:
         self.visitors.register_handler(type, visitor)
 
     def register_node_renderer(
         self,
         type: Type[TNode],
         renderer: Callable[[TNode, None, TRenderer_contra, FormatContext], None]
-    ):
+    ) -> None:
         self.emitters.register_handler(type, renderer)
 
-    def visit(self, n: Block | Inline | DocSegment) -> Any:
+    def visit(self, n: Block | Inline | DocSegmentHeader) -> Any:
         f = self.visitors.get_handler(n) # type: ignore
         if f is None:
             return None
         return f(n)
 
-    def emit(self, n: TNode, v: TVisitorOutcome, renderer: TRenderer_contra, fmt: FormatContext):
+    def emit(self, n: TNode, v: TVisitorOutcome, renderer: TRenderer_contra, fmt: FormatContext) -> None:
         f = self.emitters.get_handler(n)
         if f is None:
             raise NotImplementedError(f"Didn't have renderer for {n}")
-        return f(n, v, renderer, fmt)
+        f(n, v, renderer, fmt)
 
 class Writable(Protocol):
     def write(self, s: str, /) -> int:
@@ -134,8 +134,8 @@ class Writable(Protocol):
 
 class Renderer:
     fmt: FormatContext
-    handlers: RendererHandlers
-    visit_results: Dict[Block | Inline | DocSegment, Any]
+    handlers: RendererHandlers # type: ignore[type-arg]
+    visit_results: Dict[Block | Inline | DocSegmentHeader, Any]
     write_to: Writable
 
     _indent: str = ""
@@ -146,7 +146,13 @@ class Renderer:
     # In the same way, if you emit a newline *then* change the indent, the next emitted item will have the new indent applied.
     _need_indent: bool = False
 
-    def __init__(self, fmt: FormatContext, handlers: RendererHandlers, visit_results: Dict[Block | Inline | DocSegment, Any], write_to: Writable) -> None:
+    def __init__(
+            self,
+            fmt: FormatContext,
+            handlers: RendererHandlers, # type: ignore[type-arg]
+            visit_results: Dict[Block | Inline | DocSegmentHeader, Any],
+            write_to: Writable
+        ) -> None:
         self.fmt = fmt
         self.handlers = handlers
         self.visit_results = visit_results
@@ -158,7 +164,7 @@ class Renderer:
         plugins: Sequence["RenderPlugin[TRenderer_contra]"],
         counters: CounterSet,
         doc: Document,
-        write_to_path: str | bytes | os.PathLike
+        write_to_path: str | bytes | "os.PathLike[Any]"
     ) -> None:
         with open(write_to_path, "w", encoding="utf-8") as write_to:
             cls.render(plugins, counters, doc, write_to)
@@ -199,9 +205,9 @@ class Renderer:
             raise RuntimeError(f"Some counters are not declared in the CounterSet, but are used by the document: {missing_doc_counters}")
 
         # The visitor/counter pass
-        visit_results: Dict[Block | Inline | DocSegment, Any] = {}
+        visit_results: Dict[Block | Inline | DocSegmentHeader, Any] = {}
         anchor_counters: Dict[Anchor, Tuple[UnescapedText, ...]] = {}
-        dfs_queue: List[Block | Inline | DocSegment] = [doc.block]
+        dfs_queue: List[Block | Inline | DocSegment | DocSegmentHeader] = [doc.toplevel]
         while dfs_queue:
             node = dfs_queue.pop()
 
@@ -211,17 +217,18 @@ class Renderer:
                 anchor_counters[anchor] = counters.increment_counter(anchor.kind)
 
             # Visit the node
-            visit_result = handlers.visit(node)
-            if visit_result is not None:
-                visit_results[node] = visit_result
+            if not isinstance(node, DocSegment):
+                visit_result = handlers.visit(node)
+                if visit_result is not None:
+                    visit_results[node] = visit_result
 
             # Extract children as a reversed iterator.
             # reversed is important because we pop the last thing in the queue off first.
-            children: Iterable[Block | Inline | DocSegment]
+            children: Iterable[Block | Inline | DocSegment | DocSegmentHeader]
             if isinstance(node, (BlockScope, InlineScope)):
                 children = reversed(tuple(*node))
             elif isinstance(node, DocSegment):
-                children = reversed((*node.header, node.blocks, *node.subsegments))
+                children = reversed((node.header, node.contents, *node.subsegments))
             elif node is None:
                 children = None
             else:
@@ -236,7 +243,7 @@ class Renderer:
             visit_results,
             write_to
         )
-        renderer.emit_blockscope(doc.block)
+        renderer.emit_segment(doc.toplevel)
 
         if isinstance(write_to, io.StringIO):
             return write_to
@@ -317,6 +324,7 @@ class Renderer:
         self.handlers.emit(b, self.visit_results.get(b, None), self, self.fmt)
 
     def emit_segment(self: Self, s: DocSegment) -> None:
+        # TODO need to sort out how to render segments. You don't render the segments, 
         self.handlers.emit(s, self.visit_results.get(s, None), self, self.fmt)
 
     def emit_blockscope(self, bs: BlockScope) -> None:
@@ -360,5 +368,5 @@ class Renderer:
     
 class RenderPlugin(Generic[TRenderer_contra]):
     @abc.abstractmethod
-    def _register_node_handlers(self, handlers: RendererHandlers[TRenderer_contra]):
+    def _register_node_handlers(self, handlers: RendererHandlers[TRenderer_contra]) -> None:
         raise NotImplementedError()

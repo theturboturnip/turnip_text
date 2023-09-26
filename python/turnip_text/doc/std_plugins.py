@@ -122,7 +122,7 @@ class CitationDocPlugin(DocPlugin):
             Bibliography,
         )
 
-    def _mutate_document(self, doc: DocState, fmt: FormatContext, toplevel: DocSegment):
+    def _mutate_document(self, doc: DocState, fmt: FormatContext, toplevel: DocSegment) -> DocSegment:
         if not self._has_bib:
             toplevel.push_subsegment(DocSegment(Bibliography(), BlockScope(), []))
         return toplevel
@@ -148,7 +148,7 @@ class CitationDocPlugin(DocPlugin):
 class FootnoteDocPlugin(DocPlugin):
     _footnotes: Dict[str, Block]
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._footnotes = {}
 
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:

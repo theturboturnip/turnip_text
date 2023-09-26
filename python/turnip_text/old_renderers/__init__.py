@@ -1,8 +1,8 @@
 import abc
 import inspect
+import os
 from contextlib import contextmanager
 from io import StringIO
-from os import PathLike
 from typing import (
     Any,
     Callable,
@@ -366,7 +366,7 @@ class StatelessContext(Generic[TRenderer]):
 class MutableState(Generic[TRenderer]):
     _frozen: bool = False  # Set to True when rendering the document, which disables functions annotated with @stateful.
 
-    def parse_file(self, path: Union[str, bytes, PathLike]) -> BlockScope:
+    def parse_file(self, path: Union[str, bytes, "os.PathLike[Any]"]) -> BlockScope:
         # TODO this should include a field `doc` which is itself, so longer code blocks can use properties.
         # e.g. right now if you do this then to use bound properties you have to do `footnote.__get__(None) @ blah` inside the document
         return parse_file_native(str(path), self.__dict__)

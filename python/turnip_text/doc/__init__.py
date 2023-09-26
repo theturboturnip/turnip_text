@@ -4,8 +4,8 @@ This module
 
 import abc
 import inspect
+import os
 from dataclasses import dataclass
-from os import PathLike
 from typing import (
     Any,
     Callable,
@@ -57,7 +57,7 @@ class Document:
     toplevel: DocSegment
 
 
-def parse(path: Union[str, bytes, PathLike], plugins: Sequence["DocPlugin"]) -> Document:
+def parse(path: Union[str, bytes, "os.PathLike[Any]"], plugins: Sequence["DocPlugin"]) -> Document:
     fmt, doc = DocPlugin._make_contexts(plugins)
 
     exported_nodes: Set[Type[Union[Block, Inline, DocSegmentHeader]]] = set()
@@ -345,7 +345,7 @@ class DocState:
         self.doc = self
         self.fmt = fmt
     
-    def parse_file_to_block(self, path: Union[str, bytes, PathLike]) -> DocSegment:
+    def parse_file_to_block(self, path: Union[str, bytes, "os.PathLike[Any]"]) -> DocSegment:
         return parse_file_native(str(path), self.__dict__)
 
     def __getattr__(self, name: str) -> Any:
