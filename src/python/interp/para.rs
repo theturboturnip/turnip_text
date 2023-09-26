@@ -298,12 +298,7 @@ impl InterpParaState {
                     )
                 }
 
-                (
-                    S::BuildingCode { .. },
-                    T::EmitNone,
-                ) => {
-                    (S::MidSentence, (None, None))
-                }
+                (S::BuildingCode { .. }, T::EmitNone) => (S::MidSentence, (None, None)),
 
                 (
                     S::SentenceStart
@@ -542,15 +537,7 @@ impl InterpParaState {
                 code_start,
                 expected_n_hashes,
             } => {
-                match eval_brackets(
-                    data,
-                    tok,
-                    code,
-                    code_start,
-                    *expected_n_hashes,
-                    py,
-                    globals,
-                )? {
+                match eval_brackets(data, tok, code, code_start, *expected_n_hashes, py, globals)? {
                     Some((res, code_span)) => {
                         // The code ended...
                         use EvalBracketResult::*;
@@ -568,7 +555,9 @@ impl InterpParaState {
                                 return Err(InterpError::BlockCodeMidPara { code_span });
                             }
                             NeededInlineBuilder(i) => PushInlineScope(Some(i), code_span),
-                            NeededRawBuilder(r, n_hashes) => StartRawScope(Some(r), code_span, n_hashes),
+                            NeededRawBuilder(r, n_hashes) => {
+                                StartRawScope(Some(r), code_span, n_hashes)
+                            }
                             // This includes coerced objects - e.g. eval bracket returning a string gets wrapped in UnescapedText automatically
                             Inline(i) => PushInlineContent(InlineNodeToCreate::PythonObject(i)),
                             PyNone => EmitNone,
@@ -586,24 +575,23 @@ impl InterpParaState {
             } => match tok {
                 RawScopeClose(_, n_hashes) if n_hashes == *expected_n_hashes => match builder {
                     Some(builder) => {
-                        let to_emit = RawScopeBuilder::call_build_from_raw(py, builder, text).err_as_interp(py, *raw_start)?;
-                    
+                        let to_emit = RawScopeBuilder::call_build_from_raw(py, builder, text)
+                            .err_as_interp(py, *raw_start)?;
+
                         match to_emit {
-                            PyTcUnionRef::A(inl) => Some(
-                                PushInlineContent(
-                                    InlineNodeToCreate::PythonObject(inl)
-                                )
-                            ),
-                            PyTcUnionRef::B(_) => return Err(
-                                InterpError::BlockCodeFromRawScopeMidPara{ code_span: *raw_start }
-                            ),
+                            PyTcUnionRef::A(inl) => {
+                                Some(PushInlineContent(InlineNodeToCreate::PythonObject(inl)))
+                            }
+                            PyTcUnionRef::B(_) => {
+                                return Err(InterpError::BlockCodeFromRawScopeMidPara {
+                                    code_span: *raw_start,
+                                })
+                            }
                         }
-                    },
-                    None => Some(
-                        PushInlineContent(InlineNodeToCreate::RawText(text.clone())),
-                    ),
-                }
-                    
+                    }
+                    None => Some(PushInlineContent(InlineNodeToCreate::RawText(text.clone()))),
+                },
+
                 _ => {
                     text.push_str(tok.stringify_raw(data));
                     None

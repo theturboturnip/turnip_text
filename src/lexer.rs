@@ -196,8 +196,11 @@ impl Unit {
                         }
                         None => {
                             let end = stream.consumed(state, 1);
-                            Ok(Some((state_after_seq, Self::Backslash(ParseSpan::from_lex(start, end)))))
-                        },
+                            Ok(Some((
+                                state_after_seq,
+                                Self::Backslash(ParseSpan::from_lex(start, end)),
+                            )))
+                        }
                     }
                 }
                 // CRLF or (CR outside CRLF) or (LF outside CRLF) => Newline()

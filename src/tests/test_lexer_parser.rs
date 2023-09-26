@@ -339,13 +339,10 @@ pub fn test_plain_hashes() {
 pub fn test_special_with_escaped_backslash() {
     expect_lex_parse(
         r#"\\#"#,
-        vec![
-            Escaped(Escapable::Backslash),
-            Hashes(1),
-        ],
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            test_text("\\"),
-        ]])])),
+        vec![Escaped(Escapable::Backslash), Hashes(1)],
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text(
+            "\\",
+        )]])])),
     )
 }
 

@@ -7,8 +7,6 @@ pub trait PyTypeclass {
     fn fits_typeclass(obj: &PyAny) -> PyResult<bool>;
 }
 
-
-
 #[derive(Debug, Clone)]
 pub struct PyInstanceTypeclass<T: PyClass>(PhantomData<T>);
 impl<T: PyClass> PyTypeclass for PyInstanceTypeclass<T> {
@@ -21,7 +19,7 @@ impl<T: PyClass> PyTypeclass for PyInstanceTypeclass<T> {
 
 pub enum PyTcUnionRef<TA: PyTypeclass, TB: PyTypeclass> {
     A(PyTcRef<TA>),
-    B(PyTcRef<TB>)
+    B(PyTcRef<TB>),
 }
 impl<TA: PyTypeclass, TB: PyTypeclass> PyTcUnionRef<TA, TB> {
     pub fn of(val: &PyAny) -> PyResult<Self> {

@@ -7,7 +7,7 @@ use pyo3::{
     types::{PyDict, PyFloat, PyIterator, PyList, PyLong, PyString},
 };
 
-use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList, PyTcUnionRef};
+use super::typeclass::{PyInstanceList, PyTcRef, PyTcUnionRef, PyTypeclass, PyTypeclassList};
 
 #[pymodule]
 #[pyo3(name = "_native")]
@@ -232,7 +232,9 @@ impl DocSegmentHeader {
         intern!(py, "weight")
     }
     pub fn get_weight(py: Python<'_>, header: &PyAny) -> PyResult<i64> {
-        header.getattr(DocSegmentHeader::weight_field_name(py))?.extract()
+        header
+            .getattr(DocSegmentHeader::weight_field_name(py))?
+            .extract()
     }
 }
 impl PyTypeclass for DocSegmentHeader {
@@ -589,25 +591,25 @@ impl InlineScope {
 
 /// This is used for implicit structure.
 /// It's created by Python code just with the Header and Weight, and the Weight is used to implicitly open and close scopes
-/// 
+///
 /// ```text
 /// [heading("Blah")] # -> DocSegmentBuilder(weight=0)
-/// 
+///
 /// # This paragraph is implicitly included as a child of DocSegment().text
 /// some text
-/// 
+///
 /// [subheading("Sub-Blah")] # -> DocSegmentBuilder(weight=1)
 /// # the weight is greater than for the Section -> the subsection is implicitly included as a subsegment of section
-/// 
+///
 /// Some other text in a subsection
-/// 
+///
 /// [heading("Blah 2")] # -> DocSegmentBuilder(weight=0)
 /// # the weight is <=subsection -> subsection 1.1 automatically ends, subheading.build_doc_segment() called
 /// # the weight is <=section -> section 1 automatically ends, heading.build_doc_segment() called
-/// 
+///
 /// Some other text in a second section
 /// ```
-/// 
+///
 /// There can be weird interactions with manual scopes.
 /// It may be confusing for a renderer to find Section containing Manual Scope containing Subsection,
 /// having the Subsection not as a direct child of the Section.
@@ -615,23 +617,23 @@ impl InlineScope {
 /// Effectively DocSegments must only exist at the "top level" - they may be enclosed by DocSegments directly, but nothing else.
 /// TODO this means subfiles need to emit lists of blocks directly into the enclosing BlockScope,
 /// as otherwise you couldn't have an DocSegments inside them at all - they'd all be implicitly contained by a BlockScope
-/// 
+///
 /// An example error from mixing explicit and implicit scoping:
 /// ```text
 /// [section("One")]
-/// 
+///
 /// this text is clearly in section 1
-/// 
+///
 /// {
 ///     [subsection("One.One")]
-/// 
+///
 ///     this text is clearly in subsection 1.1...
 /// } # Maybe this should be an error? but then it's only a problem if there's bare text underneath...
-/// 
+///
 /// but where is this?? # This is really the error.
-/// 
+///
 /// [subsection("One.Two")]
-/// 
+///
 /// this text is clearly in subsection 1.2
 /// ```
 #[pyclass]
@@ -642,15 +644,19 @@ pub struct DocSegment {
     pub subsegments: PyInstanceList<DocSegment>,
 }
 impl DocSegment {
-    pub fn new_no_header(py: Python, contents: Py<BlockScope>, subsegments: PyInstanceList<DocSegment>) -> PyResult<Self> {
-        Self::new_checked(
-            py,
-            None,
-            contents,
-            subsegments
-        )
+    pub fn new_no_header(
+        py: Python,
+        contents: Py<BlockScope>,
+        subsegments: PyInstanceList<DocSegment>,
+    ) -> PyResult<Self> {
+        Self::new_checked(py, None, contents, subsegments)
     }
-    pub fn new_checked(py: Python, header: Option<PyTcRef<DocSegmentHeader>>, contents: Py<BlockScope>, subsegments: PyInstanceList<DocSegment>) -> PyResult<Self> {
+    pub fn new_checked(
+        py: Python,
+        header: Option<PyTcRef<DocSegmentHeader>>,
+        contents: Py<BlockScope>,
+        subsegments: PyInstanceList<DocSegment>,
+    ) -> PyResult<Self> {
         match &header {
             Some(h) => {
                 let weight = DocSegmentHeader::get_weight(py, h.as_ref(py))?;
@@ -673,7 +679,7 @@ impl DocSegment {
         Ok(Self {
             header,
             contents,
-            subsegments
+            subsegments,
         })
     }
 }
@@ -684,7 +690,7 @@ impl DocSegment {
         Ok(Self {
             header: Some(PyTcRef::of(header)?),
             contents,
-            subsegments: PyInstanceList::from(subsegments)?
+            subsegments: PyInstanceList::from(subsegments)?,
         })
     }
     #[getter]

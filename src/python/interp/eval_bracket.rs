@@ -1,11 +1,13 @@
-use pyo3::{exceptions::PySyntaxError, ffi::Py_None, types::PyDict, Py, PyAny, PyResult, Python, intern};
+use pyo3::{
+    exceptions::PySyntaxError, ffi::Py_None, intern, types::PyDict, Py, PyAny, PyResult, Python,
+};
 
 use crate::{
     lexer::TTToken,
     python::{
         interop::{
-            coerce_to_inline_pytcref, Block, BlockScopeBuilder, Inline, InlineScopeBuilder,
-            RawScopeBuilder, DocSegmentHeader,
+            coerce_to_inline_pytcref, Block, BlockScopeBuilder, DocSegmentHeader, Inline,
+            InlineScopeBuilder, RawScopeBuilder,
         },
         typeclass::PyTcRef,
     },

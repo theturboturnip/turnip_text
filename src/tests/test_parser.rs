@@ -5,7 +5,8 @@ use lexer_rs::Lexer;
 use regex::Regex;
 
 use crate::python::interop::{
-    BlockScope, InlineScope, Paragraph, RawText, Sentence, UnescapedText, DocSegment, DocSegmentHeader,
+    BlockScope, DocSegment, DocSegmentHeader, InlineScope, Paragraph, RawText, Sentence,
+    UnescapedText,
 };
 use crate::python::{interp_data, prepare_freethreaded_turniptext_python, InterpError};
 use crate::util::ParseSpan;
@@ -84,9 +85,15 @@ pub enum TestInterpError {
         newline: TestParserSpan,
     },
 
-    DocSegmentHeaderMidPara { code_span: TestParserSpan },
+    DocSegmentHeaderMidPara {
+        code_span: TestParserSpan,
+    },
 
-    DocSegmentHeaderMidScope { code_span: TestParserSpan, block_close_span: Option<TestParserSpan>, enclosing_scope_start: TestParserSpan },
+    DocSegmentHeaderMidScope {
+        code_span: TestParserSpan,
+        block_close_span: Option<TestParserSpan>,
+        enclosing_scope_start: TestParserSpan,
+    },
 }
 impl PartialEq<InterpError> for TestInterpError {
     fn eq(&self, other: &InterpError) -> bool {
@@ -214,24 +221,30 @@ impl PartialEq<InterpError> for TestInterpError {
             ) => (*l_newline) == (*r_newline).into(),
 
             (
-                Self::DocSegmentHeaderMidPara { code_span: l_code_span },
-                InterpError::DocSegmentHeaderMidPara { code_span: r_code_span }
+                Self::DocSegmentHeaderMidPara {
+                    code_span: l_code_span,
+                },
+                InterpError::DocSegmentHeaderMidPara {
+                    code_span: r_code_span,
+                },
             ) => (*l_code_span) == (*r_code_span).into(),
 
             (
                 Self::DocSegmentHeaderMidScope {
                     code_span: l_code_span,
                     block_close_span: l_block_close_span,
-                    enclosing_scope_start: l_enclosing_scope_start
+                    enclosing_scope_start: l_enclosing_scope_start,
                 },
                 InterpError::DocSegmentHeaderMidScope {
                     code_span: r_code_span,
-                    block_close_span: r_block_close_span ,
-                    enclosing_scope_start: r_enclosing_scope_start
-                }
-            ) => ((*l_code_span) == (*r_code_span).into()) &&
-                 ((*l_block_close_span) == (*r_block_close_span).map(|s| s.into())) &&
-                 ((*l_enclosing_scope_start) == (*r_enclosing_scope_start).into()),
+                    block_close_span: r_block_close_span,
+                    enclosing_scope_start: r_enclosing_scope_start,
+                },
+            ) => {
+                ((*l_code_span) == (*r_code_span).into())
+                    && ((*l_block_close_span) == (*r_block_close_span).map(|s| s.into()))
+                    && ((*l_enclosing_scope_start) == (*r_enclosing_scope_start).into())
+            }
             _ => false,
         }
     }
@@ -322,10 +335,10 @@ pub enum TestInline {
     TestOwnedRaw(String),
 }
 pub fn test_doc(contents: Vec<TestBlock>) -> TestDocSegment {
-    TestDocSegment{
+    TestDocSegment {
         header: None,
         contents: TestBlock::BlockScope(contents),
-        subsegments: vec![]
+        subsegments: vec![],
     }
 }
 pub fn test_sentence(s: impl Into<String>) -> Vec<TestInline> {
@@ -346,19 +359,27 @@ impl PyToTest<TestDocSegment> for PyAny {
         if let Ok(doc_segment) = self.extract::<DocSegment>() {
             TestDocSegment {
                 header: doc_segment.header.map(|header| {
-                    let weight = DocSegmentHeader::get_weight(py, header.as_ref(py)).expect("Couldn't get_weight of header");
+                    let weight = DocSegmentHeader::get_weight(py, header.as_ref(py))
+                        .expect("Couldn't get_weight of header");
                     let contents = match header.as_ref(py).getattr("test_block") {
-                        Ok(test_block) => if test_block.is_none() {
-                            None
-                        } else {
-                            Some(test_block.as_test(py))
+                        Ok(test_block) => {
+                            if test_block.is_none() {
+                                None
+                            } else {
+                                Some(test_block.as_test(py))
+                            }
                         }
-                        Err(_) => None
+                        Err(_) => None,
                     };
                     (weight, contents)
                 }),
                 contents: doc_segment.contents.as_ref(py).as_test(py),
-                subsegments: doc_segment.subsegments.list(py).iter().map(|subseg| subseg.as_test(py)).collect()
+                subsegments: doc_segment
+                    .subsegments
+                    .list(py)
+                    .iter()
+                    .map(|subseg| subseg.as_test(py))
+                    .collect(),
             }
         } else {
             let repr = match self.repr() {
@@ -468,11 +489,7 @@ impl PyToTest<TestInline> for PyAny {
 pub fn generate_globals<'interp>(py: Python<'interp>) -> Option<&'interp PyDict> {
     let globals = PyDict::new(py);
 
-    let result = py.run(
-        GLOBALS_CODE,
-        Some(globals),
-        Some(globals),
-    );
+    let result = py.run(GLOBALS_CODE, Some(globals), Some(globals));
 
     match result {
         Err(pyerr) => {
@@ -1239,12 +1256,18 @@ pub fn test_no_emit_doc_segment_header_in_block_scope() {
     expect_parse(
         "{
 [TestDocSegmentHeader()]
-}", 
-        Err(TestInterpError::DocSegmentHeaderMidScope { 
-            code_span: TestParserSpan { start: (2, 1), end: (2, 25) },
+}",
+        Err(TestInterpError::DocSegmentHeaderMidScope {
+            code_span: TestParserSpan {
+                start: (2, 1),
+                end: (2, 25),
+            },
             block_close_span: None,
-            enclosing_scope_start: TestParserSpan { start: (1, 1), end: (2, 1) }
-        })
+            enclosing_scope_start: TestParserSpan {
+                start: (1, 1),
+                end: (2, 1),
+            },
+        }),
     )
 }
 
@@ -1256,28 +1279,35 @@ pub fn test_no_build_doc_segment_header_in_block_scope() {
     Sometimes docsegmentheaders can be built, too!
     But if they're in a block scope it shouldn't be allowed :(
 }
-}", 
-        Err(TestInterpError::DocSegmentHeaderMidScope { 
-            code_span: TestParserSpan { start: (2, 1), end: (3, 1) },
+}",
+        Err(TestInterpError::DocSegmentHeaderMidScope {
+            code_span: TestParserSpan {
+                start: (2, 1),
+                end: (3, 1),
+            },
             block_close_span: Some(TestParserSpan {
                 start: (5, 1),
-                end: (5, 2)
+                end: (5, 2),
             }),
-            enclosing_scope_start: TestParserSpan { start: (1, 1), end: (2, 1) }
-        })
+            enclosing_scope_start: TestParserSpan {
+                start: (1, 1),
+                end: (2, 1),
+            },
+        }),
     )
 }
 
 #[test]
 pub fn test_no_emit_doc_segment_header_in_para() {
     expect_parse(
-        "And as I was saying [TestDocSegmentHeader()]", 
-        Err(TestInterpError::DocSegmentHeaderMidPara { code_span: TestParserSpan {
-            start: (1, 21),
-            end: (1, 45)
-        } })
+        "And as I was saying [TestDocSegmentHeader()]",
+        Err(TestInterpError::DocSegmentHeaderMidPara {
+            code_span: TestParserSpan {
+                start: (1, 21),
+                end: (1, 45),
+            },
+        }),
     )
 }
-
 
 // TODO MORE TESTS FOR DOC STURCURE. OH FUCK I NEED TO CHANGE THE TEST HARNESS

@@ -7,7 +7,7 @@ use lexer_rs::UserPosn;
 ///
 /// This provides the [UserPosn] trait, which provides methods to
 /// retrieve the line and column values of the state.
-/// 
+///
 /// It also stores the char offset in the stream, not just the byte offset like lexer_rs::StreamCharPos,
 /// because this is sometimes required by e.g. error reporting libraries like annotate_snippet
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -26,14 +26,22 @@ impl LineColumnChar {
 //ip Default for LineColumn
 impl std::default::Default for LineColumnChar {
     fn default() -> Self {
-        Self { line: 1, column: 1, char_ofs: 0, }
+        Self {
+            line: 1,
+            column: 1,
+            char_ofs: 0,
+        }
     }
 }
 
 //ip Display for LineColumn
 impl std::fmt::Display for LineColumnChar {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(fmt, "line {} column {} (char {})", self.line, self.column, self.char_ofs)
+        write!(
+            fmt,
+            "line {} column {} (char {})",
+            self.line, self.column, self.char_ofs
+        )
     }
 }
 
