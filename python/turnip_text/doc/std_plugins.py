@@ -81,8 +81,8 @@ class NamedUrl(UserInline, InlineScopeBuilder):
 
 
 class DisplayListType(Enum):
-    Enumerate = (0,)
-    Itemize = (1,)
+    Enumerate = 0
+    Itemize = 1
 
 
 @dataclass(frozen=True)
@@ -97,13 +97,13 @@ class DisplayListItem(UserBlock):
 
 
 class InlineFormattingType(Enum):
-    Italic = (0,)
-    Bold = (1,)
-    Underline = (2,)
-    Emph = (3,)  # Usually italic
-    Strong = (4,)  # Usually bold
-    SingleQuote = (5,)
-    DoubleQuote = (6,)
+    Italic = 0
+    Bold = 1
+    Underline = 2
+    Emph = 3  # Usually italic
+    Strong = 4  # Usually bold
+    SingleQuote = 5
+    DoubleQuote = 6
 
 
 @dataclass(frozen=True)
