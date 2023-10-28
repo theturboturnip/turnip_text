@@ -1,9 +1,61 @@
+use lexer_rs::LexerOfStr;
 use lexer_rs::PosnInCharStream;
 use lexer_rs::SimpleParseError;
 use lexer_rs::{CharStream, Lexer, LexerParseResult};
 
-use crate::lexer_charofs_row_col::LineColumnChar;
+mod line_col_char_posn;
+use line_col_char_posn::LineColumnChar;
+
 use crate::util::ParseSpan;
+
+pub enum LexedStrIterator {
+    Exhausted,
+    Error(LexError),
+    Valid { tokens: Vec<TTToken>, idx: usize },
+}
+impl Iterator for LexedStrIterator {
+    type Item = Result<TTToken, LexError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match *self {
+            LexedStrIterator::Exhausted => None,
+            LexedStrIterator::Error(err) => {
+                *self = LexedStrIterator::Exhausted;
+                Some(Err(err))
+            }
+            LexedStrIterator::Valid { tokens, idx } => {
+                let tok = tokens[idx];
+                let idx = idx + 1;
+                if idx >= tokens.len() {
+                    *self = LexedStrIterator::Exhausted;
+                }
+                Some(Ok(tok))
+            }
+        }
+    }
+}
+/// TODO right now we have to store all the first-level lex tokens in a vector, then we parse them into a vec of TTTokens. This sucks.
+fn lex_units_only(data: &str) -> Result<Vec<Unit>, LexError> {
+    let lexer = LexerOfStr::<LexPosn, LexToken, LexError>::new(data);
+
+    let mut units: Vec<Unit> = vec![];
+    for u in lexer.iter(&[Box::new(Unit::parse_special), Box::new(Unit::parse_other)]) {
+        units.push(u?);
+    }
+
+    Ok(units)
+}
+pub fn lex(data: &str) -> LexedStrIterator {
+    let units = lex_units_only(data);
+    match units {
+        Ok(units) if units.is_empty() => LexedStrIterator::Exhausted,
+        Ok(units) => LexedStrIterator::Valid {
+            tokens: units_to_tokens(units),
+            idx: 0,
+        },
+        Err(e) => LexedStrIterator::Error(e),
+    }
+}
 
 /// Sequences that can define the start of a [SimpleToken]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
