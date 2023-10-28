@@ -11,30 +11,28 @@ use crate::util::ParseSpan;
 pub enum LexedStrIterator {
     Exhausted,
     Error(LexError),
-    Valid { tokens: Vec<TTToken>, idx: usize },
+    Tokenizing(UnitsToTokensIterator),
 }
 impl Iterator for LexedStrIterator {
     type Item = Result<TTToken, LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match *self {
-            LexedStrIterator::Exhausted => None,
-            LexedStrIterator::Error(err) => {
-                *self = LexedStrIterator::Exhausted;
-                Some(Err(err))
-            }
-            LexedStrIterator::Valid { tokens, idx } => {
-                let tok = tokens[idx];
-                let idx = idx + 1;
-                if idx >= tokens.len() {
-                    *self = LexedStrIterator::Exhausted;
-                }
-                Some(Ok(tok))
-            }
+        let (should_exhaust, ret) = match self {
+            LexedStrIterator::Exhausted => (false, None),
+            // TODO sucks we have to clone this :/
+            LexedStrIterator::Error(e) => (true, Some(Err(e.clone()))),
+            LexedStrIterator::Tokenizing(tokenizer) => match tokenizer.next() {
+                Some(tok) => (false, Some(Ok(tok))),
+                None => (true, None),
+            },
+        };
+        if should_exhaust {
+            *self = LexedStrIterator::Exhausted;
         }
+        ret
     }
 }
-/// TODO right now we have to store all the first-level lex tokens in a vector, then we parse them into a vec of TTTokens. This sucks.
+/// TODO right now we have to store all the first-level lex tokens in a vector. This sucks.
 fn lex_units_only(data: &str) -> Result<Vec<Unit>, LexError> {
     let lexer = LexerOfStr::<LexPosn, LexToken, LexError>::new(data);
 
@@ -48,11 +46,7 @@ fn lex_units_only(data: &str) -> Result<Vec<Unit>, LexError> {
 pub fn lex(data: &str) -> LexedStrIterator {
     let units = lex_units_only(data);
     match units {
-        Ok(units) if units.is_empty() => LexedStrIterator::Exhausted,
-        Ok(units) => LexedStrIterator::Valid {
-            tokens: units_to_tokens(units),
-            idx: 0,
-        },
+        Ok(units) => LexedStrIterator::Tokenizing(UnitsToTokensIterator::new(units)),
         Err(e) => LexedStrIterator::Error(e),
     }
 }
@@ -423,6 +417,44 @@ pub fn units_to_tokens(units: Vec<Unit>) -> Vec<TTToken> {
         i += n_consumed;
     }
     toks
+}
+
+struct UnitsToTokensIterator {
+    units: Vec<Unit>,
+    idx: usize,
+}
+impl UnitsToTokensIterator {
+    pub fn new(units: Vec<Unit>) -> UnitsToTokensIterator {
+        UnitsToTokensIterator { units, idx: 0 }
+    }
+}
+impl Iterator for UnitsToTokensIterator {
+    type Item = TTToken;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let i = self.idx;
+        let len = self.units.len();
+        if i >= len {
+            None
+        } else {
+            let (tok, n_consumed) = TTToken::units_to_token((
+                &self.units[i],
+                if i + 1 < self.units.len() {
+                    Some(&self.units[i + 1])
+                } else {
+                    None
+                },
+                if i + 2 < self.units.len() {
+                    Some(&self.units[i + 2])
+                } else {
+                    None
+                },
+            ));
+            assert!(n_consumed > 0);
+            self.idx += n_consumed;
+            Some(tok)
+        }
+    }
 }
 
 impl TTToken {
