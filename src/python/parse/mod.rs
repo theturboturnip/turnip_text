@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use pyo3::{prelude::*, types::PyDict};
 use thiserror::Error;
 
@@ -20,7 +18,7 @@ use eval_bracket::{eval_brackets, EvalBracketResult};
 
 use super::typeclass::PyInstanceList;
 
-pub struct InterpState<'a> {
+pub struct InterpState {
     /// FSM state
     block_state: InterpBlockState,
     /// Overrides InterpBlockState and raw_state - if Some(state), we are in "comment mode" and all other state machines are paused
@@ -34,11 +32,9 @@ pub struct InterpState<'a> {
     segment_stack: Vec<InterpDocSegmentState>,
     /// Stack of block scopes. Either part of toplevel_content if segment_stack is empty, or part of segment_stack[-1].blocks otherwise.
     block_stack: Vec<InterpManualBlockScopeState>,
-    /// Raw text data
-    data: &'a str,
 }
-impl<'a> InterpState<'a> {
-    pub fn new<'interp>(py: Python<'interp>, data: &'a str) -> InterpResult<Self> {
+impl InterpState {
+    pub fn new<'interp>(py: Python<'interp>) -> InterpResult<Self> {
         Ok(Self {
             block_state: InterpBlockState::ReadyForNewBlock,
             comment_state: None,
@@ -46,20 +42,18 @@ impl<'a> InterpState<'a> {
             toplevel_segments: PyInstanceList::new(py),
             segment_stack: vec![],
             block_stack: vec![],
-            data,
         })
     }
-    pub fn toplevel(&self, py: Python<'_>) -> InterpResult<Py<DocSegment>> {
-        Py::new(
-            py,
-            DocSegment::new_no_header(
-                py,
-                self.toplevel_content.clone(),
-                self.toplevel_segments.clone(),
-            )
-            .err_as_interp_internal(py)?,
-        )
-        .err_as_interp_internal(py)
+
+    pub fn handle_tokens(
+        &mut self,
+        py: Python,
+        globals: &PyDict,
+        data: &str,
+        toks: impl Iterator<Item = TTToken>,
+    ) -> InterpResult<()> {
+        toks.map(|t| self.handle_token(py, globals, data, t))
+            .collect()
     }
 }
 
@@ -335,33 +329,35 @@ impl<T> MapInterpResult<T> for PyResult<T> {
     }
 }
 
-impl<'a> InterpState<'a> {
+impl InterpState {
     pub fn handle_token<'interp>(
         &mut self,
         py: Python<'interp>,
         globals: &'interp PyDict,
+        data: &str,
         tok: TTToken,
     ) -> InterpResult<()> {
-        let transitions = self.mutate_and_find_transitions(py, globals, tok)?;
+        let transitions = self.mutate_and_find_transitions(py, globals, data, tok)?;
         self.handle_transition(py, globals, transitions)
     }
 
     pub fn finalize<'interp>(
-        &mut self,
+        mut self,
         py: Python<'interp>,
         globals: &'interp PyDict,
-    ) -> InterpResult<()> {
-        let transitions = match &mut self.block_state {
+    ) -> InterpResult<Py<DocSegment>> {
+        // If we finish while we're parsing a
+        let transitions = match self.block_state {
             InterpBlockState::ReadyForNewBlock => (None, None),
-            InterpBlockState::WritingPara(state) => state.finalize(py)?,
+            InterpBlockState::WritingPara(mut state) => state.finalize(py)?,
             InterpBlockState::BuildingCode { code_start, .. } => {
                 return Err(InterpError::EndedInsideCode {
-                    code_start: *code_start,
+                    code_start: code_start,
                 })
             }
             InterpBlockState::BuildingRawText { builder_span, .. } => {
                 return Err(InterpError::EndedInsideRawScope {
-                    raw_scope_start: *builder_span, // TODO This is technically wrong but it gets the point across. Should return the raw_scope token start, not the builder start
+                    raw_scope_start: builder_span, // TODO This is technically wrong but it gets the point across. Should return the raw_scope token start, not the builder start
                 });
             }
         };
@@ -372,7 +368,18 @@ impl<'a> InterpState<'a> {
             Some(InterpManualBlockScopeState { scope_start, .. }) => {
                 return Err(InterpError::EndedInsideScope { scope_start })
             }
-        }
+        };
+
+        Py::new(
+            py,
+            DocSegment::new_no_header(
+                py,
+                self.toplevel_content.clone(),
+                self.toplevel_segments.clone(),
+            )
+            .err_as_interp_internal(py)?,
+        )
+        .err_as_interp_internal(py)
     }
 
     /// Return (block transition, special transition) to be executed in the order (block transition, special transition)
@@ -380,6 +387,7 @@ impl<'a> InterpState<'a> {
         &mut self,
         py: Python,
         globals: &PyDict,
+        data: &str,
         tok: TTToken,
     ) -> InterpResult<(
         Option<InterpBlockTransition>,
@@ -449,22 +457,20 @@ impl<'a> InterpState<'a> {
                     // Normal text - start a new paragraph
                     _ => (
                         Some(StartParagraph(InterpParaTransition::StartText(
-                            tok.stringify_escaped(self.data).into(),
+                            tok.stringify_escaped(data).into(),
                         ))),
                         None,
                     ),
                 }
             }
-            InterpBlockState::WritingPara(state) => {
-                state.handle_token(py, globals, tok, self.data)?
-            }
+            InterpBlockState::WritingPara(state) => state.handle_token(py, globals, tok, data)?,
             InterpBlockState::BuildingCode {
                 code,
                 code_start,
                 expected_close_len,
             } => {
                 match eval_brackets(
-                    self.data,
+                    data,
                     tok,
                     code,
                     code_start,
@@ -519,7 +525,7 @@ impl<'a> InterpState<'a> {
                     }
                 }
                 _ => {
-                    text.push_str(tok.stringify_raw(self.data));
+                    text.push_str(tok.stringify_raw(data));
                     (None, None)
                 }
             },
@@ -737,7 +743,7 @@ impl<'a> InterpState<'a> {
             None => return Ok(()),
         };
 
-        // We only get to this point of self.segment_stack.last() == Some
+        // We only get to this point if self.segment_stack.last() == Some
         while curr_toplevel_weight >= weight {
             let segment_to_finish = self
                 .segment_stack
@@ -757,6 +763,7 @@ impl<'a> InterpState<'a> {
                 }
                 // Otherwise just push it into toplevel_segments and FUCK, NO, THAT DOESN'T WORK YOU MORON
                 // WHERE THE FUCK DOES THE NEXT SET OF TEXT GO THEN
+                // TODO resolve whatever the hell was the problem here?
                 None => {
                     self.toplevel_segments
                         .append_checked(segment.as_ref(py))

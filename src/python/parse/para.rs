@@ -4,7 +4,7 @@ use crate::{
     lexer::{Escapable, TTToken},
     python::{
         interop::*,
-        interp::{eval_brackets, EvalBracketResult, InterpError, MapInterpResult},
+        parse::{eval_brackets, EvalBracketResult, InterpError, MapInterpResult},
         typeclass::{PyTcRef, PyTcUnionRef},
     },
     util::ParseSpan,
