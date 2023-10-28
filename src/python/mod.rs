@@ -1,11 +1,7 @@
-use pyo3::{prelude::*, types::PyDict};
-
-use crate::lexer::TTToken;
-
 pub mod interop;
 
-mod interp;
-use self::{interop::DocSegment, interp::InterpState};
+mod parse;
+pub use parse::{InterpError, InterpResult, InterpState};
 
 pub mod typeclass;
 
@@ -17,18 +13,4 @@ pub fn prepare_freethreaded_turniptext_python() {
     use interop::turnip_text;
     pyo3::append_to_inittab!(turnip_text);
     pyo3::prepare_freethreaded_python();
-}
-
-pub use interp::{InterpError, InterpResult};
-pub fn interp_data(
-    py: Python,
-    globals: &PyDict,
-    data: &str,
-    toks: impl Iterator<Item = TTToken>,
-) -> InterpResult<Py<DocSegment>> {
-    let mut st = InterpState::new(py, data)?;
-    let res: InterpResult<()> = toks.map(|t| st.handle_token(py, globals, t)).collect();
-    res?;
-    st.finalize(py, globals)?;
-    Ok(st.toplevel(py)?)
 }

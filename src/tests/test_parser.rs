@@ -8,7 +8,7 @@ use crate::python::interop::{
     BlockScope, DocSegment, DocSegmentHeader, InlineScope, Paragraph, RawText, Sentence,
     UnescapedText,
 };
-use crate::python::{interp_data, prepare_freethreaded_turniptext_python, InterpError};
+use crate::python::{prepare_freethreaded_turniptext_python, InterpError, InterpState};
 use crate::util::ParseSpan;
 
 use pyo3::prelude::*;
@@ -534,11 +534,13 @@ pub fn expect_parse_tokens(
         panic::catch_unwind(|| {
             Python::with_gil(|py| {
                 let globals = generate_globals(py).expect("Couldn't generate globals dict");
-                let root = interp_data(py, globals, data, stoks.into_iter());
-                root.map(|bs| {
-                    let bs_obj = bs.to_object(py);
-                    let bs: &PyAny = bs_obj.as_ref(py);
-                    bs.as_test(py)
+                let mut st = InterpState::new(py, data)?;
+                st.handle_tokens(py, globals, stoks.into_iter())?;
+                let root = st.finalize(py, globals);
+                root.map(|doc| {
+                    let doc_obj = doc.to_object(py);
+                    let doc: &PyAny = doc_obj.as_ref(py);
+                    doc.as_test(py)
                 })
             })
         })

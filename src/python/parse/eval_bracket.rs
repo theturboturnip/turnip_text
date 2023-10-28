@@ -7,7 +7,7 @@ use crate::{
     python::{
         interop::{
             coerce_to_inline_pytcref, Block, BlockScopeBuilder, DocSegmentHeader, Inline,
-            InlineScopeBuilder, RawScopeBuilder,
+            InlineScopeBuilder, InsertedFile, RawScopeBuilder,
         },
         typeclass::PyTcRef,
     },
@@ -20,7 +20,7 @@ pub enum EvalBracketContext {
     NeedBlockBuilder,
     NeedInlineBuilder,
     NeedRawBuilder { n_hashes: usize },
-    WantDocSegmentOrBlockOrInlineOrNone,
+    WantNonBuilder,
 }
 pub enum EvalBracketResult {
     /// A BlockScopeBuilder which was Needed because the final token was a [TTToken::CodeCloseOwningBlock]
@@ -35,23 +35,25 @@ pub enum EvalBracketResult {
     Block(PyTcRef<Block>),
     /// An object implementing Inline, or which was coerced to something implementing Inline
     Inline(PyTcRef<Inline>),
+    /// A InsertedFile object
+    InsertedFile(InsertedFile),
     /// None - either because it was an exec statement (e.g. `[x = 5]`) or because it genuinely was none (e.g. `[None]`)
     PyNone,
 }
 impl EvalBracketResult {
     pub fn eval_in_ctx(
         py: Python,
-        globals: &PyDict,
+        py_env: &PyDict,
         code: &str,
         ctx: EvalBracketContext,
     ) -> PyResult<EvalBracketResult> {
         // Python picks up leading whitespace as an incorrect indent
         let code = code.trim();
-        let raw_res = match py.eval(code, Some(globals), None) {
+        let raw_res = match py.eval(code, Some(py_env), None) {
             Ok(raw_res) => raw_res,
             Err(error) if error.is_instance_of::<PySyntaxError>(py) => {
                 // Try to exec() it as a statement instead of eval() it as an expression
-                py.run(code, Some(globals), None)?;
+                py.run(code, Some(py_env), None)?;
                 // Acquire a Py<PyAny> to Python None, then use into_ref() to convert it into a &PyAny.
                 // This should optimize down to `*Py_None()` because Py<T> and PyAny both boil down to *ffi::Py_Object;
                 // This is so that places that *require* non-None (e.g. NeedBlockBuilder) will always raise an error in the following match statement.
@@ -67,10 +69,10 @@ impl EvalBracketResult {
             // https://docs.python.org/3.8/howto/descriptor.html
             // "For objects, the machinery is in object.__getattribute__() which transforms b.x into type(b).__dict__['x'].__get__(b, type(b))."
             //
-            // We're transforming `[x]` into (effectively) `globals.x`
-            // which should transform into (type(globals).__dict__['x']).__get__(globals, type(globals))
-            // = raw_res.__get__(globals, type(globals))
-            raw_res.call_method1(getter, (globals, globals.get_type()))?
+            // We're transforming `[x]` into (effectively) `py_env.x`
+            // which should transform into (type(py_env).__dict__['x']).__get__(py_env, type(py_env))
+            // = raw_res.__get__(py_env, type(py_env))
+            raw_res.call_method1(getter, (py_env, py_env.get_type()))?
         } else {
             raw_res
         };
@@ -84,7 +86,7 @@ impl EvalBracketResult {
             EvalBracketContext::NeedRawBuilder { n_hashes } => {
                 EvalBracketResult::NeededRawBuilder(PyTcRef::of(raw_res)?, n_hashes)
             }
-            EvalBracketContext::WantDocSegmentOrBlockOrInlineOrNone => {
+            EvalBracketContext::WantNonBuilder => {
                 if raw_res.is_none() {
                     EvalBracketResult::PyNone
                 } else {
@@ -108,7 +110,10 @@ impl EvalBracketResult {
                     // If we always coerce to inline, then the wrapping in Paragraph and Sentence happens naturally in the interpreter.
                     // => We check if it's a block, and if it isn't we try to coerce to inline.
 
-                    if let Ok(doc_seg) = PyTcRef::of(raw_res) {
+                    // If they return an InsertedFile then just do that.
+                    if let Ok(inserted_file) = raw_res.extract::<InsertedFile>() {
+                        EvalBracketResult::InsertedFile(inserted_file)
+                    } else if let Ok(doc_seg) = PyTcRef::of(raw_res) {
                         EvalBracketResult::DocSegmentHeader(doc_seg)
                     } else if let Ok(blk) = PyTcRef::of(raw_res) {
                         EvalBracketResult::Block(blk)
@@ -134,7 +139,7 @@ pub fn eval_brackets(
     code_start: &ParseSpan,
     expected_close_len: usize,
     py: Python,
-    globals: &PyDict,
+    py_env: &PyDict,
 ) -> InterpResult<Option<(EvalBracketResult, ParseSpan)>> {
     let (code_span, eval_ctx) = match tok {
         TTToken::CodeClose(close_span, n_close_brackets)
@@ -145,7 +150,7 @@ pub fn eval_brackets(
                     start: code_start.start,
                     end: close_span.end,
                 },
-                EvalBracketContext::WantDocSegmentOrBlockOrInlineOrNone,
+                EvalBracketContext::WantNonBuilder,
             )
         }
         TTToken::CodeCloseOwningBlock(close_span, n_close_brackets)
@@ -190,6 +195,6 @@ pub fn eval_brackets(
     };
 
     let res =
-        EvalBracketResult::eval_in_ctx(py, globals, code, eval_ctx).err_as_interp(py, code_span)?;
+        EvalBracketResult::eval_in_ctx(py, py_env, code, eval_ctx).err_as_interp(py, code_span)?;
     Ok(Some((res, code_span)))
 }

@@ -1,19 +1,31 @@
-use std::path::Path;
+use std::{error, path::Path};
 
+use anyhow::bail;
+use lexer_rs::LexerOfStr;
 use pyo3::{
+    create_exception,
     exceptions::{PyRuntimeError, PyTypeError, PyValueError},
     intern,
     prelude::*,
     types::{PyDict, PyFloat, PyIterator, PyList, PyLong, PyString},
 };
+use thiserror::Error;
 
-use super::typeclass::{PyInstanceList, PyTcRef, PyTcUnionRef, PyTypeclass, PyTypeclassList};
+use crate::lexer::{LexError, LexPosn, LexToken};
+
+use super::{
+    parse::InterpState,
+    typeclass::{PyInstanceList, PyTcRef, PyTcUnionRef, PyTypeclass, PyTypeclassList},
+    InterpError, InterpResult,
+};
+
+create_exception!(_native, TurnipTextError, pyo3::exceptions::PyException);
 
 #[pymodule]
 #[pyo3(name = "_native")]
-pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(parse_file, m)?)?;
-    m.add_function(wrap_pyfunction!(parse_str, m)?)?;
+pub fn turnip_text(py: Python<'_>, m: &PyModule) -> PyResult<()> {
+    // m.add_function(wrap_pyfunction!(parse_file, m)?)?;
+    // m.add_function(wrap_pyfunction!(parse_str, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_to_inline, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_to_inline_scope, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_to_block, m)?)?;
@@ -27,35 +39,68 @@ pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<BlockScope>()?;
     m.add_class::<InlineScope>()?;
     m.add_class::<DocSegment>()?;
+    // TODO python typehints for this
+    m.add_class::<InsertedFile>()?;
+
+    m.add("TurnipTextError", py.get_type::<TurnipTextError>())?;
 
     Ok(())
 }
 
+trait RaisableAsPyErr {
+    fn to_pyerr(self) -> PyErr;
+}
+impl RaisableAsPyErr for (LexError, &str) {
+    fn to_pyerr(self) -> PyErr {
+        let (err, data) = self;
+        crate::error_feedback::display_cli_feedback(data, &err);
+        TurnipTextError::new_err(format!("{err}"))
+    }
+}
+impl RaisableAsPyErr for (&InterpError, &str) {
+    fn to_pyerr(self) -> PyErr {
+        let (err, data) = self;
+        crate::error_feedback::display_cli_feedback(data, err);
+        TurnipTextError::new_err(format!("{err}"))
+    }
+}
+impl RaisableAsPyErr for &std::io::Error {
+    fn to_pyerr(self) -> PyErr {
+        TurnipTextError::new_err(format!("{self}"))
+    }
+}
+
 /// Given a file path, calls [crate::cli::parse_file] (includes parsing, checking for syntax errors, evaluating python)
 #[pyfunction]
-fn parse_file<'py>(
-    py: Python<'py>,
-    path: &str,
-    locals: Option<&PyDict>,
-) -> PyResult<Py<DocSegment>> {
-    // crate::cli::parse_file already surfaces the error to the user - we can just return a generic error
-    crate::cli::parse_file(
-        py,
-        locals.unwrap_or_else(|| PyDict::new(py)),
-        Path::new(path),
-    )
-    .map_err(|_| PyRuntimeError::new_err("parse failed, see stdout"))
+fn parse_file<'py>(py: Python<'py>, path: &str, py_env: &PyDict) -> PyResult<Py<DocSegment>> {
+    let data = std::fs::read_to_string(path).map_err(|e| e.to_pyerr())?;
+    {
+        let data = data.as_str();
+        let tokens = crate::lexer::lex(data);
+        let mut state = InterpState::new(py, data)?;
+        // TODO do I need to call toplevel_data here?
+        for tok in tokens {
+            state
+                .handle_token(
+                    py,
+                    py_env,
+                    tok.map_err(|e| (e, state.toplevel_data()).to_pyerr())?,
+                )
+                .map_err(|e| (&e, state.toplevel_data()).to_pyerr())?
+        }
+        state
+            .finalize(py, py_env)
+            .map_err(|e| (&e, state.toplevel_data()).to_pyerr())
+    }
 }
 
 #[pyfunction]
 fn parse_str<'py>(
     py: Python<'py>,
     data: &str,
-    locals: Option<&PyDict>,
+    py_env: Option<&PyDict>,
 ) -> PyResult<Py<DocSegment>> {
-    // crate::cli::parse_str already surfaces the error to the user - we can just return a generic error
-    crate::cli::parse_str(py, locals.unwrap_or_else(|| PyDict::new(py)), data)
-        .map_err(|_| PyRuntimeError::new_err("parse failed, see stdout"))
+    todo!()
 }
 
 #[pyfunction]
@@ -587,6 +632,19 @@ impl InlineScope {
 
     pub fn push_inline(&mut self, node: &PyAny) -> PyResult<()> {
         self.0.append_checked(node)
+    }
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct InsertedFile {
+    path: String,
+}
+#[pymethods]
+impl InsertedFile {
+    #[new]
+    pub fn new(path: String) -> InsertedFile {
+        InsertedFile { path }
     }
 }
 

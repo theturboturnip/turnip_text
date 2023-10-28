@@ -353,7 +353,7 @@ impl GivesCliFeedback for InterpError {
     }
 }
 
-fn display_cli_feedback<T: GivesCliFeedback>(data: &str, err: &T) {
+pub fn display_cli_feedback<T: GivesCliFeedback>(data: &str, err: &T) {
     let dl = DisplayList::from(err.get_snippet(&data));
     eprintln!("{}", dl);
 }

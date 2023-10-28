@@ -419,7 +419,7 @@ pub fn units_to_tokens(units: Vec<Unit>) -> Vec<TTToken> {
     toks
 }
 
-struct UnitsToTokensIterator {
+pub struct UnitsToTokensIterator {
     units: Vec<Unit>,
     idx: usize,
 }

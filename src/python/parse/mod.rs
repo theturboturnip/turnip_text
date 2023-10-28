@@ -18,11 +18,41 @@ use eval_bracket::{eval_brackets, EvalBracketResult};
 
 use super::typeclass::PyInstanceList;
 
-pub struct InterpState {
+pub struct InterpDataState<'a> {
+    /// The data we're parsing from
+    data: &'a str,
+    /// Stack of block scopes. Either part of toplevel_content if segment_stack is empty, or part of segment_stack[-1].blocks otherwise.
+    block_stack: Vec<InterpManualBlockScopeState>,
+}
+
+pub struct InterpState<'a> {
     /// FSM state
     block_state: InterpBlockState,
     /// Overrides InterpBlockState and raw_state - if Some(state), we are in "comment mode" and all other state machines are paused
     comment_state: Option<InterpCommentState>,
+    /// The current structure of the document, including toplevel content, segments, and the current block stacks (one block stack per included subfile)
+    structure: InterimDocumentStructure<'a>,
+}
+impl<'a> InterpState<'a> {
+    pub fn new(py: Python<'_>, data: &'a str) -> PyResult<Self> {
+        Ok(Self {
+            block_state: InterpBlockState::ReadyForNewBlock,
+            comment_state: None,
+            structure: InterimDocumentStructure::new(py)?,
+        })
+    }
+
+    pub fn handle_tokens(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+        toks: impl Iterator<Item = TTToken>,
+    ) -> InterpResult<()> {
+        toks.map(|t| self.handle_token(py, py_env, t)).collect()
+    }
+}
+
+pub struct InterimDocumentStructure<'a> {
     /// Top level content of the document
     /// All text leading up to the first DocSegment
     toplevel_content: Py<BlockScope>,
@@ -30,30 +60,171 @@ pub struct InterpState {
     toplevel_segments: PyInstanceList<DocSegment>,
     /// The stack of DocSegments leading up to the current doc segment.
     segment_stack: Vec<InterpDocSegmentState>,
-    /// Stack of block scopes. Either part of toplevel_content if segment_stack is empty, or part of segment_stack[-1].blocks otherwise.
-    block_stack: Vec<InterpManualBlockScopeState>,
+    /// A stack of the pieces of data we're parsing from.
+    /// Each piece of data has its own block stack - we don't allow a given subfile to leave new scopes open, or close scopes it didn't open.
+    parsed_data_stack: Vec<InterpDataState<'a>>,
 }
-impl InterpState {
-    pub fn new<'interp>(py: Python<'interp>) -> InterpResult<Self> {
+impl<'a> InterimDocumentStructure<'a> {
+    pub fn new(py: Python) -> PyResult<Self> {
         Ok(Self {
-            block_state: InterpBlockState::ReadyForNewBlock,
-            comment_state: None,
-            toplevel_content: Py::new(py, BlockScope::new_empty(py)).err_as_interp_internal(py)?,
+            toplevel_content: Py::new(py, BlockScope::new_empty(py))?,
             toplevel_segments: PyInstanceList::new(py),
             segment_stack: vec![],
-            block_stack: vec![],
+            parsed_data_stack: vec![],
         })
     }
 
-    pub fn handle_tokens(
+    pub fn finalize(self, py: Python) -> PyResult<Py<DocSegment>> {
+        assert_eq!(
+            self.parsed_data_stack.len(),
+            1,
+            "Tried to finalize the document while inside a subfile"
+        );
+        Py::new(
+            py,
+            DocSegment::new_no_header(
+                py,
+                self.toplevel_content.clone(),
+                self.toplevel_segments.clone(),
+            )?,
+        )
+    }
+
+    fn toplevel_data(&self) -> &'a str {
+        self.parsed_data_stack
+            .last()
+            .expect("Should always have toplevel data")
+            .data
+    }
+
+    fn pop_parsed_data(&mut self) -> InterpResult<()> {
+        // Don't pop it immediately - if we return an error we need to keep this data around
+        let data = self
+            .parsed_data_stack
+            .last()
+            .expect("Tried to pop_parsed_data when no data is left!");
+
+        if let Some(block) = data.block_stack.last() {
+            Err(InterpError::EndedInsideScope {
+                scope_start: block.scope_start,
+            }) // TODO make this error specific to subfiles?
+        } else {
+            self.parsed_data_stack.pop();
+            Ok(())
+        }
+    }
+
+    fn get_enclosing_block(&self) -> Option<&InterpManualBlockScopeState> {
+        for parsed_data in self.parsed_data_stack.iter().rev() {
+            match parsed_data.block_stack.last() {
+                Some(block) => return Some(block),
+                None => {}
+            }
+        }
+        None
+    }
+
+    fn push_enclosing_block_within_data(&mut self, block: InterpManualBlockScopeState) {
+        self.parsed_data_stack
+            .last()
+            .expect("Must always have at least one parsed_data")
+            .block_stack
+            .push(block)
+    }
+
+    fn pop_enclosing_block_within_data(&mut self) -> Option<InterpManualBlockScopeState> {
+        self.parsed_data_stack
+            .last()
+            .expect("Must always have at least one parsed_data")
+            .block_stack
+            .pop()
+    }
+
+    fn push_segment_header(
         &mut self,
         py: Python,
-        globals: &PyDict,
-        data: &str,
-        toks: impl Iterator<Item = TTToken>,
+        header: PyTcRef<DocSegmentHeader>,
+        code_span: ParseSpan,
+        block_close_span: Option<ParseSpan>,
     ) -> InterpResult<()> {
-        toks.map(|t| self.handle_token(py, globals, data, t))
-            .collect()
+        if let Some(enclosing_block) = self.get_enclosing_block() {
+            return Err(InterpError::DocSegmentHeaderMidScope {
+                code_span,
+                block_close_span,
+                enclosing_scope_start: enclosing_block.scope_start,
+            });
+        }
+
+        let subsegment_weight =
+            DocSegmentHeader::get_weight(py, header.as_ref(py)).err_as_interp_internal(py)?;
+
+        // If there are items in the segment_stack, pop from self.segment_stack until the toplevel weight < subsegment_weight
+        self.pop_segments_until_less_than(py, subsegment_weight)?;
+
+        // We know the thing at the top of the segment stack has a weight < subsegment_weight
+        // Push pending segment state to the stack
+        let subsegment =
+            InterpDocSegmentState::new(py, header, subsegment_weight).err_as_interp_internal(py)?;
+        self.segment_stack.push(subsegment);
+
+        Ok(())
+    }
+
+    fn pop_segments_until_less_than(&mut self, py: Python<'_>, weight: i64) -> InterpResult<()> {
+        let mut curr_toplevel_weight = match self.segment_stack.last() {
+            Some(segment) => segment.weight,
+            None => return Ok(()),
+        };
+
+        // We only get to this point if self.segment_stack.last() == Some
+        while curr_toplevel_weight >= weight {
+            let segment_to_finish = self
+                .segment_stack
+                .pop()
+                .expect("Just checked, it isn't empty");
+
+            let segment = segment_to_finish.finish(py).err_as_interp_internal(py)?;
+
+            // Look into the next segment
+            curr_toplevel_weight = match self.segment_stack.last() {
+                // If there's another segment, push the new finished segment into it
+                Some(x) => {
+                    x.subsegments
+                        .append_checked(segment.as_ref(py))
+                        .err_as_interp_internal(py)?;
+                    x.weight
+                }
+                // Otherwise just push it into toplevel_segments and FUCK, NO, THAT DOESN'T WORK YOU MORON
+                // WHERE THE FUCK DOES THE NEXT SET OF TEXT GO THEN
+                // TODO resolve whatever the hell was the problem here?
+                None => {
+                    self.toplevel_segments
+                        .append_checked(segment.as_ref(py))
+                        .err_as_interp_internal(py)?;
+                    return Ok(());
+                }
+            };
+        }
+
+        Ok(())
+    }
+
+    fn push_to_topmost_block(&self, py: Python, block: &PyAny) -> InterpResult<()> {
+        {
+            // Figure out which block is actually the topmost block.
+            // If the block stack has elements, add it to the topmost element.
+            // If the block stack is empty, and there are elements on the DocSegment stack, take the topmost element of the DocSegment stack
+            // If the block stack is empty and the segment stack is empty add to toplevel content.
+            let child_list_ref = match self.get_enclosing_block() {
+                Some(b) => &b.children,
+                None => match self.segment_stack.last() {
+                    Some(segment) => &segment.content,
+                    None => &self.toplevel_content,
+                },
+            };
+            child_list_ref.borrow_mut(py).push_block(block)
+        }
+        .err_as_interp_internal(py)
     }
 }
 
@@ -329,65 +500,51 @@ impl<T> MapInterpResult<T> for PyResult<T> {
     }
 }
 
-impl InterpState {
-    pub fn handle_token<'interp>(
+impl<'a> InterpState<'a> {
+    pub fn handle_token(
         &mut self,
-        py: Python<'interp>,
-        globals: &'interp PyDict,
-        data: &str,
+        py: Python<'_>,
+        py_env: &'_ PyDict,
         tok: TTToken,
     ) -> InterpResult<()> {
-        let transitions = self.mutate_and_find_transitions(py, globals, data, tok)?;
-        self.handle_transition(py, globals, transitions)
+        let transitions = self.mutate_and_find_transitions(py, py_env, tok)?;
+        self.handle_transition(py, py_env, transitions)
     }
 
-    pub fn finalize<'interp>(
-        mut self,
-        py: Python<'interp>,
-        globals: &'interp PyDict,
-    ) -> InterpResult<Py<DocSegment>> {
-        // If we finish while we're parsing a
-        let transitions = match self.block_state {
+    pub fn pop_data(&mut self, py: Python<'_>, py_env: &'_ PyDict) -> InterpResult<()> {
+        // If we finish while we're parsing a paragraph, jump out of it with a state machine transition
+        let transitions = match &mut self.block_state {
             InterpBlockState::ReadyForNewBlock => (None, None),
-            InterpBlockState::WritingPara(mut state) => state.finalize(py)?,
+            InterpBlockState::WritingPara(state) => state.finalize(py)?,
             InterpBlockState::BuildingCode { code_start, .. } => {
                 return Err(InterpError::EndedInsideCode {
-                    code_start: code_start,
+                    code_start: *code_start,
                 })
             }
             InterpBlockState::BuildingRawText { builder_span, .. } => {
                 return Err(InterpError::EndedInsideRawScope {
-                    raw_scope_start: builder_span, // TODO This is technically wrong but it gets the point across. Should return the raw_scope token start, not the builder start
+                    raw_scope_start: *builder_span, // TODO This is technically wrong but it gets the point across. Should return the raw_scope token start, not the builder start
                 });
             }
         };
 
-        match self.block_stack.pop() {
-            // No open blocks on the stack => process the transition
-            None => self.handle_transition(py, globals, transitions),
-            Some(InterpManualBlockScopeState { scope_start, .. }) => {
-                return Err(InterpError::EndedInsideScope { scope_start })
-            }
-        };
+        self.handle_transition(py, py_env, transitions)?;
 
-        Py::new(
-            py,
-            DocSegment::new_no_header(
-                py,
-                self.toplevel_content.clone(),
-                self.toplevel_segments.clone(),
-            )
-            .err_as_interp_internal(py)?,
-        )
-        .err_as_interp_internal(py)
+        self.structure.pop_parsed_data()?;
+
+        Ok(())
+    }
+
+    pub fn finalize(self, py: Python, py_env: &PyDict) -> InterpResult<Py<DocSegment>> {
+        (&self).pop_data(py, py_env)?;
+        self.structure.finalize(py).err_as_interp_internal(py)
     }
 
     /// Return (block transition, special transition) to be executed in the order (block transition, special transition)
     fn mutate_and_find_transitions(
         &mut self,
         py: Python,
-        globals: &PyDict,
-        data: &str,
+        py_env: &PyDict,
         tok: TTToken,
     ) -> InterpResult<(
         Option<InterpBlockTransition>,
@@ -405,6 +562,8 @@ impl InterpState {
             // No change at the block level, potentially exit comment as a special transition
             return Ok((None, transition));
         }
+
+        let data = self.structure.toplevel_data();
 
         let transition = match &mut self.block_state {
             InterpBlockState::ReadyForNewBlock => {
@@ -438,7 +597,7 @@ impl InterpState {
                     RawScopeClose(span, _) => Err(InterpError::RawScopeCloseOutsideRawScope(span))?,
 
                     // Try a scope close
-                    ScopeClose(span) => match self.block_stack.last() {
+                    ScopeClose(span) => match self.structure.get_enclosing_block() {
                         Some(_) => (Some(CloseManualBlockScope(span)), None),
                         None => Err(InterpError::ScopeCloseOutsideScope(span))?,
                     },
@@ -463,21 +622,13 @@ impl InterpState {
                     ),
                 }
             }
-            InterpBlockState::WritingPara(state) => state.handle_token(py, globals, tok, data)?,
+            InterpBlockState::WritingPara(state) => state.handle_token(py, py_env, tok, data)?,
             InterpBlockState::BuildingCode {
                 code,
                 code_start,
                 expected_close_len,
             } => {
-                match eval_brackets(
-                    data,
-                    tok,
-                    code,
-                    code_start,
-                    *expected_close_len,
-                    py,
-                    globals,
-                )? {
+                match eval_brackets(data, tok, code, code_start, *expected_close_len, py, py_env)? {
                     Some((res, code_span)) => {
                         use EvalBracketResult::*;
 
@@ -538,7 +689,7 @@ impl InterpState {
     fn handle_transition(
         &mut self,
         py: Python,
-        globals: &PyDict,
+        py_env: &PyDict,
         transitions: (
             Option<InterpBlockTransition>,
             Option<InterpSpecialTransition>,
@@ -571,11 +722,12 @@ impl InterpState {
                             "An inline transition, initiated with the start of a paragraph, tried to initiate another block transition. This is not allowed and should not be possible.".into()
                         ));
                     }
-                    self.handle_transition(py, globals, (None, new_special_transition))?;
+                    self.handle_transition(py, py_env, (None, new_special_transition))?;
                     S::WritingPara(para_state)
                 }
                 (S::WritingPara(para_state), T::EndParagraph) => {
-                    self.push_to_topmost_block(py, para_state.para().as_ref(py))?;
+                    self.structure
+                        .push_to_topmost_block(py, para_state.para().as_ref(py))?;
                     S::ReadyForNewBlock
                 }
                 (
@@ -583,20 +735,21 @@ impl InterpState {
                     T::EndParagraphAndCloseManualBlockScope(scope_close_span),
                 ) => {
                     // End paragraph i.e. push paragraph onto topmost block
-                    self.push_to_topmost_block(py, para_state.para().as_ref(py))?;
+                    self.structure
+                        .push_to_topmost_block(py, para_state.para().as_ref(py))?;
                     // Pop block
-                    let popped_scope = self.block_stack.pop();
+                    let popped_scope = self.structure.pop_enclosing_block_within_data();
                     match popped_scope {
                         Some(popped_scope) => {
                             match popped_scope.build_to_block(py, scope_close_span)? {
                                 (Some(PyTcUnionRef::A(block)), _) => {
-                                    self.push_to_topmost_block(py, block.as_ref(py))?
+                                    self.structure.push_to_topmost_block(py, block.as_ref(py))?
                                 }
                                 (Some(PyTcUnionRef::B(subsegment)), code_span) => {
                                     let code_span = code_span.expect(
                                         "DocSegmentHeader can only occur through executed code",
                                     );
-                                    self.push_segment_header(
+                                    self.structure.push_segment_header(
                                         py,
                                         subsegment,
                                         code_span,
@@ -615,12 +768,13 @@ impl InterpState {
                     S::BuildingCode { .. } | S::BuildingRawText { .. },
                     T::PushBlock(_code_span, b),
                 ) => {
-                    self.push_to_topmost_block(py, b.as_ref(py))?;
+                    self.structure.push_to_topmost_block(py, b.as_ref(py))?;
                     S::ReadyForNewBlock
                 }
 
                 (S::BuildingCode { .. }, T::PushDocSegmentHeader(code_span, segment)) => {
-                    self.push_segment_header(py, segment, code_span.clone(), None)?;
+                    self.structure
+                        .push_segment_header(py, segment, code_span.clone(), None)?;
                     S::ReadyForNewBlock
                 }
 
@@ -638,27 +792,28 @@ impl InterpState {
                     S::ReadyForNewBlock | S::BuildingCode { .. },
                     T::OpenManualBlockScope(builder, scope_start),
                 ) => {
-                    self.block_stack.push(InterpManualBlockScopeState {
-                        builder,
-                        children: Py::new(py, BlockScope::new_empty(py))
-                            .err_as_interp_internal(py)?,
-                        scope_start,
-                    });
+                    self.structure
+                        .push_enclosing_block_within_data(InterpManualBlockScopeState {
+                            builder,
+                            children: Py::new(py, BlockScope::new_empty(py))
+                                .err_as_interp_internal(py)?,
+                            scope_start,
+                        });
                     S::ReadyForNewBlock
                 }
                 (S::ReadyForNewBlock, T::CloseManualBlockScope(scope_close_span)) => {
-                    let popped_scope = self.block_stack.pop();
+                    let popped_scope = self.structure.pop_enclosing_block_within_data();
                     match popped_scope {
                         Some(popped_scope) => {
                             match popped_scope.build_to_block(py, scope_close_span)? {
                                 (Some(PyTcUnionRef::A(block)), _) => {
-                                    self.push_to_topmost_block(py, block.as_ref(py))?
+                                    self.structure.push_to_topmost_block(py, block.as_ref(py))?
                                 }
                                 (Some(PyTcUnionRef::B(subsegment)), code_span) => {
                                     let code_span = code_span.expect(
                                         "DocSegmentHeader can only occur through executed code",
                                     );
-                                    self.push_segment_header(
+                                    self.structure.push_segment_header(
                                         py,
                                         subsegment,
                                         code_span,
@@ -700,97 +855,5 @@ impl InterpState {
         }
 
         Ok(())
-    }
-
-    fn push_segment_header(
-        &mut self,
-        py: Python,
-        header: PyTcRef<DocSegmentHeader>,
-        code_span: ParseSpan,
-        block_close_span: Option<ParseSpan>,
-    ) -> InterpResult<()> {
-        if !self.block_stack.is_empty() {
-            let scope_start = self
-                .block_stack
-                .last()
-                .expect("Just checked, it isn't empty")
-                .scope_start;
-            return Err(InterpError::DocSegmentHeaderMidScope {
-                code_span,
-                block_close_span,
-                enclosing_scope_start: scope_start,
-            });
-        }
-
-        let subsegment_weight =
-            DocSegmentHeader::get_weight(py, header.as_ref(py)).err_as_interp_internal(py)?;
-
-        // If there are items in the segment_stack, pop from self.segment_stack until the toplevel weight < subsegment_weight
-        self.pop_segments_until_less_than(py, subsegment_weight)?;
-
-        // We know the thing at the top of the segment stack has a weight < subsegment_weight
-        // Push pending segment state to the stack
-        let subsegment =
-            InterpDocSegmentState::new(py, header, subsegment_weight).err_as_interp_internal(py)?;
-        self.segment_stack.push(subsegment);
-
-        Ok(())
-    }
-
-    fn pop_segments_until_less_than(&mut self, py: Python<'_>, weight: i64) -> InterpResult<()> {
-        let mut curr_toplevel_weight = match self.segment_stack.last() {
-            Some(segment) => segment.weight,
-            None => return Ok(()),
-        };
-
-        // We only get to this point if self.segment_stack.last() == Some
-        while curr_toplevel_weight >= weight {
-            let segment_to_finish = self
-                .segment_stack
-                .pop()
-                .expect("Just checked, it isn't empty");
-
-            let segment = segment_to_finish.finish(py).err_as_interp_internal(py)?;
-
-            // Look into the next segment
-            curr_toplevel_weight = match self.segment_stack.last() {
-                // If there's another segment, push the new finished segment into it
-                Some(x) => {
-                    x.subsegments
-                        .append_checked(segment.as_ref(py))
-                        .err_as_interp_internal(py)?;
-                    x.weight
-                }
-                // Otherwise just push it into toplevel_segments and FUCK, NO, THAT DOESN'T WORK YOU MORON
-                // WHERE THE FUCK DOES THE NEXT SET OF TEXT GO THEN
-                // TODO resolve whatever the hell was the problem here?
-                None => {
-                    self.toplevel_segments
-                        .append_checked(segment.as_ref(py))
-                        .err_as_interp_internal(py)?;
-                    return Ok(());
-                }
-            };
-        }
-
-        Ok(())
-    }
-
-    fn push_to_topmost_block(&self, py: Python, block: &PyAny) -> InterpResult<()> {
-        {
-            // Figure out which block is actually the topmost block.
-            // If the block stack has elements, add it to the topmost element.
-            // If the block stack is empty, and there are elements on the DocSegment stack, take the topmost element of the DocSegment stack
-            // If the block stack is empty and the segment stack is empty add to toplevel content.
-            let child_list_ref = match self.block_stack.last() {
-                Some(b) => &b.children,
-                None => match self.segment_stack.last() {
-                    Some(segment) => &segment.content,
-                    None => &self.toplevel_content,
-                },
-            };
-            child_list_ref.borrow_mut(py).push_block(block)
-        }
-        .err_as_interp_internal(py)
     }
 }

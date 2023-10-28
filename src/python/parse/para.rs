@@ -207,14 +207,14 @@ impl InterpParaState {
     pub(crate) fn handle_token(
         &mut self,
         py: Python,
-        globals: &PyDict,
+        py_env: &PyDict,
         tok: TTToken,
         data: &str,
     ) -> InterpResult<(
         Option<InterpBlockTransition>,
         Option<InterpSpecialTransition>,
     )> {
-        let transition = self.mutate_state_and_find_transition(py, globals, tok, data)?;
+        let transition = self.mutate_state_and_find_transition(py, py_env, tok, data)?;
         self.handle_transition(py, transition)
     }
     pub(crate) fn handle_transition(
@@ -431,7 +431,7 @@ impl InterpParaState {
     fn mutate_state_and_find_transition(
         &mut self,
         py: Python,
-        globals: &PyDict,
+        py_env: &PyDict,
         tok: TTToken,
         data: &str,
     ) -> InterpResult<Option<InterpParaTransition>> {
@@ -537,7 +537,7 @@ impl InterpParaState {
                 code_start,
                 expected_n_hashes,
             } => {
-                match eval_brackets(data, tok, code, code_start, *expected_n_hashes, py, globals)? {
+                match eval_brackets(data, tok, code, code_start, *expected_n_hashes, py, py_env)? {
                     Some((res, code_span)) => {
                         // The code ended...
                         use EvalBracketResult::*;
