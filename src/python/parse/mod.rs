@@ -632,6 +632,11 @@ impl<'a> InterpState<'a> {
                     Some((res, code_span)) => {
                         use EvalBracketResult::*;
 
+                        // TODO allow us to open subfiles here.
+                        // TODO TODO TODO MAKE SURE THEY DON'T OPEN IT INSIDE A CODE BLOCK OR A RAW STRING LOLLL
+                        // TODO also we need to make InterpError never crosses subfiles. Is that possible?
+                        // No, because if they open a DocSegment inside a subfile that is imported inside a block, the error has to show where the block opened and where the DocSegment was created at the same time. Bugger.
+
                         let block_transition = match res {
                             NeededBlockBuilder(b) => {
                                 OpenManualBlockScope(Some((b, code_span)), tok.token_span())
