@@ -30,3 +30,19 @@ _test:
 	cargo testall
 	mypy ./python/turnip_text --strict
 	pytest tests
+
+[windows]
+example:
+	#!powershell.exe
+	{{VENV_LOCATION}}/Scripts/Activate.ps1
+	just _example
+
+[unix]
+example:
+	#!/usr/bin/env bash
+	source {{VENV_LOCATION}}/bin/activate
+	just _example
+
+_example:
+	maturin develop --extras=typing,test
+	python3 ./examples/phdprop.py
