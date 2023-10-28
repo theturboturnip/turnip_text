@@ -26,6 +26,7 @@ pub fn turnip_text(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<Paragraph>()?;
     m.add_class::<BlockScope>()?;
     m.add_class::<InlineScope>()?;
+    m.add_class::<DocSegment>()?;
 
     Ok(())
 }
