@@ -231,7 +231,7 @@ class Renderer:
         plugins: Sequence["RenderPlugin[TRenderer_contra]"],
         counters: CounterSet,
         doc: Document,
-        write_to_path: str | bytes | "os.PathLike[Any]",
+        write_to_path: Union[str, bytes, "os.PathLike[Any]"],
     ) -> None:
         with open(write_to_path, "w", encoding="utf-8") as write_to:
             cls.render(plugins, counters, doc, write_to)
