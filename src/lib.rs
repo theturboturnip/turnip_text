@@ -1,8 +1,7 @@
 pub mod error_feedback;
-mod interpreter;
-mod lexer;
-pub mod python;
-mod util;
+pub mod interpreter;
+pub mod lexer;
+pub mod util;
 
 #[cfg(test)]
 mod tests;

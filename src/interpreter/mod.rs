@@ -3,10 +3,6 @@ use thiserror::Error;
 
 use crate::{
     lexer::{Escapable, TTToken},
-    python::{
-        interop::*,
-        typeclass::{PyTcRef, PyTcUnionRef},
-    },
     util::ParseSpan,
 };
 
@@ -16,7 +12,11 @@ use self::para::{InterpParaState, InterpParaTransition};
 mod eval_bracket;
 use eval_bracket::{eval_brackets, EvalBracketResult};
 
-use crate::python::typeclass::PyInstanceList;
+pub mod python;
+use python::{
+    interop::*,
+    typeclass::{PyInstanceList, PyTcRef, PyTcUnionRef},
+};
 
 pub struct InterpDataState<'a> {
     /// The data we're parsing from

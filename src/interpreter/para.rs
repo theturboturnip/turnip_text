@@ -3,14 +3,15 @@ use pyo3::{prelude::*, types::PyDict};
 use crate::{
     interpreter::{eval_brackets, EvalBracketResult, InterpError, MapInterpResult},
     lexer::{Escapable, TTToken},
-    python::{
-        interop::*,
-        typeclass::{PyTcRef, PyTcUnionRef},
-    },
     util::ParseSpan,
 };
 
 use super::{InlineNodeToCreate, InterpBlockTransition, InterpResult, InterpSpecialTransition};
+
+use super::python::{
+    interop::*,
+    typeclass::{PyTcRef, PyTcUnionRef},
+};
 
 #[derive(Debug)]
 pub(crate) struct InterpParaState {

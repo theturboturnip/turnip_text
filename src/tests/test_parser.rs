@@ -5,11 +5,13 @@ use crate::tests::test_lexer::TextStream;
 use lexer_rs::Lexer;
 use regex::Regex;
 
-use crate::python::interop::{
-    BlockScope, DocSegment, DocSegmentHeader, InlineScope, Paragraph, RawText, Sentence,
-    UnescapedText,
+use crate::interpreter::python::{
+    interop::{
+        BlockScope, DocSegment, DocSegmentHeader, InlineScope, Paragraph, RawText, Sentence,
+        UnescapedText,
+    },
+    prepare_freethreaded_turniptext_python,
 };
-use crate::python::prepare_freethreaded_turniptext_python;
 use crate::util::ParseSpan;
 
 use pyo3::prelude::*;

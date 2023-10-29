@@ -2,8 +2,9 @@ use pyo3::{
     exceptions::PySyntaxError, ffi::Py_None, intern, types::PyDict, Py, PyAny, PyResult, Python,
 };
 
-use crate::{
-    lexer::TTToken,
+use crate::{lexer::TTToken, util::ParseSpan};
+
+use super::{
     python::{
         interop::{
             coerce_to_inline_pytcref, Block, BlockScopeBuilder, DocSegmentHeader, Inline,
@@ -11,10 +12,8 @@ use crate::{
         },
         typeclass::PyTcRef,
     },
-    util::ParseSpan,
+    InterpResult, MapInterpResult,
 };
-
-use super::{InterpResult, MapInterpResult};
 
 pub enum EvalBracketContext {
     NeedBlockBuilder,
