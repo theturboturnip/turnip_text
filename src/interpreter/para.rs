@@ -1,10 +1,10 @@
 use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
+    interpreter::{eval_brackets, EvalBracketResult, InterpError, MapInterpResult},
     lexer::{Escapable, TTToken},
     python::{
         interop::*,
-        parse::{eval_brackets, EvalBracketResult, InterpError, MapInterpResult},
         typeclass::{PyTcRef, PyTcUnionRef},
     },
     util::ParseSpan,

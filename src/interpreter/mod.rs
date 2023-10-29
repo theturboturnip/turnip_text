@@ -16,7 +16,7 @@ use self::para::{InterpParaState, InterpParaTransition};
 mod eval_bracket;
 use eval_bracket::{eval_brackets, EvalBracketResult};
 
-use super::typeclass::PyInstanceList;
+use crate::python::typeclass::PyInstanceList;
 
 pub struct InterpDataState<'a> {
     /// The data we're parsing from
@@ -25,7 +25,7 @@ pub struct InterpDataState<'a> {
     block_stack: Vec<InterpManualBlockScopeState>,
 }
 
-pub struct InterpState<'a> {
+pub struct Interpreter<'a> {
     /// FSM state
     block_state: InterpBlockState,
     /// Overrides InterpBlockState and raw_state - if Some(state), we are in "comment mode" and all other state machines are paused
@@ -33,7 +33,7 @@ pub struct InterpState<'a> {
     /// The current structure of the document, including toplevel content, segments, and the current block stacks (one block stack per included subfile)
     structure: InterimDocumentStructure<'a>,
 }
-impl<'a> InterpState<'a> {
+impl<'a> Interpreter<'a> {
     pub fn new(py: Python<'_>, data: &'a str) -> PyResult<Self> {
         Ok(Self {
             block_state: InterpBlockState::ReadyForNewBlock,
@@ -500,7 +500,7 @@ impl<T> MapInterpResult<T> for PyResult<T> {
     }
 }
 
-impl<'a> InterpState<'a> {
+impl<'a> Interpreter<'a> {
     pub fn handle_token(
         &mut self,
         py: Python<'_>,

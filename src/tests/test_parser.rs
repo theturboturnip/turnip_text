@@ -1,3 +1,4 @@
+use crate::interpreter::{InterpError, Interpreter};
 use crate::lexer::{units_to_tokens, TTToken, Unit};
 use crate::tests::test_lexer::TextStream;
 
@@ -8,7 +9,7 @@ use crate::python::interop::{
     BlockScope, DocSegment, DocSegmentHeader, InlineScope, Paragraph, RawText, Sentence,
     UnescapedText,
 };
-use crate::python::{prepare_freethreaded_turniptext_python, InterpError, InterpState};
+use crate::python::prepare_freethreaded_turniptext_python;
 use crate::util::ParseSpan;
 
 use pyo3::prelude::*;
@@ -534,7 +535,7 @@ pub fn expect_parse_tokens(
         panic::catch_unwind(|| {
             Python::with_gil(|py| {
                 let globals = generate_globals(py).expect("Couldn't generate globals dict");
-                let mut st = InterpState::new(py, data)?;
+                let mut st = Interpreter::new(py, data)?;
                 st.handle_tokens(py, globals, stoks.into_iter())?;
                 let root = st.finalize(py, globals);
                 root.map(|doc| {

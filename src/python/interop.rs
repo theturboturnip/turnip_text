@@ -13,11 +13,9 @@ use thiserror::Error;
 
 use crate::lexer::{LexError, LexPosn, LexToken};
 
-use super::{
-    parse::InterpState,
-    typeclass::{PyInstanceList, PyTcRef, PyTcUnionRef, PyTypeclass, PyTypeclassList},
-    InterpError, InterpResult,
-};
+use crate::interpreter::{InterpError, InterpResult, Interpreter};
+
+use super::typeclass::{PyInstanceList, PyTcRef, PyTcUnionRef, PyTypeclass, PyTypeclassList};
 
 create_exception!(_native, TurnipTextError, pyo3::exceptions::PyException);
 
@@ -77,7 +75,7 @@ fn parse_file<'py>(py: Python<'py>, path: &str, py_env: &PyDict) -> PyResult<Py<
     {
         let data = data.as_str();
         let tokens = crate::lexer::lex(data);
-        let mut state = InterpState::new(py, data)?;
+        let mut state = Interpreter::new(py, data)?;
         // TODO do I need to call toplevel_data here?
         for tok in tokens {
             state

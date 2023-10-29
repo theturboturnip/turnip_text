@@ -3,7 +3,8 @@ use lexer_rs::PosnInCharStream;
 
 use crate::{
     lexer::LexError,
-    util::ParseSpan, python::InterpError,
+    util::ParseSpan,
+    interpreter::InterpError
 };
 
 pub trait GivesCliFeedback {

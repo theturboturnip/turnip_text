@@ -1,8 +1,5 @@
 pub mod interop;
 
-mod parse;
-pub use parse::{InterpError, InterpResult, InterpState};
-
 pub mod typeclass;
 
 /// Prepare an embedded Python interpreter with our module.
