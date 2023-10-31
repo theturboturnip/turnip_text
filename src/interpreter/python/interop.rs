@@ -1,29 +1,24 @@
-use std::{error, path::Path};
-
-use anyhow::bail;
-use lexer_rs::LexerOfStr;
 use pyo3::{
-    create_exception,
-    exceptions::{PyRuntimeError, PyTypeError, PyValueError},
+    exceptions::{PyTypeError, PyValueError},
     intern,
     prelude::*,
     types::{PyDict, PyFloat, PyIterator, PyList, PyLong, PyString},
 };
-use thiserror::Error;
 
-use crate::lexer::{LexError, LexPosn, LexToken};
-
-use crate::interpreter::{InterpError, InterpResult, Interpreter};
+use crate::{error::TurnipTextError, parser::TurnipTextParser};
 
 use super::typeclass::{PyInstanceList, PyTcRef, PyTcUnionRef, PyTypeclass, PyTypeclassList};
 
-create_exception!(_native, TurnipTextError, pyo3::exceptions::PyException);
+mod error {
+    use pyo3::create_exception;
+
+    create_exception!(_native, TurnipTextError, pyo3::exceptions::PyException);
+}
 
 #[pymodule]
 #[pyo3(name = "_native")]
 pub fn turnip_text(py: Python<'_>, m: &PyModule) -> PyResult<()> {
-    // m.add_function(wrap_pyfunction!(parse_file, m)?)?;
-    // m.add_function(wrap_pyfunction!(parse_str, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_file, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_to_inline, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_to_inline_scope, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_to_block, m)?)?;
@@ -40,65 +35,27 @@ pub fn turnip_text(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     // TODO python typehints for this
     m.add_class::<InsertedFile>()?;
 
-    m.add("TurnipTextError", py.get_type::<TurnipTextError>())?;
+    m.add("TurnipTextError", py.get_type::<error::TurnipTextError>())?;
 
     Ok(())
 }
 
-trait RaisableAsPyErr {
-    fn to_pyerr(self) -> PyErr;
-}
-impl RaisableAsPyErr for (LexError, &str) {
+impl TurnipTextError {
     fn to_pyerr(self) -> PyErr {
-        let (err, data) = self;
-        crate::error_feedback::display_cli_feedback(data, &err);
-        TurnipTextError::new_err(format!("{err}"))
-    }
-}
-impl RaisableAsPyErr for (&InterpError, &str) {
-    fn to_pyerr(self) -> PyErr {
-        let (err, data) = self;
-        crate::error_feedback::display_cli_feedback(data, err);
-        TurnipTextError::new_err(format!("{err}"))
-    }
-}
-impl RaisableAsPyErr for &std::io::Error {
-    fn to_pyerr(self) -> PyErr {
-        TurnipTextError::new_err(format!("{self}"))
-    }
-}
-
-/// Given a file path, calls [crate::cli::parse_file] (includes parsing, checking for syntax errors, evaluating python)
-#[pyfunction]
-fn parse_file<'py>(py: Python<'py>, path: &str, py_env: &PyDict) -> PyResult<Py<DocSegment>> {
-    let data = std::fs::read_to_string(path).map_err(|e| e.to_pyerr())?;
-    {
-        let data = data.as_str();
-        let tokens = crate::lexer::lex(data);
-        let mut state = Interpreter::new(py, data)?;
-        // TODO do I need to call toplevel_data here?
-        for tok in tokens {
-            state
-                .handle_token(
-                    py,
-                    py_env,
-                    tok.map_err(|e| (e, state.toplevel_data()).to_pyerr())?,
-                )
-                .map_err(|e| (&e, state.toplevel_data()).to_pyerr())?
-        }
-        state
-            .finalize(py, py_env)
-            .map_err(|e| (&e, state.toplevel_data()).to_pyerr())
+        self.display_cli_feedback();
+        error::TurnipTextError::new_err(format!("{self}"))
     }
 }
 
 #[pyfunction]
-fn parse_str<'py>(
+fn parse_file<'py>(
     py: Python<'py>,
-    data: &str,
-    py_env: Option<&PyDict>,
+    file: InsertedFile,
+    py_env: &PyDict,
 ) -> PyResult<Py<DocSegment>> {
-    todo!()
+    let parser =
+        TurnipTextParser::new(py, file.name, file.contents).map_err(TurnipTextError::to_pyerr)?;
+    parser.parse(py, py_env).map_err(TurnipTextError::to_pyerr)
 }
 
 #[pyfunction]
@@ -115,7 +72,7 @@ pub fn coerce_to_inline_pytcref<'py>(
         return Ok(inl);
     }
     // 2. if it's a List of Inline, return InlineScope(it)
-    // Here we first check if it's a list, then if so try to create an Inline - this will verify if it's a list of Inlines.
+    // Here we first check if it's a list, then if so try to create an InlineScope - this will verify if it's a list of Inlines.
     if let Ok(py_list) = obj.downcast::<PyList>() {
         if let Ok(inline_scope) = InlineScope::new(py, Some(py_list)) {
             let inline_scope = Py::new(py, inline_scope)?;
@@ -636,13 +593,41 @@ impl InlineScope {
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct InsertedFile {
-    path: String,
+    pub name: String,
+    pub contents: String,
+}
+impl InsertedFile {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn contents(&self) -> &str {
+        &self.contents
+    }
 }
 #[pymethods]
 impl InsertedFile {
     #[new]
-    pub fn new(path: String) -> InsertedFile {
-        InsertedFile { path }
+    pub fn new(name: String, contents: String) -> InsertedFile {
+        InsertedFile { name, contents }
+    }
+
+    #[staticmethod]
+    pub fn from_path(path: String) -> PyResult<InsertedFile> {
+        let name = std::fs::canonicalize(&path)?;
+        let contents = std::fs::read_to_string(&path)
+            .map_err(|e| error::TurnipTextError::new_err(format!("{e}")))?;
+        Ok(InsertedFile {
+            name: name.into_os_string().into_string().unwrap_or(path),
+            contents,
+        })
+    }
+
+    #[staticmethod]
+    pub fn from_string(contents: String) -> InsertedFile {
+        InsertedFile {
+            name: "<string>".into(),
+            contents,
+        }
     }
 }
 

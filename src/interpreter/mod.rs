@@ -2,7 +2,8 @@ use pyo3::{prelude::*, types::PyDict};
 use thiserror::Error;
 
 use crate::{
-    lexer::{Escapable, TTToken},
+    error::{stringify_pyerr, TurnipTextContextlessError, TurnipTextContextlessResult},
+    lexer::{Escapable, LexError, TTToken},
     util::ParseSpan,
 };
 
@@ -18,23 +19,23 @@ use python::{
     typeclass::{PyInstanceList, PyTcRef, PyTcUnionRef},
 };
 
-pub struct InterpDataState<'a> {
-    /// The data we're parsing from
-    data: &'a str,
+pub struct InterpDataState {
+    /// The index of the file we're reading from
+    file_idx: usize,
     /// Stack of block scopes. Either part of toplevel_content if segment_stack is empty, or part of segment_stack[-1].blocks otherwise.
     block_stack: Vec<InterpManualBlockScopeState>,
 }
 
-pub struct Interpreter<'a> {
+pub struct Interpreter {
     /// FSM state
     block_state: InterpBlockState,
     /// Overrides InterpBlockState and raw_state - if Some(state), we are in "comment mode" and all other state machines are paused
     comment_state: Option<InterpCommentState>,
     /// The current structure of the document, including toplevel content, segments, and the current block stacks (one block stack per included subfile)
-    structure: InterimDocumentStructure<'a>,
+    structure: InterimDocumentStructure,
 }
-impl<'a> Interpreter<'a> {
-    pub fn new(py: Python<'_>, data: &'a str) -> PyResult<Self> {
+impl Interpreter {
+    pub fn new(py: Python) -> PyResult<Self> {
         Ok(Self {
             block_state: InterpBlockState::ReadyForNewBlock,
             comment_state: None,
@@ -42,17 +43,31 @@ impl<'a> Interpreter<'a> {
         })
     }
 
-    pub fn handle_tokens(
-        &mut self,
+    pub fn handle_tokens<'a>(
+        &'a mut self,
         py: Python,
         py_env: &PyDict,
-        toks: impl Iterator<Item = TTToken>,
-    ) -> InterpResult<()> {
-        toks.map(|t| self.handle_token(py, py_env, t)).collect()
+        toks: &mut impl Iterator<Item = Result<TTToken, LexError>>,
+        file_idx: usize, // Attached to any LexError given
+        data: &str,
+    ) -> TurnipTextContextlessResult<InterpreterFileAction> {
+        self.push_subfile();
+        for tok in toks {
+            let tok = tok.map_err(|lex_err| (file_idx, lex_err))?;
+            let transitions = self.mutate_and_find_transitions(py, py_env, tok, data)?;
+            match self.handle_transition(py, py_env, transitions)? {
+                None => continue,
+                Some(InsertedFile { name, contents }) => {
+                    return Ok(InterpreterFileAction::FileInserted { name, contents })
+                }
+            }
+        }
+        self.pop_subfile(py, py_env)?;
+        Ok(InterpreterFileAction::FileEnded)
     }
 }
 
-pub struct InterimDocumentStructure<'a> {
+pub struct InterimDocumentStructure {
     /// Top level content of the document
     /// All text leading up to the first DocSegment
     toplevel_content: Py<BlockScope>,
@@ -61,24 +76,24 @@ pub struct InterimDocumentStructure<'a> {
     /// The stack of DocSegments leading up to the current doc segment.
     segment_stack: Vec<InterpDocSegmentState>,
     /// A stack of the pieces of data we're parsing from.
-    /// Each piece of data has its own block stack - we don't allow a given subfile to leave new scopes open, or close scopes it didn't open.
-    parsed_data_stack: Vec<InterpDataState<'a>>,
+    /// Each parsed file has its own block stack - we don't allow a given subfile to leave new scopes open, or close scopes it didn't open.
+    block_stacks: Vec<Vec<InterpManualBlockScopeState>>,
 }
-impl<'a> InterimDocumentStructure<'a> {
+impl InterimDocumentStructure {
     pub fn new(py: Python) -> PyResult<Self> {
         Ok(Self {
             toplevel_content: Py::new(py, BlockScope::new_empty(py))?,
             toplevel_segments: PyInstanceList::new(py),
             segment_stack: vec![],
-            parsed_data_stack: vec![],
+            block_stacks: vec![],
         })
     }
 
     pub fn finalize(self, py: Python) -> PyResult<Py<DocSegment>> {
         assert_eq!(
-            self.parsed_data_stack.len(),
-            1,
-            "Tried to finalize the document while inside a subfile"
+            self.block_stacks.len(),
+            0,
+            "Tried to finalize the document while inside a file"
         );
         Py::new(
             py,
@@ -90,33 +105,28 @@ impl<'a> InterimDocumentStructure<'a> {
         )
     }
 
-    fn toplevel_data(&self) -> &'a str {
-        self.parsed_data_stack
-            .last()
-            .expect("Should always have toplevel data")
-            .data
-    }
+    // TODO check_can_start_subfile? Right now we assume we only emit IncludedFiles in block mode, but having a sanity check for "not in paragraph mode" might be good
 
-    fn pop_parsed_data(&mut self) -> InterpResult<()> {
+    fn check_can_end_subfile(&mut self) -> TurnipTextContextlessResult<()> {
         // Don't pop it immediately - if we return an error we need to keep this data around
-        let data = self
-            .parsed_data_stack
+        let top_block_stack = self
+            .block_stacks
             .last()
-            .expect("Tried to pop_parsed_data when no data is left!");
+            .expect("Tried to check_file_end when no data is left!");
 
-        if let Some(block) = data.block_stack.last() {
+        if let Some(block) = top_block_stack.last() {
             Err(InterpError::EndedInsideScope {
                 scope_start: block.scope_start,
-            }) // TODO make this error specific to subfiles?
+            }
+            .into()) // TODO make this error specific to subfiles?
         } else {
-            self.parsed_data_stack.pop();
             Ok(())
         }
     }
 
     fn get_enclosing_block(&self) -> Option<&InterpManualBlockScopeState> {
-        for parsed_data in self.parsed_data_stack.iter().rev() {
-            match parsed_data.block_stack.last() {
+        for block_stack in self.block_stacks.iter().rev() {
+            match block_stack.last() {
                 Some(block) => return Some(block),
                 None => {}
             }
@@ -125,18 +135,16 @@ impl<'a> InterimDocumentStructure<'a> {
     }
 
     fn push_enclosing_block_within_data(&mut self, block: InterpManualBlockScopeState) {
-        self.parsed_data_stack
-            .last()
-            .expect("Must always have at least one parsed_data")
-            .block_stack
+        self.block_stacks
+            .last_mut()
+            .expect("Must always have at least one block_stack")
             .push(block)
     }
 
     fn pop_enclosing_block_within_data(&mut self) -> Option<InterpManualBlockScopeState> {
-        self.parsed_data_stack
-            .last()
-            .expect("Must always have at least one parsed_data")
-            .block_stack
+        self.block_stacks
+            .last_mut()
+            .expect("Must always have at least one block_stack")
             .pop()
     }
 
@@ -146,17 +154,18 @@ impl<'a> InterimDocumentStructure<'a> {
         header: PyTcRef<DocSegmentHeader>,
         code_span: ParseSpan,
         block_close_span: Option<ParseSpan>,
-    ) -> InterpResult<()> {
+    ) -> TurnipTextContextlessResult<()> {
         if let Some(enclosing_block) = self.get_enclosing_block() {
             return Err(InterpError::DocSegmentHeaderMidScope {
                 code_span,
                 block_close_span,
                 enclosing_scope_start: enclosing_block.scope_start,
-            });
+            }
+            .into());
         }
 
         let subsegment_weight =
-            DocSegmentHeader::get_weight(py, header.as_ref(py)).err_as_interp_internal(py)?;
+            DocSegmentHeader::get_weight(py, header.as_ref(py)).err_as_internal(py)?;
 
         // If there are items in the segment_stack, pop from self.segment_stack until the toplevel weight < subsegment_weight
         self.pop_segments_until_less_than(py, subsegment_weight)?;
@@ -164,13 +173,17 @@ impl<'a> InterimDocumentStructure<'a> {
         // We know the thing at the top of the segment stack has a weight < subsegment_weight
         // Push pending segment state to the stack
         let subsegment =
-            InterpDocSegmentState::new(py, header, subsegment_weight).err_as_interp_internal(py)?;
+            InterpDocSegmentState::new(py, header, subsegment_weight).err_as_internal(py)?;
         self.segment_stack.push(subsegment);
 
         Ok(())
     }
 
-    fn pop_segments_until_less_than(&mut self, py: Python<'_>, weight: i64) -> InterpResult<()> {
+    fn pop_segments_until_less_than(
+        &mut self,
+        py: Python,
+        weight: i64,
+    ) -> TurnipTextContextlessResult<()> {
         let mut curr_toplevel_weight = match self.segment_stack.last() {
             Some(segment) => segment.weight,
             None => return Ok(()),
@@ -183,7 +196,7 @@ impl<'a> InterimDocumentStructure<'a> {
                 .pop()
                 .expect("Just checked, it isn't empty");
 
-            let segment = segment_to_finish.finish(py).err_as_interp_internal(py)?;
+            let segment = segment_to_finish.finish(py).err_as_internal(py)?;
 
             // Look into the next segment
             curr_toplevel_weight = match self.segment_stack.last() {
@@ -191,7 +204,7 @@ impl<'a> InterimDocumentStructure<'a> {
                 Some(x) => {
                     x.subsegments
                         .append_checked(segment.as_ref(py))
-                        .err_as_interp_internal(py)?;
+                        .err_as_internal(py)?;
                     x.weight
                 }
                 // Otherwise just push it into toplevel_segments and FUCK, NO, THAT DOESN'T WORK YOU MORON
@@ -200,7 +213,7 @@ impl<'a> InterimDocumentStructure<'a> {
                 None => {
                     self.toplevel_segments
                         .append_checked(segment.as_ref(py))
-                        .err_as_interp_internal(py)?;
+                        .err_as_internal(py)?;
                     return Ok(());
                 }
             };
@@ -209,7 +222,7 @@ impl<'a> InterimDocumentStructure<'a> {
         Ok(())
     }
 
-    fn push_to_topmost_block(&self, py: Python, block: &PyAny) -> InterpResult<()> {
+    fn push_to_topmost_block(&self, py: Python, block: &PyAny) -> TurnipTextContextlessResult<()> {
         {
             // Figure out which block is actually the topmost block.
             // If the block stack has elements, add it to the topmost element.
@@ -224,7 +237,7 @@ impl<'a> InterimDocumentStructure<'a> {
             };
             child_list_ref.borrow_mut(py).push_block(block)
         }
-        .err_as_interp_internal(py)
+        .err_as_internal(py)
     }
 }
 
@@ -267,7 +280,7 @@ struct InterpDocSegmentState {
     subsegments: PyInstanceList<DocSegment>,
 }
 impl InterpDocSegmentState {
-    fn new(py: Python<'_>, header: PyTcRef<DocSegmentHeader>, weight: i64) -> PyResult<Self> {
+    fn new(py: Python, header: PyTcRef<DocSegmentHeader>, weight: i64) -> PyResult<Self> {
         Ok(Self {
             header,
             weight,
@@ -275,7 +288,7 @@ impl InterpDocSegmentState {
             subsegments: PyInstanceList::new(py),
         })
     }
-    fn finish(self, py: Python<'_>) -> PyResult<Py<DocSegment>> {
+    fn finish(self, py: Python) -> PyResult<Py<DocSegment>> {
         Py::new(
             py,
             DocSegment::new_checked(py, Some(self.header), self.content, self.subsegments)?,
@@ -294,11 +307,11 @@ impl InterpManualBlockScopeState {
         self,
         py: Python,
         scope_end: ParseSpan,
-    ) -> InterpResult<(
+    ) -> TurnipTextContextlessResult<(
         Option<PyTcUnionRef<Block, DocSegmentHeader>>,
         Option<ParseSpan>,
     )> {
-        let scope = ParseSpan::new(self.scope_start.start, scope_end.end);
+        let scope = self.scope_start.combine(&scope_end);
         match self.builder {
             Some((builder, code_span)) => {
                 let block_or_header =
@@ -374,6 +387,11 @@ pub(crate) enum InterpBlockTransition {
     /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::ReadyForNewBlock]
     PushDocSegmentHeader(ParseSpan, PyTcRef<DocSegmentHeader>),
 
+    /// If an eval-bracket emits an InsertedFile directly, jump out to the parser and start parsing it
+    ///
+    /// - [InterpBlockState::BuildingCode] -> (early out)
+    EmitNewFile(ParseSpan, InsertedFile),
+
     /// On encountering a scope close, pop the current block from the scope.
     /// May trigger a BlockScopeBuilder, which may then emit a block or a DocSegment directly into the tree.
     ///
@@ -410,8 +428,8 @@ impl InlineNodeToCreate {
             InlineNodeToCreate::PythonObject(obj) => Ok(obj),
         }
     }
-    pub(crate) fn to_py(self, py: Python) -> InterpResult<PyTcRef<Inline>> {
-        self.to_py_intern(py).err_as_interp_internal(py)
+    pub(crate) fn to_py(self, py: Python) -> TurnipTextContextlessResult<PyTcRef<Inline>> {
+        self.to_py_intern(py).err_as_internal(py)
     }
 }
 
@@ -436,6 +454,8 @@ pub enum InterpError {
     BlockOwnerCodeMidPara { code_span: ParseSpan },
     #[error("A Python `Block` was returned by code inside a paragraph")]
     BlockCodeMidPara { code_span: ParseSpan },
+    #[error("A Python `InsertedFile` was returned by code inside a paragraph")]
+    InsertedFileMidPara { code_span: ParseSpan },
     #[error("A Python `DocSegment` was returned by code inside a paragraph")]
     DocSegmentHeaderMidPara { code_span: ParseSpan },
     #[error("A Python `DocSegmentHeader` was built by code inside a block scope")]
@@ -459,59 +479,42 @@ pub enum InterpError {
     InlineOwnerCodeHasNoScope { code_span: ParseSpan },
     #[error("Python error: {pyerr}")]
     PythonErr { pyerr: String, code_span: ParseSpan },
-    #[error("Internal python error: {pyerr}")]
-    InternalPythonErr { pyerr: String },
-    #[error("Internal error: {0}")]
-    InternalErr(String),
     #[error("Escaped newline (used for sentence continuation) found outside paragraph")]
     EscapedNewlineOutsideParagraph { newline: ParseSpan },
 }
 
-fn stringify_pyerr(py: Python, pyerr: &PyErr) -> String {
-    let value = pyerr.value(py);
-    let type_name = match value.get_type().name() {
-        Ok(name) => name,
-        Err(_) => "Unknown Type",
-    };
-    if let Ok(s) = value.str() {
-        format!("{0} : {1}", type_name, &s.to_string_lossy())
-    } else {
-        "<exception str() failed>".into()
-    }
+trait MapContextlessResult<T> {
+    fn err_as_interp(self, py: Python, code_span: ParseSpan) -> TurnipTextContextlessResult<T>;
+    fn err_as_internal(self, py: Python) -> TurnipTextContextlessResult<T>;
 }
-
-pub type InterpResult<T> = Result<T, InterpError>;
-
-trait MapInterpResult<T> {
-    fn err_as_interp(self, py: Python, code_span: ParseSpan) -> InterpResult<T>;
-    fn err_as_interp_internal(self, py: Python) -> InterpResult<T>;
-}
-impl<T> MapInterpResult<T> for PyResult<T> {
-    fn err_as_interp(self, py: Python, code_span: ParseSpan) -> InterpResult<T> {
-        self.map_err(|pyerr| InterpError::PythonErr {
-            pyerr: stringify_pyerr(py, &pyerr),
-            code_span,
+impl<T> MapContextlessResult<T> for PyResult<T> {
+    fn err_as_interp(self, py: Python, code_span: ParseSpan) -> TurnipTextContextlessResult<T> {
+        self.map_err(|pyerr| {
+            InterpError::PythonErr {
+                pyerr: stringify_pyerr(py, &pyerr),
+                code_span,
+            }
+            .into()
         })
     }
-    fn err_as_interp_internal(self, py: Python) -> InterpResult<T> {
-        self.map_err(|pyerr| InterpError::InternalPythonErr {
-            pyerr: stringify_pyerr(py, &pyerr),
+    fn err_as_internal(self, py: Python) -> TurnipTextContextlessResult<T> {
+        self.map_err(|pyerr| {
+            TurnipTextContextlessError::InternalPython(stringify_pyerr(py, &pyerr))
         })
     }
 }
 
-impl<'a> Interpreter<'a> {
-    pub fn handle_token(
-        &mut self,
-        py: Python<'_>,
-        py_env: &'_ PyDict,
-        tok: TTToken,
-    ) -> InterpResult<()> {
-        let transitions = self.mutate_and_find_transitions(py, py_env, tok)?;
-        self.handle_transition(py, py_env, transitions)
+pub enum InterpreterFileAction {
+    FileInserted { name: String, contents: String },
+    FileEnded,
+}
+
+impl Interpreter {
+    fn push_subfile(&mut self) {
+        self.structure.block_stacks.push(vec![])
     }
 
-    pub fn pop_data(&mut self, py: Python<'_>, py_env: &'_ PyDict) -> InterpResult<()> {
+    fn pop_subfile(&mut self, py: Python, py_env: &'_ PyDict) -> TurnipTextContextlessResult<()> {
         // If we finish while we're parsing a paragraph, jump out of it with a state machine transition
         let transitions = match &mut self.block_state {
             InterpBlockState::ReadyForNewBlock => (None, None),
@@ -519,25 +522,32 @@ impl<'a> Interpreter<'a> {
             InterpBlockState::BuildingCode { code_start, .. } => {
                 return Err(InterpError::EndedInsideCode {
                     code_start: *code_start,
-                })
+                }
+                .into())
             }
             InterpBlockState::BuildingRawText { builder_span, .. } => {
                 return Err(InterpError::EndedInsideRawScope {
                     raw_scope_start: *builder_span, // TODO This is technically wrong but it gets the point across. Should return the raw_scope token start, not the builder start
-                });
+                }
+                .into());
             }
         };
 
         self.handle_transition(py, py_env, transitions)?;
 
-        self.structure.pop_parsed_data()?;
+        self.structure.check_can_end_subfile()?;
+
+        self.structure.block_stacks.pop();
 
         Ok(())
     }
 
-    pub fn finalize(self, py: Python, py_env: &PyDict) -> InterpResult<Py<DocSegment>> {
-        (&self).pop_data(py, py_env)?;
-        self.structure.finalize(py).err_as_interp_internal(py)
+    pub fn finalize<'a>(
+        mut self,
+        py: Python,
+        py_env: &PyDict,
+    ) -> TurnipTextContextlessResult<Py<DocSegment>> {
+        self.structure.finalize(py).err_as_internal(py)
     }
 
     /// Return (block transition, special transition) to be executed in the order (block transition, special transition)
@@ -546,7 +556,8 @@ impl<'a> Interpreter<'a> {
         py: Python,
         py_env: &PyDict,
         tok: TTToken,
-    ) -> InterpResult<(
+        data: &str,
+    ) -> TurnipTextContextlessResult<(
         Option<InterpBlockTransition>,
         Option<InterpSpecialTransition>,
     )> {
@@ -563,13 +574,13 @@ impl<'a> Interpreter<'a> {
             return Ok((None, transition));
         }
 
-        let data = self.structure.toplevel_data();
-
         let transition = match &mut self.block_state {
             InterpBlockState::ReadyForNewBlock => {
                 match tok {
                     Escaped(span, Escapable::Newline) => {
-                        return Err(InterpError::EscapedNewlineOutsideParagraph { newline: span })
+                        return Err(
+                            InterpError::EscapedNewlineOutsideParagraph { newline: span }.into(),
+                        )
                     }
 
                     CodeOpen(span, n_hashes) => (Some(StartBlockLevelCode(span, n_hashes)), None),
@@ -594,16 +605,20 @@ impl<'a> Interpreter<'a> {
                         ))),
                         None,
                     ),
-                    RawScopeClose(span, _) => Err(InterpError::RawScopeCloseOutsideRawScope(span))?,
+                    RawScopeClose(span, _) => {
+                        return Err(InterpError::RawScopeCloseOutsideRawScope(span).into())
+                    }
 
                     // Try a scope close
                     ScopeClose(span) => match self.structure.get_enclosing_block() {
                         Some(_) => (Some(CloseManualBlockScope(span)), None),
-                        None => Err(InterpError::ScopeCloseOutsideScope(span))?,
+                        None => return Err(InterpError::ScopeCloseOutsideScope(span).into()),
                     },
 
                     // Complain - not in code mode
-                    CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span)),
+                    CodeClose(span, _) => {
+                        return Err(InterpError::CodeCloseOutsideCode(span).into())
+                    }
 
                     // Do nothing - we're still ready to receive a new block
                     Newline(_) => (None, None),
@@ -631,12 +646,6 @@ impl<'a> Interpreter<'a> {
                 match eval_brackets(data, tok, code, code_start, *expected_close_len, py, py_env)? {
                     Some((res, code_span)) => {
                         use EvalBracketResult::*;
-
-                        // TODO allow us to open subfiles here.
-                        // TODO TODO TODO MAKE SURE THEY DON'T OPEN IT INSIDE A CODE BLOCK OR A RAW STRING LOLLL
-                        // TODO also we need to make InterpError never crosses subfiles. Is that possible?
-                        // No, because if they open a DocSegment inside a subfile that is imported inside a block, the error has to show where the block opened and where the DocSegment was created at the same time. Bugger.
-
                         let block_transition = match res {
                             NeededBlockBuilder(b) => {
                                 OpenManualBlockScope(Some((b, code_span)), tok.token_span())
@@ -646,10 +655,13 @@ impl<'a> Interpreter<'a> {
                             ),
                             NeededRawBuilder(r, n_hashes) => OpenRawScope(r, code_span, n_hashes),
                             DocSegmentHeader(s) => PushDocSegmentHeader(code_span, s),
+                            // TODO this allows `[something_emitting_block] and a directly following paragraph`.
                             Block(b) => PushBlock(code_span, b),
                             Inline(i) => StartParagraph(InterpParaTransition::PushInlineContent(
                                 InlineNodeToCreate::PythonObject(i),
                             )),
+                            // TODO this allows `[something_emitting_insertedfile] and a directly following paragraph].`
+                            InsertedFile(file) => EmitNewFile(code_span, file),
                             PyNone => EmitNone,
                         };
                         (Some(block_transition), None)
@@ -699,7 +711,7 @@ impl<'a> Interpreter<'a> {
             Option<InterpBlockTransition>,
             Option<InterpSpecialTransition>,
         ),
-    ) -> InterpResult<()> {
+    ) -> TurnipTextContextlessResult<Option<InsertedFile>> {
         let (block_transition, special_transition) = transitions;
 
         if let Some(transition) = block_transition {
@@ -719,11 +731,11 @@ impl<'a> Interpreter<'a> {
                     S::ReadyForNewBlock | S::BuildingCode { .. } | S::BuildingRawText { .. },
                     T::StartParagraph(transition),
                 ) => {
-                    let mut para_state = InterpParaState::new(py).err_as_interp_internal(py)?;
+                    let mut para_state = InterpParaState::new(py).err_as_internal(py)?;
                     let (new_block_transition, new_special_transition) =
                         para_state.handle_transition(py, Some(transition))?;
                     if new_block_transition.is_some() {
-                        return Err(InterpError::InternalErr(
+                        return Err(TurnipTextContextlessError::Internal(
                             "An inline transition, initiated with the start of a paragraph, tried to initiate another block transition. This is not allowed and should not be possible.".into()
                         ));
                     }
@@ -764,7 +776,9 @@ impl<'a> Interpreter<'a> {
                                 (None, _) => {}
                             }
                         }
-                        None => return Err(InterpError::ScopeCloseOutsideScope(scope_close_span)),
+                        None => {
+                            return Err(InterpError::ScopeCloseOutsideScope(scope_close_span).into())
+                        }
                     }
                     S::ReadyForNewBlock
                 }
@@ -800,8 +814,7 @@ impl<'a> Interpreter<'a> {
                     self.structure
                         .push_enclosing_block_within_data(InterpManualBlockScopeState {
                             builder,
-                            children: Py::new(py, BlockScope::new_empty(py))
-                                .err_as_interp_internal(py)?,
+                            children: Py::new(py, BlockScope::new_empty(py)).err_as_internal(py)?,
                             scope_start,
                         });
                     S::ReadyForNewBlock
@@ -828,12 +841,17 @@ impl<'a> Interpreter<'a> {
                                 (None, _) => {}
                             }
                         }
-                        None => return Err(InterpError::ScopeCloseOutsideScope(scope_close_span)),
+                        None => {
+                            return Err(InterpError::ScopeCloseOutsideScope(scope_close_span).into())
+                        }
                     }
                     S::ReadyForNewBlock
                 }
+                (S::ReadyForNewBlock, T::EmitNewFile(_emitter_span, file)) => {
+                    return Ok(Some(file))
+                }
                 (_, transition) => {
-                    return Err(InterpError::InternalErr(format!(
+                    return Err(TurnipTextContextlessError::Internal(format!(
                         "Invalid block state/transition pair encountered ({0:?}, {1:?})",
                         self.block_state, transition
                     )))
@@ -851,7 +869,7 @@ impl<'a> Interpreter<'a> {
                     self.comment_state = Some(InterpCommentState { comment_start })
                 }
                 (_, transition) => {
-                    return Err(InterpError::InternalErr(format!(
+                    return Err(TurnipTextContextlessError::Internal(format!(
                         "Invalid special state/transition pair encountered ({0:?}, {1:?})",
                         self.comment_state, transition
                     )))
@@ -859,6 +877,6 @@ impl<'a> Interpreter<'a> {
             }
         }
 
-        Ok(())
+        Ok(None)
     }
 }

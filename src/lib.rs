@@ -1,6 +1,7 @@
-pub mod error_feedback;
+pub mod error;
 pub mod interpreter;
 pub mod lexer;
+pub mod parser;
 pub mod util;
 
 #[cfg(test)]

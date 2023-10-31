@@ -1,12 +1,16 @@
 use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
-    interpreter::{eval_brackets, EvalBracketResult, InterpError, MapInterpResult},
+    error::TurnipTextContextlessError,
+    interpreter::{eval_brackets, EvalBracketResult, InterpError},
     lexer::{Escapable, TTToken},
     util::ParseSpan,
 };
 
-use super::{InlineNodeToCreate, InterpBlockTransition, InterpResult, InterpSpecialTransition};
+use super::{
+    InlineNodeToCreate, InterpBlockTransition, InterpSpecialTransition, MapContextlessResult,
+    TurnipTextContextlessResult,
+};
 
 use super::python::{
     interop::*,
@@ -28,8 +32,12 @@ struct InterpInlineScopeState {
     scope_start: ParseSpan,
 }
 impl InterpInlineScopeState {
-    fn build_to_inline(self, py: Python, scope_end: ParseSpan) -> InterpResult<PyTcRef<Inline>> {
-        let scope = ParseSpan::new(self.scope_start.start, scope_end.end);
+    fn build_to_inline(
+        self,
+        py: Python,
+        scope_end: ParseSpan,
+    ) -> TurnipTextContextlessResult<PyTcRef<Inline>> {
+        let scope = self.scope_start.combine(&scope_end);
         match self.builder {
             Some(builder) => InlineScopeBuilder::call_build_from_inlines(py, builder, self.children)
                 .err_as_interp(py, scope),
@@ -179,7 +187,7 @@ impl InterpParaState {
     pub(crate) fn finalize(
         &mut self,
         py: Python,
-    ) -> InterpResult<(
+    ) -> TurnipTextContextlessResult<(
         Option<InterpBlockTransition>,
         Option<InterpSpecialTransition>,
     )> {
@@ -195,12 +203,13 @@ impl InterpParaState {
             }
             // Error states
             InterpSentenceState::BuildingCode { code_start, .. } => {
-                return Err(InterpError::EndedInsideCode { code_start })
+                return Err(InterpError::EndedInsideCode { code_start }.into())
             }
             InterpSentenceState::BuildingRawText { raw_start, .. } => {
                 return Err(InterpError::EndedInsideRawScope {
                     raw_scope_start: raw_start,
-                })
+                }
+                .into())
             }
         }
     }
@@ -211,7 +220,7 @@ impl InterpParaState {
         py_env: &PyDict,
         tok: TTToken,
         data: &str,
-    ) -> InterpResult<(
+    ) -> TurnipTextContextlessResult<(
         Option<InterpBlockTransition>,
         Option<InterpSpecialTransition>,
     )> {
@@ -222,7 +231,7 @@ impl InterpParaState {
         &mut self,
         py: Python,
         transition: Option<InterpParaTransition>,
-    ) -> InterpResult<(
+    ) -> TurnipTextContextlessResult<(
         Option<InterpBlockTransition>,
         Option<InterpSpecialTransition>,
     )> {
@@ -310,8 +319,7 @@ impl InterpParaState {
                 ) => {
                     let scope = InterpInlineScopeState {
                         builder,
-                        children: Py::new(py, InlineScope::new_empty(py))
-                            .err_as_interp_internal(py)?,
+                        children: Py::new(py, InlineScope::new_empty(py)).err_as_internal(py)?,
                         scope_start: span,
                     };
                     self.inline_stack.push(scope);
@@ -328,7 +336,7 @@ impl InterpParaState {
                             self.push_to_topmost_scope(py, inline_item.as_ref(py))?
                         },
                         None => {
-                            return Err(InterpError::InternalErr("PopInlineScope attempted with no inline scopes - should use EndParagraphAndPopBlock in this case".into()))
+                            return Err(TurnipTextContextlessError::Internal("PopInlineScope attempted with no inline scopes - should use EndParagraphAndPopBlock in this case".into()))
                         }
                     };
                     (S::MidSentence, (None, None))
@@ -371,9 +379,10 @@ impl InterpParaState {
                             return Err(InterpError::ParaBreakInInlineScope {
                                 scope_start,
                                 para_break,
-                            });
+                            }
+                            .into());
                         } else {
-                            return Err(InterpError::EndedInsideScope { scope_start });
+                            return Err(InterpError::EndedInsideScope { scope_start }.into());
                         }
                     }
                     self.break_sentence(py)?;
@@ -389,7 +398,7 @@ impl InterpParaState {
                 ) => {
                     // This is only called when all inline scopes are closed - just assert they are
                     self.check_inline_scopes_closed().map_err(|_| {
-                        InterpError::InternalErr("paragraph EndParagraphAndPopBlock transition invoked when inline scopes are still on the stack".into())
+                        TurnipTextContextlessError::Internal("paragraph EndParagraphAndPopBlock transition invoked when inline scopes are still on the stack".into())
                     })?;
                     self.break_sentence(py)?;
                     (
@@ -404,10 +413,13 @@ impl InterpParaState {
                 }
 
                 (_, transition) => {
-                    return Err(InterpError::InternalErr(format!(
-                        "Invalid inline state/transition pair encountered ({0:?}, {1:?})",
-                        self.sentence_state, transition
-                    )))
+                    return Err(TurnipTextContextlessError::Internal(
+                        format!(
+                            "Invalid inline state/transition pair encountered ({0:?}, {1:?})",
+                            self.sentence_state, transition
+                        )
+                        .into(),
+                    ))
                 }
             };
             self.sentence_state = new_inl_state;
@@ -417,14 +429,14 @@ impl InterpParaState {
         }
     }
     /// Helper function
-    fn break_sentence(&mut self, py: Python) -> InterpResult<()> {
+    fn break_sentence(&mut self, py: Python) -> TurnipTextContextlessResult<()> {
         // If the sentence has stuff in it, push it into the paragraph and make a new one
         if self.sentence.borrow(py).__len__(py) > 0 {
             self.para
                 .borrow_mut(py)
                 .push_sentence(self.sentence.as_ref(py))
-                .err_as_interp_internal(py)?;
-            self.sentence = Py::new(py, Sentence::new_empty(py)).err_as_interp_internal(py)?;
+                .err_as_internal(py)?;
+            self.sentence = Py::new(py, Sentence::new_empty(py)).err_as_internal(py)?;
         }
         Ok(())
     }
@@ -435,7 +447,7 @@ impl InterpParaState {
         py_env: &PyDict,
         tok: TTToken,
         data: &str,
-    ) -> InterpResult<Option<InterpParaTransition>> {
+    ) -> TurnipTextContextlessResult<Option<InterpParaTransition>> {
         use InterpParaTransition::*;
         use TTToken::*;
 
@@ -452,15 +464,15 @@ impl InterpParaState {
 
                 CodeOpen(span, n) => Some(StartInlineLevelCode(span, n)),
                 BlockScopeOpen(span) => {
-                    return Err(InterpError::BlockScopeOpenedMidPara { scope_start: span })
+                    return Err(InterpError::BlockScopeOpenedMidPara { scope_start: span }.into())
                 }
                 InlineScopeOpen(span) => Some(PushInlineScope(None, span)),
                 RawScopeOpen(span, n) => Some(StartRawScope(None, span, n)),
 
-                CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span)),
+                CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span).into()),
                 ScopeClose(span) => Some(self.try_pop_scope(py, span)?),
                 RawScopeClose(span, _) => {
-                    return Err(InterpError::RawScopeCloseOutsideRawScope(span))
+                    return Err(InterpError::RawScopeCloseOutsideRawScope(span).into())
                 }
 
                 _ => Some(StartText(tok.stringify_escaped(data).into())),
@@ -476,15 +488,15 @@ impl InterpParaState {
 
                 CodeOpen(span, n) => Some(StartInlineLevelCode(span, n)),
                 BlockScopeOpen(span) => {
-                    return Err(InterpError::BlockScopeOpenedMidPara { scope_start: span })
+                    return Err(InterpError::BlockScopeOpenedMidPara { scope_start: span }.into())
                 }
                 InlineScopeOpen(span) => Some(PushInlineScope(None, span)),
                 RawScopeOpen(span, n) => Some(StartRawScope(None, span, n)),
 
-                CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span)),
+                CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span).into()),
                 ScopeClose(span) => Some(self.try_pop_scope(py, span)?),
                 RawScopeClose(span, _) => {
-                    return Err(InterpError::RawScopeCloseOutsideRawScope(span))
+                    return Err(InterpError::RawScopeCloseOutsideRawScope(span).into())
                 }
 
                 // Whitespace is included in text
@@ -504,15 +516,15 @@ impl InterpParaState {
 
                 CodeOpen(span, n) => Some(StartInlineLevelCode(span, n)),
                 BlockScopeOpen(span) => {
-                    return Err(InterpError::BlockScopeOpenedMidPara { scope_start: span })
+                    return Err(InterpError::BlockScopeOpenedMidPara { scope_start: span }.into())
                 }
                 InlineScopeOpen(span) => Some(PushInlineScope(None, span)),
                 RawScopeOpen(span, n) => Some(StartRawScope(None, span, n)),
 
-                CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span)),
+                CodeClose(span, _) => return Err(InterpError::CodeCloseOutsideCode(span).into()),
                 ScopeClose(span) => Some(self.try_pop_scope(py, span)?),
                 RawScopeClose(span, _) => {
-                    return Err(InterpError::RawScopeCloseOutsideRawScope(span))
+                    return Err(InterpError::RawScopeCloseOutsideRawScope(span).into())
                 }
 
                 // Whitespace is pushed to pending_whitespace, and no transition takes place.
@@ -545,15 +557,20 @@ impl InterpParaState {
 
                         let inl_transition = match res {
                             NeededBlockBuilder(_) => {
-                                return Err(InterpError::BlockOwnerCodeMidPara { code_span })
+                                return Err(InterpError::BlockOwnerCodeMidPara { code_span }.into())
                             }
                             // This is inline code because we're already deep into a paragraph at this point.
                             // Definitely can't emit a segment here.
                             DocSegmentHeader(_) => {
-                                return Err(InterpError::DocSegmentHeaderMidPara { code_span });
+                                return Err(
+                                    InterpError::DocSegmentHeaderMidPara { code_span }.into()
+                                )
                             }
                             Block(_) => {
-                                return Err(InterpError::BlockCodeMidPara { code_span });
+                                return Err(InterpError::BlockCodeMidPara { code_span }.into())
+                            }
+                            InsertedFile(_) => {
+                                return Err(InterpError::InsertedFileMidPara { code_span }.into())
                             }
                             NeededInlineBuilder(i) => PushInlineScope(Some(i), code_span),
                             NeededRawBuilder(r, n_hashes) => {
@@ -586,7 +603,8 @@ impl InterpParaState {
                             PyTcUnionRef::B(_) => {
                                 return Err(InterpError::BlockCodeFromRawScopeMidPara {
                                     code_span: *raw_start,
-                                })
+                                }
+                                .into())
                             }
                         }
                     }
@@ -606,7 +624,7 @@ impl InterpParaState {
         &mut self,
         py: Python,
         scope_close_span: ParseSpan,
-    ) -> InterpResult<InterpParaTransition> {
+    ) -> TurnipTextContextlessResult<InterpParaTransition> {
         match self.inline_stack.last() {
             Some(InterpInlineScopeState { .. }) => {
                 Ok(InterpParaTransition::PopInlineScope(scope_close_span))
@@ -617,9 +635,8 @@ impl InterpParaState {
                     self.para
                         .borrow_mut(py)
                         .push_sentence(self.sentence.as_ref(py))
-                        .err_as_interp_internal(py)?;
-                    self.sentence =
-                        Py::new(py, Sentence::new_empty(py)).err_as_interp_internal(py)?;
+                        .err_as_internal(py)?;
+                    self.sentence = Py::new(py, Sentence::new_empty(py)).err_as_internal(py)?;
                 }
                 Ok(InterpParaTransition::EndParagraphAndPopBlock(
                     scope_close_span,
@@ -637,11 +654,11 @@ impl InterpParaState {
         }
     }
 
-    fn push_to_topmost_scope(&self, py: Python, node: &PyAny) -> InterpResult<()> {
+    fn push_to_topmost_scope(&self, py: Python, node: &PyAny) -> TurnipTextContextlessResult<()> {
         match self.inline_stack.last() {
             Some(i) => i.children.borrow_mut(py).push_inline(node),
             None => self.sentence.borrow_mut(py).push_inline(node),
         }
-        .err_as_interp_internal(py)
+        .err_as_internal(py)
     }
 }

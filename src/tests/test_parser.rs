@@ -1,8 +1,6 @@
-use crate::interpreter::{InterpError, Interpreter};
-use crate::lexer::{units_to_tokens, TTToken, Unit};
-use crate::tests::test_lexer::TextStream;
-
-use lexer_rs::Lexer;
+use crate::error::{TurnipTextError, TurnipTextResult};
+use crate::interpreter::InterpError;
+use crate::parser::{ParsingFile, TurnipTextParser};
 use regex::Regex;
 
 use crate::interpreter::python::{
@@ -24,15 +22,45 @@ static INIT_PYTHON: Once = Once::new();
 
 /// A type mimicking [ParserSpan] for test purposes
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TestParserSpan {
-    pub start: (usize, usize),
-    pub end: (usize, usize),
+pub struct TestParserSpan(&'static str);
+impl TestParserSpan {
+    fn same_text(&self, other: &ParseSpan, data: &Vec<ParsingFile>) -> bool {
+        let other_str = unsafe {
+            data[other.file_idx()]
+                .contents()
+                .get_unchecked(other.byte_range())
+        };
+        dbg!(self.0) == dbg!(other_str)
+    }
 }
-impl From<ParseSpan> for TestParserSpan {
-    fn from(p: ParseSpan) -> Self {
-        Self {
-            start: (p.start.line, p.start.column),
-            end: (p.end.line, p.end.column),
+
+/// A type mimicking [TurnipTextError] for test purposes
+#[derive(Debug, Clone)]
+pub enum TestTurnipError {
+    Lex(char),
+    Interp(TestInterpError),
+    Internal(Regex),
+    InternalPython(Regex),
+}
+impl From<TestInterpError> for TestTurnipError {
+    fn from(value: TestInterpError) -> Self {
+        Self::Interp(value)
+    }
+}
+impl PartialEq<TurnipTextError> for TestTurnipError {
+    fn eq(&self, other: &TurnipTextError) -> bool {
+        match (self, other) {
+            (Self::Lex(l_ch), TurnipTextError::Lex(_, _, r_err)) => *l_ch == r_err.ch,
+            (Self::Interp(l_interp), TurnipTextError::Interp(sources, r_interp)) => {
+                l_interp.effectively_eq(r_interp, sources)
+            }
+            (Self::InternalPython(l_pyerr), TurnipTextError::InternalPython(r_pyerr)) => {
+                l_pyerr.is_match(&r_pyerr)
+            }
+            (Self::Internal(l_pyerr), TurnipTextError::Internal(r_pyerr)) => {
+                l_pyerr.is_match(&r_pyerr)
+            }
+            _ => false,
         }
     }
 }
@@ -98,19 +126,19 @@ pub enum TestInterpError {
         enclosing_scope_start: TestParserSpan,
     },
 }
-impl PartialEq<InterpError> for TestInterpError {
-    fn eq(&self, other: &InterpError) -> bool {
+impl TestInterpError {
+    fn effectively_eq(&self, other: &InterpError, data: &Vec<ParsingFile>) -> bool {
         match (self, other) {
             (Self::CodeCloseOutsideCode(l0), InterpError::CodeCloseOutsideCode(r0)) => {
-                (*l0) == (*r0).into()
+                l0.same_text(r0, data)
             }
             (Self::ScopeCloseOutsideScope(l0), InterpError::ScopeCloseOutsideScope(r0)) => {
-                (*l0) == (*r0).into()
+                l0.same_text(r0, data)
             }
             (
                 Self::RawScopeCloseOutsideRawScope(l0),
                 InterpError::RawScopeCloseOutsideRawScope(r0),
-            ) => (*l0) == (*r0).into(),
+            ) => l0.same_text(r0, data),
             (
                 Self::EndedInsideCode {
                     code_start: l_code_start,
@@ -118,7 +146,7 @@ impl PartialEq<InterpError> for TestInterpError {
                 InterpError::EndedInsideCode {
                     code_start: r_code_start,
                 },
-            ) => (*l_code_start) == (*r_code_start).into(),
+            ) => l_code_start.same_text(r_code_start, data),
             (
                 Self::EndedInsideRawScope {
                     raw_scope_start: l_raw_scope_start,
@@ -126,7 +154,7 @@ impl PartialEq<InterpError> for TestInterpError {
                 InterpError::EndedInsideRawScope {
                     raw_scope_start: r_raw_scope_start,
                 },
-            ) => (*l_raw_scope_start) == (*r_raw_scope_start).into(),
+            ) => l_raw_scope_start.same_text(r_raw_scope_start, data),
             (
                 Self::EndedInsideScope {
                     scope_start: l_scope_start,
@@ -134,7 +162,7 @@ impl PartialEq<InterpError> for TestInterpError {
                 InterpError::EndedInsideScope {
                     scope_start: r_scope_start,
                 },
-            ) => (*l_scope_start) == (*r_scope_start).into(),
+            ) => l_scope_start.same_text(r_scope_start, data),
             (
                 Self::BlockScopeOpenedMidPara {
                     scope_start: l_scope_start,
@@ -142,7 +170,7 @@ impl PartialEq<InterpError> for TestInterpError {
                 InterpError::BlockScopeOpenedMidPara {
                     scope_start: r_scope_start,
                 },
-            ) => (*l_scope_start) == (*r_scope_start).into(),
+            ) => l_scope_start.same_text(r_scope_start, data),
             (
                 Self::BlockOwnerCodeMidPara {
                     code_span: l_code_span,
@@ -150,7 +178,7 @@ impl PartialEq<InterpError> for TestInterpError {
                 InterpError::BlockOwnerCodeMidPara {
                     code_span: r_code_span,
                 },
-            ) => (*l_code_span) == (*r_code_span).into(),
+            ) => l_code_span.same_text(r_code_span, data),
             (
                 Self::BlockCodeMidPara {
                     code_span: l_code_span,
@@ -158,7 +186,7 @@ impl PartialEq<InterpError> for TestInterpError {
                 InterpError::BlockCodeMidPara {
                     code_span: r_code_span,
                 },
-            ) => (*l_code_span) == (*r_code_span).into(),
+            ) => l_code_span.same_text(r_code_span, data),
             (
                 Self::BlockCodeFromRawScopeMidPara {
                     code_span: l_code_span,
@@ -166,7 +194,7 @@ impl PartialEq<InterpError> for TestInterpError {
                 InterpError::BlockCodeFromRawScopeMidPara {
                     code_span: r_code_span,
                 },
-            ) => (*l_code_span) == (*r_code_span).into(),
+            ) => l_code_span.same_text(r_code_span, data),
             (
                 Self::SentenceBreakInInlineScope {
                     scope_start: l_scope_start,
@@ -174,7 +202,7 @@ impl PartialEq<InterpError> for TestInterpError {
                 InterpError::SentenceBreakInInlineScope {
                     scope_start: r_scope_start,
                 },
-            ) => (*l_scope_start) == (*r_scope_start).into(),
+            ) => l_scope_start.same_text(r_scope_start, data),
             (
                 Self::ParaBreakInInlineScope {
                     scope_start: l_scope_start,
@@ -183,7 +211,7 @@ impl PartialEq<InterpError> for TestInterpError {
                     scope_start: r_scope_start,
                     ..
                 },
-            ) => (*l_scope_start) == (*r_scope_start).into(),
+            ) => l_scope_start.same_text(r_scope_start, data),
             (
                 Self::BlockOwnerCodeHasNoScope {
                     code_span: l_code_span,
@@ -191,7 +219,7 @@ impl PartialEq<InterpError> for TestInterpError {
                 InterpError::BlockOwnerCodeHasNoScope {
                     code_span: r_code_span,
                 },
-            ) => (*l_code_span) == (*r_code_span).into(),
+            ) => l_code_span.same_text(r_code_span, data),
             (
                 Self::InlineOwnerCodeHasNoScope {
                     code_span: l_code_span,
@@ -199,7 +227,7 @@ impl PartialEq<InterpError> for TestInterpError {
                 InterpError::InlineOwnerCodeHasNoScope {
                     code_span: r_code_span,
                 },
-            ) => (*l_code_span) == (*r_code_span).into(),
+            ) => l_code_span.same_text(r_code_span, data),
 
             (
                 Self::PythonErr {
@@ -210,18 +238,12 @@ impl PartialEq<InterpError> for TestInterpError {
                     pyerr: r_pyerr,
                     code_span: r_code_span,
                 },
-            ) => dbg!(l_pyerr).is_match(&dbg!(r_pyerr)) && (*l_code_span) == (*r_code_span).into(),
-            (
-                Self::InternalPythonErr { pyerr: l_pyerr },
-                InterpError::InternalPythonErr { pyerr: r_pyerr },
-            ) => l_pyerr.is_match(&r_pyerr),
-
-            (Self::InternalErr(l0), InterpError::InternalErr(r0)) => l0.is_match(&r0),
+            ) => dbg!(l_pyerr).is_match(&dbg!(r_pyerr)) && l_code_span.same_text(r_code_span, data),
 
             (
                 Self::EscapedNewlineOutsideParagraph { newline: l_newline },
                 InterpError::EscapedNewlineOutsideParagraph { newline: r_newline },
-            ) => (*l_newline) == (*r_newline).into(),
+            ) => l_newline.same_text(r_newline, data),
 
             (
                 Self::DocSegmentHeaderMidPara {
@@ -230,7 +252,7 @@ impl PartialEq<InterpError> for TestInterpError {
                 InterpError::DocSegmentHeaderMidPara {
                     code_span: r_code_span,
                 },
-            ) => (*l_code_span) == (*r_code_span).into(),
+            ) => l_code_span.same_text(r_code_span, data),
 
             (
                 Self::DocSegmentHeaderMidScope {
@@ -244,9 +266,13 @@ impl PartialEq<InterpError> for TestInterpError {
                     enclosing_scope_start: r_enclosing_scope_start,
                 },
             ) => {
-                ((*l_code_span) == (*r_code_span).into())
-                    && ((*l_block_close_span) == (*r_block_close_span).map(|s| s.into()))
-                    && ((*l_enclosing_scope_start) == (*r_enclosing_scope_start).into())
+                (l_code_span.same_text(r_code_span, data))
+                    && (match (l_block_close_span, r_block_close_span) {
+                        (Some(l), Some(r)) => l.same_text(r, data),
+                        (None, None) => true,
+                        _ => false,
+                    })
+                    && (l_enclosing_scope_start.same_text(r_enclosing_scope_start, data))
             }
             _ => false,
         }
@@ -506,45 +532,29 @@ pub fn generate_globals<'interp>(py: Python<'interp>) -> Option<&'interp PyDict>
 }
 
 /// Run the lexer and parser on a given piece of text, convert the parsed result to our test versions, and compare with the expected result.
-fn expect_parse<'a>(data: &str, expected_parse: Result<TestDocSegment, TestInterpError>) {
-    println!("{:?}", data);
 
-    // First step: lex
-    let l = TextStream::new(data);
-    let units: Vec<Unit> = l
-        .iter(&[Box::new(Unit::parse_special), Box::new(Unit::parse_other)])
-        .scan((), |_, x| x.ok())
-        .collect();
-    let stoks = units_to_tokens(units);
-
-    expect_parse_tokens(data, stoks, expected_parse)
+fn expect_parse_err<T: Into<TestTurnipError>>(data: &str, expected_err: T) {
+    expect_parse(data, Err(expected_err.into()))
 }
 
-pub fn expect_parse_tokens(
-    data: &str,
-    stoks: Vec<TTToken>,
-    expected_parse: Result<TestDocSegment, TestInterpError>,
-) {
+pub fn expect_parse(data: &str, expected_parse: Result<TestDocSegment, TestTurnipError>) {
     // Make sure Python has been set up
     INIT_PYTHON.call_once(prepare_freethreaded_turniptext_python);
 
     // Second step: parse
     // Need to do this safely so that we don't panic inside Python::with_gil.
     // I'm not 100% sure but I'm afraid it will poison the GIL and break subsequent tests.
-    let root: Result<Result<TestDocSegment, InterpError>, _> = {
+    let root: Result<TurnipTextResult<TestDocSegment>, _> = {
         // Catch all non-abort panics while running the interpreter
         // and handling the output
         panic::catch_unwind(|| {
             Python::with_gil(|py| {
-                let globals = generate_globals(py).expect("Couldn't generate globals dict");
-                let mut st = Interpreter::new(py, data)?;
-                st.handle_tokens(py, globals, stoks.into_iter())?;
-                let root = st.finalize(py, globals);
-                root.map(|doc| {
-                    let doc_obj = doc.to_object(py);
-                    let doc: &PyAny = doc_obj.as_ref(py);
-                    doc.as_test(py)
-                })
+                let py_env = generate_globals(py).expect("Couldn't generate globals dict");
+                let parser = TurnipTextParser::new(py, "<test>".into(), data.into())?;
+                let root = parser.parse(py, py_env)?;
+                let doc_obj = root.to_object(py);
+                let doc: &PyAny = doc_obj.as_ref(py);
+                Ok(doc.as_test(py))
             })
         })
         // Unlock mutex
@@ -754,18 +764,15 @@ It was the best of the times, it was the blurst of times
 
 #[test]
 pub fn test_owned_block_scope_with_non_block_builder() {
-    expect_parse(
+    expect_parse_err(
         r#"[None]{
 It was the best of the times, it was the blurst of times
 }
 "#,
-        Err(TestInterpError::PythonErr {
+        TestInterpError::PythonErr {
             pyerr: Regex::new(r"TypeError : Expected object fitting typeclass BlockScopeBuilder, didn't get it. Got None").unwrap(),
-            code_span: TestParserSpan {
-                start: (1, 1),
-                end: (2, 1),
-            },
-        }),
+            code_span: TestParserSpan("[None]{\n"),
+        },
     )
 }
 
@@ -781,17 +788,14 @@ pub fn test_owned_inline_scope() {
 
 #[test]
 pub fn test_owned_inline_scope_with_non_inline_builder() {
-    expect_parse(
+    expect_parse_err(
         r"[None]{special text}",
-        Err(TestInterpError::PythonErr {
+        TestInterpError::PythonErr {
             pyerr:
                 Regex::new("TypeError : Expected object fitting typeclass InlineScopeBuilder, didn't get it. Got None"
                     ).unwrap(),
-            code_span: TestParserSpan {
-                start: (1, 1),
-                end: (1, 8),
-            },
-        }),
+            code_span: TestParserSpan("[None]{"),
+        },
     )
 }
 
@@ -814,18 +818,15 @@ import os
 
 #[test]
 pub fn test_owned_inline_raw_scope_with_non_raw_builder() {
-    expect_parse(
+    expect_parse_err(
         r#"[None]#{
 import os
 }#"#,
-        Err(TestInterpError::PythonErr {
+        TestInterpError::PythonErr {
             pyerr: Regex::new("TypeError : Expected object fitting typeclass RawScopeBuilder, didn't get it. Got None"
         ).unwrap(),
-            code_span: TestParserSpan {
-                start: (1, 1),
-                end: (1, 9),
-            },
-        }),
+            code_span: TestParserSpan("[None]#{"),
+        },
     )
 }
 
@@ -913,70 +914,52 @@ pub fn test_newline_in_code() {
 }
 #[test]
 pub fn test_code_close_in_text() {
-    expect_parse(
+    expect_parse_err(
         "not code ] but closed code",
-        Err(TestInterpError::CodeCloseOutsideCode(TestParserSpan {
-            start: (1, 10),
-            end: (1, 11),
-        })),
+        TestInterpError::CodeCloseOutsideCode(TestParserSpan("]")),
     )
 }
 #[test]
 pub fn test_scope_close_outside_scope() {
-    expect_parse(
+    expect_parse_err(
         "not in a scope } but closed scope",
-        Err(TestInterpError::ScopeCloseOutsideScope(TestParserSpan {
-            start: (1, 16),
-            end: (1, 17),
-        })),
+        TestInterpError::ScopeCloseOutsideScope(TestParserSpan("}")),
     )
 }
 #[test]
 pub fn test_mismatching_raw_scope_close() {
-    expect_parse(
+    expect_parse_err(
         "##{ text in a scope with a }#",
-        Err(TestInterpError::EndedInsideRawScope {
-            raw_scope_start: TestParserSpan {
-                start: (1, 1),
-                end: (1, 4),
-            },
-        }),
+        TestInterpError::EndedInsideRawScope {
+            raw_scope_start: TestParserSpan("##{"),
+        },
     )
 }
 #[test]
 pub fn test_ended_inside_code() {
-    expect_parse(
+    expect_parse_err(
         "text [code",
-        Err(TestInterpError::EndedInsideCode {
-            code_start: TestParserSpan {
-                start: (1, 6),
-                end: (1, 7),
-            },
-        }),
+        TestInterpError::EndedInsideCode {
+            code_start: TestParserSpan("["),
+        },
     )
 }
 #[test]
 pub fn test_ended_inside_raw_scope() {
-    expect_parse(
+    expect_parse_err(
         "text #{raw",
-        Err(TestInterpError::EndedInsideRawScope {
-            raw_scope_start: TestParserSpan {
-                start: (1, 6),
-                end: (1, 8),
-            },
-        }),
+        TestInterpError::EndedInsideRawScope {
+            raw_scope_start: TestParserSpan("#{"),
+        },
     )
 }
 #[test]
 pub fn test_ended_inside_scope() {
-    expect_parse(
+    expect_parse_err(
         "text {scope",
-        Err(TestInterpError::SentenceBreakInInlineScope {
-            scope_start: TestParserSpan {
-                start: (1, 6),
-                end: (1, 7),
-            },
-        }),
+        TestInterpError::SentenceBreakInInlineScope {
+            scope_start: TestParserSpan("{"),
+        },
     )
 }
 
@@ -1064,15 +1047,12 @@ pub fn test_emit_block_from_code() {
 
 #[test]
 pub fn test_cant_emit_block_from_code_inside_paragraph() {
-    expect_parse(
+    expect_parse_err(
         "Lorem ipsum!
 I'm in a [TEST_BLOCK]",
-        Err(TestInterpError::BlockCodeMidPara {
-            code_span: TestParserSpan {
-                start: (2, 10),
-                end: (2, 22),
-            },
-        }),
+        TestInterpError::BlockCodeMidPara {
+            code_span: TestParserSpan("[TEST_BLOCK]"),
+        },
     )
 }
 
@@ -1096,9 +1076,9 @@ pub fn test_raw_scope_emitting_inline_from_block_level() {
 
 #[test]
 pub fn test_raw_scope_cant_emit_block_inside_paragraph() {
-    expect_parse(
+    expect_parse_err(
         "Inside a paragraph, you can't [TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#",
-        Err(TestInterpError::BlockCodeFromRawScopeMidPara { code_span: TestParserSpan { start: (1, 31), end: (1, 57) } })
+        TestInterpError::BlockCodeFromRawScopeMidPara { code_span: TestParserSpan("[TEST_RAW_BLOCK_BUILDER]#{") }
     )
 }
 
@@ -1153,61 +1133,49 @@ pub fn test_emit_none() {
 
 #[test]
 pub fn test_cant_eval_none_for_block_builder() {
-    expect_parse(
+    expect_parse_err(
         "[None]{
     That doesn't make any sense! The owner can't be None
 }",
-        Err(TestInterpError::PythonErr {
+        TestInterpError::PythonErr {
             pyerr: Regex::new("TypeError : Expected object fitting typeclass BlockScopeBuilder, didn't get it. Got None").unwrap(),
-            code_span: TestParserSpan {
-                start: (1, 1),
-                end: (2, 1),
-            },
-        }),
+            code_span: TestParserSpan("[None]{\n"),
+        },
     )
 }
 
 #[test]
 pub fn test_cant_assign_for_block_builder() {
-    expect_parse(
+    expect_parse_err(
         "[x = 5]{
     That doesn't make any sense! The owner can't be an abstract concept of x being something
 }",
-        Err(TestInterpError::PythonErr {
+        TestInterpError::PythonErr {
             pyerr: Regex::new("TypeError : Expected object fitting typeclass BlockScopeBuilder, didn't get it. Got None").unwrap(),
-            code_span: TestParserSpan {
-                start: (1, 1),
-                end: (2, 1),
-            },
-        }),
+            code_span: TestParserSpan("[x = 5]{\n"),
+        },
     )
 }
 
 #[test]
 pub fn test_cant_assign_for_raw_builder() {
-    expect_parse(
+    expect_parse_err(
         "[x = 5]#{That doesn't make any sense! The owner can't be an abstract concept of x being something}#",
-        Err(TestInterpError::PythonErr {
+        TestInterpError::PythonErr {
             pyerr: Regex::new("TypeError : Expected object fitting typeclass RawScopeBuilder, didn't get it. Got None").unwrap(),
-            code_span: TestParserSpan {
-                start: (1, 1),
-                end: (1, 10),
-            },
-        }),
+            code_span: TestParserSpan("[x = 5]#{"),
+        },
     )
 }
 
 #[test]
 pub fn test_cant_assign_for_inline_builder() {
-    expect_parse(
+    expect_parse_err(
         "[x = 5]{That doesn't make any sense! The owner can't be an abstract concept of x being something}",
-        Err(TestInterpError::PythonErr {
+        TestInterpError::PythonErr {
             pyerr: Regex::new("TypeError : Expected object fitting typeclass InlineScopeBuilder, didn't get it. Got None").unwrap(),
-            code_span: TestParserSpan {
-                start: (1, 1),
-                end: (1, 9),
-            },
-        }),
+            code_span: TestParserSpan ("[x = 5]{"),
+        },
     )
 }
 
@@ -1215,15 +1183,12 @@ pub fn test_cant_assign_for_inline_builder() {
 pub fn test_syntax_errs_passed_thru() {
     // The assignment support depends on trying to eval() the expression, that failing with a SyntaxError, and then trying to exec() it.
     // Make sure that something invalid as both still returns a SyntaxError
-    expect_parse(
+    expect_parse_err(
         "[1invalid]",
-        Err(TestInterpError::PythonErr {
+        TestInterpError::PythonErr {
             pyerr: Regex::new("^SyntaxError : invalid syntax").unwrap(),
-            code_span: TestParserSpan {
-                start: (1, 1),
-                end: (1, 11),
-            },
-        }),
+            code_span: TestParserSpan("[1invalid]"),
+        },
     )
 }
 
@@ -1258,61 +1223,44 @@ pub fn test_property_calls_get() {
 
 #[test]
 pub fn test_no_emit_doc_segment_header_in_block_scope() {
-    expect_parse(
+    expect_parse_err(
         "{
 [TestDocSegmentHeader()]
 }",
-        Err(TestInterpError::DocSegmentHeaderMidScope {
-            code_span: TestParserSpan {
-                start: (2, 1),
-                end: (2, 25),
-            },
+        TestInterpError::DocSegmentHeaderMidScope {
+            code_span: TestParserSpan("[TestDocSegmentHeader()]"),
             block_close_span: None,
-            enclosing_scope_start: TestParserSpan {
-                start: (1, 1),
-                end: (2, 1),
-            },
-        }),
+            enclosing_scope_start: TestParserSpan("{\n"),
+        },
     )
 }
 
 #[test]
 pub fn test_no_build_doc_segment_header_in_block_scope() {
-    expect_parse(
+    expect_parse_err(
         "{
 [TestDocSegmentBuilder()]{
     Sometimes docsegmentheaders can be built, too!
     But if they're in a block scope it shouldn't be allowed :(
 }
 }",
-        Err(TestInterpError::DocSegmentHeaderMidScope {
-            code_span: TestParserSpan {
-                start: (2, 1),
-                end: (3, 1),
-            },
-            block_close_span: Some(TestParserSpan {
-                start: (5, 1),
-                end: (5, 2),
-            }),
-            enclosing_scope_start: TestParserSpan {
-                start: (1, 1),
-                end: (2, 1),
-            },
-        }),
+        TestInterpError::DocSegmentHeaderMidScope {
+            code_span: TestParserSpan("[TestDocSegmentBuilder()]{\n"),
+            block_close_span: Some(TestParserSpan("}")),
+            enclosing_scope_start: TestParserSpan("{\n"),
+        },
     )
 }
 
 #[test]
 pub fn test_no_emit_doc_segment_header_in_para() {
-    expect_parse(
+    expect_parse_err(
         "And as I was saying [TestDocSegmentHeader()]",
-        Err(TestInterpError::DocSegmentHeaderMidPara {
-            code_span: TestParserSpan {
-                start: (1, 21),
-                end: (1, 45),
-            },
-        }),
+        TestInterpError::DocSegmentHeaderMidPara {
+            code_span: TestParserSpan("[TestDocSegmentHeader()]"),
+        },
     )
 }
 
 // TODO MORE TESTS FOR DOC STURCURE. OH FUCK I NEED TO CHANGE THE TEST HARNESS
+// TODO tests for inserted files. Are they exclusively on block boundaries?

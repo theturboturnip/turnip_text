@@ -2,7 +2,7 @@ use pyo3::{
     exceptions::PySyntaxError, ffi::Py_None, intern, types::PyDict, Py, PyAny, PyResult, Python,
 };
 
-use crate::{lexer::TTToken, util::ParseSpan};
+use crate::{error::TurnipTextContextlessResult, lexer::TTToken, util::ParseSpan};
 
 use super::{
     python::{
@@ -12,7 +12,7 @@ use super::{
         },
         typeclass::PyTcRef,
     },
-    InterpResult, MapInterpResult,
+    MapContextlessResult,
 };
 
 pub enum EvalBracketContext {
@@ -139,16 +139,13 @@ pub fn eval_brackets(
     expected_close_len: usize,
     py: Python,
     py_env: &PyDict,
-) -> InterpResult<Option<(EvalBracketResult, ParseSpan)>> {
+) -> TurnipTextContextlessResult<Option<(EvalBracketResult, ParseSpan)>> {
     let (code_span, eval_ctx) = match tok {
         TTToken::CodeClose(close_span, n_close_brackets)
             if n_close_brackets == expected_close_len =>
         {
             (
-                ParseSpan {
-                    start: code_start.start,
-                    end: close_span.end,
-                },
+                code_start.combine(&close_span),
                 EvalBracketContext::WantNonBuilder,
             )
         }
@@ -156,10 +153,7 @@ pub fn eval_brackets(
             if n_close_brackets == expected_close_len =>
         {
             (
-                ParseSpan {
-                    start: code_start.start,
-                    end: close_span.end,
-                },
+                code_start.combine(&close_span),
                 EvalBracketContext::NeedBlockBuilder,
             )
         }
@@ -167,10 +161,7 @@ pub fn eval_brackets(
             if n_close_brackets == expected_close_len =>
         {
             (
-                ParseSpan {
-                    start: code_start.start,
-                    end: close_span.end,
-                },
+                code_start.combine(&close_span),
                 EvalBracketContext::NeedInlineBuilder,
             )
         }
@@ -178,10 +169,7 @@ pub fn eval_brackets(
             if n_close_brackets == expected_close_len =>
         {
             (
-                ParseSpan {
-                    start: code_start.start,
-                    end: close_span.end,
-                },
+                code_start.combine(&close_span),
                 EvalBracketContext::NeedRawBuilder { n_hashes },
             )
         }
