@@ -4,7 +4,13 @@ import string
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Mapping, Protocol, Sequence, Tuple
 
-from turnip_text import UnescapedText
+from turnip_text import (
+    Inline,
+    InlineScope,
+    UnescapedText,
+    coerce_to_inline,
+    join_inlines,
+)
 
 
 class Numbering(Protocol):
@@ -77,14 +83,43 @@ UPPER_ROMAN_NUMBERING = RomanNumbering(upper=True)
 LOWER_ALPH_NUMBERING = BasicNumbering(string.ascii_lowercase)
 UPPER_ALPH_NUMBERING = BasicNumbering(string.ascii_uppercase)
 
-
 @dataclass
+class CounterChainValue:
+    # The chain of counters, where element [-1] is the main counter for this value
+    # and [-2], [-3]... are parent, grandparent... counters etc.
+    # Each element of this tuple is a pair (counter, value).
+    parent_counters: Tuple[Tuple["Counter", int], ...]
+
+    def __post_init__(self) -> None:
+        if not self.parent_counters:
+            raise ValueError("CounterChainValue must have at least one (Counter, value) pair")
+
+    def render(self) -> Inline:
+        """Take the last-level counter and use it to render out the whole counter chain.
+        
+        e.g. if Figures were per-chapter per-section, the chain is ((chapter, X), (section, Y), (figure, Z)).
+        Use `figure` to render that chain into e.g. 'Figure X.Y.Z'.
+        """
+        return self.parent_counters[-1][0].render_counter(self.parent_counters)
+
+
+# TODO need to rename this because of conflict with collections.Counter
 class Counter(abc.ABC):
     anchor_id: str
-    subcounters: List["Counter"]
     numbering: Numbering
+    subcounters: List["Counter"]
 
     value: int = 0
+
+    def __init__(self, anchor_id: str, numbering: Numbering, subcounters: List["Counter"]) -> None:
+        super().__init__()
+        self.anchor_id = anchor_id
+        self.numbering = numbering
+        self.subcounters = subcounters
+
+    @abc.abstractmethod
+    def render_counter(self, parent_chain: Iterable[Tuple["Counter", int]]) -> Inline:
+        raise NotImplementedError()
 
     def increment(self) -> int:
         self.value += 1
@@ -97,6 +132,18 @@ class Counter(abc.ABC):
         for c in self.subcounters:
             c.reset()
 
+class BasicCounter(Counter):
+    prefix: str
+
+    def __init__(self, anchor_id: str, prefix: str, numbering: Numbering, subcounters: List[Counter]) -> None:
+        super().__init__(anchor_id, numbering, subcounters)
+        self.prefix = prefix
+
+    def render_counter(self, parent_chain: Iterable[Tuple[Counter, int]]) -> Inline:
+        return InlineScope([
+            UnescapedText(f"{self.prefix} "),
+            join_inlines((c.numbering[v] for c, v in parent_chain), UnescapedText("."))
+        ])
 
 class CounterSet:
     # The roots of the tree of labels
@@ -129,10 +176,10 @@ class CounterSet:
     def anchor_kinds(self) -> Iterable[str]:
         return self.anchor_kind_to_parent_chain.keys()
 
-    def increment_counter(self, anchor_kind: str) -> Tuple[UnescapedText, ...]:
+    def increment_counter(self, anchor_kind: str) -> CounterChainValue:
         parent_chain = self.anchor_kind_to_parent_chain[anchor_kind]
 
         # The one at the end of the chain is the counter for this anchor kind
         parent_chain[-1].increment()
 
-        return tuple(c.numbering[c.value] for c in parent_chain)
+        return CounterChainValue(tuple((c, c.value) for c in parent_chain))

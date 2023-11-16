@@ -37,7 +37,7 @@ from turnip_text import (
 )
 from turnip_text.doc import Document, FormatContext
 from turnip_text.doc.anchors import Anchor
-from turnip_text.render.counters import CounterSet
+from turnip_text.render.counters import Counter, CounterChainValue, CounterSet
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -202,6 +202,7 @@ class Writable(Protocol):
 class Renderer:
     fmt: FormatContext
     handlers: RendererHandlers  # type: ignore[type-arg]
+    anchor_counters: Dict[Anchor, CounterChainValue]
     visit_results: Dict[Block | Inline | DocSegmentHeader, Any]
     write_to: Writable
 
@@ -217,11 +218,13 @@ class Renderer:
         self,
         fmt: FormatContext,
         handlers: RendererHandlers,  # type: ignore[type-arg]
+        anchor_counters: Dict[Anchor, CounterChainValue],
         visit_results: Dict[Block | Inline | DocSegmentHeader, Any],
         write_to: Writable,
     ) -> None:
         self.fmt = fmt
         self.handlers = handlers
+        self.anchor_counters = anchor_counters
         self.visit_results = visit_results
         self.write_to = write_to
 
@@ -279,7 +282,7 @@ class Renderer:
 
         # The visitor/counter pass
         visit_results: Dict[Block | Inline | DocSegmentHeader, Any] = {}
-        anchor_counters: Dict[Anchor, Tuple[UnescapedText, ...]] = {}
+        anchor_counters: Dict[Anchor, CounterChainValue] = {}
         dfs_queue: List[Block | Inline | DocSegment | DocSegmentHeader] = [doc.toplevel]
         while dfs_queue:
             node = dfs_queue.pop()
@@ -310,12 +313,15 @@ class Renderer:
                 dfs_queue.extend(children)
 
         # The rendering pass
-        renderer = cls(doc.fmt, handlers, visit_results, write_to)
+        renderer = cls(doc.fmt, handlers, anchor_counters, visit_results, write_to)
         renderer.emit_segment(doc.toplevel)
 
         if isinstance(write_to, io.StringIO):
             return write_to
         return None
+
+    def get_anchor_counter(self, a: Anchor) -> CounterChainValue:
+        return self.anchor_counters[a]
 
     def emit_raw(self, x: str) -> None:
         """

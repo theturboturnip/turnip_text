@@ -6,6 +6,7 @@ from turnip_text import (
     BlockScopeBuilder,
     CoercibleToBlockScope,
     CoercibleToInlineScope,
+    DocSegmentHeader,
     Inline,
     InlineScope,
     InlineScopeBuilder,
@@ -42,12 +43,12 @@ class block_scope_builder(BlockScopeBuilder):
     ```
     """
 
-    func: Callable[[BlockScope], Optional[Block]]
+    func: Callable[[BlockScope], Optional[Block | DocSegmentHeader]]
 
-    def __init__(self, func: Callable[[BlockScope], Optional[Block]]) -> None:
+    def __init__(self, func: Callable[[BlockScope], Optional[Block | DocSegmentHeader]]) -> None:
         self.func = func
 
-    def build_from_blocks(self, b: BlockScope) -> Optional[Block]:
+    def build_from_blocks(self, b: BlockScope) -> Optional[Block | DocSegmentHeader]:
         return self.func(b)
 
 
@@ -74,12 +75,12 @@ class inline_scope_builder(InlineScopeBuilder):
     ```
     """
 
-    func: Callable[[InlineScope], Inline]
+    func: Callable[[InlineScope], Inline | DocSegmentHeader]
 
-    def __init__(self, func: Callable[[InlineScope], Inline]) -> None:
+    def __init__(self, func: Callable[[InlineScope], Inline | DocSegmentHeader]) -> None:
         self.func = func
 
-    def build_from_inlines(self, inls: InlineScope) -> Inline:
+    def build_from_inlines(self, inls: InlineScope) -> Inline | DocSegmentHeader:
         return self.func(inls)
 
 

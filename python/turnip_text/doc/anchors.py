@@ -86,7 +86,7 @@ class DocAnchorPlugin(DocPlugin):
         self, doc: DocState, kind: str, id: Optional[str]
     ) -> Anchor:
         """
-        When inside the document, render an anchor.
+        When inside the document, create a new anchor.
         """
         l = Anchor(
             kind=kind,

@@ -1,4 +1,9 @@
-[section("Introduction/Extended Abstract")]{
+[[
+section=heading1
+subsection=heading2
+]]
+
+[heading1(label="IntroductionExtendedAbstract")]{Introduction/Extended Abstract}
     # 500-1000 words
 
     # It should be comprehensible to an intelligent but non-expert audience 
@@ -23,7 +28,8 @@
     However, as the next section will show, CHERI's CPU-centric capabilities may need to adapt to work well with GPUs.
 
     #----------------------
-    [subsection("Problem Definition", num=False)]{
+    [subsection("ProblemDefinition", num=False)]{Problem Definition}
+
         Current systems that use CHERI capabilities make a few basic assumptions:
 
         [enumerate]{
@@ -64,10 +70,11 @@
         On top of this, the GPU is often allowed to choose the format of images based on the situation, rather than the programmer controlling it like on the CPU.
         Because the GPU controls the image format, and has hardware to decode the format, allowing programs to read arbitrary bytes out of that data is unnecessary here.
         Separating [enquote]{texture capabilities} from normal capabilities could enforce that these are accessed through correct hardware, but as this hardware isn't available on CPUs one would have to prevent CPUs from dereferencing them.
-    }
+    
 
     #----------------------
-    [subsection("Potential Approach", num=False)]{
+    [subsection("PotentialApproach", num=False)]{Potential Approach}
+
         As shown above, GPU and CPU memory have different characteristics, and GPUs could benefit from having separate capability types.
         However, even if these capability types could only be dereferenced on the GPU, they will need to be created or manipulated from the CPU - the gap between domains needs to be crossed.
         I believe graphics-specific GPU drivers are a great place to start investigating this.
@@ -76,16 +83,18 @@
         The translation between resource IDs and GPU addresses is entirely delegated to the GPU driver, making it a natural starting point for adding domain-crossing.
         As CAPcelerate is investigating, naive implementations of this model can be insecure, but this does not affect the principles of domain-crossing.
         Once domain-crossing approaches have been developed in this context, they can be extended to support lower-level APIs.
-    }
-}
+    
+
 
 #-------------------
-[section("Related Work")]{
+[section("RelatedWork")]{Related Work}
+
     While capabilities themselves haven't yet addressed domain-crossing, there is a vast amount of previous work for sharing memory with legacy pointers.
     This section will highlight three broad topics that require domain crossing, which domain-crossing capability systems may need to be compatible with or build on.
 
     # ------------------------------------
-    [subsection("DMA")]{
+    [subsection("DMA")]{DMA}
+
         Modern System on Chips (SoCs) can contain much more than just CPUs and GPUs.
         Mobile SoCs are a great example due to their high connectivity - custom hardware is included to support connections over mobile networks (4G/5G), Bluetooth, and Wi-Fi.
         On top of these, extra accelerators can be included e.g. for AI processing \
@@ -105,10 +114,11 @@
         The DMAC then pulls data from the peripheral domain and writes it out to the physical main memory domain, pulling data across the domain boundary.
         This is a very simple example of domain crossing for physically separated hardware domains, but it isn't enough for dynamic software domains.
         For example, accessing peripherals from Virtual Machines (VMs) adds a layer of translation between the guest-domains and the host-domains.
-    }
+    
 
     # ------------------------------------
-    [subsection("Virtualization")]{
+    [subsection("Virtualization")]{Virtualization}
+
         When a VM tries to DMA data to/from a peripheral, it will specify a guest-domain address (guest-physical, or potentially guest-virtual) which needs to be translated into a host-physical address which the DMAC can use.
         AMD[cite("amdAMDIOVirtualizationTechnology2021")], Arm[cite("armltdArmSMMUVer3")], and Intel[cite("intelIOMMUSpecRev3p3")] each have their own IOMMU (I/O Memory Management Unit) design which performs this translation dynamically.
         Each device is assigned a page table, and devices can optionally be split into different domains with different tables.
@@ -136,10 +146,10 @@
         AMD's MxGPU virtualization physically segments GPU memory and gives each VM a timeslice during which only their partition is active[cite("amdAMDApproachGPU2017")].
         When using SR-IOV, Nvidia's vGPU technology physically segments both the memory and the actual computation units, to avoid side-channel attacks, and allows multiple VMs to execute on different partitions at once.
         Integrated GPUs (e.g. Arm Mali GPUs, packaged on the same SoC as the CPU) don't necessarily use SR-IOV, but do isolate resources similarly[cite("armltdArmMaliG78AEProduct2020")].
-    }
+    
 
     # ------------------------------------
-    [subsection("GPU Virtual Memory")]{
+    [subsection("GPUVirtMem")]{GPU Virtual Memory}
         On top of isolating VMs from each other, a further level of translation is added on the GPU side: Nvidia and AMD external GPUs have their own dedicated MMUs for virtual-to-physical address translation.
         This is in large part due to the idea of [enquote]{Shared Virtual Memory} (SVM), where the CPU and GPU share an address space, and pointers to SVM can be seamlessly dereferenced on both.
         OpenCL~2.0 and Nvidia's CUDA APIs both support this concept [cite("intelOpenCLSharedVirtual2014","nvidiacorporationUnifiedMemoryCUDA2017")] to varying degrees.
@@ -176,11 +186,11 @@
         To be clear, low-end SoCs with shared CPU-GPU memory can benefit from unifying accesses as much as possible, because it mirrors the underlying hardware.
         However, desktop and server systems will use external GPUs with dedicated memory for a while yet, and as long as that's the case translating between the CPU-GPU domains will be important.
         This dichotomy between a unified view and a more performant, domain-aware view will remain in place for the foreseeable future, and if CHERI is going to reach widespread adoption it needs to be able to handle it.
-    }
-}
+    
+
 
 #-------------------------
-[section("First-Year Plan")]{
+[section("Plan")]{First-Year Plan}
     The first year of the PhD will focus on reducing the broad idea of diverging CPU/GPU capabilities to a concrete set of potential approaches.
     This problem space is bounded by two restrictions: how current drivers and programming models use pointers, and how the CPU and GPU domains are separated in hardware.
     Indeed, integrated and external GPUs may require entirely different approaches.
@@ -196,4 +206,3 @@
     After reporting on this progress, I will start experimenting with the split domains, potentially using a graphics API model as described above.
 
     # TODO plan
-}

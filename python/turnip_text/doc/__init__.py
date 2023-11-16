@@ -28,6 +28,7 @@ from turnip_text import (
     DocSegment,
     DocSegmentHeader,
     Inline,
+    InsertedFile,
     parse_file_native,
 )
 
@@ -70,7 +71,8 @@ def parse(
         counters.update(p._countables())
 
     # First pass: parsing
-    doc_toplevel = doc.parse_file_to_block(path)
+    print(doc.__dict__)
+    doc_toplevel = parse_file_native(InsertedFile.from_path(str(path)), doc.__dict__)
 
     # Second pass: modifying the document
     for p in plugins:
@@ -346,11 +348,6 @@ class DocState:
     def __init__(self, fmt: "FormatContext") -> None:
         self.doc = self
         self.fmt = fmt
-
-    def parse_file_to_block(
-        self, path: Union[str, bytes, "os.PathLike[Any]"]
-    ) -> DocSegment:
-        return parse_file_native(str(path), self.__dict__)
 
     def __getattr__(self, name: str) -> Any:
         # The StatelessContext has various things that we don't know at type-time.

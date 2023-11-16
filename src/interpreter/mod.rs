@@ -19,13 +19,6 @@ use python::{
     typeclass::{PyInstanceList, PyTcRef, PyTcUnionRef},
 };
 
-pub struct InterpDataState {
-    /// The index of the file we're reading from
-    file_idx: usize,
-    /// Stack of block scopes. Either part of toplevel_content if segment_stack is empty, or part of segment_stack[-1].blocks otherwise.
-    block_stack: Vec<InterpManualBlockScopeState>,
-}
-
 pub struct Interpreter {
     /// FSM state
     block_state: InterpBlockState,

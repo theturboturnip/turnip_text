@@ -30,21 +30,31 @@ from turnip_text import (
     UnescapedText,
 )
 from turnip_text.doc import DocPlugin, DocState, FormatContext, stateful, stateless
-from turnip_text.doc.anchors import Backref
+from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.user_nodes import (
     UserAnchorBlock,
+    UserAnchorDocSegmentHeader,
     UserBlock,
     UserInline,
     VisitableNode,
 )
 from turnip_text.helpers import block_scope_builder, inline_scope_builder
 
-# TODO NEED STRUCTURE PLUGINS
 
+def STD_DOC_PLUGINS() -> List[DocPlugin]:
+    return [
+        StructureDocPlugin(),
+        CitationDocPlugin(),
+        FootnoteDocPlugin(),
+        ListDocPlugin(),
+        InlineFormatDocPlugin(),
+        UrlDocPlugin(),        
+    ]
 
 @dataclass(frozen=True)
 class FootnoteRef(Inline):
     ref: Backref
+    contents: Block
 
 
 @dataclass(frozen=True)
@@ -68,7 +78,7 @@ class CiteAuthor(Inline):
 
 
 class Bibliography(DocSegmentHeader):
-    pass
+    weight = 10
 
 
 @dataclass(frozen=True)
@@ -87,7 +97,7 @@ class DisplayListType(Enum):
 
 @dataclass(frozen=True)
 class DisplayList(UserBlock):
-    contents: List["DisplayList" | "DisplayListItem"]
+    contents: List[Union["DisplayList", "DisplayListItem"]]
     list_type: DisplayListType  # TODO could reuse Numbering from render.counters?
 
 
@@ -110,6 +120,57 @@ class InlineFormattingType(Enum):
 class InlineFormatted(UserInline):
     contents: InlineScope
     format_type: InlineFormattingType
+
+
+@dataclass(frozen=True)
+class StructureBlockHeader(UserAnchorDocSegmentHeader):
+    contents: InlineScope # The title of the segment
+    anchor: Optional[Anchor] # May be None if this DocSegment is unnumbered. TODO otherwise necessary because it's needed for counters??? argh.
+    weight: int
+
+
+@dataclass(frozen=True)
+class TableOfContents(Block):
+    pass
+
+
+# TODO make the headings builders that are also callable?
+class StructureDocPlugin(DocPlugin):
+    def _doc_nodes(self) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
+        return (
+            StructureBlockHeader,
+            TableOfContents,
+        )
+
+    def _headingn(self, state: DocState, label: str, numbered: bool, n: int) -> InlineScopeBuilder:
+        kind = f"h{n}"
+        weight = n
+        @inline_scope_builder
+        def builder(inls: InlineScope) -> StructureBlockHeader:
+            if numbered:
+                return StructureBlockHeader(contents=inls, anchor=state.register_new_anchor(kind, label), weight=weight)
+            return StructureBlockHeader(contents=inls, anchor=None, weight=weight)
+        return builder
+
+    @stateful
+    def heading1(self, state: DocState, label: str, numbered: bool = True) -> InlineScopeBuilder:
+        return self._headingn(state, label, numbered, 1)
+
+    @stateful
+    def heading2(self, state: DocState, label: str, numbered: bool = True) -> InlineScopeBuilder:
+        return self._headingn(state, label, numbered, 2)
+
+    @stateful
+    def heading3(self, state: DocState, label: str, numbered: bool = True) -> InlineScopeBuilder:
+        return self._headingn(state, label, numbered, 3)
+
+    @stateful
+    def heading4(self, state: DocState, label: str, numbered: bool = True) -> InlineScopeBuilder:
+        return self._headingn(state, label, numbered, 4)
+    
+    @stateless
+    def toc(self, fmt: FormatContext) -> TableOfContents:
+        return TableOfContents()
 
 
 class CitationDocPlugin(DocPlugin):
@@ -149,6 +210,7 @@ class CitationDocPlugin(DocPlugin):
 
 
 class FootnoteDocPlugin(DocPlugin):
+    # TODO how do we pass the footnote contents down to the individual FootnoteRefs?
     _footnotes: Dict[str, Block]
 
     def __init__(self) -> None:
@@ -157,7 +219,12 @@ class FootnoteDocPlugin(DocPlugin):
     def _doc_nodes(
         self,
     ) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
-        return super()._doc_nodes()
+        return (
+            FootnoteRef,
+        )
+
+    def _mutate_document(self, doc: DocState, fmt: FormatContext, toplevel: DocSegment) -> DocSegment:
+        raise NotImplementedError("TODO need to go through all footnoterefs and shove their footnote blocks into them, so the renderer phase knows what footnotes are associated with what?")
 
     def _countables(self) -> Sequence[str]:
         return ("footnote",)
@@ -177,6 +244,7 @@ class FootnoteDocPlugin(DocPlugin):
 
     @stateless
     def footnote_ref(self, fmt: FormatContext, footnote_id: str) -> Inline:
+        # TODO make it only possible to have a single footnoteref per footnote
         return FootnoteRef(
             Backref(id=footnote_id, kind="footnote", label_contents=None)
         )

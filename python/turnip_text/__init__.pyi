@@ -2,6 +2,7 @@ import abc
 from typing import (
     Any,
     Dict,
+    Iterable,
     Iterator,
     List,
     Optional,
@@ -27,17 +28,17 @@ class DocSegmentHeader(Protocol):
 
 class BlockScopeBuilder(abc.ABC):
     @abc.abstractmethod
-    def build_from_blocks(self, bs: BlockScope) -> Optional[Block | DocSegment]: ...
+    def build_from_blocks(self, bs: BlockScope) -> Optional[Block | DocSegmentHeader]: ...
     def __matmul__(
         self, maybe_b: "CoercibleToBlockScope"
-    ) -> Optional[Block | DocSegment]:
+    ) -> Optional[Block | DocSegmentHeader]:
         bs = coerce_to_block_scope(maybe_b)
         return self.build_from_blocks(bs)
 
 class InlineScopeBuilder(abc.ABC):
     @abc.abstractmethod
-    def build_from_inlines(self, inls: InlineScope) -> Inline | DocSegment: ...
-    def __matmul__(self, maybe_inls: "CoercibleToInlineScope") -> Inline | DocSegment:
+    def build_from_inlines(self, inls: InlineScope) -> Inline | DocSegmentHeader: ...
+    def __matmul__(self, maybe_inls: "CoercibleToInlineScope") -> Inline | DocSegmentHeader:
         inls = coerce_to_inline_scope(maybe_inls)
         return self.build_from_inlines(inls)
 
@@ -65,9 +66,12 @@ CoercibleToBlock = Union[
 # The types that can be coerced into a BlockScope, in the order they are checked and attempted
 CoercibleToBlockScope = Union[BlockScope, CoercibleToBlock]
 
+def join_inlines(inlines: Iterable[Inline], joiner: Inline) -> InlineScope:
+    """Equivalent of string.join, but for joining any set of Inlines with a joiner Inline"""
+    ...
+
 # Parsers return a BlockScope of the top-level content, then a DocSegment tree
-def parse_file_native(path: str, locals: Dict[str, Any]) -> DocSegment: ...
-def parse_str_native(data: str, locals: Dict[str, Any]) -> DocSegment: ...
+def parse_file_native(file: InsertedFile, locals: Dict[str, Any]) -> DocSegment: ...
 def coerce_to_inline(obj: CoercibleToInline) -> Inline: ...
 def coerce_to_inline_scope(obj: CoercibleToInlineScope) -> InlineScope: ...
 def coerce_to_block(obj: CoercibleToBlock) -> Block: ...
@@ -131,3 +135,15 @@ class DocSegment:
     @property
     def subsegments(self) -> Iterator["DocSegment"]: ...
     def push_subsegment(self, d: DocSegment) -> None: ...
+
+class InsertedFile:
+    """
+    Emit an instance of this class from eval-brackets in a Block context to start parsing its contents instead.
+    """
+    def __init__(self, name: str, contents: str) -> None: ...
+    @staticmethod
+    def from_path(path: str) -> InsertedFile:
+        ...
+    @staticmethod
+    def from_string(contents: str) -> InsertedFile:
+        ...
