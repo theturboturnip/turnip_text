@@ -299,6 +299,7 @@ impl InlineScopeBuilder {
     fn marker_func_name(py: Python<'_>) -> &PyString {
         intern!(py, "build_from_inlines")
     }
+    // TODO: Make this return PyTcUnionRef<Inline | DocSegmentHeader>. Right now it can't because the parser can't handle it.
     pub fn call_build_from_inlines<'py>(
         py: Python<'py>,
         builder: PyTcRef<Self>,

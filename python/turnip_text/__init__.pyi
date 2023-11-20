@@ -37,8 +37,8 @@ class BlockScopeBuilder(abc.ABC):
 
 class InlineScopeBuilder(abc.ABC):
     @abc.abstractmethod
-    def build_from_inlines(self, inls: InlineScope) -> Inline | DocSegmentHeader: ...
-    def __matmul__(self, maybe_inls: "CoercibleToInlineScope") -> Inline | DocSegmentHeader:
+    def build_from_inlines(self, inls: InlineScope) -> Inline: ...
+    def __matmul__(self, maybe_inls: "CoercibleToInlineScope") -> Inline:
         inls = coerce_to_inline_scope(maybe_inls)
         return self.build_from_inlines(inls)
 

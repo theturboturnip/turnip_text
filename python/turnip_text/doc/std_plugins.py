@@ -55,7 +55,6 @@ def STD_DOC_PLUGINS() -> List[DocPlugin]:
 @dataclass(frozen=True)
 class FootnoteRef(Inline):
     ref: Backref
-    contents: Block
 
 
 @dataclass(frozen=True)
@@ -125,7 +124,7 @@ class InlineFormatted(UserInline):
 
 @dataclass(frozen=True)
 class StructureBlockHeader(UserAnchorDocSegmentHeader):
-    contents: InlineScope # The title of the segment
+    contents: BlockScope # The title of the segment (TODO once the interpreter allows it, make this use InlineScope. See _headingn)
     anchor: Optional[Anchor] # May be None if this DocSegment is unnumbered. TODO otherwise necessary because it's needed for counters??? argh.
     weight: int
 
@@ -143,30 +142,32 @@ class StructureDocPlugin(DocPlugin):
             TableOfContents,
         )
 
-    def _headingn(self, state: DocState, label: str, numbered: bool, n: int) -> InlineScopeBuilder:
+    # TODO make this return InlineScopeBuilder. Right now an InlineScopeBuilder can't return DocSegmentHeader, 
+    # because once you're parsing inline content you're in "inline mode".
+    def _headingn(self, state: DocState, label: str, numbered: bool, n: int) -> BlockScopeBuilder:
         kind = f"h{n}"
         weight = n
-        @inline_scope_builder
-        def builder(inls: InlineScope) -> StructureBlockHeader:
+        @block_scope_builder
+        def builder(bs: BlockScope) -> StructureBlockHeader:
             if numbered:
-                return StructureBlockHeader(contents=inls, anchor=state.register_new_anchor(kind, label), weight=weight)
-            return StructureBlockHeader(contents=inls, anchor=None, weight=weight)
+                return StructureBlockHeader(contents=bs, anchor=state.register_new_anchor(kind, label), weight=weight)
+            return StructureBlockHeader(contents=bs, anchor=None, weight=weight)
         return builder
 
     @stateful
-    def heading1(self, state: DocState, label: str, numbered: bool = True) -> InlineScopeBuilder:
+    def heading1(self, state: DocState, label: str, numbered: bool = True) -> BlockScopeBuilder:
         return self._headingn(state, label, numbered, 1)
 
     @stateful
-    def heading2(self, state: DocState, label: str, numbered: bool = True) -> InlineScopeBuilder:
+    def heading2(self, state: DocState, label: str, numbered: bool = True) -> BlockScopeBuilder:
         return self._headingn(state, label, numbered, 2)
 
     @stateful
-    def heading3(self, state: DocState, label: str, numbered: bool = True) -> InlineScopeBuilder:
+    def heading3(self, state: DocState, label: str, numbered: bool = True) -> BlockScopeBuilder:
         return self._headingn(state, label, numbered, 3)
 
     @stateful
-    def heading4(self, state: DocState, label: str, numbered: bool = True) -> InlineScopeBuilder:
+    def heading4(self, state: DocState, label: str, numbered: bool = True) -> BlockScopeBuilder:
         return self._headingn(state, label, numbered, 4)
     
     @stateless
@@ -238,7 +239,7 @@ class FootnoteDocPlugin(DocPlugin):
             footnote_id = str(uuid.uuid4())
             self._footnotes[footnote_id] = Paragraph([Sentence([contents])])
             return FootnoteRef(
-                Backref(id=footnote_id, kind="footnote", label_contents=None)
+                Backref(id=footnote_id, kind="footnote", label_contents=None),
             )
 
         return footnote_builder

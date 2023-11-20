@@ -75,12 +75,12 @@ class inline_scope_builder(InlineScopeBuilder):
     ```
     """
 
-    func: Callable[[InlineScope], Inline | DocSegmentHeader]
+    func: Callable[[InlineScope], Inline]
 
-    def __init__(self, func: Callable[[InlineScope], Inline | DocSegmentHeader]) -> None:
+    def __init__(self, func: Callable[[InlineScope], Inline]) -> None:
         self.func = func
 
-    def build_from_inlines(self, inls: InlineScope) -> Inline | DocSegmentHeader:
+    def build_from_inlines(self, inls: InlineScope) -> Inline:
         return self.func(inls)
 
 
