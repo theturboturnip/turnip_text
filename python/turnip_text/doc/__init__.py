@@ -184,10 +184,13 @@ class DocPlugin:
                     # It can't get access to __doc, so expose it.
                     is_stateless = True
 
+                # No matter what, the function gets added to the stateful context (even if they're stateless!)
+                # If you have access to mutable state, you're allowed to call stateless functions too.
+                doc.__dict__[key] = value
+                # Stateless functions get added to the stateless context
                 if is_stateless:
                     fmt.__dict__[key] = value
-                else:
-                    doc.__dict__[key] = value
+                
             plugin.__init_ctx(fmt, doc)
         return fmt, doc
 
