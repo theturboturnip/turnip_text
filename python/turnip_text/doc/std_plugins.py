@@ -144,31 +144,31 @@ class StructureDocPlugin(DocPlugin):
 
     # TODO make this return InlineScopeBuilder. Right now an InlineScopeBuilder can't return DocSegmentHeader, 
     # because once you're parsing inline content you're in "inline mode".
-    def _headingn(self, state: DocState, label: str, numbered: bool, n: int) -> BlockScopeBuilder:
+    def _headingn(self, state: DocState, label: str, num: bool, n: int) -> BlockScopeBuilder:
         kind = f"h{n}"
         weight = n
         @block_scope_builder
         def builder(bs: BlockScope) -> StructureBlockHeader:
-            if numbered:
+            if num:
                 return StructureBlockHeader(contents=bs, anchor=state.register_new_anchor(kind, label), weight=weight)
             return StructureBlockHeader(contents=bs, anchor=None, weight=weight)
         return builder
 
     @stateful
-    def heading1(self, state: DocState, label: str, numbered: bool = True) -> BlockScopeBuilder:
-        return self._headingn(state, label, numbered, 1)
+    def heading1(self, state: DocState, label: str, num: bool = True) -> BlockScopeBuilder:
+        return self._headingn(state, label, num, 1)
 
     @stateful
-    def heading2(self, state: DocState, label: str, numbered: bool = True) -> BlockScopeBuilder:
-        return self._headingn(state, label, numbered, 2)
+    def heading2(self, state: DocState, label: str, num: bool = True) -> BlockScopeBuilder:
+        return self._headingn(state, label, num, 2)
 
     @stateful
-    def heading3(self, state: DocState, label: str, numbered: bool = True) -> BlockScopeBuilder:
-        return self._headingn(state, label, numbered, 3)
+    def heading3(self, state: DocState, label: str, num: bool = True) -> BlockScopeBuilder:
+        return self._headingn(state, label, num, 3)
 
     @stateful
-    def heading4(self, state: DocState, label: str, numbered: bool = True) -> BlockScopeBuilder:
-        return self._headingn(state, label, numbered, 4)
+    def heading4(self, state: DocState, label: str, num: bool = True) -> BlockScopeBuilder:
+        return self._headingn(state, label, num, 4)
     
     @stateless
     def toc(self, fmt: FormatContext) -> TableOfContents:
