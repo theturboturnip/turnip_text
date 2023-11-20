@@ -30,7 +30,7 @@ from turnip_text import (
     UnescapedText,
 )
 from turnip_text.doc import DocPlugin, DocState, FormatContext, stateful, stateless
-from turnip_text.doc.anchors import Anchor, Backref
+from turnip_text.doc.anchors import Anchor, Backref, DocAnchorPlugin
 from turnip_text.doc.user_nodes import (
     UserAnchorBlock,
     UserAnchorDocSegmentHeader,
@@ -48,7 +48,8 @@ def STD_DOC_PLUGINS() -> List[DocPlugin]:
         FootnoteDocPlugin(),
         ListDocPlugin(),
         InlineFormatDocPlugin(),
-        UrlDocPlugin(),        
+        UrlDocPlugin(),
+        DocAnchorPlugin(), # Ah fuck. Should this be a plugin??
     ]
 
 @dataclass(frozen=True)
