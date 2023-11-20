@@ -427,6 +427,7 @@ class Renderer:
             self.emit_blockscope(s.contents)
             self.emit(*s.subsegments)
         else:
+            self.emit_break_paragraph()
             self.handlers.emit_doc_segment(
                 s,
                 self.visit_results.get(id(s.header), None),
@@ -441,8 +442,7 @@ class Renderer:
 
     def emit_paragraph(self, p: Paragraph) -> None:
         # Default: join sentences with self.SENTENCE_SEP
-        for s in p:
-            self.emit_sentence(s)
+        self.emit_join(self.emit_sentence, p, self.emit_break_sentence)
 
     def emit_inlinescope(self, inls: InlineScope) -> None:
         # Default: join internal inline elements directly
@@ -454,9 +454,7 @@ class Renderer:
         # TODO could be extended by e.g. latex to ensure you get sentence-break-whitespace at the end of each sentence?
         for i in s:
             self.emit_inline(i)
-        # TODO this shouldn't be here, surely. it should be in emit_paragraph, *joining* sentences instead of *ending* them
-        self.emit_break_sentence()
-
+        
     def push_indent(self, n: int) -> None:
         self._indent += " " * n
 

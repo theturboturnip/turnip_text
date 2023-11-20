@@ -90,6 +90,7 @@ class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
 
     def _emit_bibliography(self, bib: Bibliography, block_contents: BlockScope, segment_contents: Iterator[DocSegment], visit: None, renderer: LatexRenderer, ctx: FormatContext):
         renderer.emit("{")
+        renderer.emit_break_sentence()
         with renderer.indent(4):
             renderer.emit("\\raggedright")
             renderer.emit_break_sentence()
