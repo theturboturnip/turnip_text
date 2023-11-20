@@ -86,11 +86,11 @@ if __name__ == "__main__":
     latex_counters = CounterSet(
         [
             BasicCounter("h1", "Section", ARABIC_NUMBERING, [
-                BasicCounter("h2", "Subsection", ARABIC_NUMBERING)
+                BasicCounter("h2", "Subsection", ARABIC_NUMBERING, [])
             ])
         ]
     )
-    rendered_latex = LatexRenderer.render(STD_LATEX_RENDER_PLUGINS(use_chapters=False), doc)
+    rendered_latex = LatexRenderer.render(STD_LATEX_RENDER_PLUGINS(use_chapters=False), latex_counters, doc)
     if args.olatex:
         with open(args.olatex, "w") as f:
             f.write(rendered_latex.getvalue())

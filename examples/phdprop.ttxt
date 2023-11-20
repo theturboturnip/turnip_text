@@ -3,7 +3,10 @@ section=heading1
 subsection=heading2
 ]]
 
-[heading1(label="IntroductionExtendedAbstract")]{Introduction/Extended Abstract}
+[heading1(label="IntroductionExtendedAbstract")]{
+    Introduction/Extended Abstract
+}
+
     # 500-1000 words
 
     # It should be comprehensible to an intelligent but non-expert audience 
@@ -28,7 +31,9 @@ subsection=heading2
     However, as the next section will show, CHERI's CPU-centric capabilities may need to adapt to work well with GPUs.
 
     #----------------------
-    [subsection("ProblemDefinition", num=False)]{Problem Definition}
+    [subsection("ProblemDefinition", num=False)]{
+        Problem Definition
+    }
 
         Current systems that use CHERI capabilities make a few basic assumptions:
 
@@ -73,7 +78,9 @@ subsection=heading2
     
 
     #----------------------
-    [subsection("PotentialApproach", num=False)]{Potential Approach}
+    [subsection("PotentialApproach", num=False)]{
+        Potential Approach
+    }
 
         As shown above, GPU and CPU memory have different characteristics, and GPUs could benefit from having separate capability types.
         However, even if these capability types could only be dereferenced on the GPU, they will need to be created or manipulated from the CPU - the gap between domains needs to be crossed.
@@ -87,13 +94,17 @@ subsection=heading2
 
 
 #-------------------
-[section("RelatedWork")]{Related Work}
+[section("RelatedWork")]{
+    Related Work
+}
 
     While capabilities themselves haven't yet addressed domain-crossing, there is a vast amount of previous work for sharing memory with legacy pointers.
     This section will highlight three broad topics that require domain crossing, which domain-crossing capability systems may need to be compatible with or build on.
 
     # ------------------------------------
-    [subsection("DMA")]{DMA}
+    [subsection("DMA")]{
+        DMA
+    }
 
         Modern System on Chips (SoCs) can contain much more than just CPUs and GPUs.
         Mobile SoCs are a great example due to their high connectivity - custom hardware is included to support connections over mobile networks (4G/5G), Bluetooth, and Wi-Fi.
@@ -117,7 +128,9 @@ subsection=heading2
     
 
     # ------------------------------------
-    [subsection("Virtualization")]{Virtualization}
+    [subsection("Virtualization")]{
+        Virtualization
+    }
 
         When a VM tries to DMA data to/from a peripheral, it will specify a guest-domain address (guest-physical, or potentially guest-virtual) which needs to be translated into a host-physical address which the DMAC can use.
         AMD[cite("amdAMDIOVirtualizationTechnology2021")], Arm[cite("armltdArmSMMUVer3")], and Intel[cite("intelIOMMUSpecRev3p3")] each have their own IOMMU (I/O Memory Management Unit) design which performs this translation dynamically.
@@ -149,7 +162,9 @@ subsection=heading2
     
 
     # ------------------------------------
-    [subsection("GPUVirtMem")]{GPU Virtual Memory}
+    [subsection("GPUVirtMem")]{
+        GPU Virtual Memory
+    }
         On top of isolating VMs from each other, a further level of translation is added on the GPU side: Nvidia and AMD external GPUs have their own dedicated MMUs for virtual-to-physical address translation.
         This is in large part due to the idea of [enquote]{Shared Virtual Memory} (SVM), where the CPU and GPU share an address space, and pointers to SVM can be seamlessly dereferenced on both.
         OpenCL~2.0 and Nvidia's CUDA APIs both support this concept [cite("intelOpenCLSharedVirtual2014","nvidiacorporationUnifiedMemoryCUDA2017")] to varying degrees.
@@ -190,7 +205,9 @@ subsection=heading2
 
 
 #-------------------------
-[section("Plan")]{First-Year Plan}
+[section("Plan")]{
+    First-Year Plan
+}
     The first year of the PhD will focus on reducing the broad idea of diverging CPU/GPU capabilities to a concrete set of potential approaches.
     This problem space is bounded by two restrictions: how current drivers and programming models use pointers, and how the CPU and GPU domains are separated in hardware.
     Indeed, integrated and external GPUs may require entirely different approaches.
