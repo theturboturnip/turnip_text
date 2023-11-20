@@ -35,8 +35,8 @@ from turnip_text import (
     Sentence,
     UnescapedText,
 )
-from turnip_text.doc import Document, FormatContext
-from turnip_text.doc.anchors import Anchor
+from turnip_text.doc import DocState, Document, FormatContext
+from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.render.counters import Counter, CounterChainValue, CounterSet
 
 T = TypeVar("T")
@@ -200,10 +200,11 @@ class Writable(Protocol):
 
 
 class Renderer:
+    doc: DocState
     fmt: FormatContext
     handlers: RendererHandlers  # type: ignore[type-arg]
     anchor_counters: Dict[Anchor, CounterChainValue]
-    visit_results: Dict[Block | Inline | DocSegmentHeader, Any]
+    visit_results: Dict[int, Any] # Map id(block | inline | docsegmentheader) to a visit result
     write_to: Writable
 
     _indent: str = ""
@@ -216,12 +217,14 @@ class Renderer:
 
     def __init__(
         self,
+        doc: DocState,
         fmt: FormatContext,
         handlers: RendererHandlers,  # type: ignore[type-arg]
         anchor_counters: Dict[Anchor, CounterChainValue],
-        visit_results: Dict[Block | Inline | DocSegmentHeader, Any],
+        visit_results: Dict[int, Any],
         write_to: Writable,
     ) -> None:
+        self.doc = doc
         self.fmt = fmt
         self.handlers = handlers
         self.anchor_counters = anchor_counters
@@ -252,16 +255,16 @@ class Renderer:
 
         handlers: RendererHandlers[TRenderer_contra] = RendererHandlers()
         handlers.register_block_or_inline_renderer(
-            BlockScope, lambda bs, _, fmt, r: r.emit_blockscope(bs)
+            BlockScope, lambda bs, _, r, fmt: r.emit_blockscope(bs)
         )
         handlers.register_block_or_inline_renderer(
-            Paragraph, lambda p, _, fmt, r: r.emit_paragraph(p)
+            Paragraph, lambda p, _, r, fmt: r.emit_paragraph(p)
         )
         handlers.register_block_or_inline_renderer(
-            InlineScope, lambda inls, _, fmt, r: r.emit_inlinescope(inls)
+            InlineScope, lambda inls, _, r, fmt: r.emit_inlinescope(inls)
         )
         handlers.register_block_or_inline_renderer(
-            UnescapedText, lambda t, _, fmt, r: r.emit_unescapedtext(t)
+            UnescapedText, lambda t, _, r, fmt: r.emit_unescapedtext(t)
         )
         for p in plugins:
             p._register_node_handlers(handlers)
@@ -279,11 +282,17 @@ class Renderer:
             raise RuntimeError(
                 f"Some counters are not declared in the CounterSet, but are used by the document: {missing_doc_counters}"
             )
+        
+        # TODO float arrangement pass? Right now we parse them all at the end...
 
         # The visitor/counter pass
-        visit_results: Dict[Block | Inline | DocSegmentHeader, Any] = {}
+        visit_results: Dict[int, Any] = {}
         anchor_counters: Dict[Anchor, CounterChainValue] = {}
-        dfs_queue: List[Block | Inline | DocSegment | DocSegmentHeader] = [doc.toplevel]
+        # Parse the floats in ""order""
+        # type: ignore because this relies on covariance. 
+        # doc.floats.values() is a sequence of Block, [doc.toplevel] is a list of DocSegment
+        dfs_queue: List[Block | Inline | DocSegment | DocSegmentHeader] = \
+            list(reversed(doc.floats.values())) + [doc.toplevel] # type: ignore
         while dfs_queue:
             node = dfs_queue.pop()
 
@@ -296,24 +305,25 @@ class Renderer:
             if not isinstance(node, DocSegment):
                 visit_result = handlers.visit(node)
                 if visit_result is not None:
-                    visit_results[node] = visit_result
+                    visit_results[id(node)] = visit_result
 
             # Extract children as a reversed iterator.
             # reversed is important because we pop the last thing in the queue off first.
             children: Iterable[Block | Inline | DocSegment | DocSegmentHeader]
             if isinstance(node, (BlockScope, InlineScope)):
-                children = reversed(tuple(*node))
+                children = reversed(tuple(node))
             elif isinstance(node, DocSegment):
                 children = reversed((node.header, node.contents, *node.subsegments))
             elif node is None:
                 children = None
             else:
-                children = reversed(getattr(node, "contents", None))  # type: ignore
+                contents = getattr(node, "contents", None)
+                children = reversed(list(contents)) if contents is not None else None  # type: ignore
             if children is not None:
                 dfs_queue.extend(children)
 
         # The rendering pass
-        renderer = cls(doc.fmt, handlers, anchor_counters, visit_results, write_to)
+        renderer = cls(doc.doc, doc.fmt, handlers, anchor_counters, visit_results, write_to)
         renderer.emit_segment(doc.toplevel)
 
         if isinstance(write_to, io.StringIO):
@@ -395,26 +405,34 @@ class Renderer:
                 self.emit_raw(a)
             elif isinstance(a, Inline):
                 self.emit_inline(a)
-            else:
+            elif isinstance(a, DocSegment):
+                self.emit_segment(a)
+            elif isinstance(a, Block):
                 self.emit_block(a)
+            else:
+                raise ValueError(f"Don't know how to automatically render {a}")
 
     def emit_inline(self: Self, i: Inline) -> None:
         self.handlers.emit_block_or_inline(
-            i, self.visit_results.get(i, None), self, self.fmt
+            i, self.visit_results.get(id(i), None), self, self.fmt
         )
 
     def emit_block(self: Self, b: Block) -> None:
         self.handlers.emit_block_or_inline(
-            b, self.visit_results.get(b, None), self, self.fmt
+            b, self.visit_results.get(id(b), None), self, self.fmt
         )
 
     def emit_segment(self: Self, s: DocSegment) -> None:
-        self.handlers.emit_doc_segment(
-            s,
-            self.visit_results.get(s.header, None),
-            self,
-            self.fmt,
-        )
+        if s.header is None:
+            self.emit_blockscope(s.contents)
+            self.emit(*s.subsegments)
+        else:
+            self.handlers.emit_doc_segment(
+                s,
+                self.visit_results.get(id(s.header), None),
+                self,
+                self.fmt,
+            )
 
     def emit_blockscope(self, bs: BlockScope) -> None:
         # Default: join paragraphs with self.PARAGRAPH_SEP

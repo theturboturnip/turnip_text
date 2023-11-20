@@ -42,7 +42,6 @@ from typing import (
 )
 
 from turnip_text import Block, Inline, InlineScope, InlineScopeBuilder
-from turnip_text.doc import DocPlugin, DocState, FormatContext, stateful, stateless
 
 
 # Unlike the phd_notes lib version, this shouldn't be subclassed.
@@ -53,6 +52,11 @@ class Anchor:
 
     def canonical(self) -> str:
         return f"{self.kind}:{self.id}"
+    
+    def to_backref(self, label_contents: Optional[Inline] = None) -> "Backref":
+        if self.id is None:
+            raise ValueError(f"Can't convert an Anchor {self} with no id to a Backref")
+        return Backref(self.id, self.kind, label_contents)
 
     def __str__(self) -> str:
         return self.canonical()
@@ -72,7 +76,7 @@ class Backref(Inline, InlineScopeBuilder):
 
 
 # Responsible for keeping track of all the anchors in a document
-class DocAnchorPlugin(DocPlugin):
+class DocAnchors:
     _anchor_id_to_possible_kinds: Dict[str, Dict[str, Anchor]]
 
     def __init__(self) -> None:
@@ -81,13 +85,13 @@ class DocAnchorPlugin(DocPlugin):
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
         return [Backref]
 
-    @stateful
     def register_new_anchor(
-        self, doc: DocState, kind: str, id: Optional[str]
+        self, kind: str, id: Optional[str]
     ) -> Anchor:
         """
         When inside the document, create a new anchor.
         """
+        # TODO assert kind and id are strings if present?
         l = Anchor(
             kind=kind,
             id=id,
@@ -96,8 +100,7 @@ class DocAnchorPlugin(DocPlugin):
             self._anchor_id_to_possible_kinds[id][kind] = l
         return l
 
-    @stateless
-    def lookup_backref(self, fmt: FormatContext, backref: Backref) -> Anchor:
+    def lookup_backref(self, backref: Backref) -> Anchor:
         """
         Should be called by renderers to resolve a backref into an anchor.
         The renderer can then retrieve the counters for the anchor.

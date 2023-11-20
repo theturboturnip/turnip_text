@@ -30,7 +30,7 @@ from turnip_text import (
     UnescapedText,
 )
 from turnip_text.doc import DocPlugin, DocState, FormatContext, stateful, stateless
-from turnip_text.doc.anchors import Anchor, Backref, DocAnchorPlugin
+from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.user_nodes import (
     UserAnchorBlock,
     UserAnchorDocSegmentHeader,
@@ -49,7 +49,6 @@ def STD_DOC_PLUGINS() -> List[DocPlugin]:
         ListDocPlugin(),
         InlineFormatDocPlugin(),
         UrlDocPlugin(),
-        DocAnchorPlugin(), # Ah fuck. Should this be a plugin??
     ]
 
 @dataclass(frozen=True)
@@ -78,7 +77,7 @@ class CiteAuthor(Inline):
 
 
 class Bibliography(DocSegmentHeader):
-    weight = 10
+    weight = 0
 
 
 @dataclass(frozen=True)
@@ -139,7 +138,7 @@ class StructureDocPlugin(DocPlugin):
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
         return (
             StructureBlockHeader,
-            TableOfContents,
+            # TableOfContents, # TODO
         )
 
     # TODO make this return InlineScopeBuilder. Right now an InlineScopeBuilder can't return DocSegmentHeader, 
@@ -150,7 +149,7 @@ class StructureDocPlugin(DocPlugin):
         @block_scope_builder
         def builder(bs: BlockScope) -> StructureBlockHeader:
             if num:
-                return StructureBlockHeader(contents=bs, anchor=state.register_new_anchor(kind, label), weight=weight)
+                return StructureBlockHeader(contents=bs, anchor=state.anchors.register_new_anchor(kind, label), weight=weight)
             return StructureBlockHeader(contents=bs, anchor=None, weight=weight)
         return builder
 
@@ -170,9 +169,10 @@ class StructureDocPlugin(DocPlugin):
     def heading4(self, state: DocState, label: str, num: bool = True) -> BlockScopeBuilder:
         return self._headingn(state, label, num, 4)
     
-    @stateless
-    def toc(self, fmt: FormatContext) -> TableOfContents:
-        return TableOfContents()
+    # TODO
+    # @stateless
+    # def toc(self, fmt: FormatContext) -> TableOfContents:
+    #     return TableOfContents()
 
 
 class CitationDocPlugin(DocPlugin):
@@ -197,8 +197,12 @@ class CitationDocPlugin(DocPlugin):
 
     @stateful
     def cite(self, doc: DocState, *citekeys: str) -> Inline:
+        citekey_set: set[str] = set(citekeys)
+        for c in citekey_set:
+            if not isinstance(c, str):
+                raise ValueError(f"Inappropriate citation key: {c}. Must be a string")
         self._has_citations = True
-        return Citation(citekeys=set(citekeys), contents=None)
+        return Citation(citekeys=citekey_set, contents=None)
 
     @stateless
     def citeauthor(self, fmt: FormatContext, citekey: str) -> Inline:
@@ -212,21 +216,12 @@ class CitationDocPlugin(DocPlugin):
 
 
 class FootnoteDocPlugin(DocPlugin):
-    # TODO how do we pass the footnote contents down to the individual FootnoteRefs?
-    _footnotes: Dict[str, Block]
-
-    def __init__(self) -> None:
-        self._footnotes = {}
-
     def _doc_nodes(
         self,
     ) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
         return (
             FootnoteRef,
         )
-
-    def _mutate_document(self, doc: DocState, fmt: FormatContext, toplevel: DocSegment) -> DocSegment:
-        raise NotImplementedError("TODO need to go through all footnoterefs and shove their footnote blocks into them, so the renderer phase knows what footnotes are associated with what?")
 
     def _countables(self) -> Sequence[str]:
         return ("footnote",)
@@ -237,26 +232,26 @@ class FootnoteDocPlugin(DocPlugin):
         @inline_scope_builder
         def footnote_builder(contents: InlineScope) -> Inline:
             footnote_id = str(uuid.uuid4())
-            self._footnotes[footnote_id] = Paragraph([Sentence([contents])])
-            return FootnoteRef(
-                Backref(id=footnote_id, kind="footnote", label_contents=None),
-            )
+            anchor = doc.anchors.register_new_anchor("footnote", footnote_id)
+            doc.add_float(anchor, Paragraph([Sentence([contents])]))
+            return FootnoteRef(anchor.to_backref())
 
         return footnote_builder
 
     @stateless
     def footnote_ref(self, fmt: FormatContext, footnote_id: str) -> Inline:
-        # TODO make it only possible to have a single footnoteref per footnote
+        # TODO make it only possible to have a single footnoteref per footnote?
         return FootnoteRef(
             Backref(id=footnote_id, kind="footnote", label_contents=None)
         )
 
     @stateful
-    def footnote_text(self, doc: DocState, label: str) -> BlockScopeBuilder:
+    def footnote_text(self, doc: DocState, footnote_id: str) -> BlockScopeBuilder:
         # Store the contents of a block scope and associate them with a specific footnote label
         @block_scope_builder
         def handle_block_contents(contents: BlockScope) -> Optional[Block]:
-            self._footnotes[label] = contents
+            anchor = doc.anchors.register_new_anchor("footnote", footnote_id)
+            doc.add_float(anchor, contents)
             return None
 
         return handle_block_contents
@@ -350,6 +345,10 @@ class UrlDocPlugin(DocPlugin):
 
     @stateless
     def url(self, fmt: FormatContext, url: str, name: Optional[str] = None) -> Inline:
+        if not isinstance(url, str):
+            raise ValueError(f"Url {url} must be a string")
+        if name is not None and not isinstance(name, str):
+            raise ValueError(f"Url name {name} must be a string if not None")
         return NamedUrl(
             contents=(UnescapedText(name),) if name is not None else None,
             url=url,

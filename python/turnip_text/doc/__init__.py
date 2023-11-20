@@ -31,6 +31,7 @@ from turnip_text import (
     InsertedFile,
     parse_file_native,
 )
+from turnip_text.doc.anchors import Anchor, Backref, DocAnchors
 
 __all__ = [
     "Document",
@@ -55,8 +56,10 @@ T = TypeVar("T")
 class Document:
     exported_nodes: Set[Type[Union[Block, Inline, DocSegmentHeader]]]
     counted_anchor_kinds: Set[str]
+    doc: "DocState" # TODO REALLY needs renaming to "state" everywhere
     fmt: "FormatContext"
     toplevel: DocSegment
+    floats: Dict[Anchor, Block]
 
 
 def parse(
@@ -71,17 +74,17 @@ def parse(
         counters.update(p._countables())
 
     # First pass: parsing
-    print(doc.__dict__)
     doc_toplevel = parse_file_native(InsertedFile.from_path(str(path)), doc.__dict__)
 
     # Second pass: modifying the document
+    # TODO need to pass the floats in here
     for p in plugins:
         doc_toplevel = p._mutate_document(doc, fmt, doc_toplevel)
 
     # Now freeze the document so further passes don't mutate it.
     doc._frozen = True
 
-    return Document(exported_nodes, counters, fmt, doc_toplevel)
+    return Document(exported_nodes, counters, doc, fmt, doc_toplevel, doc.floats)
 
 
 class DocPlugin:
@@ -326,10 +329,16 @@ class BoundProperty:
 RESERVED_DOC_PLUGIN_EXPORTS = [
     "doc",
     "fmt",
+    "anchors",
+    "floats",
+    "add_float",
+    "lookup_float_from_backref",
 ]
 
 
 class FormatContext:
+    # TODO this doesn't have lookup_from_backref, it needs it
+
     def __getattr__(self, name: str) -> Any:
         # The FormatContext has various things that we don't know at type-time.
         # We want to be able to use those things from Python code.
@@ -347,10 +356,23 @@ class DocState:
     # Evaluated code can call directly out to doc.blah or fmt.blah.
     doc: "DocState"
     fmt: "FormatContext"
+    anchors: DocAnchors # TODO move this out of a class and directly into DocState?
+    floats: Dict[Anchor, Block] # TODO Float class, DictMappingAnchorToFloat class?
 
     def __init__(self, fmt: "FormatContext") -> None:
         self.doc = self
         self.fmt = fmt
+        self.anchors = DocAnchors()
+        self.floats = {}
+
+    def add_float(self, anchor: Anchor, float: Block):
+        if anchor in self.floats:
+            raise ValueError(f"Tried to use the same anchor {anchor} on multiple floats")
+        self.floats[anchor] = float
+
+    def lookup_float_from_backref(self, backref: Backref) -> Optional[Block]:
+        anchor = self.anchors.lookup_backref(backref)
+        return self.floats.get(anchor)
 
     def __getattr__(self, name: str) -> Any:
         # The StatelessContext has various things that we don't know at type-time.

@@ -745,7 +745,7 @@ impl DocSegment {
         self.contents.as_ref(py)
     }
     #[getter]
-    pub fn subsegements<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
+    pub fn subsegments<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
         PyIterator::from_object(py, self.subsegments.list(py))
     }
     pub fn push_subsegment(&self, py: Python<'_>, subsegment: Py<DocSegment>) -> PyResult<()> {

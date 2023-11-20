@@ -87,7 +87,8 @@ if __name__ == "__main__":
         [
             BasicCounter("h1", "Section", ARABIC_NUMBERING, [
                 BasicCounter("h2", "Subsection", ARABIC_NUMBERING, [])
-            ])
+            ]),
+            BasicCounter("footnote", "Footnote", ARABIC_NUMBERING, []) # TODO really really shouldn't need this!
         ]
     )
     rendered_latex = LatexRenderer.render(STD_LATEX_RENDER_PLUGINS(use_chapters=False), latex_counters, doc)

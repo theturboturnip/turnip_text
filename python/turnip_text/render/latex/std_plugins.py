@@ -1,6 +1,6 @@
-from typing import Iterable, List, Optional
+from typing import Iterable, Iterator, List, Optional
 
-from turnip_text import BlockScope, DocSegment
+from turnip_text import Block, BlockScope, DocSegment
 from turnip_text.doc import FormatContext
 from turnip_text.doc.std_plugins import (
     Bibliography,
@@ -8,6 +8,8 @@ from turnip_text.doc.std_plugins import (
     CiteAuthor,
     DisplayList,
     DisplayListItem,
+    DisplayListType,
+    FootnoteRef,
     InlineFormatted,
     InlineFormattingType,
     NamedUrl,
@@ -21,7 +23,7 @@ def STD_LATEX_RENDER_PLUGINS(use_chapters: bool, indent_list_items: bool=True) -
     return [
         StructureRenderPlugin(use_chapters),
         UncheckedBiblatexRenderPlugin(),
-        # FootnoteRenderPlugin(),
+        FootnoteRenderPlugin(),
         ListRenderPlugin(indent_list_items),
         InlineFormatRenderPlugin(),
         UrlRenderPlugin(),        
@@ -51,7 +53,7 @@ class StructureRenderPlugin(RenderPlugin[LatexRenderer]):
     def _register_node_handlers(self, handlers: RendererHandlers[LatexRenderer]) -> None:
         handlers.register_header_renderer(StructureBlockHeader, self._emit_structure)
 
-    def _emit_structure(self, head: StructureBlockHeader, contents: BlockScope, subsegments: Iterable[DocSegment], renderer: LatexRenderer, ctx: FormatContext):
+    def _emit_structure(self, head: StructureBlockHeader, contents: BlockScope, subsegments: Iterator[DocSegment], vitis: None, renderer: LatexRenderer, ctx: FormatContext):
         latex_name = self.level_to_latex[head.weight]
         if latex_name is None:
             raise ValueError(f"Can't emit {head} because it uses an unusable weight: {head.weight}")
@@ -74,7 +76,7 @@ class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
     def _register_node_handlers(self, handlers: RendererHandlers[LatexRenderer]) -> None:
         handlers.register_block_or_inline_renderer(Citation, self._emit_cite)
         handlers.register_block_or_inline_renderer(CiteAuthor, self._emit_citeauthor)
-        handlers.register_block_or_inline_renderer(Bibliography, self._emit_bibliography)
+        handlers.register_header_renderer(Bibliography, self._emit_bibliography)
 
     def _emit_cite(self, cite: Citation, visit: None, renderer: LatexRenderer, ctx: FormatContext):
         renderer.emit_macro("cite")
@@ -86,7 +88,7 @@ class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
         renderer.emit_macro("citeauthor")
         renderer.emit_braced(citeauthor.citekey)
 
-    def _emit_bibliography(self, bib: Bibliography, visit: None, renderer: LatexRenderer, ctx: FormatContext):
+    def _emit_bibliography(self, bib: Bibliography, block_contents: BlockScope, segment_contents: Iterator[DocSegment], visit: None, renderer: LatexRenderer, ctx: FormatContext):
         renderer.emit("{")
         with renderer.indent(4):
             renderer.emit("\\raggedright")
@@ -95,9 +97,23 @@ class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
             renderer.emit_break_sentence()
         renderer.emit("}")
         renderer.emit_break_paragraph()
+        renderer.emit(block_contents, *segment_contents)
 
-# class FootnoteRenderPlugin(RenderPlugin[LatexRenderer]):
+class FootnoteRenderPlugin(RenderPlugin[LatexRenderer]):
+    def _register_node_handlers(self, handlers: RendererHandlers[LatexRenderer]) -> None:
+        # TODO use visitor pattern for this? Right now the visitor doesn't get any other arguments
+        # handlers.register_block_or_inline(FootnoteRef, self._visit_footnote, self._emit_footnote)
+        handlers.register_block_or_inline_renderer(FootnoteRef, self._emit_footnote)
 
+    # def _visit_footnote(self, footnote: FootnoteRef) -> Block:
+    #     return None
+
+    def _emit_footnote(self, footnote: FootnoteRef, visit: None, renderer: LatexRenderer, ctx: FormatContext) -> None:
+        f = renderer.doc.lookup_float_from_backref(footnote.ref)
+        if f is None:
+            raise ValueError(f"Reference to nonexistant footnote {footnote.ref}")
+        renderer.emit_macro("footnote")
+        renderer.emit_braced(f)
 
 class ListRenderPlugin(RenderPlugin[LatexRenderer]):
     indent_list_items: bool = True
@@ -116,21 +132,26 @@ class ListRenderPlugin(RenderPlugin[LatexRenderer]):
         renderer: LatexRenderer,
         ctx: FormatContext,
     ) -> None:
-        with renderer.emit_env(list.mode):
-            renderer.emit(*list.items, joiner=renderer.emit_break_paragraph)
+        mode = {
+            DisplayListType.Itemize: "itemize",
+            DisplayListType.Enumerate: "enumerate",
+        }[list.list_type]
+        with renderer.emit_env(mode):
+            renderer.emit(*list.contents, joiner=renderer.emit_break_paragraph)
 
     def _emit_list_item(
         self,
+        list_item: DisplayListItem,
+        visit: None,
         renderer: LatexRenderer,
         ctx: FormatContext,
-        list_item: DisplayListItem,
     ) -> None:
         renderer.emit_macro("item")
         # Put {} after \item so square brackets at the start of render_block don't get swallowed as arguments
         renderer.emit("{} ")
         indent_width = len("\\item{} ")
         with renderer.indent(indent_width):
-            renderer.emit(list_item.item)
+            renderer.emit(list_item.contents)
 
 
 FORMAT_TYPE_TO_MACRO = {
@@ -153,8 +174,8 @@ class InlineFormatRenderPlugin(RenderPlugin[LatexRenderer]):
             renderer.emit("``", f.contents, "''")
         else:
             # All other kinds are just the contents wrapped in a macro
-            with renderer.emit_macro(FORMAT_TYPE_TO_MACRO[f.format_type]):
-                renderer.emit(f.contents)
+            renderer.emit_macro(FORMAT_TYPE_TO_MACRO[f.format_type])
+            renderer.emit_braced(f.contents)
             
 
 class UrlRenderPlugin(RenderPlugin[LatexRenderer]):
@@ -172,10 +193,10 @@ class UrlRenderPlugin(RenderPlugin[LatexRenderer]):
         
         # TODO this breaks if the hash is already escaped :|
 
-        if url.name is None:
+        if url.contents is None:
             renderer.emit_macro("url")
             renderer.emit_braced(url.url.replace("#", "\\#"))
         else:
             renderer.emit_macro("href")
             renderer.emit_braced(url.url.replace("#", "\\#"))
-            renderer.emit_braced(url.name)
+            renderer.emit_braced(url.contents)
