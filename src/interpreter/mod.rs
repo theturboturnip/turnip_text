@@ -309,7 +309,11 @@ impl InterpManualBlockScopeState {
             Some((builder, code_span)) => {
                 let block_or_header =
                     BlockScopeBuilder::call_build_from_blocks(py, builder, self.children)
-                        .err_as_interp(py, scope)?;
+                        .err_as_interp(
+                            py,
+                            "Error while calling .build_from_blocks() on object",
+                            scope,
+                        )?;
                 Ok((block_or_header, Some(code_span)))
             }
             None => {
@@ -471,19 +475,34 @@ pub enum InterpError {
     #[error("Inline scope owner was not followed by an inline scope")]
     InlineOwnerCodeHasNoScope { code_span: ParseSpan },
     #[error("Python error: {pyerr}")]
-    PythonErr { pyerr: String, code_span: ParseSpan },
+    PythonErr {
+        ctx: String,
+        pyerr: String,
+        code_span: ParseSpan,
+    },
     #[error("Escaped newline (used for sentence continuation) found outside paragraph")]
     EscapedNewlineOutsideParagraph { newline: ParseSpan },
 }
 
 trait MapContextlessResult<T> {
-    fn err_as_interp(self, py: Python, code_span: ParseSpan) -> TurnipTextContextlessResult<T>;
+    fn err_as_interp(
+        self,
+        py: Python,
+        ctx: &'static str,
+        code_span: ParseSpan,
+    ) -> TurnipTextContextlessResult<T>;
     fn err_as_internal(self, py: Python) -> TurnipTextContextlessResult<T>;
 }
 impl<T> MapContextlessResult<T> for PyResult<T> {
-    fn err_as_interp(self, py: Python, code_span: ParseSpan) -> TurnipTextContextlessResult<T> {
+    fn err_as_interp(
+        self,
+        py: Python,
+        ctx: &'static str,
+        code_span: ParseSpan,
+    ) -> TurnipTextContextlessResult<T> {
         self.map_err(|pyerr| {
             InterpError::PythonErr {
+                ctx: ctx.into(),
                 pyerr: stringify_pyerr(py, &pyerr),
                 code_span,
             }
@@ -671,7 +690,11 @@ impl Interpreter {
                 RawScopeClose(_, n_hashes) if n_hashes == *expected_n_hashes => {
                     // Make sure the RawScopeBuilder produces something that's either Inline or Block
                     let to_emit = RawScopeBuilder::call_build_from_raw(py, builder, text)
-                        .err_as_interp(py, *builder_span)?;
+                        .err_as_interp(
+                            py,
+                            "Error while calling .build_from_raw() on object",
+                            *builder_span,
+                        )?;
 
                     match to_emit {
                         PyTcUnionRef::A(inl) => (

@@ -40,7 +40,7 @@ impl InterpInlineScopeState {
         let scope = self.scope_start.combine(&scope_end);
         match self.builder {
             Some(builder) => InlineScopeBuilder::call_build_from_inlines(py, builder, self.children)
-                .err_as_interp(py, scope),
+                .err_as_interp(py, "Error while calling .build_from_inlines() on an object", scope),
             None => Ok(PyTcRef::of(self.children.as_ref(py)).expect("Internal error: InterpInlineScopeState::children, an InlineScope, somehow doesn't fit the Inline typeclass")),
         }
     }
@@ -594,7 +594,11 @@ impl InterpParaState {
                 RawScopeClose(_, n_hashes) if n_hashes == *expected_n_hashes => match builder {
                     Some(builder) => {
                         let to_emit = RawScopeBuilder::call_build_from_raw(py, builder, text)
-                            .err_as_interp(py, *raw_start)?;
+                            .err_as_interp(
+                                py,
+                                "Error while calling .build_from_raw() on an object",
+                                *raw_start,
+                            )?;
 
                         match to_emit {
                             PyTcUnionRef::A(inl) => {

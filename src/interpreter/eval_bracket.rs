@@ -181,7 +181,10 @@ pub fn eval_brackets(
         }
     };
 
-    let res =
-        EvalBracketResult::eval_in_ctx(py, py_env, code, eval_ctx).err_as_interp(py, code_span)?;
+    let res = EvalBracketResult::eval_in_ctx(py, py_env, code, eval_ctx).err_as_interp(
+        py,
+        "Error while evaluating initial python code",
+        code_span,
+    )?;
     Ok(Some((res, code_span)))
 }

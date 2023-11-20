@@ -235,6 +235,7 @@ impl TestInterpError {
                     code_span: l_code_span,
                 },
                 InterpError::PythonErr {
+                    ctx: _, // TODO this is user-facing - do we need to test it?
                     pyerr: r_pyerr,
                     code_span: r_code_span,
                 },

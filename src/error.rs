@@ -23,13 +23,13 @@ pub fn stringify_pyerr(py: Python, pyerr: &PyErr) -> String {
 
 #[derive(Error, Debug)]
 pub enum TurnipTextContextlessError {
-    #[error("Syntax Error {1}")]
+    #[error("Syntax Error: {1}")]
     Lex(usize, LexError),
-    #[error("Interpreter Error {0}")]
+    #[error("Interpreter Error: {0}")]
     Interp(#[from] Box<InterpError>),
-    #[error("Internal Error {0}")]
+    #[error("Internal Error: {0}")]
     Internal(String),
-    #[error("Internal Python Error {0}")]
+    #[error("Internal Python Error: {0}")]
     InternalPython(String),
 }
 impl From<InterpError> for TurnipTextContextlessError {
@@ -306,13 +306,17 @@ sources,
 sources,
 &[(code_span, "InlineScopeOwner returned by this", None)]
             ),
-            PythonErr { pyerr, code_span } => Snippet {
+            PythonErr { ctx, pyerr, code_span } => Snippet {
                 title: Some(Annotation {
                     label: Some("Error executing user-defined Python"),
                     id: None,
                     annotation_type: AnnotationType::Error
                 }),
-                footer: vec![Annotation{
+                footer: vec![Annotation {
+                    label: Some(ctx.as_str()),
+                    id: None,
+                    annotation_type: AnnotationType::Note
+                }, Annotation{
                     label: Some(pyerr.as_str()),
                     id: None,
                     annotation_type: AnnotationType::Error
