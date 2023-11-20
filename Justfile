@@ -45,4 +45,4 @@ example:
 
 _example:
 	maturin develop --extras=typing,test
-	python3 ./examples/phdprop.py
+	python ./examples/phdprop.py
