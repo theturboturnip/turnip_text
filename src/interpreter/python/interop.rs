@@ -591,6 +591,7 @@ impl InlineScope {
     }
 }
 
+// TODO Rename to TurnipTextFile, make parse a method on it? Need some warning to say "SERIOUSLY DON'T CALL .parse WHILE PARSING", or some other much simpler way to emit one than "call InsertedFile.from_blah"? Default function on DocState?
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct InsertedFile {
