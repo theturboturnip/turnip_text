@@ -56,7 +56,7 @@ T = TypeVar("T")
 class Document:
     exported_nodes: Set[Type[Union[Block, Inline, DocSegmentHeader]]]
     counted_anchor_kinds: Set[str]
-    doc: "DocState" # TODO REALLY needs renaming to "state" everywhere
+    doc: "DocState"  # TODO REALLY needs renaming to "state" everywhere
     fmt: "FormatContext"
     toplevel: DocSegment
     floats: Dict[Anchor, Block]
@@ -193,7 +193,7 @@ class DocPlugin:
                 # Stateless functions get added to the stateless context
                 if is_stateless:
                     fmt.__dict__[key] = value
-                
+
             plugin.__init_ctx(fmt, doc)
         return fmt, doc
 
@@ -356,8 +356,8 @@ class DocState:
     # Evaluated code can call directly out to doc.blah or fmt.blah.
     doc: "DocState"
     fmt: "FormatContext"
-    anchors: DocAnchors # TODO move this out of a class and directly into DocState?
-    floats: Dict[Anchor, Block] # TODO Float class, DictMappingAnchorToFloat class?
+    anchors: DocAnchors  # TODO move this out of a class and directly into DocState?
+    floats: Dict[Anchor, Block]  # TODO Float class, DictMappingAnchorToFloat class?
 
     def __init__(self, fmt: "FormatContext") -> None:
         self.doc = self
@@ -365,9 +365,11 @@ class DocState:
         self.anchors = DocAnchors()
         self.floats = {}
 
-    def add_float(self, anchor: Anchor, float: Block):
+    def add_float(self, anchor: Anchor, float: Block) -> None:
         if anchor in self.floats:
-            raise ValueError(f"Tried to use the same anchor {anchor} on multiple floats")
+            raise ValueError(
+                f"Tried to use the same anchor {anchor} on multiple floats"
+            )
         self.floats[anchor] = float
 
     def lookup_float_from_backref(self, backref: Backref) -> Optional[Block]:

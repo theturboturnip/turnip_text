@@ -204,7 +204,9 @@ class Renderer:
     fmt: FormatContext
     handlers: RendererHandlers  # type: ignore[type-arg]
     anchor_counters: Dict[Anchor, CounterChainValue]
-    visit_results: Dict[int, Any] # Map id(block | inline | docsegmentheader) to a visit result
+    visit_results: Dict[
+        int, Any
+    ]  # Map id(block | inline | docsegmentheader) to a visit result
     write_to: Writable
 
     _indent: str = ""
@@ -282,17 +284,20 @@ class Renderer:
             raise RuntimeError(
                 f"Some counters are not declared in the CounterSet, but are used by the document: {missing_doc_counters}"
             )
-        
+
         # TODO float arrangement pass? Right now we parse them all at the end...
 
         # The visitor/counter pass
         visit_results: Dict[int, Any] = {}
         anchor_counters: Dict[Anchor, CounterChainValue] = {}
         # Parse the floats in ""order""
-        # type: ignore because this relies on covariance. 
+        # type-ignore because this relies on covariance.
         # doc.floats.values() is a sequence of Block, [doc.toplevel] is a list of DocSegment
-        dfs_queue: List[Block | Inline | DocSegment | DocSegmentHeader] = \
-            list(reversed(doc.floats.values())) + [doc.toplevel] # type: ignore
+        dfs_queue: List[Block | Inline | DocSegment | DocSegmentHeader] = list(
+            reversed(doc.floats.values())
+        ) + [
+            doc.toplevel
+        ]  # type: ignore
         while dfs_queue:
             node = dfs_queue.pop()
 
@@ -323,7 +328,9 @@ class Renderer:
                 dfs_queue.extend(children)
 
         # The rendering pass
-        renderer = cls(doc.doc, doc.fmt, handlers, anchor_counters, visit_results, write_to)
+        renderer = cls(
+            doc.doc, doc.fmt, handlers, anchor_counters, visit_results, write_to
+        )
         renderer.emit_segment(doc.toplevel)
 
         if isinstance(write_to, io.StringIO):
@@ -454,7 +461,7 @@ class Renderer:
         # TODO could be extended by e.g. latex to ensure you get sentence-break-whitespace at the end of each sentence?
         for i in s:
             self.emit_inline(i)
-        
+
     def push_indent(self, n: int) -> None:
         self._indent += " " * n
 

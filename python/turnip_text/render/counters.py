@@ -83,6 +83,7 @@ UPPER_ROMAN_NUMBERING = RomanNumbering(upper=True)
 LOWER_ALPH_NUMBERING = BasicNumbering(string.ascii_lowercase)
 UPPER_ALPH_NUMBERING = BasicNumbering(string.ascii_uppercase)
 
+
 @dataclass
 class CounterChainValue:
     # The chain of counters, where element [-1] is the main counter for this value
@@ -92,11 +93,13 @@ class CounterChainValue:
 
     def __post_init__(self) -> None:
         if not self.parent_counters:
-            raise ValueError("CounterChainValue must have at least one (Counter, value) pair")
+            raise ValueError(
+                "CounterChainValue must have at least one (Counter, value) pair"
+            )
 
     def render(self) -> Inline:
         """Take the last-level counter and use it to render out the whole counter chain.
-        
+
         e.g. if Figures were per-chapter per-section, the chain is ((chapter, X), (section, Y), (figure, Z)).
         Use `figure` to render that chain into e.g. 'Figure X.Y.Z'.
         """
@@ -111,7 +114,9 @@ class Counter(abc.ABC):
 
     value: int = 0
 
-    def __init__(self, anchor_id: str, numbering: Numbering, subcounters: List["Counter"]) -> None:
+    def __init__(
+        self, anchor_id: str, numbering: Numbering, subcounters: List["Counter"]
+    ) -> None:
         super().__init__()
         self.anchor_id = anchor_id
         self.numbering = numbering
@@ -132,18 +137,30 @@ class Counter(abc.ABC):
         for c in self.subcounters:
             c.reset()
 
+
 class BasicCounter(Counter):
     prefix: str
 
-    def __init__(self, anchor_id: str, prefix: str, numbering: Numbering, subcounters: List[Counter]) -> None:
+    def __init__(
+        self,
+        anchor_id: str,
+        prefix: str,
+        numbering: Numbering,
+        subcounters: List[Counter],
+    ) -> None:
         super().__init__(anchor_id, numbering, subcounters)
         self.prefix = prefix
 
     def render_counter(self, parent_chain: Iterable[Tuple[Counter, int]]) -> Inline:
-        return InlineScope([
-            UnescapedText(f"{self.prefix} "),
-            join_inlines((c.numbering[v] for c, v in parent_chain), UnescapedText("."))
-        ])
+        return InlineScope(
+            [
+                UnescapedText(f"{self.prefix} "),
+                join_inlines(
+                    (c.numbering[v] for c, v in parent_chain), UnescapedText(".")
+                ),
+            ]
+        )
+
 
 class CounterSet:
     # The roots of the tree of labels

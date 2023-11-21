@@ -17,7 +17,7 @@ class UserBlock(VisitableNode, Block):
 @dataclass(frozen=True)
 class UserAnchorBlock(VisitableNode, Block):
     contents: Iterable[Block | Inline] | None
-    anchor: Anchor | None # Optional field, accessed with getattr, assumed to be None if not present.
+    anchor: Anchor | None  # Optional field, accessed with getattr, assumed to be None if not present.
 
 
 @dataclass(frozen=True)
@@ -28,11 +28,11 @@ class UserInline(VisitableNode, Inline):
 @dataclass(frozen=True)
 class UserAnchorInline(VisitableNode, Inline):
     contents: Iterable[Block | Inline] | None
-    anchor: Anchor | None # Optional field, accessed with getattr, assumed to be None if not present.
+    anchor: Anchor | None  # Optional field, accessed with getattr, assumed to be None if not present.
 
 
 @dataclass(frozen=True)
 class UserAnchorDocSegmentHeader(DocSegmentHeader):
     contents: Iterable[Block | Inline] | None
-    anchor: Anchor | None # Optional field, accessed with getattr, assumed to be None if not present.
+    anchor: Anchor | None  # Optional field, accessed with getattr, assumed to be None if not present.
     weight: int

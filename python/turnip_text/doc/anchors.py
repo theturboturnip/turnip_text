@@ -52,7 +52,7 @@ class Anchor:
 
     def canonical(self) -> str:
         return f"{self.kind}:{self.id}"
-    
+
     def to_backref(self, label_contents: Optional[Inline] = None) -> "Backref":
         if self.id is None:
             raise ValueError(f"Can't convert an Anchor {self} with no id to a Backref")
@@ -85,9 +85,7 @@ class DocAnchors:
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
         return [Backref]
 
-    def register_new_anchor(
-        self, kind: str, id: Optional[str]
-    ) -> Anchor:
+    def register_new_anchor(self, kind: str, id: Optional[str]) -> Anchor:
         """
         When inside the document, create a new anchor.
         """

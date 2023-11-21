@@ -45,7 +45,9 @@ class block_scope_builder(BlockScopeBuilder):
 
     func: Callable[[BlockScope], Optional[Block | DocSegmentHeader]]
 
-    def __init__(self, func: Callable[[BlockScope], Optional[Block | DocSegmentHeader]]) -> None:
+    def __init__(
+        self, func: Callable[[BlockScope], Optional[Block | DocSegmentHeader]]
+    ) -> None:
         self.func = func
 
     def build_from_blocks(self, b: BlockScope) -> Optional[Block | DocSegmentHeader]:

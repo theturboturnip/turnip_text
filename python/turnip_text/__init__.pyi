@@ -28,7 +28,9 @@ class DocSegmentHeader(Protocol):
 
 class BlockScopeBuilder(abc.ABC):
     @abc.abstractmethod
-    def build_from_blocks(self, bs: BlockScope) -> Optional[Block | DocSegmentHeader]: ...
+    def build_from_blocks(
+        self, bs: BlockScope
+    ) -> Optional[Block | DocSegmentHeader]: ...
     def __matmul__(
         self, maybe_b: "CoercibleToBlockScope"
     ) -> Optional[Block | DocSegmentHeader]:
@@ -140,10 +142,9 @@ class InsertedFile:
     """
     Emit an instance of this class from eval-brackets in a Block context to start parsing its contents instead.
     """
+
     def __init__(self, name: str, contents: str) -> None: ...
     @staticmethod
-    def from_path(path: str) -> InsertedFile:
-        ...
+    def from_path(path: str) -> InsertedFile: ...
     @staticmethod
-    def from_string(contents: str) -> InsertedFile:
-        ...
+    def from_string(contents: str) -> InsertedFile: ...

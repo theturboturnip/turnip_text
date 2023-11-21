@@ -84,7 +84,9 @@ class InlineScopeBuilder(abc.ABC):
     def build_from_inlines(self, inls: InlineScope) -> Inline | DocSegmentHeader:
         ...
 
-    def __matmul__(self, maybe_inls: "CoercibleToInlineScope") -> Inline | DocSegmentHeader:
+    def __matmul__(
+        self, maybe_inls: "CoercibleToInlineScope"
+    ) -> Inline | DocSegmentHeader:
         inls = coerce_to_inline_scope(maybe_inls)
         return self.build_from_inlines(inls)
 
@@ -115,13 +117,10 @@ CoercibleToBlock = Union[
 # The types that can be coerced into a BlockScope, in the order they are checked and attempted
 CoercibleToBlockScope = Union[BlockScope, CoercibleToBlock]
 
+
 def join_inlines(inlines: Iterable[Inline], joiner: Inline) -> InlineScope:
     """Equivalent of string.join, but for joining any set of Inlines with a joiner Inline"""
-    new_inlines = [
-        val
-        for i in inlines
-        for val in (i, joiner)
-    ]
+    new_inlines = [val for i in inlines for val in (i, joiner)]
     if new_inlines:
         new_inlines.pop()
     return InlineScope(new_inlines)
