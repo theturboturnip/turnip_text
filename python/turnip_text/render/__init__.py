@@ -304,7 +304,10 @@ class Renderer:
             # Counter pass
             anchor = getattr(node, "anchor", None)
             if isinstance(anchor, Anchor):
-                anchor_counters[anchor] = counters.increment_counter(anchor.kind)
+                # non-None anchors always increment the count, but if anchor.id is None we don't care
+                count = counters.increment_counter(anchor.kind)
+                if anchor.id is not None:
+                    anchor_counters[anchor] = count
 
             # Visit the node
             if not isinstance(node, DocSegment):

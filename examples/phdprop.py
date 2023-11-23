@@ -81,7 +81,7 @@ if __name__ == "__main__":
     #     ]
     # )
 
-    doc = parse(Path("./examples/phdprop.ttxt"), STD_DOC_PLUGINS())
+    doc = parse(Path("./examples/phdprop.ttext"), STD_DOC_PLUGINS())
 
     latex_counters = CounterSet(
         [

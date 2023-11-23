@@ -127,13 +127,54 @@ class StructureBlockHeader(UserAnchorDocSegmentHeader):
     contents: BlockScope  # The title of the segment (TODO once the interpreter allows it, make this use InlineScope. See _headingn)
     anchor: Optional[
         Anchor
-    ]  # May be None if this DocSegment is unnumbered. TODO otherwise necessary because it's needed for counters??? argh.
+    ]  # May be None if this DocSegment is unnumbered. Otherwise necessary so it can be counted, but the ID may be None
     weight: int
 
 
 @dataclass(frozen=True)
 class TableOfContents(Block):
     pass
+
+
+# TODO make this a InlineScopeBuilder. Right now an InlineScopeBuilder can't return DocSegmentHeader,
+# because once you're parsing inline content you're in "inline mode".
+class StructureBlockHeaderGenerator(BlockScopeBuilder):
+    doc: DocState
+    weight: int
+    label: Optional[str]
+    num: bool
+
+    def __init__(
+        self, doc: DocState, weight: int, label: Optional[str], num: bool
+    ) -> None:
+        super().__init__()
+        self.doc = doc
+        self.weight = weight
+        self.label = label
+        self.num = num
+
+    def __call__(
+        self, label: Optional[str] = None, num: bool = True
+    ) -> "StructureBlockHeaderGenerator":
+        return StructureBlockHeaderGenerator(self.doc, self.weight, label, num)
+
+    def build_from_blocks(self, bs: BlockScope) -> StructureBlockHeader:
+        if self.label and not self.num:
+            # TODO can we make this error latex-specific?? Markdown would support this
+            raise ValueError(
+                "Some backends do not support labeled non-numbered headings."
+            )
+
+        kind = f"h{self.weight}"
+        weight = self.weight
+
+        if self.num:
+            return StructureBlockHeader(
+                contents=bs,
+                anchor=self.doc.anchors.register_new_anchor(kind, self.label),
+                weight=weight,
+            )
+        return StructureBlockHeader(contents=bs, anchor=None, weight=weight)
 
 
 # TODO make the headings builders that are also callable?
@@ -146,49 +187,33 @@ class StructureDocPlugin(DocPlugin):
             # TableOfContents, # TODO
         )
 
-    # TODO make this return InlineScopeBuilder. Right now an InlineScopeBuilder can't return DocSegmentHeader,
-    # because once you're parsing inline content you're in "inline mode".
-    def _headingn(
-        self, state: DocState, label: str, num: bool, n: int
-    ) -> BlockScopeBuilder:
-        kind = f"h{n}"
-        weight = n
-
-        @block_scope_builder
-        def builder(bs: BlockScope) -> StructureBlockHeader:
-            if num:
-                return StructureBlockHeader(
-                    contents=bs,
-                    anchor=state.anchors.register_new_anchor(kind, label),
-                    weight=weight,
-                )
-            return StructureBlockHeader(contents=bs, anchor=None, weight=weight)
-
-        return builder
-
+    @property
     @stateful
     def heading1(
-        self, state: DocState, label: str, num: bool = True
+        self, state: DocState, label: Optional[str] = None, num: bool = True
     ) -> BlockScopeBuilder:
-        return self._headingn(state, label, num, 1)
+        return StructureBlockHeaderGenerator(state, 1, label, num)
 
+    @property
     @stateful
     def heading2(
-        self, state: DocState, label: str, num: bool = True
+        self, state: DocState, label: Optional[str] = None, num: bool = True
     ) -> BlockScopeBuilder:
-        return self._headingn(state, label, num, 2)
+        return StructureBlockHeaderGenerator(state, 2, label, num)
 
+    @property
     @stateful
     def heading3(
-        self, state: DocState, label: str, num: bool = True
+        self, state: DocState, label: Optional[str] = None, num: bool = True
     ) -> BlockScopeBuilder:
-        return self._headingn(state, label, num, 3)
+        return StructureBlockHeaderGenerator(state, 3, label, num)
 
+    @property
     @stateful
     def heading4(
-        self, state: DocState, label: str, num: bool = True
+        self, state: DocState, label: Optional[str] = None, num: bool = True
     ) -> BlockScopeBuilder:
-        return self._headingn(state, label, num, 4)
+        return StructureBlockHeaderGenerator(state, 4, label, num)
 
     # TODO
     # @stateless
