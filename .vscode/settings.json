@@ -7,7 +7,6 @@
         "editor.wrappingIndent": "same",
         "editor.wordWrapColumn": 120,
     },
-    "python.linting.mypyEnabled": true,
     "rust-analyzer.cargo.noDefaultFeatures": true,
     "isort.args": [
         "--profile", "black"
