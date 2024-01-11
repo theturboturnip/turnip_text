@@ -5,12 +5,7 @@ from pathlib import Path
 from turnip_text import *
 from turnip_text.doc import parse
 from turnip_text.doc.std_plugins import STD_DOC_PLUGINS
-from turnip_text.render.counters import (
-    ARABIC_NUMBERING,
-    BasicCounter,
-    Counter,
-    CounterSet,
-)
+from turnip_text.render.counters import CounterSet
 from turnip_text.render.latex.renderer import LatexRenderer
 from turnip_text.render.latex.std_plugins import STD_LATEX_RENDER_PLUGINS
 
@@ -84,14 +79,16 @@ if __name__ == "__main__":
     doc = parse(Path("./examples/phdprop.ttext"), STD_DOC_PLUGINS())
 
     latex_counters = CounterSet(
-        [
-            BasicCounter("h1", "Section", ARABIC_NUMBERING, [
-                BasicCounter("h2", "Subsection", ARABIC_NUMBERING, [])
-            ]),
-            BasicCounter("footnote", "Footnote", ARABIC_NUMBERING, []) # TODO really really shouldn't need this!
-        ]
+        {
+            "h1": [
+                "h2"
+            ],  # This shouldn't be necessary - StructurePlugin should fill it in automatically
+            "footnote": [],  # This shouldn't be necessary either
+        }
     )
-    rendered_latex = LatexRenderer.render(STD_LATEX_RENDER_PLUGINS(use_chapters=False), latex_counters, doc)
+    rendered_latex = LatexRenderer.render(
+        STD_LATEX_RENDER_PLUGINS(use_chapters=False), latex_counters, doc
+    )
     if args.olatex:
         with open(args.olatex, "w") as f:
             f.write(rendered_latex.getvalue())

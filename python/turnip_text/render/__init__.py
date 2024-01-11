@@ -37,7 +37,7 @@ from turnip_text import (
 )
 from turnip_text.doc import DocState, Document, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
-from turnip_text.render.counters import Counter, CounterChainValue, CounterSet
+from turnip_text.render.counters import CounterChainValue, CounterSet, DocCounter
 
 T = TypeVar("T")
 P = ParamSpec("P")
