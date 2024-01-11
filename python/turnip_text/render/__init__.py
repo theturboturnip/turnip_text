@@ -87,71 +87,36 @@ class DynamicNodeDispatch(Generic[P, TReturn]):
 TRenderer_contra = TypeVar("TRenderer_contra", bound="Renderer", contravariant=True)
 TVisitorOutcome = TypeVar("TVisitorOutcome")
 
+# TODO if i want to render Anchors, can i? it's not an inline... is it?
+
 
 class RendererHandlers(Generic[TRenderer_contra]):
-    visitors: DynamicNodeDispatch[[], Any]
-    block_inline_emitters: DynamicNodeDispatch[
-        [Any, TRenderer_contra, FormatContext], None
-    ]
+    block_inline_emitters: DynamicNodeDispatch[[TRenderer_contra, FormatContext], None]
     header_emitters: DynamicNodeDispatch[
-        [BlockScope, Iterator[DocSegment], Any, TRenderer_contra, FormatContext],
+        [BlockScope, Iterator[DocSegment], TRenderer_contra, FormatContext],
         None,
     ]
 
     def __init__(self) -> None:
         super().__init__()
-        self.visitors = DynamicNodeDispatch()
         self.block_inline_emitters = DynamicNodeDispatch()
         self.header_emitters = DynamicNodeDispatch()
 
     def register_block_or_inline(
         self,
         type: Type[TBlockOrInline],
-        visitor: Callable[[TBlockOrInline], TVisitorOutcome],
-        renderer: Callable[
-            [TBlockOrInline, TVisitorOutcome, TRenderer_contra, FormatContext], None
-        ],
-    ) -> None:
-        self.visitors.register_handler(type, visitor)
-        self.block_inline_emitters.register_handler(type, renderer)
-
-    def register_block_or_inline_renderer(
-        self,
-        type: Type[TBlockOrInline],
-        renderer: Callable[
-            [TBlockOrInline, None, TRenderer_contra, FormatContext], None
-        ],
+        renderer: Callable[[TBlockOrInline, TRenderer_contra, FormatContext], None],
     ) -> None:
         self.block_inline_emitters.register_handler(type, renderer)
 
     def register_header(
         self,
         type: Type[THeader],
-        visitor: Callable[[THeader], TVisitorOutcome],
         renderer: Callable[
             [
                 THeader,
                 BlockScope,
                 Iterator[DocSegment],
-                TVisitorOutcome,
-                TRenderer_contra,
-                FormatContext,
-            ],
-            None,
-        ],
-    ) -> None:
-        self.visitors.register_handler(type, visitor)
-        self.header_emitters.register_handler(type, renderer)
-
-    def register_header_renderer(
-        self,
-        type: Type[THeader],
-        renderer: Callable[
-            [
-                THeader,
-                BlockScope,
-                Iterator[DocSegment],
-                None,
                 TRenderer_contra,
                 FormatContext,
             ],
@@ -159,137 +124,44 @@ class RendererHandlers(Generic[TRenderer_contra]):
         ],
     ) -> None:
         self.header_emitters.register_handler(type, renderer)
-
-    def visit(self, n: TVisitable) -> Any:
-        f = self.visitors.get_handler(n)
-        if f is None:
-            return None
-        return f(n)
 
     def emit_block_or_inline(
         self,
         n: TBlockOrInline,
-        v: TVisitorOutcome,
         renderer: TRenderer_contra,
         fmt: FormatContext,
     ) -> None:
         f = self.block_inline_emitters.get_handler(n)
         if f is None:
             raise NotImplementedError(f"Didn't have renderer for {n}")
-        f(n, v, renderer, fmt)
+        f(n, renderer, fmt)
 
     def emit_doc_segment(
         self,
         s: DocSegment,
-        v: TVisitorOutcome,
         renderer: TRenderer_contra,
         fmt: FormatContext,
     ) -> None:
         f = self.header_emitters.get_handler(s.header)
         if f is None:
             raise NotImplementedError(f"Didn't have renderer for {s.header}")
-        f(s.header, s.contents, s.subsegments, v, renderer, fmt)
+        f(s.header, s.contents, s.subsegments, renderer, fmt)
 
     def renderer_keys(self) -> Set[Type[Block | Inline | DocSegmentHeader]]:
         return set(self.block_inline_emitters.keys()).union(self.header_emitters.keys())
 
 
-class Writable(Protocol):
-    def write(self, s: str, /) -> int:
-        ...
+VisitorFilter = Tuple[Type[Any], ...] | Type[Any] | None
+VisitorFunc = Callable[[Any], None]
 
 
-class Renderer:
-    doc: DocState
-    fmt: FormatContext
-    handlers: RendererHandlers  # type: ignore[type-arg]
-    anchor_counters: Dict[Anchor, CounterChainValue]
-    visit_results: Dict[
-        int, Any
-    ]  # Map id(block | inline | docsegmentheader) to a visit result
-    write_to: Writable
+class DocumentDfsPass:
+    visitors: List[Tuple[VisitorFilter, VisitorFunc]]
 
-    _indent: str = ""
-    # After emitting a newline with emit_newline, this is set.
-    # The next call to emit_raw will emit _indent.
-    # This is important if you want to change the indent after something has already emitted a newline,
-    # e.g. if you wrap emit_paragraph() in indent(4), the emit_paragraph() will emit a final newline but *not* immediately emit the indent of 4, so subsequent emissions are nicely indented.
-    # In the same way, if you emit a newline *then* change the indent, the next emitted item will have the new indent applied.
-    _need_indent: bool = False
+    def __init__(self, visitors: List[Tuple[VisitorFilter, VisitorFunc]]) -> None:
+        self.visitors = visitors
 
-    def __init__(
-        self,
-        doc: DocState,
-        fmt: FormatContext,
-        handlers: RendererHandlers,  # type: ignore[type-arg]
-        anchor_counters: Dict[Anchor, CounterChainValue],
-        visit_results: Dict[int, Any],
-        write_to: Writable,
-    ) -> None:
-        self.doc = doc
-        self.fmt = fmt
-        self.handlers = handlers
-        self.anchor_counters = anchor_counters
-        self.visit_results = visit_results
-        self.write_to = write_to
-
-    @classmethod
-    def render_to_path(
-        cls: Type[TRenderer_contra],
-        plugins: Sequence["RenderPlugin[TRenderer_contra]"],
-        counters: CounterSet,
-        doc: Document,
-        write_to_path: Union[str, bytes, "os.PathLike[Any]"],
-    ) -> None:
-        with open(write_to_path, "w", encoding="utf-8") as write_to:
-            cls.render(plugins, counters, doc, write_to)
-
-    @classmethod
-    def render(
-        cls: Type[TRenderer_contra],
-        plugins: Sequence["RenderPlugin[TRenderer_contra]"],
-        counters: CounterSet,
-        doc: Document,
-        write_to: Writable | None = None,
-    ) -> io.StringIO | None:
-        if write_to is None:
-            write_to = io.StringIO()
-
-        handlers: RendererHandlers[TRenderer_contra] = RendererHandlers()
-        handlers.register_block_or_inline_renderer(
-            BlockScope, lambda bs, _, r, fmt: r.emit_blockscope(bs)
-        )
-        handlers.register_block_or_inline_renderer(
-            Paragraph, lambda p, _, r, fmt: r.emit_paragraph(p)
-        )
-        handlers.register_block_or_inline_renderer(
-            InlineScope, lambda inls, _, r, fmt: r.emit_inlinescope(inls)
-        )
-        handlers.register_block_or_inline_renderer(
-            UnescapedText, lambda t, _, r, fmt: r.emit_unescapedtext(t)
-        )
-        for p in plugins:
-            p._register_node_handlers(handlers)
-
-        missing_renderers = doc.exported_nodes.difference(handlers.renderer_keys())
-        if missing_renderers:
-            raise RuntimeError(
-                f"Some node types were not given renderers by any plugin, but are used by the document: {missing_renderers}"
-            )
-
-        missing_doc_counters = doc.counted_anchor_kinds.difference(
-            counters.anchor_kinds()
-        )
-        if missing_doc_counters:
-            raise RuntimeError(
-                f"Some counters are not declared in the CounterSet, but are used by the document: {missing_doc_counters}"
-            )
-
-        # TODO float arrangement pass? Right now we parse them all at the end...
-
-        # The visitor/counter pass
-        visit_results: Dict[int, Any] = {}
-        anchor_counters: Dict[Anchor, CounterChainValue] = {}
+    def dfs_over_document(self, doc: Document) -> None:
         # Parse the floats in ""order""
         # type-ignore because this relies on covariance.
         # doc.floats.values() is a sequence of Block, [doc.toplevel] is a list of DocSegment
@@ -301,19 +173,10 @@ class Renderer:
         while dfs_queue:
             node = dfs_queue.pop()
 
-            # Counter pass
-            anchor = getattr(node, "anchor", None)
-            if isinstance(anchor, Anchor):
-                # non-None anchors always increment the count, but if anchor.id is None we don't care
-                count = counters.increment_counter(anchor.kind)
-                if anchor.id is not None:
-                    anchor_counters[anchor] = count
-
             # Visit the node
-            if not isinstance(node, DocSegment):
-                visit_result = handlers.visit(node)
-                if visit_result is not None:
-                    visit_results[id(node)] = visit_result
+            for v_type, v_f in self.visitors:
+                if v_type is None or isinstance(node, v_type):
+                    v_f(node)
 
             # Extract children as a reversed iterator.
             # reversed is important because we pop the last thing in the queue off first.
@@ -330,18 +193,106 @@ class Renderer:
             if children is not None:
                 dfs_queue.extend(children)
 
-        # The rendering pass
-        renderer = cls(
-            doc.doc, doc.fmt, handlers, anchor_counters, visit_results, write_to
+
+class Writable(Protocol):
+    def write(self, s: str, /) -> int:
+        ...
+
+
+class Renderer:
+    doc: DocState
+    fmt: FormatContext
+    handlers: RendererHandlers  # type: ignore[type-arg]
+    write_to: Writable
+
+    _indent: str = ""
+    # After emitting a newline with emit_newline, this is set.
+    # The next call to emit_raw will emit _indent.
+    # This is important if you want to change the indent after something has already emitted a newline,
+    # e.g. if you wrap emit_paragraph() in indent(4), the emit_paragraph() will emit a final newline but *not* immediately emit the indent of 4, so subsequent emissions are nicely indented.
+    # In the same way, if you emit a newline *then* change the indent, the next emitted item will have the new indent applied.
+    _need_indent: bool = False
+
+    def __init__(
+        self,
+        doc: DocState,
+        fmt: FormatContext,
+        handlers: RendererHandlers,  # type: ignore[type-arg]
+        write_to: Writable,
+    ) -> None:
+        self.doc = doc
+        self.fmt = fmt
+        self.handlers = handlers
+        self.write_to = write_to
+
+    @classmethod
+    def render_to_path(
+        cls: Type[TRenderer_contra],
+        plugins: Sequence["RenderPlugin[TRenderer_contra]"],
+        doc: Document,
+        write_to_path: Union[str, bytes, "os.PathLike[Any]"],
+    ) -> None:
+        with open(write_to_path, "w", encoding="utf-8") as write_to:
+            cls.render(plugins, doc, write_to)
+
+    @classmethod
+    def render(
+        cls: Type[TRenderer_contra],
+        plugins: Sequence["RenderPlugin[TRenderer_contra]"],
+        doc: Document,
+        write_to: Writable | None = None,
+    ) -> io.StringIO | None:
+        if write_to is None:
+            write_to = io.StringIO()
+
+        handlers: RendererHandlers[TRenderer_contra] = RendererHandlers()
+        handlers.register_block_or_inline(
+            BlockScope, lambda bs, r, fmt: r.emit_blockscope(bs)
         )
+        handlers.register_block_or_inline(
+            Paragraph, lambda p, r, fmt: r.emit_paragraph(p)
+        )
+        handlers.register_block_or_inline(
+            InlineScope, lambda inls, r, fmt: r.emit_inlinescope(inls)
+        )
+        handlers.register_block_or_inline(
+            UnescapedText, lambda t, r, fmt: r.emit_unescapedtext(t)
+        )
+        for p in plugins:
+            p._register_node_handlers(handlers)
+
+        missing_renderers = doc.exported_nodes.difference(handlers.renderer_keys())
+        if missing_renderers:
+            raise RuntimeError(
+                f"Some node types were not given renderers by any plugin, but are used by the document: {missing_renderers}"
+            )
+
+        # TODO reenable this
+        # missing_doc_counters = doc.counted_anchor_kinds.difference(
+        #     counters.anchor_kinds()
+        # )
+        # if missing_doc_counters:
+        #     raise RuntimeError(
+        #         f"Some counters are not declared in the CounterSet, but are used by the document: {missing_doc_counters}"
+        #     )
+
+        # The (first?) visitor/counter pass
+        dfs_visitors: List[Tuple[VisitorFilter, VisitorFunc]] = []
+        for p in plugins:
+            new_visitors = p._make_visitors()
+            if new_visitors:
+                dfs_visitors.extend(new_visitors)
+        dfs_pass = DocumentDfsPass(dfs_visitors)
+
+        dfs_pass.dfs_over_document(doc)
+
+        # The rendering pass
+        renderer = cls(doc.doc, doc.fmt, handlers, write_to)
         renderer.emit_segment(doc.toplevel)
 
         if isinstance(write_to, io.StringIO):
             return write_to
         return None
-
-    def get_anchor_counter(self, a: Anchor) -> CounterChainValue:
-        return self.anchor_counters[a]
 
     def emit_raw(self, x: str) -> None:
         """
@@ -423,14 +374,10 @@ class Renderer:
                 raise ValueError(f"Don't know how to automatically render {a}")
 
     def emit_inline(self: Self, i: Inline) -> None:
-        self.handlers.emit_block_or_inline(
-            i, self.visit_results.get(id(i), None), self, self.fmt
-        )
+        self.handlers.emit_block_or_inline(i, self, self.fmt)
 
     def emit_block(self: Self, b: Block) -> None:
-        self.handlers.emit_block_or_inline(
-            b, self.visit_results.get(id(b), None), self, self.fmt
-        )
+        self.handlers.emit_block_or_inline(b, self, self.fmt)
 
     def emit_segment(self: Self, s: DocSegment) -> None:
         if s.header is None:
@@ -440,7 +387,6 @@ class Renderer:
             self.emit_break_paragraph()
             self.handlers.emit_doc_segment(
                 s,
-                self.visit_results.get(id(s.header), None),
                 self,
                 self.fmt,
             )
@@ -488,3 +434,7 @@ class RenderPlugin(Generic[TRenderer_contra]):
         self, handlers: RendererHandlers[TRenderer_contra]
     ) -> None:
         raise NotImplementedError()
+
+    # TODO make this include serial passes, not parallel? is that useful?
+    def _make_visitors(self) -> Optional[List[Tuple[VisitorFilter, VisitorFunc]]]:
+        return None

@@ -1,7 +1,8 @@
-from typing import Iterable, Iterator, List, Optional
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 
-from turnip_text import Block, BlockScope, DocSegment
+from turnip_text import Block, BlockScope, DocSegment, Inline
 from turnip_text.doc import FormatContext
+from turnip_text.doc.anchors import Anchor, Backref, DocAnchors
 from turnip_text.doc.std_plugins import (
     Bibliography,
     Citation,
@@ -15,12 +16,20 @@ from turnip_text.doc.std_plugins import (
     NamedUrl,
     StructureBlockHeader,
 )
-from turnip_text.render import RendererHandlers, RenderPlugin
+from turnip_text.render import (
+    RendererHandlers,
+    RenderPlugin,
+    VisitorFilter,
+    VisitorFunc,
+)
+from turnip_text.render.counters import CounterChainValue, CounterSet
 from turnip_text.render.latex.renderer import LatexRenderer
 
 
 def STD_LATEX_RENDER_PLUGINS(
-    use_chapters: bool, indent_list_items: bool = True
+    counters: CounterSet,  # TODO Remove
+    use_chapters: bool,
+    indent_list_items: bool = True,
 ) -> List[RenderPlugin[LatexRenderer]]:
     return [
         StructureRenderPlugin(use_chapters),
@@ -29,6 +38,7 @@ def STD_LATEX_RENDER_PLUGINS(
         ListRenderPlugin(indent_list_items),
         InlineFormatRenderPlugin(),
         UrlRenderPlugin(),
+        AnchorCountingBackrefPlugin(counters),
     ]
 
 
@@ -51,14 +61,13 @@ class StructureRenderPlugin(RenderPlugin[LatexRenderer]):
     def _register_node_handlers(
         self, handlers: RendererHandlers[LatexRenderer]
     ) -> None:
-        handlers.register_header_renderer(StructureBlockHeader, self._emit_structure)
+        handlers.register_header(StructureBlockHeader, self._emit_structure)
 
     def _emit_structure(
         self,
         head: StructureBlockHeader,
         contents: BlockScope,
         subsegments: Iterator[DocSegment],
-        vitis: None,
         renderer: LatexRenderer,
         ctx: FormatContext,
     ) -> None:
@@ -74,9 +83,8 @@ class StructureRenderPlugin(RenderPlugin[LatexRenderer]):
             renderer.emit_macro(latex_name + "*")
         renderer.emit_braced(head.contents)  # i.e. r"\section*" + "{Section Name}"
         if head.anchor:
-            renderer.emit_macro("label")
-            renderer.emit_braced(
-                head.anchor.canonical()
+            renderer.emit(
+                head.anchor
             )  # i.e. r"\section*{Section Name}\label{h1:Section_Name}"
         renderer.emit_break_paragraph()
         # Now emit the rest of the damn doc :)
@@ -89,12 +97,12 @@ class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
     def _register_node_handlers(
         self, handlers: RendererHandlers[LatexRenderer]
     ) -> None:
-        handlers.register_block_or_inline_renderer(Citation, self._emit_cite)
-        handlers.register_block_or_inline_renderer(CiteAuthor, self._emit_citeauthor)
-        handlers.register_header_renderer(Bibliography, self._emit_bibliography)
+        handlers.register_block_or_inline(Citation, self._emit_cite)
+        handlers.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
+        handlers.register_header(Bibliography, self._emit_bibliography)
 
     def _emit_cite(
-        self, cite: Citation, visit: None, renderer: LatexRenderer, ctx: FormatContext
+        self, cite: Citation, renderer: LatexRenderer, ctx: FormatContext
     ) -> None:
         renderer.emit_macro("cite")
         if cite.contents:
@@ -104,7 +112,6 @@ class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
     def _emit_citeauthor(
         self,
         citeauthor: CiteAuthor,
-        visit: None,
         renderer: LatexRenderer,
         ctx: FormatContext,
     ) -> None:
@@ -116,7 +123,6 @@ class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
         bib: Bibliography,
         block_contents: BlockScope,
         segment_contents: Iterator[DocSegment],
-        visit: None,
         renderer: LatexRenderer,
         ctx: FormatContext,
     ) -> None:
@@ -138,7 +144,7 @@ class FootnoteRenderPlugin(RenderPlugin[LatexRenderer]):
     ) -> None:
         # TODO use visitor pattern for this? Right now the visitor doesn't get any other arguments
         # handlers.register_block_or_inline(FootnoteRef, self._visit_footnote, self._emit_footnote)
-        handlers.register_block_or_inline_renderer(FootnoteRef, self._emit_footnote)
+        handlers.register_block_or_inline(FootnoteRef, self._emit_footnote)
 
     # def _visit_footnote(self, footnote: FootnoteRef) -> Block:
     #     return None
@@ -146,7 +152,6 @@ class FootnoteRenderPlugin(RenderPlugin[LatexRenderer]):
     def _emit_footnote(
         self,
         footnote: FootnoteRef,
-        visit: None,
         renderer: LatexRenderer,
         ctx: FormatContext,
     ) -> None:
@@ -166,15 +171,12 @@ class ListRenderPlugin(RenderPlugin[LatexRenderer]):
     def _register_node_handlers(
         self, handlers: RendererHandlers[LatexRenderer]
     ) -> None:
-        handlers.register_block_or_inline_renderer(DisplayList, self._emit_list)
-        handlers.register_block_or_inline_renderer(
-            DisplayListItem, self._emit_list_item
-        )
+        handlers.register_block_or_inline(DisplayList, self._emit_list)
+        handlers.register_block_or_inline(DisplayListItem, self._emit_list_item)
 
     def _emit_list(
         self,
         list: DisplayList,
-        visit: None,
         renderer: LatexRenderer,
         ctx: FormatContext,
     ) -> None:
@@ -188,7 +190,6 @@ class ListRenderPlugin(RenderPlugin[LatexRenderer]):
     def _emit_list_item(
         self,
         list_item: DisplayListItem,
-        visit: None,
         renderer: LatexRenderer,
         ctx: FormatContext,
     ) -> None:
@@ -214,14 +215,11 @@ class InlineFormatRenderPlugin(RenderPlugin[LatexRenderer]):
     def _register_node_handlers(
         self, handlers: RendererHandlers[LatexRenderer]
     ) -> None:
-        handlers.register_block_or_inline_renderer(
-            InlineFormatted, self._emit_formatted
-        )
+        handlers.register_block_or_inline(InlineFormatted, self._emit_formatted)
 
     def _emit_formatted(
         self,
         f: InlineFormatted,
-        visit: None,
         renderer: LatexRenderer,
         fmt: FormatContext,
     ) -> None:
@@ -240,12 +238,11 @@ class UrlRenderPlugin(RenderPlugin[LatexRenderer]):
     def _register_node_handlers(
         self, handlers: RendererHandlers[LatexRenderer]
     ) -> None:
-        handlers.register_block_or_inline_renderer(NamedUrl, self._emit_url)
+        handlers.register_block_or_inline(NamedUrl, self._emit_url)
 
     def _emit_url(
         self,
         url: NamedUrl,
-        visit: None,
         renderer: LatexRenderer,
         fmt: FormatContext,
     ) -> None:
@@ -263,3 +260,75 @@ class UrlRenderPlugin(RenderPlugin[LatexRenderer]):
             renderer.emit_macro("href")
             renderer.emit_braced(url.url.replace("#", "\\#"))
             renderer.emit_braced(url.contents)
+
+
+# TODO could do something here with document.counted_anchor_kinds and comparing against supported anchors...
+class AnchorCountingBackrefPlugin(RenderPlugin[LatexRenderer]):
+    counters: CounterSet
+    node_counters: Dict[
+        int, CounterChainValue
+    ]  # Mapping of <node id> -> <counter value for node>
+    anchor_counters: Dict[
+        Tuple[str, str], CounterChainValue
+    ]  # Mapping of (kind, id) for <counter value>
+
+    def __init__(self, counters: CounterSet) -> None:
+        super().__init__()
+        self.counters = counters
+        self.node_counters = {}
+        self.anchor_counters = {}
+
+    # TODO add dependency on cleveref?
+    def _register_node_handlers(
+        self, handlers: RendererHandlers[LatexRenderer]
+    ) -> None:
+        handlers.register_block_or_inline(Backref, self._emit_backref)
+        handlers.register_block_or_inline(Anchor, self._emit_anchor)
+
+    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
+        return [(None, self._visit_anchorable)]
+
+    def _visit_anchorable(self, node: Any) -> None:
+        # Counter pass
+
+        anchor = getattr(node, "anchor", None)
+        if isinstance(anchor, Anchor):
+            if anchor.kind not in self.counters.anchor_kind_to_parent_chain:
+                raise ValueError(f"Unknown counter kind '{anchor.kind}'")
+            # non-None anchors always increment the count, but if anchor.id is None we don't care
+            count = self.counters.increment_counter(anchor.kind)
+            if anchor.id is not None:
+                self.anchor_counters[(anchor.kind, anchor.id)] = count
+            self.node_counters[id(node)] = count
+
+    # TODO if anyone needs this, implement it
+    def lookup_anchorable_name(self, node: Any) -> Inline:
+        raise NotImplementedError()
+
+    def _emit_backref(
+        self,
+        backref: Backref,
+        renderer: LatexRenderer,
+        fmt: FormatContext,
+    ):
+        # TODO branch based on anchor kind - e.g. backrefs directly to text should use \pageref{}
+        renderer.emit_macro("cref")
+        renderer.emit_braced(renderer.doc.anchors.lookup_backref(backref).canonical())
+
+    def _emit_anchor(
+        self,
+        anchor: Anchor,
+        renderer: LatexRenderer,
+        fmt: FormatContext,
+    ):
+        # TODO branch based on anchor kind
+        renderer.emit_macro("label")
+        renderer.emit_braced(anchor.canonical())
+
+    def get_anchor_counter(self, a: Anchor) -> Optional[CounterChainValue]:
+        if a.id is None:
+            return None
+        return self.anchor_counters.get((a.kind, a.id), None)
+
+    def get_node_counter(self, n: Any) -> Optional[CounterChainValue]:
+        return self.node_counters.get(id(n), None)

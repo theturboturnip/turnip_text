@@ -46,7 +46,7 @@ from turnip_text import Block, Inline, InlineScope, InlineScopeBuilder
 
 # Unlike the phd_notes lib version, this shouldn't be subclassed.
 @dataclass(frozen=True)
-class Anchor:
+class Anchor(Inline):
     kind: str
     id: Optional[str]  # If the id is None, you can't backreference this object. Ever.
 
@@ -76,6 +76,7 @@ class Backref(Inline, InlineScopeBuilder):
 
 
 # Responsible for keeping track of all the anchors in a document
+# TODO this should be a document plugin?
 class DocAnchors:
     _anchor_id_to_possible_kinds: Dict[str, Dict[str, Anchor]]
 

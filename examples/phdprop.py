@@ -87,7 +87,7 @@ if __name__ == "__main__":
         }
     )
     rendered_latex = LatexRenderer.render(
-        STD_LATEX_RENDER_PLUGINS(use_chapters=False), latex_counters, doc
+        STD_LATEX_RENDER_PLUGINS(latex_counters, use_chapters=False), doc
     )
     if args.olatex:
         with open(args.olatex, "w") as f:
