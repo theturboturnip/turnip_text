@@ -3,7 +3,7 @@ section=heading1
 subsection=heading2
 ]]
 
-[section]{
+[section()]{
     Introduction/Extended Abstract
 }
 
@@ -91,7 +91,7 @@ As CAPcelerate is investigating, naive implementations of this model can be inse
 Once domain-crossing approaches have been developed in this context, they can be extended to support lower-level APIs.
 
 #-------------------
-[section]{
+[section()]{
     Related Work
 }
 
@@ -99,7 +99,7 @@ While capabilities themselves haven't yet addressed domain-crossing, there is a 
 This section will highlight three broad topics that require domain crossing, which domain-crossing capability systems may need to be compatible with or build on.
 
 # ------------------------------------
-[subsection]{
+[subsection()]{
     DMA
 }
 
@@ -124,7 +124,7 @@ This is a very simple example of domain crossing for physically separated hardwa
 For example, accessing peripherals from Virtual Machines (VMs) adds a layer of translation between the guest-domains and the host-domains.
 
 # ------------------------------------
-[subsection]{
+[subsection()]{
     Virtualization
 }
 
@@ -157,7 +157,7 @@ When using SR-IOV, Nvidia's vGPU technology physically segments both the memory 
 Integrated GPUs (e.g. Arm Mali GPUs, packaged on the same SoC as the CPU) don't necessarily use SR-IOV, but do isolate resources similarly[cite("armltdArmMaliG78AEProduct2020")].
 
 # ------------------------------------
-[subsection]{
+[subsection()]{
     GPU Virtual Memory
 }
 
@@ -199,7 +199,7 @@ However, desktop and server systems will use external GPUs with dedicated memory
 This dichotomy between a unified view and a more performant, domain-aware view will remain in place for the foreseeable future, and if CHERI is going to reach widespread adoption it needs to be able to handle it.
 
 #-------------------------
-[section]{
+[section()]{
     First-Year Plan
 }
 

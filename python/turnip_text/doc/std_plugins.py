@@ -187,28 +187,24 @@ class StructureDocPlugin(DocPlugin):
             # TableOfContents, # TODO
         )
 
-    @property
     @stateful
     def heading1(
         self, state: DocState, label: Optional[str] = None, num: bool = True
     ) -> BlockScopeBuilder:
         return StructureBlockHeaderGenerator(state, 1, label, num)
 
-    @property
     @stateful
     def heading2(
         self, state: DocState, label: Optional[str] = None, num: bool = True
     ) -> BlockScopeBuilder:
         return StructureBlockHeaderGenerator(state, 2, label, num)
 
-    @property
     @stateful
     def heading3(
         self, state: DocState, label: Optional[str] = None, num: bool = True
     ) -> BlockScopeBuilder:
         return StructureBlockHeaderGenerator(state, 3, label, num)
 
-    @property
     @stateful
     def heading4(
         self, state: DocState, label: Optional[str] = None, num: bool = True
