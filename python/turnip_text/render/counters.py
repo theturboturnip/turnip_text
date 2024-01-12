@@ -1,8 +1,20 @@
 # e.g. arabic, roman numerals (lower and upper), alphabetic
 import abc
 import string
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Mapping, Protocol, Sequence, Tuple
+from typing import (
+    DefaultDict,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 from turnip_text import (
     Inline,
@@ -106,7 +118,8 @@ class CounterChainValue:
     #     return self.parent_counters[-1][0].render_counter(self.parent_counters)
 
 
-class DocCounter(abc.ABC):
+@dataclass
+class DocCounter:
     anchor_id: str
     subcounters: List["DocCounter"]
 
@@ -156,8 +169,72 @@ class DocCounter(abc.ABC):
 #             ]
 #         )
 
+CounterLink = Tuple[
+    Optional[str], str
+]  # superior -> subordinate counter kinds. superior = None => top-of-list
 
-CounterHierarchy = Dict[str, str | List[str] | "CounterHierarchy"]
+
+CounterHierarchy = Mapping[str, str | List[str] | "CounterHierarchy"]
+
+
+def build_counter_hierarchy(
+    conflicting_links: Iterable[CounterLink],
+) -> CounterHierarchy:
+    handled_counters: Set[str] = set()
+    subordinate_to_superior: Dict[str, Optional[str]] = {}
+    superior_to_subordinate: DefaultDict[Optional[str], List[str]] = defaultdict(list)
+
+    # Step 1: remove conflicting links based on FCFS
+    for superior, subordinate in conflicting_links:
+        assert subordinate is not None
+        if subordinate in subordinate_to_superior:
+            # We have already defined the superior for this subordinate
+            continue
+        handled_counters.add(subordinate)
+        subordinate_to_superior[subordinate] = superior
+        superior_to_subordinate[superior].append(subordinate)
+        if superior is not None:
+            handled_counters.add(superior)
+
+    # Step 2: detect loops
+    def get_chain(subordinate: str) -> List[str]:
+        """This function hops through subordinate_to_superior, building a chain of counters.
+
+        If at any point a loop is encountered, ValueError is thrown.
+
+        Returns the chain."""
+        chain = []
+        curr_cnt = subordinate
+        while True:
+            chain.append(curr_cnt)
+            next_cnt = subordinate_to_superior.get(curr_cnt, None)
+            if next_cnt in chain:
+                raise ValueError(
+                    f"Found loop in counters: {' -> '.join(str(c) for c in chain)} -> {next_cnt}"
+                )
+            if next_cnt is None:
+                return chain
+            curr_cnt = next_cnt
+
+    counters_to_check_for_loops = handled_counters.copy()
+    while counters_to_check_for_loops:
+        chain = get_chain(next(iter(counters_to_check_for_loops)))
+        # The last element of the chain should get auto-assigned to None
+        if chain[-1] not in superior_to_subordinate[None]:
+            superior_to_subordinate[None].append(chain[-1])
+        # Everything in this chain has now been checked for loops
+        counters_to_check_for_loops.difference_update(chain)
+
+    # TODO any missing but handleable counters should also get auto-assigned to None
+
+    # Now we have the set of direct links with no conflicts, connect them to make a CounterHierarchy
+    def recursive_build_counters(subordinates: List[str]) -> CounterHierarchy:
+        hierarchy = {}
+        for s in subordinates:
+            hierarchy[s] = recursive_build_counters(superior_to_subordinate[s])
+        return hierarchy
+
+    return recursive_build_counters(superior_to_subordinate[None])
 
 
 class CounterSet:

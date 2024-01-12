@@ -37,7 +37,12 @@ from turnip_text import (
 )
 from turnip_text.doc import DocState, Document, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
-from turnip_text.render.counters import CounterChainValue, CounterSet, DocCounter
+from turnip_text.render.counters import (
+    CounterChainValue,
+    CounterLink,
+    CounterSet,
+    DocCounter,
+)
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -267,7 +272,7 @@ class Renderer:
                 f"Some node types were not given renderers by any plugin, but are used by the document: {missing_renderers}"
             )
 
-        # TODO reenable this
+        # TODO reenable this.. somewhere
         # missing_doc_counters = doc.counted_anchor_kinds.difference(
         #     counters.anchor_kinds()
         # )
@@ -434,6 +439,13 @@ class RenderPlugin(Generic[TRenderer_contra]):
         self, handlers: RendererHandlers[TRenderer_contra]
     ) -> None:
         raise NotImplementedError()
+
+    def _register_with_renderer(self, renderer: TRenderer_contra) -> None:
+        return None
+
+    # TODO fold into _register_with_renderer once the anchor counting is plugged in
+    def _requested_counters(self) -> Iterable[CounterLink]:
+        return []
 
     # TODO make this include serial passes, not parallel? is that useful?
     def _make_visitors(self) -> Optional[List[Tuple[VisitorFilter, VisitorFunc]]]:

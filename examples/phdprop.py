@@ -78,16 +78,8 @@ if __name__ == "__main__":
 
     doc = parse(Path("./examples/phdprop.ttext"), STD_DOC_PLUGINS())
 
-    latex_counters = CounterSet(
-        {
-            "h1": [
-                "h2"
-            ],  # This shouldn't be necessary - StructurePlugin should fill it in automatically
-            "footnote": [],  # This shouldn't be necessary either
-        }
-    )
     rendered_latex = LatexRenderer.render(
-        STD_LATEX_RENDER_PLUGINS(latex_counters, use_chapters=False), doc
+        STD_LATEX_RENDER_PLUGINS(use_chapters=False), doc
     )
     if args.olatex:
         with open(args.olatex, "w") as f:

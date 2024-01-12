@@ -22,24 +22,37 @@ from turnip_text.render import (
     VisitorFilter,
     VisitorFunc,
 )
-from turnip_text.render.counters import CounterChainValue, CounterSet
+from turnip_text.render.counters import (
+    CounterChainValue,
+    CounterHierarchy,
+    CounterLink,
+    CounterSet,
+    build_counter_hierarchy,
+)
 from turnip_text.render.latex.renderer import LatexRenderer
 
 
 def STD_LATEX_RENDER_PLUGINS(
-    counters: CounterSet,  # TODO Remove
     use_chapters: bool,
     indent_list_items: bool = True,
+    requested_counter_links: Optional[Dict[Optional[str], str]] = None,
 ) -> List[RenderPlugin[LatexRenderer]]:
-    return [
+    ps = [
         StructureRenderPlugin(use_chapters),
         UncheckedBiblatexRenderPlugin(),
         FootnoteRenderPlugin(),
         ListRenderPlugin(indent_list_items),
         InlineFormatRenderPlugin(),
         UrlRenderPlugin(),
-        AnchorCountingBackrefPlugin(counters),
     ]
+    anchors = AnchorCountingBackrefPlugin(
+        [(k, v) for k, v in requested_counter_links.items()]
+        if requested_counter_links
+        else list(),
+        ps,
+    )
+    ps.append(anchors)
+    return ps
 
 
 class StructureRenderPlugin(RenderPlugin[LatexRenderer]):
@@ -62,6 +75,14 @@ class StructureRenderPlugin(RenderPlugin[LatexRenderer]):
         self, handlers: RendererHandlers[LatexRenderer]
     ) -> None:
         handlers.register_header(StructureBlockHeader, self._emit_structure)
+
+    def _requested_counters(self) -> Iterable[CounterLink]:
+        return (
+            (None, "h1"),
+            ("h1", "h2"),
+            ("h2", "h3"),
+            ("h3", "h4"),
+        )
 
     def _emit_structure(
         self,
@@ -145,6 +166,9 @@ class FootnoteRenderPlugin(RenderPlugin[LatexRenderer]):
         # TODO use visitor pattern for this? Right now the visitor doesn't get any other arguments
         # handlers.register_block_or_inline(FootnoteRef, self._visit_footnote, self._emit_footnote)
         handlers.register_block_or_inline(FootnoteRef, self._emit_footnote)
+
+    def _requested_counters(self) -> Iterable[CounterLink]:
+        return ((None, "footnote"),)
 
     # def _visit_footnote(self, footnote: FootnoteRef) -> Block:
     #     return None
@@ -264,7 +288,6 @@ class UrlRenderPlugin(RenderPlugin[LatexRenderer]):
 
 # TODO could do something here with document.counted_anchor_kinds and comparing against supported anchors...
 class AnchorCountingBackrefPlugin(RenderPlugin[LatexRenderer]):
-    counters: CounterSet
     node_counters: Dict[
         int, CounterChainValue
     ]  # Mapping of <node id> -> <counter value for node>
@@ -272,9 +295,17 @@ class AnchorCountingBackrefPlugin(RenderPlugin[LatexRenderer]):
         Tuple[str, str], CounterChainValue
     ]  # Mapping of (kind, id) for <counter value>
 
-    def __init__(self, counters: CounterSet) -> None:
+    def __init__(
+        self,
+        counter_links: List[CounterLink],
+        other_plugins: List[RenderPlugin[LatexRenderer]],
+    ) -> None:
         super().__init__()
-        self.counters = counters
+
+        for p in other_plugins:
+            counter_links.extend(p._requested_counters())
+
+        self.counters = CounterSet(build_counter_hierarchy(counter_links))
         self.node_counters = {}
         self.anchor_counters = {}
 
