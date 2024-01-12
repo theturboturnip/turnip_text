@@ -15,6 +15,7 @@ test:
 test:
 	#!/usr/bin/env bash
 	source {{VENV_LOCATION}}/bin/activate
+	export LD_LIBRARY_PATH="{{VENV_LOCATION}}/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 	just _test
 
 _test:
