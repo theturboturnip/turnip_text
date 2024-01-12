@@ -119,6 +119,15 @@ class ListRenderPlugin(RenderPlugin[MarkdownRenderer]):
         self, handlers: RendererHandlers[MarkdownRenderer]
     ) -> None:
         handlers.register_block_or_inline(DisplayList, self._emit_list)
+        handlers.register_block_or_inline(DisplayListItem, self._emit_list_item)
+
+    def _emit_list_item(
+        self,
+        list_item: DisplayListItem,
+        renderer: MarkdownRenderer,
+        ctx: FormatContext,
+    ) -> None:
+        pass  # DisplayListItems inside DisplayLists will be handled directly
 
     def _emit_list(
         self,
