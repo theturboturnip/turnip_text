@@ -246,6 +246,7 @@ class Renderer:
         plugins: Sequence["RenderPlugin[TRenderer_contra]"],
         doc: Document,
         write_to: Writable | None = None,
+        **kwargs,
     ) -> io.StringIO | None:
         if write_to is None:
             write_to = io.StringIO()
@@ -292,7 +293,7 @@ class Renderer:
         dfs_pass.dfs_over_document(doc)
 
         # The rendering pass
-        renderer = cls(doc.doc, doc.fmt, handlers, write_to)
+        renderer = cls(doc.doc, doc.fmt, handlers, write_to, **kwargs)
         renderer.emit_segment(doc.toplevel)
 
         if isinstance(write_to, io.StringIO):

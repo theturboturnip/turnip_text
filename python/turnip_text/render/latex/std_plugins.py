@@ -163,15 +163,10 @@ class FootnoteRenderPlugin(RenderPlugin[LatexRenderer]):
     def _register_node_handlers(
         self, handlers: RendererHandlers[LatexRenderer]
     ) -> None:
-        # TODO use visitor pattern for this? Right now the visitor doesn't get any other arguments
-        # handlers.register_block_or_inline(FootnoteRef, self._visit_footnote, self._emit_footnote)
         handlers.register_block_or_inline(FootnoteRef, self._emit_footnote)
 
     def _requested_counters(self) -> Iterable[CounterLink]:
         return ((None, "footnote"),)
-
-    # def _visit_footnote(self, footnote: FootnoteRef) -> Block:
-    #     return None
 
     def _emit_footnote(
         self,
@@ -343,6 +338,7 @@ class AnchorCountingBackrefPlugin(RenderPlugin[LatexRenderer]):
         fmt: FormatContext,
     ):
         # TODO branch based on anchor kind - e.g. backrefs directly to text should use \pageref{}
+        # TODO if the backref has label_contents, respect that
         renderer.emit_macro("cref")
         renderer.emit_braced(renderer.doc.anchors.lookup_backref(backref).canonical())
 
@@ -353,8 +349,10 @@ class AnchorCountingBackrefPlugin(RenderPlugin[LatexRenderer]):
         fmt: FormatContext,
     ):
         # TODO branch based on anchor kind
-        renderer.emit_macro("label")
-        renderer.emit_braced(anchor.canonical())
+        # TODO is this right? we don't need to label anything if it doesn't have a referrable anchor
+        if anchor.id:
+            renderer.emit_macro("label")
+            renderer.emit_braced(anchor.canonical())
 
     def get_anchor_counter(self, a: Anchor) -> Optional[CounterChainValue]:
         if a.id is None:

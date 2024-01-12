@@ -63,6 +63,8 @@ class HeadedBlock(UserAnchorBlock):
     num: bool = True
 
 
+# TODO instead of emitting Citation you could emit a Backref to an anchor of type Cite?
+# Maybe, maybe not - citation note would get lost I fear
 @dataclass(frozen=True)
 class Citation(UserInline):
     contents: InlineScope | None  # the citation note
@@ -106,6 +108,7 @@ class DisplayListItem(UserBlock):
     contents: BlockScope
 
 
+# TODO strikethrough? sub/superscript?
 class InlineFormattingType(Enum):
     Italic = 0
     Bold = 1
