@@ -1,10 +1,13 @@
 import argparse
 import json
+from io import StringIO
 from pathlib import Path
+from typing import List, Sequence, Type, TypeVar
 
 from turnip_text import *
-from turnip_text.doc import parse
+from turnip_text.doc import DocPlugin, mutate_pass, parse_pass
 from turnip_text.doc.std_plugins import STD_DOC_PLUGINS
+from turnip_text.render import Renderer, RenderPlugin
 from turnip_text.render.counters import CounterSet
 from turnip_text.render.latex.renderer import LatexRenderer
 from turnip_text.render.latex.std_plugins import STD_LATEX_RENDER_PLUGINS
@@ -36,6 +39,22 @@ class CustomEncoder(json.JSONEncoder):
         return str(o)
 
 
+TRenderer = TypeVar("TRenderer", bound="Renderer", contravariant=True)
+
+
+def parse_and_render(
+    p: Path,
+    doc_plugins: List[DocPlugin],
+    r: Type[TRenderer],
+    renderer_plugins: List[RenderPlugin[TRenderer]],
+    **renderer_kwargs,
+) -> StringIO:
+    doc, fmt, doc_toplevel = parse_pass(p, doc_plugins)
+    mutators: List[DocMutator] = doc_plugins + renderer_plugins  # type: ignore
+    document = mutate_pass(doc, fmt, doc_toplevel, mutators)
+    return r.render(renderer_plugins, document, **renderer_kwargs)  # type: ignore
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-olatex", type=str)
@@ -43,10 +62,11 @@ if __name__ == "__main__":
     parser.add_argument("-ohtml", type=str)
     args = parser.parse_args()
 
-    doc = parse(Path("./examples/phdprop.ttext"), STD_DOC_PLUGINS())
-
-    rendered_latex = LatexRenderer.render(
-        STD_LATEX_RENDER_PLUGINS(use_chapters=False), doc
+    rendered_latex = parse_and_render(
+        Path("./examples/phdprop.ttext"),
+        STD_DOC_PLUGINS(),
+        LatexRenderer,
+        STD_LATEX_RENDER_PLUGINS(use_chapters=False),
     )
     if args.olatex:
         with open(args.olatex, "w") as f:
@@ -54,8 +74,11 @@ if __name__ == "__main__":
     else:
         print(rendered_latex.getvalue())
 
-    rendered_markdown = MarkdownRenderer.render(
-        STD_MARKDOWN_RENDER_PLUGINS(use_chapters=False), doc
+    rendered_markdown = parse_and_render(
+        Path("./examples/phdprop.ttext"),
+        STD_DOC_PLUGINS(),
+        MarkdownRenderer,
+        STD_MARKDOWN_RENDER_PLUGINS(use_chapters=False),
     )
     if args.omd:
         with open(args.omd, "w") as f:
@@ -63,9 +86,11 @@ if __name__ == "__main__":
     else:
         print(rendered_markdown.getvalue())
 
-    rendered_html = MarkdownRenderer.render(
+    rendered_html = parse_and_render(
+        Path("./examples/phdprop.ttext"),
+        STD_DOC_PLUGINS(),
+        MarkdownRenderer,
         STD_MARKDOWN_RENDER_PLUGINS(use_chapters=False),
-        doc,
         html_mode=True,
     )
     if args.ohtml:

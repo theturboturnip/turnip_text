@@ -11,9 +11,11 @@ from typing import (
     Callable,
     Concatenate,
     Dict,
+    Iterable,
     List,
     Optional,
     ParamSpec,
+    Protocol,
     Sequence,
     Set,
     Tuple,
@@ -35,7 +37,8 @@ from turnip_text.doc.anchors import Anchor, Backref, DocAnchors
 
 __all__ = [
     "Document",
-    "parse",
+    "parse_pass",
+    "mutate_pass",
     "DocPlugin",
     "DocState",
     "FormatContext",
@@ -62,23 +65,32 @@ class Document:
     floats: Dict[Anchor, Block]
 
 
-def parse(
+def parse_pass(
     path: Union[str, bytes, "os.PathLike[Any]"], plugins: Sequence["DocPlugin"]
-) -> Document:
+) -> Tuple["DocState", "FormatContext", DocSegment]:
     fmt, doc = DocPlugin._make_contexts(plugins)
-
-    exported_nodes: Set[Type[Union[Block, Inline, DocSegmentHeader]]] = set()
-    counters: Set[str] = set()
-    for p in plugins:
-        exported_nodes.update(p._doc_nodes())
-        counters.update(p._countables())
 
     # First pass: parsing
     doc_toplevel = parse_file_native(InsertedFile.from_path(str(path)), doc.__dict__)
 
+    return doc, fmt, doc_toplevel
+
+
+def mutate_pass(
+    doc: "DocState",
+    fmt: "FormatContext",
+    doc_toplevel: DocSegment,
+    mutators: Iterable["DocMutator"],
+) -> Document:
+    exported_nodes: Set[Type[Union[Block, Inline, DocSegmentHeader]]] = set()
+    counters: Set[str] = set()
+    for p in mutators:
+        exported_nodes.update(p._doc_nodes())
+        counters.update(p._countables())
+
     # Second pass: modifying the document
     # TODO need to pass the floats in here
-    for p in plugins:
+    for m in mutators:
         doc_toplevel = p._mutate_document(doc, fmt, doc_toplevel)
 
     # Now freeze the document so further passes don't mutate it.
@@ -87,7 +99,34 @@ def parse(
     return Document(exported_nodes, counters, doc, fmt, doc_toplevel, doc.floats)
 
 
-class DocPlugin:
+class DocMutator(Protocol):
+    """Both DocPlugins and RenderPlugins have the option to mutate the state of the document post-parse.
+
+    They inherit this interface."""
+
+    def _doc_nodes(self) -> Sequence[Type[Union[Block, Inline, DocSegmentHeader]]]:
+        """
+        Tell the Document what nodes this plugin exports
+        """
+        return []
+
+    def _mutate_document(
+        self, doc: "DocState", fmt: "FormatContext", toplevel: DocSegment
+    ) -> DocSegment:
+        """
+        Mutate the toplevel_contents or toplevel_segments to add things as you please.
+        You may make a copy and return it
+        """
+        return toplevel
+
+    def _countables(self) -> Sequence[str]:
+        """
+        Tell the Document what counters this plugin uses
+        """
+        return []
+
+
+class DocPlugin(DocMutator):
     # Initialized when the plugin is included into the MutableState.
     # Should always be non-None when the plugin's emitted functions are called
     __doc: "DocState" = None  # type: ignore
@@ -102,27 +141,11 @@ class DocPlugin:
     def _plugin_name(self) -> str:
         return type(self).__name__
 
-    @abc.abstractmethod
-    def _doc_nodes(self) -> Sequence[Type[Union[Block, Inline, DocSegmentHeader]]]:
-        """
-        Tell the Document what nodes this plugin exports
-        """
-        return []
-
     def _countables(self) -> Sequence[str]:
         """
         Tell the Document what counters this plugin uses
         """
         return []
-
-    def _mutate_document(
-        self, doc: "DocState", fmt: "FormatContext", toplevel: DocSegment
-    ) -> DocSegment:
-        """
-        Mutate the toplevel_contents or toplevel_segments to add things as you please.
-        You may make a copy and return it
-        """
-        return toplevel
 
     def _interface(self) -> Dict[str, Any]:
         """

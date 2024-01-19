@@ -120,7 +120,7 @@ class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
     ) -> None:
         handlers.register_block_or_inline(Citation, self._emit_cite)
         handlers.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
-        handlers.register_header(Bibliography, self._emit_bibliography)
+        handlers.register_block_or_inline(Bibliography, self._emit_bibliography)
 
     def _emit_cite(
         self, cite: Citation, renderer: LatexRenderer, ctx: FormatContext
@@ -142,8 +142,6 @@ class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
     def _emit_bibliography(
         self,
         bib: Bibliography,
-        block_contents: BlockScope,
-        segment_contents: Iterator[DocSegment],
         renderer: LatexRenderer,
         ctx: FormatContext,
     ) -> None:
@@ -152,11 +150,10 @@ class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
         with renderer.indent(4):
             renderer.emit("\\raggedright")
             renderer.emit_break_sentence()
-            renderer.emit("\\printbibliography")
+            renderer.emit("\\printbibliography[heading=none]")
             renderer.emit_break_sentence()
         renderer.emit("}")
         renderer.emit_break_paragraph()
-        renderer.emit(block_contents, *segment_contents)
 
 
 class FootnoteRenderPlugin(RenderPlugin[LatexRenderer]):
@@ -174,9 +171,9 @@ class FootnoteRenderPlugin(RenderPlugin[LatexRenderer]):
         renderer: LatexRenderer,
         ctx: FormatContext,
     ) -> None:
-        f = renderer.doc.lookup_float_from_backref(footnote.ref)
+        f = renderer.doc.lookup_float_from_backref(footnote.backref)
         if f is None:
-            raise ValueError(f"Reference to nonexistant footnote {footnote.ref}")
+            raise ValueError(f"Reference to nonexistant footnote {footnote.backref}")
         renderer.emit_macro("footnote")
         renderer.emit_braced(f)
 

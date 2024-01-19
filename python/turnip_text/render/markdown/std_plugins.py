@@ -1,12 +1,36 @@
-from typing import Any, Dict, Generator, Iterable, Iterator, List, Optional, Tuple
+from typing import (
+    Any,
+    Dict,
+    Generator,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Type,
+    Union,
+)
 
-from turnip_text import BlockScope, DocSegment, Inline, UnescapedText
-from turnip_text.doc import FormatContext
+from turnip_text import (
+    Block,
+    BlockScope,
+    DocSegment,
+    DocSegmentHeader,
+    Inline,
+    UnescapedText,
+)
+from turnip_text.doc import DocState, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.std_plugins import (
+    Bibliography,
+    Citation,
+    CiteAuthor,
     DisplayList,
     DisplayListItem,
     DisplayListType,
+    FootnoteRef,
     InlineFormatted,
     InlineFormattingType,
     NamedUrl,
@@ -34,9 +58,8 @@ def STD_MARKDOWN_RENDER_PLUGINS(
 ) -> List[RenderPlugin[MarkdownRenderer]]:
     ps = [
         StructureRenderPlugin(use_chapters),
-        # TODO
-        # UncheckedBibMarkdownRenderPlugin(),
-        # FootnoteRenderPlugin(),
+        UncheckedBibMarkdownRenderPlugin(),
+        FootnoteAtEndRenderPlugin(),
         ListRenderPlugin(indent_list_items),
         InlineFormatRenderPlugin(),
         UrlRenderPlugin(),
@@ -107,6 +130,140 @@ class StructureRenderPlugin(RenderPlugin[MarkdownRenderer]):
 # TODO footnotes and citations
 # Footnotes may require changes to document structure (e.g. a FootnoteFlush block after a paragraph with a footnote in it?)
 # How to handle this?
+class UncheckedBibMarkdownRenderPlugin(RenderPlugin[MarkdownRenderer]):
+    _ordered_citations: List[str]
+    _referenced_citations: Set[str]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._ordered_citations = []
+        self._referenced_citations = set()
+
+    def _register_node_handlers(
+        self, handlers: RendererHandlers[MarkdownRenderer]
+    ) -> None:
+        handlers.register_block_or_inline(Citation, self._emit_cite)
+        handlers.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
+        handlers.register_block_or_inline(Bibliography, self._emit_bibliography)
+
+    def _register_citation(self, citekey: str) -> None:
+        if citekey not in self._referenced_citations:
+            self._referenced_citations.add(citekey)
+            self._ordered_citations.append(citekey)
+
+    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
+        def regsiter_many_citations(c: Citation):
+            for k in c.citekeys:
+                self._register_citation(k)
+
+        return [
+            (Citation, regsiter_many_citations),
+            (CiteAuthor, lambda ca: self._register_citation(ca.citekey)),
+        ]
+
+    # TODO make Citations use backrefs?
+
+    def _emit_cite(
+        self, cite: Citation, renderer: MarkdownRenderer, ctx: FormatContext
+    ) -> None:
+        # TODO what happens with unmarkdownable labels? e.g. labels with backslash or something. need to check that when loading.
+        # TODO also maybe people wouldn't want those labels being exposed?
+
+        if cite.contents:
+            renderer.emit(UnescapedText("("))
+        for citekey in cite.citekeys:
+            renderer.emit(ctx.url(f"#{citekey}") @ f"[{citekey}]")
+        if cite.contents:
+            renderer.emit(cite.contents, UnescapedText(", )"))
+
+    def _emit_citeauthor(
+        self,
+        citeauthor: CiteAuthor,
+        renderer: MarkdownRenderer,
+        ctx: FormatContext,
+    ) -> None:
+        renderer.emit(UnescapedText("The authors of "))
+        renderer.emit(ctx.url(f"#{citeauthor.citekey}") @ f"[{citeauthor.citekey}]")
+
+    def _emit_bibliography(
+        self,
+        bib: Bibliography,
+        renderer: MarkdownRenderer,
+        ctx: FormatContext,
+    ) -> None:
+        # TODO actual reference rendering!
+        def bib_gen() -> Generator[None, None, None]:
+            for citekey in self._referenced_citations:
+                renderer.emit_empty_tag("a", f'id="{citekey}"')
+                renderer.emit(
+                    UnescapedText(
+                        f"[{citekey}]: TODO make citation text for {citekey}"
+                    ),
+                )
+                yield
+
+        renderer.emit_join_gen(bib_gen(), renderer.emit_break_paragraph)
+
+
+class FootnoteList(Block):
+    pass
+
+
+class FootnoteAtEndRenderPlugin(RenderPlugin[MarkdownRenderer]):
+    footnote_anchors: List[Backref]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.footnote_anchors = []
+
+    def _doc_nodes(
+        self,
+    ) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
+        return [FootnoteList]
+
+    def _mutate_document(
+        self, doc: DocState, fmt: FormatContext, toplevel: DocSegment
+    ) -> DocSegment:
+        toplevel.push_subsegment(
+            DocSegment(doc.heading1() @ ["Footnotes"], BlockScope([FootnoteList()]), [])
+        )
+        return toplevel
+
+    def _register_node_handlers(
+        self, handlers: RendererHandlers[MarkdownRenderer]
+    ) -> None:
+        handlers.register_block_or_inline(FootnoteRef, self._emit_footnote_ref)
+        handlers.register_block_or_inline(FootnoteList, self._emit_footnotes)
+
+    def _requested_counters(self) -> Iterable[CounterLink]:
+        return ((None, "footnote"),)
+
+    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
+        return [(FootnoteRef, lambda f: self.footnote_anchors.append(f.backref))]
+
+    def _emit_footnote_ref(
+        self,
+        footnote: FootnoteRef,
+        renderer: MarkdownRenderer,
+        ctx: FormatContext,
+    ) -> None:
+        # TODO hook into the anchor rendering and register a handler for footnotes
+        renderer.emit(footnote.backref)
+
+    def _emit_footnotes(
+        self,
+        footnotes: FootnoteList,
+        renderer: MarkdownRenderer,
+        ctx: FormatContext,
+    ) -> None:
+        for i, backref in enumerate(self.footnote_anchors):
+            renderer.emit(
+                renderer.doc.anchors.lookup_backref(backref),
+                f"^{i}: ",
+                renderer.doc.lookup_float_from_backref(backref),
+            )
+            renderer.emit_break_sentence()
+        renderer.emit_break_paragraph()
 
 
 class ListRenderPlugin(RenderPlugin[MarkdownRenderer]):
@@ -322,6 +479,7 @@ class AnchorCountingBackrefPlugin(RenderPlugin[MarkdownRenderer]):
             self.node_counters[id(node)] = count
 
     # TODO if anyone needs this, implement it
+    # TODO lol no-one can access this dumbass
     def lookup_anchorable_name(self, node: Any) -> Inline:
         raise NotImplementedError()
 

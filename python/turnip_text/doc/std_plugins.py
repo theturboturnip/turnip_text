@@ -1,4 +1,3 @@
-import uuid
 from dataclasses import dataclass
 from enum import Enum
 from typing import (
@@ -54,7 +53,7 @@ def STD_DOC_PLUGINS() -> List[DocPlugin]:
 
 @dataclass(frozen=True)
 class FootnoteRef(Inline):
-    ref: Backref
+    backref: Backref
 
 
 @dataclass(frozen=True)
@@ -79,8 +78,8 @@ class CiteAuthor(Inline):
     citekey: str
 
 
-class Bibliography(DocSegmentHeader):
-    weight = 0
+class Bibliography(Block):
+    pass
 
 
 @dataclass(frozen=True)
@@ -237,7 +236,13 @@ class CitationDocPlugin(DocPlugin):
         self, doc: DocState, fmt: FormatContext, toplevel: DocSegment
     ) -> DocSegment:
         if not self._has_bib:
-            toplevel.push_subsegment(DocSegment(Bibliography(), BlockScope(), []))
+            toplevel.push_subsegment(
+                DocSegment(
+                    doc.heading1(num=False) @ ["Bibliography"],
+                    BlockScope([Bibliography()]),
+                    [],
+                )
+            )
         return toplevel
 
     @stateful
@@ -255,12 +260,14 @@ class CitationDocPlugin(DocPlugin):
 
     @property
     @stateful
-    def bibliography(self, doc: DocState) -> DocSegmentHeader:
+    def bibliography(self, doc: DocState) -> Bibliography:
         self._has_bib = True
         return Bibliography()
 
 
 class FootnoteDocPlugin(DocPlugin):
+    footnotes_emitted: int = 0
+
     def _doc_nodes(
         self,
     ) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
@@ -274,7 +281,8 @@ class FootnoteDocPlugin(DocPlugin):
     def footnote(self, doc: DocState) -> InlineScopeBuilder:
         @inline_scope_builder
         def footnote_builder(contents: InlineScope) -> Inline:
-            footnote_id = str(uuid.uuid4())
+            self.footnotes_emitted += 1
+            footnote_id = str(self.footnotes_emitted)
             anchor = doc.anchors.register_new_anchor("footnote", footnote_id)
             doc.add_float(anchor, Paragraph([Sentence([contents])]))
             return FootnoteRef(anchor.to_backref())

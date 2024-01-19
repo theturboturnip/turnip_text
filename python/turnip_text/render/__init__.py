@@ -35,7 +35,7 @@ from turnip_text import (
     Sentence,
     UnescapedText,
 )
-from turnip_text.doc import DocState, Document, FormatContext
+from turnip_text.doc import DocMutator, DocState, Document, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.render.counters import (
     CounterChainValue,
@@ -240,6 +240,7 @@ class Renderer:
         with open(write_to_path, "w", encoding="utf-8") as write_to:
             cls.render(plugins, doc, write_to)
 
+    # TODO type overload where setting write_to to non-none makes the return value none
     @classmethod
     def render(
         cls: Type[TRenderer_contra],
@@ -434,7 +435,8 @@ class Renderer:
             self.pop_indent(n)
 
 
-class RenderPlugin(Generic[TRenderer_contra]):
+class RenderPlugin(DocMutator, Generic[TRenderer_contra]):
+    # TODO merge this into _register_with_renderer
     @abc.abstractmethod
     def _register_node_handlers(
         self, handlers: RendererHandlers[TRenderer_contra]
