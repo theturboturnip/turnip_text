@@ -3,8 +3,8 @@ from contextlib import contextmanager
 from typing import Iterator, List
 
 from turnip_text import Paragraph, UnescapedText
-from turnip_text.doc import DocState, FormatContext
-from turnip_text.render import EmitterDispatch, Renderer, Writable
+from turnip_text.doc import DocAnchors, DocState, FormatContext
+from turnip_text.render import EmitterDispatch, RefEmitterDispatch, Renderer, Writable
 
 
 class MarkdownRenderer(Renderer):
@@ -12,13 +12,14 @@ class MarkdownRenderer(Renderer):
 
     def __init__(
         self,
-        doc: DocState,
         fmt: FormatContext,
+        anchors: DocAnchors,
         handlers: EmitterDispatch,
+        ref_handler: RefEmitterDispatch,
         write_to: Writable,
         html_mode: bool = True,
     ) -> None:
-        super().__init__(doc, fmt, handlers, write_to)
+        super().__init__(fmt, anchors, handlers, ref_handler, write_to)
         # Once you're in HTML mode, you can't drop down to Markdown mode again.
         # If they asked for HTML mode only, just make that the first entry in the stack.
         # If they didn't, we start in Markdown mode.

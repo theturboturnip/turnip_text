@@ -41,8 +41,9 @@ from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.render.counters import (
     CounterChainValue,
     CounterLink,
-    CounterSet,
+    CounterState,
     DocCounter,
+    build_counter_hierarchy,
 )
 from turnip_text.render.dyn_dispatch import DynDispatch
 
@@ -53,7 +54,78 @@ TVisitable = TypeVar("TVisitable", bound=Union[Block, Inline, DocSegmentHeader])
 TRenderer_contra = TypeVar("TRenderer_contra", bound="Renderer", contravariant=True)
 TVisitorOutcome = TypeVar("TVisitorOutcome")
 
-# TODO if i want to render Anchors, can i? it's not an inline... is it?
+
+class RefEmitterDispatch(Generic[TRenderer_contra]):
+    """Performs dynamic dispatch for anchor/backref rendering *technology*.
+
+    This covers the renderer-specific mechanics of how an anchor is created and referred to, *not* how it is counted or named.
+    """
+
+    anchor_kind_to_method: Dict[str, str]
+
+    anchor_default: Optional[Callable[[TRenderer_contra, FormatContext, Anchor], None]]
+    backref_default: Optional[
+        Callable[[TRenderer_contra, FormatContext, Backref], None]
+    ]
+
+    anchor_table: Dict[str, Callable[[TRenderer_contra, FormatContext, Anchor], None]]
+    backref_table: Dict[str, Callable[[TRenderer_contra, FormatContext, Backref], None]]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.anchor_kind_to_method = {}
+        self.anchor_default = None
+        self.backref_default = None
+        self.anchor_table = {}
+        self.backref_table = {}
+
+    def register_anchor_render_method(
+        self,
+        method: str,
+        anchor: Callable[[TRenderer_contra, FormatContext, Anchor], None],
+        backref: Callable[[TRenderer_contra, FormatContext, Backref], None],
+        can_be_default: bool = True,
+    ) -> None:
+        if method in self.anchor_table:
+            raise RuntimeError(
+                f"Conflict: registered two anchor rendering functions for method '{method}'"
+            )
+        self.anchor_table[method] = anchor
+        self.backref_table[method] = backref
+        if can_be_default and (self.anchor_default is None):
+            self.anchor_default = anchor
+            self.backref_default = backref
+
+    def request_method_for_anchor_kind(self, anchor_kind: str, method: str) -> None:
+        if anchor_kind in self.anchor_kind_to_method:
+            raise ValueError(
+                "Conflict: requested two rendering methods for anchor kind '{anchor_kind}'"
+            )
+        self.anchor_kind_to_method[anchor_kind] = method
+
+    def get_anchor_emitter(
+        self, a: Anchor
+    ) -> Callable[[TRenderer_contra, FormatContext, Anchor], None]:
+        method = self.anchor_kind_to_method.get(a.kind)
+        if method is None:
+            if self.anchor_default is None:
+                raise RuntimeError(
+                    f"Couldn't find a fallback emitter function for anchor kind '{a.kind}' - no default registered"
+                )
+            return self.anchor_default
+        return self.anchor_table[method]
+
+    def get_backref_emitter(
+        self, backref_kind: str
+    ) -> Callable[[TRenderer_contra, FormatContext, Backref], None]:
+        method = self.anchor_kind_to_method.get(backref_kind)
+        if method is None:
+            if self.backref_default is None:
+                raise RuntimeError(
+                    f"Couldn't find a fallback emitter function for anchor kind '{backref_kind}' - no default registered"
+                )
+            return self.backref_default
+        return self.backref_table[method]
 
 
 class EmitterDispatch(Generic[TRenderer_contra]):
@@ -178,10 +250,11 @@ class Writable(Protocol):
         ...
 
 
-class Renderer:
+class Renderer(abc.ABC):
     fmt: FormatContext
     anchors: DocAnchors
     handlers: EmitterDispatch  # type: ignore[type-arg]
+    ref_handler: RefEmitterDispatch  # type: ignore[type-arg]
     write_to: Writable
 
     _indent: str = ""
@@ -197,11 +270,13 @@ class Renderer:
         fmt: FormatContext,
         anchors: DocAnchors,
         handlers: EmitterDispatch,  # type: ignore[type-arg]
+        ref_handler: RefEmitterDispatch,  # type: ignore[type-arg]
         write_to: Writable,
     ) -> None:
         self.fmt = fmt
         self.anchors = anchors
         self.handlers = handlers
+        self.ref_handler = ref_handler
         self.write_to = write_to
 
     @classmethod
@@ -209,10 +284,11 @@ class Renderer:
         cls: Type[TRenderer_contra],
         plugins: Sequence["RenderPlugin[TRenderer_contra]"],
         doc: Document,
+        requested_counter_links: Optional[Dict[Optional[str], str]],
         write_to_path: Union[str, bytes, "os.PathLike[Any]"],
     ) -> None:
         with open(write_to_path, "w", encoding="utf-8") as write_to:
-            cls.render(plugins, doc, write_to)
+            cls.render(plugins, doc, requested_counter_links, write_to)
 
     # Calling render(write_to = None) returns io.StringIO
     @overload
@@ -221,6 +297,7 @@ class Renderer:
         cls: Type[TRenderer_contra],
         plugins: Sequence["RenderPlugin[TRenderer_contra]"],
         doc: Document,
+        requested_counter_links: Optional[Dict[Optional[str], str]],
         write_to: None,
         **kwargs,
     ) -> io.StringIO:
@@ -233,6 +310,7 @@ class Renderer:
         cls: Type[TRenderer_contra],
         plugins: Sequence["RenderPlugin[TRenderer_contra]"],
         doc: Document,
+        requested_counter_links: Optional[Dict[Optional[str], str]],
         write_to: Writable,
         **kwargs,
     ) -> None:
@@ -243,6 +321,7 @@ class Renderer:
         cls: Type[TRenderer_contra],
         plugins: Sequence["RenderPlugin[TRenderer_contra]"],
         doc: Document,
+        requested_counter_links: Optional[Dict[Optional[str], str]] = None,
         write_to: Writable | None = None,
         **kwargs,
     ) -> io.StringIO | None:
@@ -265,8 +344,21 @@ class Renderer:
         handlers.register_block_or_inline(
             UnescapedText, lambda t, r, fmt: r.emit_unescapedtext(t)
         )
+        handlers.register_block_or_inline(
+            Anchor, lambda a, r, fmt: r.ref_handler.get_anchor_emitter(a)(r, fmt, a)
+        )
+        handlers.register_block_or_inline(
+            Backref,
+            lambda b, r, fmt: r.ref_handler.get_backref_emitter(
+                r.anchors.lookup_backref(b).kind
+            )(r, fmt, b),
+        )
+
+        ref_handlers: RefEmitterDispatch[TRenderer_contra] = RefEmitterDispatch()
+
         for p in plugins:
             p._register_node_handlers(handlers)
+            p._register_ref_handlers(ref_handlers)
 
         missing_renderers = doc.exported_nodes.difference(handlers.renderer_keys())
         if missing_renderers:
@@ -283,8 +375,26 @@ class Renderer:
         #         f"Some counters are not declared in the CounterSet, but are used by the document: {missing_doc_counters}"
         #     )
 
-        # The (first?) visitor/counter pass
-        dfs_visitors: List[Tuple[VisitorFilter, VisitorFunc]] = []
+        # The visitor/counter pass
+
+        counter_links = (
+            [(k, v) for k, v in requested_counter_links.items()]
+            if requested_counter_links
+            else list()
+        )
+        for p in plugins:
+            counter_links.extend(p._requested_counters())
+        counters = CounterState(build_counter_hierarchy(counter_links))
+
+        def count_anchor_if_present(node: Any) -> None:
+            # Counter pass
+            anchor = getattr(node, "anchor", None)
+            if isinstance(anchor, Anchor):
+                counters.count_anchor(anchor)
+
+        dfs_visitors: List[Tuple[VisitorFilter, VisitorFunc]] = [
+            (None, count_anchor_if_present)
+        ]
         for p in plugins:
             new_visitors = p._make_visitors()
             if new_visitors:
@@ -294,7 +404,7 @@ class Renderer:
         dfs_pass.dfs_over_document(doc)
 
         # The rendering pass
-        renderer = cls(doc.fmt, doc.anchors, handlers, write_to, **kwargs)
+        renderer = cls(doc.fmt, doc.anchors, handlers, ref_handlers, write_to, **kwargs)
         renderer.emit_segment(doc.toplevel)
 
         return to_return
@@ -432,14 +542,35 @@ class Renderer:
         finally:
             self.pop_indent(n)
 
+    @abc.abstractmethod
+    def anchor_to_number_text(self, anchor: Anchor) -> Inline:
+        """Given an anchor, look it up in the counter list and return an Inline rendering to the counters.
+
+        e.g. if asking about a subsection, could return "1.2.4" - chapter.section.subsection
+        """
+        ...
+
+    @abc.abstractmethod
+    def anchor_to_ref_text(self, anchor: Anchor) -> Inline:
+        """Given an anchor, look it up in the counter list and return an Inline which would be used as its backreference.
+
+        e.g. if asking about a subsection, could return 'Subsection 1.2.4'"""
+        ...
+
 
 class RenderPlugin(DocMutator, Generic[TRenderer_contra]):
-    # TODO merge this into _register_with_renderer
+    # TODO merge this into _register_with_renderer?
     @abc.abstractmethod
     def _register_node_handlers(
         self, handlers: EmitterDispatch[TRenderer_contra]
     ) -> None:
         raise NotImplementedError()
+
+    # TODO merge this into _register_with_renderer?
+    def _register_ref_handlers(
+        self, handlers: RefEmitterDispatch[TRenderer_contra]
+    ) -> None:
+        return None
 
     def _register_with_renderer(self, renderer: TRenderer_contra) -> None:
         return None

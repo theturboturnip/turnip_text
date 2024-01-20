@@ -8,7 +8,7 @@ from turnip_text import *
 from turnip_text.doc import DocPlugin, mutate_pass, parse_pass
 from turnip_text.doc.std_plugins import STD_DOC_PLUGINS
 from turnip_text.render import Renderer, RenderPlugin
-from turnip_text.render.counters import CounterSet
+from turnip_text.render.counters import CounterState
 from turnip_text.render.latex.renderer import LatexRenderer
 from turnip_text.render.latex.std_plugins import STD_LATEX_RENDER_PLUGINS
 from turnip_text.render.markdown.renderer import MarkdownRenderer

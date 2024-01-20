@@ -26,10 +26,12 @@ P = ParamSpec("P")
 TReturn = TypeVar("TReturn")
 
 
+# TODO make this put registered-type last
 class DynDispatch(Generic[P, TReturn]):
     """This class allows you to register "handlers" for types and retrieve them for an object of a registered type.
 
-    Multiple inheritance is resolved on a first-come-first-served basis - the first registered type that the object is an instance of is chosen.
+    If the exact type of the object has a handler, that will be retrieved.
+    Otherwise inheritance is resolved on a first-come-first-served basis - the first registered type that the object is an instance of is chosen.
 
     You can specify a paramspec for extra arguments to the handler, including the object, and the return type must be consistent for all functions.
     For example, `DynDispatch[[X, Y], R]` will map functions

@@ -38,11 +38,17 @@ from turnip_text.doc.std_plugins import (
     StructureBlockHeader,
 )
 from turnip_text.helpers import paragraph_of
-from turnip_text.render import EmitterDispatch, RenderPlugin, VisitorFilter, VisitorFunc
+from turnip_text.render import (
+    EmitterDispatch,
+    RefEmitterDispatch,
+    RenderPlugin,
+    VisitorFilter,
+    VisitorFunc,
+)
 from turnip_text.render.counters import (
     CounterChainValue,
     CounterLink,
-    CounterSet,
+    CounterState,
     build_counter_hierarchy,
 )
 from turnip_text.render.markdown.renderer import MarkdownRenderer
@@ -53,7 +59,7 @@ def STD_MARKDOWN_RENDER_PLUGINS(
     indent_list_items: bool = True,
     requested_counter_links: Optional[Dict[Optional[str], str]] = None,
 ) -> List[RenderPlugin[MarkdownRenderer]]:
-    ps = [
+    return [
         StructureRenderPlugin(use_chapters),
         UncheckedBibMarkdownRenderPlugin(),
         FootnoteAtEndRenderPlugin(),
@@ -61,14 +67,6 @@ def STD_MARKDOWN_RENDER_PLUGINS(
         InlineFormatRenderPlugin(),
         UrlRenderPlugin(),
     ]
-    anchors = AnchorCountingBackrefPlugin(
-        [(k, v) for k, v in requested_counter_links.items()]
-        if requested_counter_links
-        else list(),
-        ps,
-    )
-    ps.append(anchors)
-    return ps
 
 
 class StructureRenderPlugin(RenderPlugin[MarkdownRenderer]):
@@ -108,8 +106,7 @@ class StructureRenderPlugin(RenderPlugin[MarkdownRenderer]):
 
             with renderer.emit_tag(tag):
                 if head.anchor:
-                    raise NotImplementedError("Generate prefix for structure")
-                    renderer.emit(head.anchor, ".".join(str(n) for n in head.num), " ")
+                    renderer.emit(head.anchor, renderer.anchor_to_number_text(head.anchor), " ")
                 renderer.emit(head.contents)
 
             renderer.emit_break_paragraph()
@@ -117,8 +114,7 @@ class StructureRenderPlugin(RenderPlugin[MarkdownRenderer]):
         else:
             renderer.emit_raw("#" * (head.weight) + " ")
             if head.anchor:
-                raise NotImplementedError("Generate prefix for structure")
-                renderer.emit(head.anchor, ".".join(str(n) for n in head.num), " ")
+                renderer.emit(head.anchor, renderer.anchor_to_number_text(head.anchor), " ")
             renderer.emit(head.contents)
             renderer.emit_break_paragraph()
             renderer.emit_blockscope(contents)
@@ -402,6 +398,35 @@ class UrlRenderPlugin(RenderPlugin[MarkdownRenderer]):
     ) -> None:
         handlers.register_block_or_inline(NamedUrl, self._emit_url)
 
+    def _register_ref_handlers(
+        self, handlers: RefEmitterDispatch[MarkdownRenderer]
+    ) -> None:
+        handlers.register_anchor_render_method(
+            "url", self._emit_anchor_url, self._emit_backref_url, can_be_default=True
+        )
+
+    def _emit_anchor_url(
+        self,
+        renderer: MarkdownRenderer,
+        fmt: FormatContext,
+        anchor: Anchor,
+    ):
+        renderer.emit_empty_tag("a", f'id="{anchor.canonical()}"')
+
+    def _emit_backref_url(
+        self,
+        renderer: MarkdownRenderer,
+        fmt: FormatContext,
+        backref: Backref,
+    ):
+        anchor = renderer.anchors.lookup_backref(backref)
+        if backref.label_contents:
+            renderer.emit(fmt.url(f"#{anchor.canonical()}") @ backref.label_contents)
+        else:
+            renderer.emit(
+                fmt.url(f"#{anchor.canonical()}") @ renderer.anchor_to_ref_text(anchor)
+            )
+
     def _emit_url(
         self,
         url: NamedUrl,
@@ -431,82 +456,3 @@ class UrlRenderPlugin(RenderPlugin[MarkdownRenderer]):
             else:
                 renderer.emit(*url.contents)
             renderer.emit_raw(f"]({url.url})")
-
-
-# TODO could do something here with document.counted_anchor_kinds and comparing against supported anchors...
-class AnchorCountingBackrefPlugin(RenderPlugin[MarkdownRenderer]):
-    node_counters: Dict[
-        int, CounterChainValue
-    ]  # Mapping of <node id> -> <counter value for node>
-    anchor_counters: Dict[
-        Tuple[str, str], CounterChainValue
-    ]  # Mapping of (kind, id) for <counter value>
-
-    def __init__(
-        self,
-        counter_links: List[CounterLink],
-        other_plugins: List[RenderPlugin[MarkdownRenderer]],
-    ) -> None:
-        super().__init__()
-
-        for p in other_plugins:
-            counter_links.extend(p._requested_counters())
-
-        self.counters = CounterSet(build_counter_hierarchy(counter_links))
-        self.node_counters = {}
-        self.anchor_counters = {}
-
-    def _register_node_handlers(
-        self, handlers: EmitterDispatch[MarkdownRenderer]
-    ) -> None:
-        handlers.register_block_or_inline(Backref, self._emit_backref)
-        handlers.register_block_or_inline(Anchor, self._emit_anchor)
-
-    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
-        return [(None, self._visit_anchorable)]
-
-    def _visit_anchorable(self, node: Any) -> None:
-        # Counter pass
-        anchor = getattr(node, "anchor", None)
-        if isinstance(anchor, Anchor):
-            if anchor.kind not in self.counters.anchor_kind_to_parent_chain:
-                raise ValueError(f"Unknown counter kind '{anchor.kind}'")
-            # non-None anchors always increment the count, but if anchor.id is None we don't care
-            count = self.counters.increment_counter(anchor.kind)
-            if anchor.id is not None:
-                self.anchor_counters[(anchor.kind, anchor.id)] = count
-            self.node_counters[id(node)] = count
-
-    # TODO if anyone needs this, implement it
-    # TODO lol no-one can access this dumbass
-    def lookup_anchorable_name(self, node: Any) -> Inline:
-        raise NotImplementedError()
-
-    def _emit_backref(
-        self,
-        backref: Backref,
-        renderer: MarkdownRenderer,
-        fmt: FormatContext,
-    ):
-        canonical_id = renderer.anchors.lookup_backref(backref).canonical()
-        if backref.label_contents:
-            renderer.emit(fmt.url(f"#{canonical_id}") @ backref.label_contents)
-        else:
-            raise NotImplementedError("Backref to inline")
-
-    def _emit_anchor(
-        self,
-        anchor: Anchor,
-        renderer: MarkdownRenderer,
-        fmt: FormatContext,
-    ):
-        if anchor.id:
-            renderer.emit_empty_tag("a", f'id="{anchor.canonical()}"')
-
-    def get_anchor_counter(self, a: Anchor) -> Optional[CounterChainValue]:
-        if a.id is None:
-            return None
-        return self.anchor_counters.get((a.kind, a.id), None)
-
-    def get_node_counter(self, n: Any) -> Optional[CounterChainValue]:
-        return self.node_counters.get(id(n), None)

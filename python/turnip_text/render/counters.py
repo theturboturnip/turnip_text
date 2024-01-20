@@ -23,6 +23,7 @@ from turnip_text import (
     coerce_to_inline,
     join_inlines,
 )
+from turnip_text.doc.anchors import Anchor
 
 
 class ManualNumbering(Protocol):
@@ -237,22 +238,26 @@ def build_counter_hierarchy(
     return recursive_build_counters(superior_to_subordinate[None])
 
 
-class CounterSet:
+class CounterState:
     # The roots of the tree of labels
     counter_tree_roots: List[DocCounter]
     # Mapping of Anchor.id to the chain of Counters.
     # e.g. if Heading -> Subheading -> Subsubheading,
     # then anchor_id_lookup[subsubheading] = (HeadingCounter, SubheadingCounter, SubsubheadingCounter)
     anchor_kind_to_parent_chain: Mapping[str, Tuple[DocCounter, ...]]
+    anchor_counters: Dict[
+        Anchor, CounterChainValue
+    ]  # Mapping of anchor to <counter value>
 
     def __init__(self, expected_counter_hierarchy: CounterHierarchy) -> None:
-        self.counter_tree_roots = CounterSet._build_counter_tree(
+        self.counter_tree_roots = CounterState._build_counter_tree(
             expected_counter_hierarchy
         )
         self.anchor_kind_to_parent_chain = {}
-        CounterSet._build_anchor_id_lookup(
+        CounterState._build_anchor_id_lookup(
             self.anchor_kind_to_parent_chain, [], self.counter_tree_roots
         )
+        self.anchor_counters = {}
 
     @staticmethod
     def _build_counter_tree(hierarchy: CounterHierarchy) -> List[DocCounter]:
@@ -265,7 +270,7 @@ class CounterSet:
             elif isinstance(child_counters, dict):
                 ctrs.append(
                     DocCounter(
-                        parent_counter, CounterSet._build_counter_tree(child_counters)
+                        parent_counter, CounterState._build_counter_tree(child_counters)
                     )
                 )
             else:
@@ -288,15 +293,21 @@ class CounterSet:
                 raise RuntimeError(f"Counter {c.anchor_id} declared twice")
             chain: Tuple[DocCounter, ...] = (*parents, c)
             lookup[c.anchor_id] = chain
-            CounterSet._build_anchor_id_lookup(lookup, parents=chain, cs=c.subcounters)
+            CounterState._build_anchor_id_lookup(
+                lookup, parents=chain, cs=c.subcounters
+            )
 
     def anchor_kinds(self) -> Iterable[str]:
         return self.anchor_kind_to_parent_chain.keys()
 
-    def increment_counter(self, anchor_kind: str) -> CounterChainValue:
-        parent_chain = self.anchor_kind_to_parent_chain[anchor_kind]
+    def count_anchor(self, anchor: Anchor) -> None:
+        if anchor.kind not in self.anchor_kind_to_parent_chain:
+            raise ValueError(f"Unknown counter kind '{anchor.kind}'")
+        parent_chain = self.anchor_kind_to_parent_chain[anchor.kind]
 
         # The one at the end of the chain is the counter for this anchor kind
         parent_chain[-1].increment()
 
-        return CounterChainValue(tuple((c.anchor_id, c.value) for c in parent_chain))
+        self.anchor_counters[anchor] = CounterChainValue(
+            tuple((c.anchor_id, c.value) for c in parent_chain)
+        )
