@@ -25,45 +25,39 @@ Dad recommends a separate Counting phase once the document has been constructed 
 This requires me to make Blocks and Inlines implement "here are my children" so I have a consistent way to DFS it and then run counting.
 """
 
-import abc
 import dataclasses
-from collections import defaultdict
-from dataclasses import dataclass
-from typing import (
-    Dict,
-    List,
-    Mapping,
-    MutableMapping,
-    Optional,
-    Sequence,
-    Tuple,
-    Type,
-    Union,
-)
+from typing import Optional
 
-from turnip_text import Block, Inline, InlineScope, InlineScopeBuilder
+from turnip_text import Inline, InlineScope, InlineScopeBuilder
 
 
-# Unlike the phd_notes lib version, this shouldn't be subclassed.
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Anchor(Inline):
+    """An Anchor in the file which can always be referenced back to using a Backref.
+
+    Includes a kind, e.g. 'footnote', and an ID which the user can use to interrupt"""
+
     kind: str
-    id: Optional[str]  # If the id is None, you can't backreference this object. Ever.
+    id: str
 
     def canonical(self) -> str:
         return f"{self.kind}:{self.id}"
 
     def to_backref(self, label_contents: Optional[Inline] = None) -> "Backref":
-        if self.id is None:
-            raise ValueError(f"Can't convert an Anchor {self} with no id to a Backref")
         return Backref(self.id, self.kind, label_contents)
 
     def __str__(self) -> str:
         return self.canonical()
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Backref(Inline, InlineScopeBuilder):
+    """A reference to an Anchor in the file, which can optionally have a custom label.
+
+    Must include the ID of the Anchor, but does not need to include the kind.
+    We assume there is usually one Anchor for every ID, so you'd only need the kind to disambiguate between
+    e.g. a figure with ID='fred' and a footnote with ID='fred'."""
+
     id: str
     kind: Optional[
         str
@@ -73,55 +67,3 @@ class Backref(Inline, InlineScopeBuilder):
     def build_from_inlines(self, inls: InlineScope) -> Inline:
         assert self.label_contents is None
         return dataclasses.replace(self, label_contents=inls)
-
-
-# Responsible for keeping track of all the anchors in a document
-# TODO this should be a document plugin?
-class DocAnchors:
-    _anchor_id_to_possible_kinds: Dict[str, Dict[str, Anchor]]
-
-    def __init__(self) -> None:
-        self._anchor_id_to_possible_kinds = defaultdict(dict)
-
-    def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
-        return [Backref]
-
-    def register_new_anchor(self, kind: str, id: Optional[str]) -> Anchor:
-        """
-        When inside the document, create a new anchor.
-        """
-        # TODO assert kind and id are strings if present?
-        l = Anchor(
-            kind=kind,
-            id=id,
-        )
-        if id is not None:
-            self._anchor_id_to_possible_kinds[id][kind] = l
-        return l
-
-    def lookup_backref(self, backref: Backref) -> Anchor:
-        """
-        Should be called by renderers to resolve a backref into an anchor.
-        The renderer can then retrieve the counters for the anchor.
-        """
-
-        if backref.id not in self._anchor_id_to_possible_kinds:
-            raise ValueError(
-                f"Backref {backref} refers to an ID '{backref.id}' with no anchor!"
-            )
-
-        possible_kinds = self._anchor_id_to_possible_kinds[backref.id]
-
-        if backref.kind is None:
-            if len(possible_kinds) != 1:
-                raise ValueError(
-                    f"Backref {backref} doesn't specify the kind of anchor it's referring to, and there are multiple with that ID: {possible_kinds}"
-                )
-            only_possible_anchor = next(iter(possible_kinds.values()))
-            return only_possible_anchor
-        else:
-            if backref.kind not in possible_kinds:
-                raise ValueError(
-                    f"Backref {backref} specifies an anchor of kind {backref.kind}, which doesn't exist for ID {backref.id}: {possible_kinds}"
-                )
-            return possible_kinds[backref.kind]

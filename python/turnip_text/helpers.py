@@ -4,15 +4,15 @@ from turnip_text import (
     Block,
     BlockScope,
     BlockScopeBuilder,
-    CoercibleToBlockScope,
-    CoercibleToInlineScope,
+    CoercibleToInline,
     DocSegmentHeader,
     Inline,
     InlineScope,
     InlineScopeBuilder,
+    Paragraph,
     RawScopeBuilder,
-    coerce_to_block_scope,
-    coerce_to_inline_scope,
+    Sentence,
+    coerce_to_inline,
 )
 
 # TODO tests for the helpers
@@ -121,3 +121,7 @@ class raw_scope_builder(RawScopeBuilder):
         raise TypeError(
             f"Invoked RawScopeBuilder on {maybe_str}, which wasn't a string"
         )
+
+
+def paragraph_of(i: CoercibleToInline):
+    return Paragraph([Sentence([coerce_to_inline(i)])])

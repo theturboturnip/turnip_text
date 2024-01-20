@@ -1,8 +1,8 @@
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, cast
 
 from turnip_text import Block, BlockScope, DocSegment, Inline
 from turnip_text.doc import FormatContext
-from turnip_text.doc.anchors import Anchor, Backref, DocAnchors
+from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.std_plugins import (
     Bibliography,
     Citation,
@@ -10,6 +10,7 @@ from turnip_text.doc.std_plugins import (
     DisplayList,
     DisplayListItem,
     DisplayListType,
+    FootnoteContents,
     FootnoteRef,
     InlineFormatted,
     InlineFormattingType,
@@ -150,6 +151,7 @@ class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
 class FootnoteRenderPlugin(RenderPlugin[LatexRenderer]):
     def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
         handlers.register_block_or_inline(FootnoteRef, self._emit_footnote)
+        handlers.register_block_or_inline(FootnoteContents, lambda _, __, ___: None)
 
     def _requested_counters(self) -> Iterable[CounterLink]:
         return ((None, "footnote"),)
@@ -160,11 +162,13 @@ class FootnoteRenderPlugin(RenderPlugin[LatexRenderer]):
         renderer: LatexRenderer,
         ctx: FormatContext,
     ) -> None:
-        f = renderer.doc.lookup_float_from_backref(footnote.backref)
-        if f is None:
-            raise ValueError(f"Reference to nonexistant footnote {footnote.backref}")
+        footnote_backref = footnote.portal_to
+        _, footnote_contents = renderer.anchors.lookup_backref_float(footnote_backref)
+        if footnote_contents is None:
+            raise ValueError(f"Reference to nonexistant footnote {footnote_backref}")
+        assert isinstance(footnote_contents, FootnoteContents)
         renderer.emit_macro("footnote")
-        renderer.emit_braced(f)
+        renderer.emit_braced(footnote_contents.contents)
 
 
 class ListRenderPlugin(RenderPlugin[LatexRenderer]):
@@ -318,7 +322,7 @@ class AnchorCountingBackrefPlugin(RenderPlugin[LatexRenderer]):
         # TODO branch based on anchor kind - e.g. backrefs directly to text should use \pageref{}
         # TODO if the backref has label_contents, respect that
         renderer.emit_macro("cref")
-        renderer.emit_braced(renderer.doc.anchors.lookup_backref(backref).canonical())
+        renderer.emit_braced(renderer.anchors.lookup_backref(backref).canonical())
 
     def _emit_anchor(
         self,

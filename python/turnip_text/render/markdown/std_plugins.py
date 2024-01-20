@@ -30,12 +30,14 @@ from turnip_text.doc.std_plugins import (
     DisplayList,
     DisplayListItem,
     DisplayListType,
+    FootnoteContents,
     FootnoteRef,
     InlineFormatted,
     InlineFormattingType,
     NamedUrl,
     StructureBlockHeader,
 )
+from turnip_text.helpers import paragraph_of
 from turnip_text.render import EmitterDispatch, RenderPlugin, VisitorFilter, VisitorFunc
 from turnip_text.render.counters import (
     CounterChainValue,
@@ -220,7 +222,11 @@ class FootnoteAtEndRenderPlugin(RenderPlugin[MarkdownRenderer]):
         self, doc: DocState, fmt: FormatContext, toplevel: DocSegment
     ) -> DocSegment:
         toplevel.push_subsegment(
-            DocSegment(doc.heading1() @ ["Footnotes"], BlockScope([FootnoteList()]), [])
+            DocSegment(
+                doc.heading1() @ paragraph_of("Footnotes"),
+                BlockScope([FootnoteList()]),
+                [],
+            )
         )
         return toplevel
 
@@ -228,6 +234,7 @@ class FootnoteAtEndRenderPlugin(RenderPlugin[MarkdownRenderer]):
         self, handlers: EmitterDispatch[MarkdownRenderer]
     ) -> None:
         handlers.register_block_or_inline(FootnoteRef, self._emit_footnote_ref)
+        handlers.register_block_or_inline(FootnoteContents, lambda _, __, ___: None)
         handlers.register_block_or_inline(FootnoteList, self._emit_footnotes)
 
     def _requested_counters(self) -> Iterable[CounterLink]:
@@ -243,7 +250,7 @@ class FootnoteAtEndRenderPlugin(RenderPlugin[MarkdownRenderer]):
         ctx: FormatContext,
     ) -> None:
         # TODO hook into the anchor rendering and register a handler for footnotes
-        renderer.emit(footnote.backref)
+        renderer.emit(footnote.portal_to)
 
     def _emit_footnotes(
         self,
@@ -252,11 +259,9 @@ class FootnoteAtEndRenderPlugin(RenderPlugin[MarkdownRenderer]):
         ctx: FormatContext,
     ) -> None:
         for i, backref in enumerate(self.footnote_anchors):
-            renderer.emit(
-                renderer.doc.anchors.lookup_backref(backref),
-                f"^{i}: ",
-                renderer.doc.lookup_float_from_backref(backref),
-            )
+            anchor, footnote = renderer.anchors.lookup_backref_float(backref)
+            assert isinstance(footnote, FootnoteContents)
+            renderer.emit(anchor, f"^{i}: ", footnote.contents)
             renderer.emit_break_sentence()
         renderer.emit_break_paragraph()
 
@@ -483,7 +488,7 @@ class AnchorCountingBackrefPlugin(RenderPlugin[MarkdownRenderer]):
         renderer: MarkdownRenderer,
         fmt: FormatContext,
     ):
-        canonical_id = renderer.doc.anchors.lookup_backref(backref).canonical()
+        canonical_id = renderer.anchors.lookup_backref(backref).canonical()
         if backref.label_contents:
             renderer.emit(fmt.url(f"#{canonical_id}") @ backref.label_contents)
         else:

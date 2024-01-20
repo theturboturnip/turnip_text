@@ -31,13 +31,14 @@ from turnip_text import (
 from turnip_text.doc import DocPlugin, DocState, FormatContext, stateful, stateless
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.user_nodes import (
+    NodePortal,
     UserAnchorBlock,
     UserAnchorDocSegmentHeader,
     UserBlock,
     UserInline,
     VisitableNode,
 )
-from turnip_text.helpers import block_scope_builder, inline_scope_builder
+from turnip_text.helpers import block_scope_builder, inline_scope_builder, paragraph_of
 
 
 def STD_DOC_PLUGINS() -> List[DocPlugin]:
@@ -52,8 +53,13 @@ def STD_DOC_PLUGINS() -> List[DocPlugin]:
 
 
 @dataclass(frozen=True)
-class FootnoteRef(Inline):
-    backref: Backref
+class FootnoteRef(Inline, NodePortal):
+    portal_to: Backref
+
+
+@dataclass(frozen=True)
+class FootnoteContents(Block):
+    contents: Inline
 
 
 @dataclass(frozen=True)
@@ -238,7 +244,7 @@ class CitationDocPlugin(DocPlugin):
         if not self._has_bib:
             toplevel.push_subsegment(
                 DocSegment(
-                    doc.heading1(num=False) @ ["Bibliography"],
+                    doc.heading1(num=False) @ paragraph_of("Bibliography"),
                     BlockScope([Bibliography()]),
                     [],
                 )
@@ -266,12 +272,10 @@ class CitationDocPlugin(DocPlugin):
 
 
 class FootnoteDocPlugin(DocPlugin):
-    footnotes_emitted: int = 0
-
     def _doc_nodes(
         self,
     ) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
-        return (FootnoteRef,)
+        return (FootnoteRef, FootnoteContents)
 
     def _countables(self) -> Sequence[str]:
         return ("footnote",)
@@ -281,11 +285,10 @@ class FootnoteDocPlugin(DocPlugin):
     def footnote(self, doc: DocState) -> InlineScopeBuilder:
         @inline_scope_builder
         def footnote_builder(contents: InlineScope) -> Inline:
-            self.footnotes_emitted += 1
-            footnote_id = str(self.footnotes_emitted)
-            anchor = doc.anchors.register_new_anchor("footnote", footnote_id)
-            doc.add_float(anchor, Paragraph([Sentence([contents])]))
-            return FootnoteRef(anchor.to_backref())
+            anchor = doc.anchors.register_new_anchor_with_float(
+                "footnote", None, FootnoteContents(contents)
+            )
+            return FootnoteRef(portal_to=anchor.to_backref())
 
         return footnote_builder
 
@@ -293,16 +296,22 @@ class FootnoteDocPlugin(DocPlugin):
     def footnote_ref(self, fmt: FormatContext, footnote_id: str) -> Inline:
         # TODO make it only possible to have a single footnoteref per footnote?
         return FootnoteRef(
-            Backref(id=footnote_id, kind="footnote", label_contents=None)
+            portal_to=Backref(id=footnote_id, kind="footnote", label_contents=None)
         )
 
     @stateful
     def footnote_text(self, doc: DocState, footnote_id: str) -> BlockScopeBuilder:
         # Store the contents of a block scope and associate them with a specific footnote label
+        # TODO ah hell make InlineScopeBuilder able to return None so we can use it here
         @block_scope_builder
         def handle_block_contents(contents: BlockScope) -> Optional[Block]:
-            anchor = doc.anchors.register_new_anchor("footnote", footnote_id)
-            doc.add_float(anchor, contents)
+            p = next(iter(contents))
+            assert isinstance(p, Paragraph)
+            doc.anchors.register_new_anchor_with_float(
+                "footnote",
+                footnote_id,
+                FootnoteContents(InlineScope(list(next(iter(p))))),
+            )
             return None
 
         return handle_block_contents

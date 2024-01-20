@@ -2,11 +2,15 @@ from dataclasses import dataclass
 from typing import Iterable, Protocol, Sequence, Union, runtime_checkable
 
 from turnip_text import Block, BlockScope, DocSegmentHeader, Inline, InlineScope
-from turnip_text.doc.anchors import Anchor
+from turnip_text.doc.anchors import Anchor, Backref
 
 
 class VisitableNode(Protocol):
     contents: Iterable[Block | Inline] | None
+
+
+class NodePortal(Protocol):
+    portal_to: Backref | Sequence[Backref]
 
 
 @dataclass(frozen=True)

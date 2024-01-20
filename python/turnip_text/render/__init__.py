@@ -36,7 +36,7 @@ from turnip_text import (
     Sentence,
     UnescapedText,
 )
-from turnip_text.doc import DocMutator, DocState, Document, FormatContext
+from turnip_text.doc import DocAnchors, DocMutator, DocState, Document, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.render.counters import (
     CounterChainValue,
@@ -133,11 +133,10 @@ class DocumentDfsPass:
         # Parse the floats in ""order""
         # type-ignore because this relies on covariance.
         # doc.floats.values() is a sequence of Block, [doc.toplevel] is a list of DocSegment
-        dfs_queue: List[Block | Inline | DocSegment | DocSegmentHeader] = list(
-            reversed(doc.floats.values())
-        ) + [
+        dfs_queue: List[Block | Inline | DocSegment | DocSegmentHeader] = [
             doc.toplevel
         ]  # type: ignore
+        visited_floats: Set[Anchor] = set()
         while dfs_queue:
             node = dfs_queue.pop()
 
@@ -161,6 +160,18 @@ class DocumentDfsPass:
             if children is not None:
                 dfs_queue.extend(children)
 
+            if hasattr(node, "portal_to") and node.portal_to:
+                if isinstance(node.portal_to, Backref):
+                    portal_to = [node.portal_to]
+                else:
+                    portal_to = node.portal_to
+                for backref in reversed(portal_to):
+                    anchor, contents = doc.anchors.lookup_backref_float(backref)
+                    if anchor in visited_floats:
+                        raise ValueError(f"Multiple nodes are portals to {anchor}")
+                    if contents:
+                        dfs_queue.append(contents)
+
 
 class Writable(Protocol):
     def write(self, s: str, /) -> int:
@@ -168,8 +179,8 @@ class Writable(Protocol):
 
 
 class Renderer:
-    doc: DocState
     fmt: FormatContext
+    anchors: DocAnchors
     handlers: EmitterDispatch  # type: ignore[type-arg]
     write_to: Writable
 
@@ -183,13 +194,13 @@ class Renderer:
 
     def __init__(
         self,
-        doc: DocState,
         fmt: FormatContext,
+        anchors: DocAnchors,
         handlers: EmitterDispatch,  # type: ignore[type-arg]
         write_to: Writable,
     ) -> None:
-        self.doc = doc
         self.fmt = fmt
+        self.anchors = anchors
         self.handlers = handlers
         self.write_to = write_to
 
@@ -283,7 +294,7 @@ class Renderer:
         dfs_pass.dfs_over_document(doc)
 
         # The rendering pass
-        renderer = cls(doc.doc, doc.fmt, handlers, write_to, **kwargs)
+        renderer = cls(doc.fmt, doc.anchors, handlers, write_to, **kwargs)
         renderer.emit_segment(doc.toplevel)
 
         return to_return
