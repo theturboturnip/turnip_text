@@ -16,12 +16,7 @@ from turnip_text.doc.std_plugins import (
     NamedUrl,
     StructureBlockHeader,
 )
-from turnip_text.render import (
-    RendererHandlers,
-    RenderPlugin,
-    VisitorFilter,
-    VisitorFunc,
-)
+from turnip_text.render import EmitterDispatch, RenderPlugin, VisitorFilter, VisitorFunc
 from turnip_text.render.counters import (
     CounterChainValue,
     CounterHierarchy,
@@ -71,9 +66,7 @@ class StructureRenderPlugin(RenderPlugin[LatexRenderer]):
         else:
             self.level_to_latex = [None, "section", "subsection", "subsubsection"]
 
-    def _register_node_handlers(
-        self, handlers: RendererHandlers[LatexRenderer]
-    ) -> None:
+    def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
         handlers.register_header(StructureBlockHeader, self._emit_structure)
 
     def _requested_counters(self) -> Iterable[CounterLink]:
@@ -115,9 +108,7 @@ class StructureRenderPlugin(RenderPlugin[LatexRenderer]):
 
 
 class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
-    def _register_node_handlers(
-        self, handlers: RendererHandlers[LatexRenderer]
-    ) -> None:
+    def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
         handlers.register_block_or_inline(Citation, self._emit_cite)
         handlers.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
         handlers.register_block_or_inline(Bibliography, self._emit_bibliography)
@@ -157,9 +148,7 @@ class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
 
 
 class FootnoteRenderPlugin(RenderPlugin[LatexRenderer]):
-    def _register_node_handlers(
-        self, handlers: RendererHandlers[LatexRenderer]
-    ) -> None:
+    def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
         handlers.register_block_or_inline(FootnoteRef, self._emit_footnote)
 
     def _requested_counters(self) -> Iterable[CounterLink]:
@@ -184,9 +173,7 @@ class ListRenderPlugin(RenderPlugin[LatexRenderer]):
     def __init__(self, indent_list_items: bool = True):
         self.indent_list_items = indent_list_items
 
-    def _register_node_handlers(
-        self, handlers: RendererHandlers[LatexRenderer]
-    ) -> None:
+    def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
         handlers.register_block_or_inline(DisplayList, self._emit_list)
         handlers.register_block_or_inline(DisplayListItem, self._emit_list_item)
 
@@ -228,9 +215,7 @@ FORMAT_TYPE_TO_MACRO = {
 
 class InlineFormatRenderPlugin(RenderPlugin[LatexRenderer]):
     # TODO enquote/csquotes package?
-    def _register_node_handlers(
-        self, handlers: RendererHandlers[LatexRenderer]
-    ) -> None:
+    def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
         handlers.register_block_or_inline(InlineFormatted, self._emit_formatted)
 
     def _emit_formatted(
@@ -251,9 +236,7 @@ class InlineFormatRenderPlugin(RenderPlugin[LatexRenderer]):
 
 class UrlRenderPlugin(RenderPlugin[LatexRenderer]):
     # TODO add dependency on hyperref!!
-    def _register_node_handlers(
-        self, handlers: RendererHandlers[LatexRenderer]
-    ) -> None:
+    def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
         handlers.register_block_or_inline(NamedUrl, self._emit_url)
 
     def _emit_url(
@@ -302,9 +285,7 @@ class AnchorCountingBackrefPlugin(RenderPlugin[LatexRenderer]):
         self.anchor_counters = {}
 
     # TODO add dependency on cleveref?
-    def _register_node_handlers(
-        self, handlers: RendererHandlers[LatexRenderer]
-    ) -> None:
+    def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
         handlers.register_block_or_inline(Backref, self._emit_backref)
         handlers.register_block_or_inline(Anchor, self._emit_anchor)
 

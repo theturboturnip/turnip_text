@@ -36,12 +36,7 @@ from turnip_text.doc.std_plugins import (
     NamedUrl,
     StructureBlockHeader,
 )
-from turnip_text.render import (
-    RendererHandlers,
-    RenderPlugin,
-    VisitorFilter,
-    VisitorFunc,
-)
+from turnip_text.render import EmitterDispatch, RenderPlugin, VisitorFilter, VisitorFunc
 from turnip_text.render.counters import (
     CounterChainValue,
     CounterLink,
@@ -82,7 +77,7 @@ class StructureRenderPlugin(RenderPlugin[MarkdownRenderer]):
         self._has_chapter = use_chapters
 
     def _register_node_handlers(
-        self, handlers: RendererHandlers[MarkdownRenderer]
+        self, handlers: EmitterDispatch[MarkdownRenderer]
     ) -> None:
         handlers.register_header(StructureBlockHeader, self._emit_structure)
 
@@ -140,7 +135,7 @@ class UncheckedBibMarkdownRenderPlugin(RenderPlugin[MarkdownRenderer]):
         self._referenced_citations = set()
 
     def _register_node_handlers(
-        self, handlers: RendererHandlers[MarkdownRenderer]
+        self, handlers: EmitterDispatch[MarkdownRenderer]
     ) -> None:
         handlers.register_block_or_inline(Citation, self._emit_cite)
         handlers.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
@@ -230,7 +225,7 @@ class FootnoteAtEndRenderPlugin(RenderPlugin[MarkdownRenderer]):
         return toplevel
 
     def _register_node_handlers(
-        self, handlers: RendererHandlers[MarkdownRenderer]
+        self, handlers: EmitterDispatch[MarkdownRenderer]
     ) -> None:
         handlers.register_block_or_inline(FootnoteRef, self._emit_footnote_ref)
         handlers.register_block_or_inline(FootnoteList, self._emit_footnotes)
@@ -273,7 +268,7 @@ class ListRenderPlugin(RenderPlugin[MarkdownRenderer]):
         self.indent_list_items = indent_list_items
 
     def _register_node_handlers(
-        self, handlers: RendererHandlers[MarkdownRenderer]
+        self, handlers: EmitterDispatch[MarkdownRenderer]
     ) -> None:
         handlers.register_block_or_inline(DisplayList, self._emit_list)
         handlers.register_block_or_inline(DisplayListItem, self._emit_list_item)
@@ -363,7 +358,7 @@ FORMAT_TYPE_TO_HTML = {
 
 class InlineFormatRenderPlugin(RenderPlugin[MarkdownRenderer]):
     def _register_node_handlers(
-        self, handlers: RendererHandlers[MarkdownRenderer]
+        self, handlers: EmitterDispatch[MarkdownRenderer]
     ) -> None:
         handlers.register_block_or_inline(InlineFormatted, self._emit_formatted)
 
@@ -398,7 +393,7 @@ class InlineFormatRenderPlugin(RenderPlugin[MarkdownRenderer]):
 class UrlRenderPlugin(RenderPlugin[MarkdownRenderer]):
     # TODO add dependency on hyperref!!
     def _register_node_handlers(
-        self, handlers: RendererHandlers[MarkdownRenderer]
+        self, handlers: EmitterDispatch[MarkdownRenderer]
     ) -> None:
         handlers.register_block_or_inline(NamedUrl, self._emit_url)
 
@@ -457,7 +452,7 @@ class AnchorCountingBackrefPlugin(RenderPlugin[MarkdownRenderer]):
         self.anchor_counters = {}
 
     def _register_node_handlers(
-        self, handlers: RendererHandlers[MarkdownRenderer]
+        self, handlers: EmitterDispatch[MarkdownRenderer]
     ) -> None:
         handlers.register_block_or_inline(Backref, self._emit_backref)
         handlers.register_block_or_inline(Anchor, self._emit_anchor)
@@ -467,7 +462,6 @@ class AnchorCountingBackrefPlugin(RenderPlugin[MarkdownRenderer]):
 
     def _visit_anchorable(self, node: Any) -> None:
         # Counter pass
-
         anchor = getattr(node, "anchor", None)
         if isinstance(anchor, Anchor):
             if anchor.kind not in self.counters.anchor_kind_to_parent_chain:

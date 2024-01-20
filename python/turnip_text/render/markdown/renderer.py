@@ -4,7 +4,7 @@ from typing import Iterator, List
 
 from turnip_text import Paragraph, UnescapedText
 from turnip_text.doc import DocState, FormatContext
-from turnip_text.render import Renderer, RendererHandlers, Writable
+from turnip_text.render import EmitterDispatch, Renderer, Writable
 
 
 class MarkdownRenderer(Renderer):
@@ -14,7 +14,7 @@ class MarkdownRenderer(Renderer):
         self,
         doc: DocState,
         fmt: FormatContext,
-        handlers: RendererHandlers,
+        handlers: EmitterDispatch,
         write_to: Writable,
         html_mode: bool = True,
     ) -> None:

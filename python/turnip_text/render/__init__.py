@@ -44,69 +44,31 @@ from turnip_text.render.counters import (
     CounterSet,
     DocCounter,
 )
+from turnip_text.render.dyn_dispatch import DynDispatch
 
 T = TypeVar("T")
-P = ParamSpec("P")
-TReturn = TypeVar("TReturn")
 TBlockOrInline = TypeVar("TBlockOrInline", bound=Union[Block, Inline])
 THeader = TypeVar("THeader", bound=DocSegmentHeader)
 TVisitable = TypeVar("TVisitable", bound=Union[Block, Inline, DocSegmentHeader])
-
-
-class DynamicNodeDispatch(Generic[P, TReturn]):
-    _table: Dict[Type[Any], Callable[Concatenate[Any, P], TReturn]]
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._table = {}
-
-    def register_handler(
-        self,
-        t: Type[T],
-        f: Callable[Concatenate[T, P], TReturn],
-    ) -> None:
-        if t in self._table:
-            raise RuntimeError(f"Conflict: registered two handlers for {t}")
-        # We know that we only assign _table[t] if f takes t, and that when we pull it
-        # out we will always call f with something of type t.
-        # mypy doesn't know that, so we say _table stores functions taking T (the base class)
-        # and sweep the difference under the rug
-        self._table[t] = f
-
-    def get_handler(self, obj: T) -> Callable[Concatenate[T, P], TReturn] | None:
-        # type-ignores are used here because mypy can't tell we'll always
-        # return a Callable[[T, P], TReturn] for any obj: T.
-        # This is because we only ever store T: Callable[[T, P], TReturn] in _table.
-        f = self._table.get(type(obj))
-        if f is None:
-            for t, f in self._table.items():
-                if isinstance(obj, t):
-                    return f
-            return None
-        else:
-            return f
-
-    def keys(self) -> Iterable[Type[Any]]:
-        return self._table.keys()
-
-
 TRenderer_contra = TypeVar("TRenderer_contra", bound="Renderer", contravariant=True)
 TVisitorOutcome = TypeVar("TVisitorOutcome")
 
 # TODO if i want to render Anchors, can i? it's not an inline... is it?
 
 
-class RendererHandlers(Generic[TRenderer_contra]):
-    block_inline_emitters: DynamicNodeDispatch[[TRenderer_contra, FormatContext], None]
-    header_emitters: DynamicNodeDispatch[
+class EmitterDispatch(Generic[TRenderer_contra]):
+    """Performs DynDispatch for block, inline, and header emitters"""
+
+    block_inline_emitters: DynDispatch[[TRenderer_contra, FormatContext], None]
+    header_emitters: DynDispatch[
         [BlockScope, Iterator[DocSegment], TRenderer_contra, FormatContext],
         None,
     ]
 
     def __init__(self) -> None:
         super().__init__()
-        self.block_inline_emitters = DynamicNodeDispatch()
-        self.header_emitters = DynamicNodeDispatch()
+        self.block_inline_emitters = DynDispatch()
+        self.header_emitters = DynDispatch()
 
     def register_block_or_inline(
         self,
@@ -208,7 +170,7 @@ class Writable(Protocol):
 class Renderer:
     doc: DocState
     fmt: FormatContext
-    handlers: RendererHandlers  # type: ignore[type-arg]
+    handlers: EmitterDispatch  # type: ignore[type-arg]
     write_to: Writable
 
     _indent: str = ""
@@ -223,7 +185,7 @@ class Renderer:
         self,
         doc: DocState,
         fmt: FormatContext,
-        handlers: RendererHandlers,  # type: ignore[type-arg]
+        handlers: EmitterDispatch,  # type: ignore[type-arg]
         write_to: Writable,
     ) -> None:
         self.doc = doc
@@ -241,6 +203,7 @@ class Renderer:
         with open(write_to_path, "w", encoding="utf-8") as write_to:
             cls.render(plugins, doc, write_to)
 
+    # Calling render(write_to = None) returns io.StringIO
     @overload
     @classmethod
     def render(
@@ -252,6 +215,7 @@ class Renderer:
     ) -> io.StringIO:
         ...
 
+    # Calling render(write_to != None) returns None
     @overload
     @classmethod
     def render(
@@ -263,7 +227,6 @@ class Renderer:
     ) -> None:
         ...
 
-    # TODO type overload where setting write_to to non-none makes the return value none
     @classmethod
     def render(
         cls: Type[TRenderer_contra],
@@ -274,8 +237,11 @@ class Renderer:
     ) -> io.StringIO | None:
         if write_to is None:
             write_to = io.StringIO()
+            to_return = write_to
+        else:
+            to_return = None
 
-        handlers: RendererHandlers[TRenderer_contra] = RendererHandlers()
+        handlers: EmitterDispatch[TRenderer_contra] = EmitterDispatch()
         handlers.register_block_or_inline(
             BlockScope, lambda bs, r, fmt: r.emit_blockscope(bs)
         )
@@ -320,9 +286,7 @@ class Renderer:
         renderer = cls(doc.doc, doc.fmt, handlers, write_to, **kwargs)
         renderer.emit_segment(doc.toplevel)
 
-        if isinstance(write_to, io.StringIO):
-            return write_to
-        return None
+        return to_return
 
     def emit_raw(self, x: str) -> None:
         """
@@ -462,7 +426,7 @@ class RenderPlugin(DocMutator, Generic[TRenderer_contra]):
     # TODO merge this into _register_with_renderer
     @abc.abstractmethod
     def _register_node_handlers(
-        self, handlers: RendererHandlers[TRenderer_contra]
+        self, handlers: EmitterDispatch[TRenderer_contra]
     ) -> None:
         raise NotImplementedError()
 
