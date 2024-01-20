@@ -52,7 +52,7 @@ def parse_and_render(
     doc, fmt, doc_toplevel = parse_pass(p, doc_plugins)
     mutators: List[DocMutator] = doc_plugins + renderer_plugins  # type: ignore
     document = mutate_pass(doc, fmt, doc_toplevel, mutators)
-    return r.render(renderer_plugins, document, **renderer_kwargs)  # type: ignore
+    return r.render(renderer_plugins, document, **renderer_kwargs)
 
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ from typing import (
     Type,
     TypeVar,
     Union,
+    overload,
 )
 
 from turnip_text import (
@@ -239,6 +240,28 @@ class Renderer:
     ) -> None:
         with open(write_to_path, "w", encoding="utf-8") as write_to:
             cls.render(plugins, doc, write_to)
+
+    @overload
+    @classmethod
+    def render(
+        cls: Type[TRenderer_contra],
+        plugins: Sequence["RenderPlugin[TRenderer_contra]"],
+        doc: Document,
+        write_to: None,
+        **kwargs,
+    ) -> io.StringIO:
+        ...
+
+    @overload
+    @classmethod
+    def render(
+        cls: Type[TRenderer_contra],
+        plugins: Sequence["RenderPlugin[TRenderer_contra]"],
+        doc: Document,
+        write_to: Writable,
+        **kwargs,
+    ) -> None:
+        ...
 
     # TODO type overload where setting write_to to non-none makes the return value none
     @classmethod
