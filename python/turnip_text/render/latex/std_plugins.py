@@ -31,14 +31,14 @@ from turnip_text.render.counters import (
     CounterState,
     build_counter_hierarchy,
 )
-from turnip_text.render.latex.renderer import LatexRenderer
+from turnip_text.render.latex.renderer import LatexPlugin, LatexRenderer, LatexSetup
 
 
 def STD_LATEX_RENDER_PLUGINS(
     use_chapters: bool,
     indent_list_items: bool = True,
     requested_counter_links: Optional[Dict[Optional[str], str]] = None,
-) -> List[RenderPlugin[LatexRenderer]]:
+) -> List[LatexPlugin]:
     return [
         StructureRenderPlugin(use_chapters),
         UncheckedBiblatexRenderPlugin(),
@@ -50,7 +50,7 @@ def STD_LATEX_RENDER_PLUGINS(
     ]
 
 
-class StructureRenderPlugin(RenderPlugin[LatexRenderer]):
+class StructureRenderPlugin(LatexPlugin):
     level_to_latex: List[Optional[str]]
 
     def __init__(self, use_chapters: bool) -> None:
@@ -66,11 +66,9 @@ class StructureRenderPlugin(RenderPlugin[LatexRenderer]):
         else:
             self.level_to_latex = [None, "section", "subsection", "subsubsection"]
 
-    def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
-        handlers.register_header(StructureBlockHeader, self._emit_structure)
-
-    def _requested_counters(self) -> Iterable[CounterLink]:
-        return (
+    def _register(self, setup: LatexSetup) -> None:
+        setup.emitter.register_header(StructureBlockHeader, self._emit_structure)
+        setup.request_counter_links(
             (None, "h1"),
             ("h1", "h2"),
             ("h2", "h3"),
@@ -107,11 +105,11 @@ class StructureRenderPlugin(RenderPlugin[LatexRenderer]):
             renderer.emit_segment(s)
 
 
-class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
-    def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
-        handlers.register_block_or_inline(Citation, self._emit_cite)
-        handlers.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
-        handlers.register_block_or_inline(Bibliography, self._emit_bibliography)
+class UncheckedBiblatexRenderPlugin(LatexPlugin):
+    def _register(self, setup: LatexSetup) -> None:
+        setup.emitter.register_block_or_inline(Citation, self._emit_cite)
+        setup.emitter.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
+        setup.emitter.register_block_or_inline(Bibliography, self._emit_bibliography)
 
     def _emit_cite(
         self, cite: Citation, renderer: LatexRenderer, ctx: FormatContext
@@ -147,13 +145,13 @@ class UncheckedBiblatexRenderPlugin(RenderPlugin[LatexRenderer]):
         renderer.emit_break_paragraph()
 
 
-class FootnoteRenderPlugin(RenderPlugin[LatexRenderer]):
-    def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
-        handlers.register_block_or_inline(FootnoteRef, self._emit_footnote)
-        handlers.register_block_or_inline(FootnoteContents, lambda _, __, ___: None)
-
-    def _requested_counters(self) -> Iterable[CounterLink]:
-        return ((None, "footnote"),)
+class FootnoteRenderPlugin(LatexPlugin):
+    def _register(self, setup: LatexSetup) -> None:
+        setup.emitter.register_block_or_inline(FootnoteRef, self._emit_footnote)
+        setup.emitter.register_block_or_inline(
+            FootnoteContents, lambda _, __, ___: None
+        )
+        setup.request_counter_links((None, "footnote"))
 
     def _emit_footnote(
         self,
@@ -170,15 +168,15 @@ class FootnoteRenderPlugin(RenderPlugin[LatexRenderer]):
         renderer.emit_braced(footnote_contents.contents)
 
 
-class ListRenderPlugin(RenderPlugin[LatexRenderer]):
+class ListRenderPlugin(LatexPlugin):
     indent_list_items: bool = True
 
     def __init__(self, indent_list_items: bool = True):
         self.indent_list_items = indent_list_items
 
-    def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
-        handlers.register_block_or_inline(DisplayList, self._emit_list)
-        handlers.register_block_or_inline(DisplayListItem, self._emit_list_item)
+    def _register(self, setup: LatexSetup) -> None:
+        setup.emitter.register_block_or_inline(DisplayList, self._emit_list)
+        setup.emitter.register_block_or_inline(DisplayListItem, self._emit_list_item)
 
     def _emit_list(
         self,
@@ -216,10 +214,10 @@ FORMAT_TYPE_TO_MACRO = {
 }
 
 
-class InlineFormatRenderPlugin(RenderPlugin[LatexRenderer]):
+class InlineFormatRenderPlugin(LatexPlugin):
     # TODO enquote/csquotes package?
-    def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
-        handlers.register_block_or_inline(InlineFormatted, self._emit_formatted)
+    def _register(self, setup: LatexSetup) -> None:
+        setup.emitter.register_block_or_inline(InlineFormatted, self._emit_formatted)
 
     def _emit_formatted(
         self,
@@ -237,10 +235,10 @@ class InlineFormatRenderPlugin(RenderPlugin[LatexRenderer]):
             renderer.emit_braced(f.contents)
 
 
-class UrlRenderPlugin(RenderPlugin[LatexRenderer]):
+class UrlRenderPlugin(LatexPlugin):
     # TODO add dependency on hyperref!!
-    def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
-        handlers.register_block_or_inline(NamedUrl, self._emit_url)
+    def _register(self, setup: LatexSetup) -> None:
+        setup.emitter.register_block_or_inline(NamedUrl, self._emit_url)
 
     def _emit_url(
         self,
@@ -264,15 +262,13 @@ class UrlRenderPlugin(RenderPlugin[LatexRenderer]):
             renderer.emit_braced(url.contents)
 
 
-class CleverefBackrefPlugin(RenderPlugin[LatexRenderer]):
+class CleverefBackrefPlugin(LatexPlugin):
     # TODO add dependency on cleveref?
 
-    def _register_node_handlers(self, handlers: EmitterDispatch[LatexRenderer]) -> None:
-        return None
-
-    def _register_ref_handlers(
-        self, handlers: RefEmitterDispatch[LatexRenderer]
-    ) -> None:
+    def _register(self, setup: LatexSetup) -> None:
+        raise RuntimeError(
+            "TODO fix up cleveref to be embedded inside latexrenderer as a selectable anchor backend"
+        )
         handlers.register_anchor_render_method(
             "cleveref",
             self._emit_anchor_cleveref,

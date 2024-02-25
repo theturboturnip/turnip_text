@@ -36,7 +36,7 @@ from turnip_text import (
     Sentence,
     UnescapedText,
 )
-from turnip_text.doc import DocAnchors, DocMutator, DocState, Document, FormatContext
+from turnip_text.doc import DocAnchors, DocMutator, DocSetup, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.render.counters import (
     CounterChainValue,
@@ -51,6 +51,7 @@ T = TypeVar("T")
 TBlockOrInline = TypeVar("TBlockOrInline", bound=Union[Block, Inline])
 THeader = TypeVar("THeader", bound=DocSegmentHeader)
 TVisitable = TypeVar("TVisitable", bound=Union[Block, Inline, DocSegmentHeader])
+TRenderer = TypeVar("TRenderer", bound="Renderer")
 TRenderer_contra = TypeVar("TRenderer_contra", bound="Renderer", contravariant=True)
 TVisitorOutcome = TypeVar("TVisitorOutcome")
 
@@ -201,12 +202,14 @@ class DocumentDfsPass:
     def __init__(self, visitors: List[Tuple[VisitorFilter, VisitorFunc]]) -> None:
         self.visitors = visitors
 
-    def dfs_over_document(self, doc: Document) -> None:
+    def dfs_over_document(
+        self, toplevel_docsegment: DocSegment, anchors: DocAnchors
+    ) -> None:
         # Parse the floats in ""order""
         # type-ignore because this relies on covariance.
-        # doc.floats.values() is a sequence of Block, [doc.toplevel] is a list of DocSegment
+        # doc.floats.values() is a sequence of Block, [toplevel_docsegment] is a list of DocSegment
         dfs_queue: List[Block | Inline | DocSegment | DocSegmentHeader] = [
-            doc.toplevel
+            toplevel_docsegment
         ]  # type: ignore
         visited_floats: Set[Anchor] = set()
         while dfs_queue:
@@ -238,7 +241,7 @@ class DocumentDfsPass:
                 else:
                     portal_to = node.portal_to
                 for backref in reversed(portal_to):
-                    anchor, contents = doc.anchors.lookup_backref_float(backref)
+                    anchor, contents = anchors.lookup_backref_float(backref)
                     if anchor in visited_floats:
                         raise ValueError(f"Multiple nodes are portals to {anchor}")
                     if contents:
@@ -246,15 +249,13 @@ class DocumentDfsPass:
 
 
 class Writable(Protocol):
-    def write(self, s: str, /) -> int:
-        ...
+    def write(self, s: str, /) -> int: ...
 
 
 class Renderer(abc.ABC):
     fmt: FormatContext
     anchors: DocAnchors
     handlers: EmitterDispatch  # type: ignore[type-arg]
-    ref_handler: RefEmitterDispatch  # type: ignore[type-arg]
     write_to: Writable
 
     _indent: str = ""
@@ -266,72 +267,22 @@ class Renderer(abc.ABC):
     _need_indent: bool = False
 
     def __init__(
-        self,
-        fmt: FormatContext,
-        anchors: DocAnchors,
-        handlers: EmitterDispatch,  # type: ignore[type-arg]
-        ref_handler: RefEmitterDispatch,  # type: ignore[type-arg]
+        self: TRenderer,
+        doc_setup: DocSetup,
+        handlers: EmitterDispatch[TRenderer],
         write_to: Writable,
     ) -> None:
-        self.fmt = fmt
-        self.anchors = anchors
+        self.fmt = doc_setup.fmt
+        self.anchors = doc_setup.anchors
         self.handlers = handlers
-        self.ref_handler = ref_handler
         self.write_to = write_to
 
     @classmethod
-    def render_to_path(
-        cls: Type[TRenderer_contra],
-        plugins: Sequence["RenderPlugin[TRenderer_contra]"],
-        doc: Document,
-        requested_counter_links: Optional[Dict[Optional[str], str]],
-        write_to_path: Union[str, bytes, "os.PathLike[Any]"],
-    ) -> None:
-        with open(write_to_path, "w", encoding="utf-8") as write_to:
-            cls.render(plugins, doc, requested_counter_links, write_to)
-
-    # Calling render(write_to = None) returns io.StringIO
-    @overload
-    @classmethod
-    def render(
-        cls: Type[TRenderer_contra],
-        plugins: Sequence["RenderPlugin[TRenderer_contra]"],
-        doc: Document,
-        requested_counter_links: Optional[Dict[Optional[str], str]],
-        write_to: None,
-        **kwargs,
-    ) -> io.StringIO:
-        ...
-
-    # Calling render(write_to != None) returns None
-    @overload
-    @classmethod
-    def render(
-        cls: Type[TRenderer_contra],
-        plugins: Sequence["RenderPlugin[TRenderer_contra]"],
-        doc: Document,
-        requested_counter_links: Optional[Dict[Optional[str], str]],
-        write_to: Writable,
-        **kwargs,
-    ) -> None:
-        ...
-
-    @classmethod
-    def render(
-        cls: Type[TRenderer_contra],
-        plugins: Sequence["RenderPlugin[TRenderer_contra]"],
-        doc: Document,
-        requested_counter_links: Optional[Dict[Optional[str], str]] = None,
-        write_to: Writable | None = None,
-        **kwargs,
-    ) -> io.StringIO | None:
-        if write_to is None:
-            write_to = io.StringIO()
-            to_return = write_to
-        else:
-            to_return = None
-
-        handlers: EmitterDispatch[TRenderer_contra] = EmitterDispatch()
+    def default_emitter_dispatch(
+        cls: Type[TRenderer],
+    ) -> EmitterDispatch[TRenderer]:
+        """This is a convenience method that generates the most basic EmitterDispatch for a renderer. It is meant to be called by RendererSetup classes. It can be overridden in renderers that provide more than the basic emitters."""
+        handlers: EmitterDispatch[TRenderer] = EmitterDispatch()
         handlers.register_block_or_inline(
             BlockScope, lambda bs, r, fmt: r.emit_blockscope(bs)
         )
@@ -344,70 +295,19 @@ class Renderer(abc.ABC):
         handlers.register_block_or_inline(
             UnescapedText, lambda t, r, fmt: r.emit_unescapedtext(t)
         )
-        handlers.register_block_or_inline(
-            Anchor, lambda a, r, fmt: r.ref_handler.get_anchor_emitter(a)(r, fmt, a)
-        )
-        handlers.register_block_or_inline(
-            Backref,
-            lambda b, r, fmt: r.ref_handler.get_backref_emitter(
-                r.anchors.lookup_backref(b).kind
-            )(r, fmt, b),
-        )
-
-        ref_handlers: RefEmitterDispatch[TRenderer_contra] = RefEmitterDispatch()
-
-        for p in plugins:
-            p._register_node_handlers(handlers)
-            p._register_ref_handlers(ref_handlers)
-
-        missing_renderers = doc.exported_nodes.difference(handlers.renderer_keys())
-        if missing_renderers:
-            raise RuntimeError(
-                f"Some node types were not given renderers by any plugin, but are used by the document: {missing_renderers}"
-            )
-
-        # TODO reenable this.. somewhere
-        # missing_doc_counters = doc.counted_anchor_kinds.difference(
-        #     counters.anchor_kinds()
+        # handlers.register_block_or_inline(
+        #     Anchor, lambda a, r, fmt: r.ref_handler.get_anchor_emitter(a)(r, fmt, a)
         # )
-        # if missing_doc_counters:
-        #     raise RuntimeError(
-        #         f"Some counters are not declared in the CounterSet, but are used by the document: {missing_doc_counters}"
-        #     )
+        # handlers.register_block_or_inline(
+        #     Backref,
+        #     lambda b, r, fmt: r.ref_handler.get_backref_emitter(
+        #         r.anchors.lookup_backref(b).kind
+        #     )(r, fmt, b),
+        # )
 
-        # The visitor/counter pass
+        # ref_handlers: RefEmitterDispatch[TRenderer] = RefEmitterDispatch()
 
-        counter_links = (
-            [(k, v) for k, v in requested_counter_links.items()]
-            if requested_counter_links
-            else list()
-        )
-        for p in plugins:
-            counter_links.extend(p._requested_counters())
-        counters = CounterState(build_counter_hierarchy(counter_links))
-
-        def count_anchor_if_present(node: Any) -> None:
-            # Counter pass
-            anchor = getattr(node, "anchor", None)
-            if isinstance(anchor, Anchor):
-                counters.count_anchor(anchor)
-
-        dfs_visitors: List[Tuple[VisitorFilter, VisitorFunc]] = [
-            (None, count_anchor_if_present)
-        ]
-        for p in plugins:
-            new_visitors = p._make_visitors()
-            if new_visitors:
-                dfs_visitors.extend(new_visitors)
-        dfs_pass = DocumentDfsPass(dfs_visitors)
-
-        dfs_pass.dfs_over_document(doc)
-
-        # The rendering pass
-        renderer = cls(doc.fmt, doc.anchors, handlers, ref_handlers, write_to, **kwargs)
-        renderer.emit_segment(doc.toplevel)
-
-        return to_return
+        return handlers
 
     def emit_raw(self, x: str) -> None:
         """
@@ -542,42 +442,54 @@ class Renderer(abc.ABC):
         finally:
             self.pop_indent(n)
 
-    @abc.abstractmethod
-    def anchor_to_number_text(self, anchor: Anchor) -> Inline:
-        """Given an anchor, look it up in the counter list and return an Inline rendering to the counters.
+    # @abc.abstractmethod
+    # def anchor_to_number_text(self, anchor: Anchor) -> Inline:
+    #     """Given an anchor, look it up in the counter list and return an Inline rendering to the counters.
 
-        e.g. if asking about a subsection, could return "1.2.4" - chapter.section.subsection
-        """
-        ...
+    #     e.g. if asking about a subsection, could return "1.2.4" - chapter.section.subsection
+    #     """
+    #     ...
 
-    @abc.abstractmethod
-    def anchor_to_ref_text(self, anchor: Anchor) -> Inline:
-        """Given an anchor, look it up in the counter list and return an Inline which would be used as its backreference.
+    # @abc.abstractmethod
+    # def anchor_to_ref_text(self, anchor: Anchor) -> Inline:
+    #     """Given an anchor, look it up in the counter list and return an Inline which would be used as its backreference.
 
-        e.g. if asking about a subsection, could return 'Subsection 1.2.4'"""
-        ...
+    #     e.g. if asking about a subsection, could return 'Subsection 1.2.4'"""
+    #     ...
 
 
-class RenderPlugin(DocMutator, Generic[TRenderer_contra]):
-    # TODO merge this into _register_with_renderer?
-    @abc.abstractmethod
-    def _register_node_handlers(
-        self, handlers: EmitterDispatch[TRenderer_contra]
+TRendererSetup = TypeVar("TRendererSetup", bound="RendererSetup", contravariant=True)
+
+
+# TODO RenderSetup
+class RendererSetup(abc.ABC, Generic[TRenderer]):
+    plugins: Iterable["RenderPlugin[TRenderer]"]  # type: ignore[type-arg]
+
+    def __init__(
+        self: TRendererSetup,
+        plugins: Iterable["RenderPlugin[TRenderer, TRendererSetup]"],
     ) -> None:
-        raise NotImplementedError()
+        super().__init__()
+        self.plugins = plugins
 
-    # TODO merge this into _register_with_renderer?
-    def _register_ref_handlers(
-        self, handlers: RefEmitterDispatch[TRenderer_contra]
-    ) -> None:
+    @abc.abstractproperty
+    def counters(self) -> CounterState: ...
+
+    @abc.abstractmethod
+    def known_node_types(
+        self,
+    ) -> Iterable[Type[Union[Block, Inline, DocSegmentHeader]]]: ...
+
+    def known_countables(self) -> Iterable[str]:
+        return self.counters.anchor_kind_to_parent_chain.keys()
+
+    @abc.abstractmethod
+    def to_renderer(self, doc_setup: DocSetup, write_to: Writable) -> TRenderer: ...
+
+
+class RenderPlugin(DocMutator, Generic[TRenderer_contra, TRendererSetup]):
+    def _register(self, setup: TRendererSetup) -> None:
         return None
-
-    def _register_with_renderer(self, renderer: TRenderer_contra) -> None:
-        return None
-
-    # TODO fold into _register_with_renderer once the anchor counting is plugged in
-    def _requested_counters(self) -> Iterable[CounterLink]:
-        return []
 
     # TODO make this include serial passes, not parallel? is that useful?
     def _make_visitors(self) -> Optional[List[Tuple[VisitorFilter, VisitorFunc]]]:

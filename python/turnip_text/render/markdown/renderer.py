@@ -1,10 +1,22 @@
 import html
 from contextlib import contextmanager
-from typing import Iterator, List
+from typing import Dict, Iterable, Iterator, List, Optional
 
-from turnip_text import Paragraph, UnescapedText
-from turnip_text.doc import DocAnchors, DocState, FormatContext
-from turnip_text.render import EmitterDispatch, RefEmitterDispatch, Renderer, Writable
+from turnip_text import Block, DocSegmentHeader, Inline, Paragraph, UnescapedText
+from turnip_text.doc import DocAnchors, DocSetup, DocState, FormatContext
+from turnip_text.render import (
+    EmitterDispatch,
+    RefEmitterDispatch,
+    Renderer,
+    RendererSetup,
+    RenderPlugin,
+    Writable,
+)
+from turnip_text.render.counters import (
+    CounterLink,
+    CounterState,
+    build_counter_hierarchy,
+)
 
 
 class MarkdownRenderer(Renderer):
@@ -12,14 +24,12 @@ class MarkdownRenderer(Renderer):
 
     def __init__(
         self,
-        fmt: FormatContext,
-        anchors: DocAnchors,
-        handlers: EmitterDispatch,
-        ref_handler: RefEmitterDispatch,
+        doc_setup: DocSetup,
+        handlers: EmitterDispatch["MarkdownRenderer"],
         write_to: Writable,
-        html_mode: bool = True,
+        html_mode: bool = False,
     ) -> None:
-        super().__init__(fmt, anchors, handlers, ref_handler, write_to)
+        super().__init__(doc_setup, handlers, write_to)
         # Once you're in HTML mode, you can't drop down to Markdown mode again.
         # If they asked for HTML mode only, just make that the first entry in the stack.
         # If they didn't, we start in Markdown mode.
@@ -113,3 +123,59 @@ class MarkdownRenderer(Renderer):
             self.emit_raw(f"<{tag} {props}></{tag}>")
         else:
             self.emit_raw(f"<{tag}></{tag}>")
+
+
+class MarkdownSetup(RendererSetup[MarkdownRenderer]):
+    html_only: bool
+    emitter: EmitterDispatch[MarkdownRenderer]
+    requested_counter_links: List[CounterLink]
+    counters: CounterState
+
+    def __init__(
+        self,
+        plugins: Iterable[RenderPlugin[MarkdownRenderer, "MarkdownSetup"]],
+        requested_counter_links: Optional[Iterable[CounterLink]] = None,
+        html_only: bool = False,
+    ) -> None:
+        super().__init__(plugins)
+        self.html_only = html_only
+        self.emitter = MarkdownRenderer.default_emitter_dispatch()
+        if requested_counter_links:
+            self.requested_counter_links = list(requested_counter_links)
+        else:
+            self.requested_counter_links = []
+        # This allows plugins to register with the emitter and request specific counter links
+        for p in plugins:
+            p._register(self)
+        # Now we know the full hierarchy we can build the CounterState
+        self.counters = CounterState(
+            build_counter_hierarchy(self.requested_counter_links)
+        )
+
+    def known_node_types(
+        self,
+    ) -> Iterable[type[Block] | type[Inline] | type[DocSegmentHeader]]:
+        return self.emitter.renderer_keys()
+
+    def request_counter_links(self, *new_links: CounterLink):
+        self.requested_counter_links.extend(new_links)
+
+    def to_renderer(self, doc_setup: DocSetup, write_to: Writable) -> MarkdownRenderer:
+        return MarkdownRenderer(
+            doc_setup,
+            self.emitter,
+            write_to,
+            html_mode=self.html_only,
+        )
+
+
+class HtmlSetup(MarkdownSetup):
+    def __init__(
+        self,
+        plugins: Iterable[RenderPlugin[MarkdownRenderer, "MarkdownSetup"]],
+        requested_counter_links: Optional[Iterable[CounterLink]] = None,
+    ) -> None:
+        super().__init__(plugins, requested_counter_links, html_only=True)
+
+
+MarkdownPlugin = RenderPlugin[MarkdownRenderer, MarkdownSetup]

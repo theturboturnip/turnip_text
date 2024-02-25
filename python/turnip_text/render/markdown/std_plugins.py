@@ -51,14 +51,17 @@ from turnip_text.render.counters import (
     CounterState,
     build_counter_hierarchy,
 )
-from turnip_text.render.markdown.renderer import MarkdownRenderer
+from turnip_text.render.markdown.renderer import (
+    MarkdownPlugin,
+    MarkdownRenderer,
+    MarkdownSetup,
+)
 
 
 def STD_MARKDOWN_RENDER_PLUGINS(
     use_chapters: bool,
     indent_list_items: bool = True,
-    requested_counter_links: Optional[Dict[Optional[str], str]] = None,
-) -> List[RenderPlugin[MarkdownRenderer]]:
+) -> List[MarkdownPlugin]:
     return [
         StructureRenderPlugin(use_chapters),
         UncheckedBibMarkdownRenderPlugin(),
@@ -69,24 +72,20 @@ def STD_MARKDOWN_RENDER_PLUGINS(
     ]
 
 
-class StructureRenderPlugin(RenderPlugin[MarkdownRenderer]):
+class StructureRenderPlugin(MarkdownPlugin):
     _has_chapter: bool
 
     def __init__(self, use_chapters: bool) -> None:
         super().__init__()
         self._has_chapter = use_chapters
 
-    def _register_node_handlers(
-        self, handlers: EmitterDispatch[MarkdownRenderer]
-    ) -> None:
-        handlers.register_header(StructureBlockHeader, self._emit_structure)
-
     # TODO register name generators for counters based on _has_chapter
     # if has_chapter, weight=1 => chapter, weight=2 => section
     # else weight=1 => section
 
-    def _requested_counters(self) -> Iterable[CounterLink]:
-        return (
+    def _register(self, setup: MarkdownSetup) -> None:
+        setup.emitter.register_header(StructureBlockHeader, self._emit_structure)
+        setup.request_counter_links(
             (None, "h1"),
             ("h1", "h2"),
             ("h2", "h3"),
@@ -106,7 +105,9 @@ class StructureRenderPlugin(RenderPlugin[MarkdownRenderer]):
 
             with renderer.emit_tag(tag):
                 if head.anchor:
-                    renderer.emit(head.anchor, renderer.anchor_to_number_text(head.anchor), " ")
+                    renderer.emit(
+                        head.anchor, renderer.anchor_to_number_text(head.anchor), " "
+                    )
                 renderer.emit(head.contents)
 
             renderer.emit_break_paragraph()
@@ -114,7 +115,9 @@ class StructureRenderPlugin(RenderPlugin[MarkdownRenderer]):
         else:
             renderer.emit_raw("#" * (head.weight) + " ")
             if head.anchor:
-                renderer.emit(head.anchor, renderer.anchor_to_number_text(head.anchor), " ")
+                renderer.emit(
+                    head.anchor, renderer.anchor_to_number_text(head.anchor), " "
+                )
             renderer.emit(head.contents)
             renderer.emit_break_paragraph()
             renderer.emit_blockscope(contents)
@@ -123,7 +126,7 @@ class StructureRenderPlugin(RenderPlugin[MarkdownRenderer]):
 # TODO footnotes and citations
 # Footnotes may require changes to document structure (e.g. a FootnoteFlush block after a paragraph with a footnote in it?)
 # How to handle this?
-class UncheckedBibMarkdownRenderPlugin(RenderPlugin[MarkdownRenderer]):
+class UncheckedBibMarkdownRenderPlugin(MarkdownPlugin):
     _ordered_citations: List[str]
     _referenced_citations: Set[str]
 
@@ -132,12 +135,10 @@ class UncheckedBibMarkdownRenderPlugin(RenderPlugin[MarkdownRenderer]):
         self._ordered_citations = []
         self._referenced_citations = set()
 
-    def _register_node_handlers(
-        self, handlers: EmitterDispatch[MarkdownRenderer]
-    ) -> None:
-        handlers.register_block_or_inline(Citation, self._emit_cite)
-        handlers.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
-        handlers.register_block_or_inline(Bibliography, self._emit_bibliography)
+    def _register(self, setup: MarkdownSetup) -> None:
+        setup.emitter.register_block_or_inline(Citation, self._emit_cite)
+        setup.emitter.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
+        setup.emitter.register_block_or_inline(Bibliography, self._emit_bibliography)
 
     def _register_citation(self, citekey: str) -> None:
         if citekey not in self._referenced_citations:
@@ -202,7 +203,7 @@ class FootnoteList(Block):
     pass
 
 
-class FootnoteAtEndRenderPlugin(RenderPlugin[MarkdownRenderer]):
+class FootnoteAtEndRenderPlugin(MarkdownPlugin):
     footnote_anchors: List[Backref]
 
     def __init__(self) -> None:
@@ -226,15 +227,13 @@ class FootnoteAtEndRenderPlugin(RenderPlugin[MarkdownRenderer]):
         )
         return toplevel
 
-    def _register_node_handlers(
-        self, handlers: EmitterDispatch[MarkdownRenderer]
-    ) -> None:
-        handlers.register_block_or_inline(FootnoteRef, self._emit_footnote_ref)
-        handlers.register_block_or_inline(FootnoteContents, lambda _, __, ___: None)
-        handlers.register_block_or_inline(FootnoteList, self._emit_footnotes)
-
-    def _requested_counters(self) -> Iterable[CounterLink]:
-        return ((None, "footnote"),)
+    def _register(self, setup: MarkdownSetup) -> None:
+        setup.emitter.register_block_or_inline(FootnoteRef, self._emit_footnote_ref)
+        setup.emitter.register_block_or_inline(
+            FootnoteContents, lambda _, __, ___: None
+        )
+        setup.emitter.register_block_or_inline(FootnoteList, self._emit_footnotes)
+        setup.request_counter_links((None, "footnote"))
 
     def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
         return [(FootnoteRef, lambda f: self.footnote_anchors.append(f.backref))]
@@ -262,17 +261,15 @@ class FootnoteAtEndRenderPlugin(RenderPlugin[MarkdownRenderer]):
         renderer.emit_break_paragraph()
 
 
-class ListRenderPlugin(RenderPlugin[MarkdownRenderer]):
+class ListRenderPlugin(MarkdownPlugin):
     indent_list_items: bool = True
 
     def __init__(self, indent_list_items: bool = True):
         self.indent_list_items = indent_list_items
 
-    def _register_node_handlers(
-        self, handlers: EmitterDispatch[MarkdownRenderer]
-    ) -> None:
-        handlers.register_block_or_inline(DisplayList, self._emit_list)
-        handlers.register_block_or_inline(DisplayListItem, self._emit_list_item)
+    def _register(self, setup: MarkdownSetup) -> None:
+        setup.emitter.register_block_or_inline(DisplayList, self._emit_list)
+        setup.emitter.register_block_or_inline(DisplayListItem, self._emit_list_item)
 
     def _emit_list_item(
         self,
@@ -357,11 +354,9 @@ FORMAT_TYPE_TO_HTML = {
 }
 
 
-class InlineFormatRenderPlugin(RenderPlugin[MarkdownRenderer]):
-    def _register_node_handlers(
-        self, handlers: EmitterDispatch[MarkdownRenderer]
-    ) -> None:
-        handlers.register_block_or_inline(InlineFormatted, self._emit_formatted)
+class InlineFormatRenderPlugin(MarkdownPlugin):
+    def _register(self, setup: MarkdownSetup) -> None:
+        setup.emitter.register_block_or_inline(InlineFormatted, self._emit_formatted)
 
     def _emit_formatted(
         self,
@@ -391,16 +386,10 @@ class InlineFormatRenderPlugin(RenderPlugin[MarkdownRenderer]):
             renderer.emit_raw(surround)
 
 
-class UrlRenderPlugin(RenderPlugin[MarkdownRenderer]):
+class UrlRenderPlugin(MarkdownPlugin):
     # TODO add dependency on hyperref!!
-    def _register_node_handlers(
-        self, handlers: EmitterDispatch[MarkdownRenderer]
-    ) -> None:
-        handlers.register_block_or_inline(NamedUrl, self._emit_url)
-
-    def _register_ref_handlers(
-        self, handlers: RefEmitterDispatch[MarkdownRenderer]
-    ) -> None:
+    def _register(self, setup: MarkdownSetup) -> None:
+        setup.emitter.register_block_or_inline(NamedUrl, self._emit_url)
         handlers.register_anchor_render_method(
             "url", self._emit_anchor_url, self._emit_backref_url, can_be_default=True
         )

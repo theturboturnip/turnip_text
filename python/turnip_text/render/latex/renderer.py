@@ -1,8 +1,20 @@
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Type
 
-from turnip_text import UnescapedText
-from turnip_text.render import Renderer
+from turnip_text import Block, DocSegmentHeader, Inline, UnescapedText
+from turnip_text.doc import DocSetup
+from turnip_text.render import (
+    EmitterDispatch,
+    Renderer,
+    RendererSetup,
+    RenderPlugin,
+    Writable,
+)
+from turnip_text.render.counters import (
+    CounterLink,
+    CounterState,
+    build_counter_hierarchy,
+)
 
 
 class LatexRenderer(Renderer):
@@ -53,3 +65,43 @@ class LatexRenderer(Renderer):
             self.emit_break_sentence()
             self.emit_macro("end")
             self.emit_braced(name)
+
+
+# TODO this is a great place to put in stuff for calculating the preamble!
+class LatexSetup(RendererSetup[LatexRenderer]):
+    emitter: EmitterDispatch[LatexRenderer]
+    requested_counter_links: List[CounterLink]
+    counters: CounterState
+
+    def __init__(
+        self,
+        plugins: Iterable[RenderPlugin[LatexRenderer, "LatexSetup"]],
+        requested_counter_links: Optional[Iterable[CounterLink]] = None,
+    ) -> None:
+        super().__init__(plugins)
+        self.emitter = LatexRenderer.default_emitter_dispatch()
+        if requested_counter_links:
+            self.requested_counter_links = list(requested_counter_links)
+        else:
+            self.requested_counter_links = []
+        # This allows plugins to register with the emitter and request specific counter links
+        for p in plugins:
+            p._register(self)
+        # Now we know the full hierarchy we can build the CounterState
+        self.counters = CounterState(
+            build_counter_hierarchy(self.requested_counter_links)
+        )
+
+    def known_node_types(
+        self,
+    ) -> Iterable[type[Block] | type[Inline] | type[DocSegmentHeader]]:
+        return self.emitter.renderer_keys()
+
+    def request_counter_links(self, *new_links: CounterLink):
+        self.requested_counter_links.extend(new_links)
+
+    def to_renderer(self, doc_setup: DocSetup, write_to: Writable) -> LatexRenderer:
+        return LatexRenderer(doc_setup, self.emitter, write_to)
+
+
+LatexPlugin = RenderPlugin[LatexRenderer, LatexSetup]

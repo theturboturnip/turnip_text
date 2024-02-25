@@ -57,46 +57,24 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 
-@dataclass
-class Document:
-    exported_nodes: Set[Type[Union[Block, Inline, DocSegmentHeader]]]
-    counted_anchor_kinds: Set[str]
-    anchors: "DocAnchors"  # TODO REALLY needs renaming to "state" everywhere
+class DocSetup:
+    plugins: Sequence["DocPlugin"]
     fmt: "FormatContext"
-    toplevel: DocSegment
+    doc: "DocState"
 
+    def __init__(self, plugins: Sequence["DocPlugin"]) -> None:
+        self.plugins = plugins
+        self.fmt, self.doc = DocPlugin._make_contexts(plugins)
 
-def parse_pass(
-    path: Union[str, bytes, "os.PathLike[Any]"], plugins: Sequence["DocPlugin"]
-) -> Tuple["DocState", "FormatContext", DocSegment]:
-    fmt, doc = DocPlugin._make_contexts(plugins)
+    @property
+    def anchors(self) -> "DocAnchors":
+        return self.doc.anchors
 
-    # First pass: parsing
-    doc_toplevel = parse_file_native(InsertedFile.from_path(str(path)), doc.__dict__)
+    def parse(self, f: InsertedFile) -> DocSegment:
+        return parse_file_native(f, self.doc.__dict__)
 
-    return doc, fmt, doc_toplevel
-
-
-def mutate_pass(
-    doc: "DocState",
-    fmt: "FormatContext",
-    doc_toplevel: DocSegment,
-    mutators: Iterable["DocMutator"],
-) -> Document:
-    exported_nodes: Set[Type[Union[Block, Inline, DocSegmentHeader]]] = set()
-    counters: Set[str] = set()
-    for m in mutators:
-        exported_nodes.update(m._doc_nodes())
-        counters.update(m._countables())
-
-    # Second pass: modifying the document
-    for m in mutators:
-        doc_toplevel = m._mutate_document(doc, fmt, doc_toplevel)
-
-    # Now freeze the document so other code can't mutate it
-    doc._frozen = True
-
-    return Document(exported_nodes, counters, doc.anchors, fmt, doc_toplevel)
+    def freeze(self):
+        self.doc._frozen = True
 
 
 class DocMutator(Protocol):
@@ -104,6 +82,7 @@ class DocMutator(Protocol):
 
     They inherit this interface."""
 
+    # TODO rename to exported_doc_nodes or soemthing
     def _doc_nodes(self) -> Sequence[Type[Union[Block, Inline, DocSegmentHeader]]]:
         """
         Tell the Document what nodes this plugin exports
@@ -376,7 +355,9 @@ class FormatContext:
 
 
 class DocState:
-    _frozen: bool = False  # Set to True when rendering the document, which disables functions annotated with @stateful.
+    _frozen: bool = (
+        False  # Set to True when rendering the document, which disables functions annotated with @stateful.
+    )
 
     # These are reserved fields, so plugins can't export them.
     # Evaluated code can call directly out to doc.blah or fmt.blah.
@@ -420,7 +401,7 @@ class DocAnchors(DocPlugin):
 
     _anchor_kind_counters: Dict[str, int]
     _anchor_id_to_possible_kinds: Dict[str, Dict[str, Anchor]]
-    _anchored_floats: Dict[Anchor, Block]
+    _anchored_floats: Dict[Anchor, Block]  # TODO rename floating_space
 
     # Anchor IDs, if they're user-defined, they must be
     _VALID_USER_ANCHOR_ID_REGEX = re.compile(r"\w*[a-zA-Z]\w*")

@@ -4,6 +4,7 @@ import string
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import (
+    Any,
     DefaultDict,
     Dict,
     Iterable,
@@ -27,8 +28,7 @@ from turnip_text.doc.anchors import Anchor
 
 
 class ManualNumbering(Protocol):
-    def __getitem__(self, num: int) -> UnescapedText:
-        ...
+    def __getitem__(self, num: int) -> UnescapedText: ...
 
 
 class BasicManualNumbering(ManualNumbering):
@@ -311,3 +311,10 @@ class CounterState:
         self.anchor_counters[anchor] = CounterChainValue(
             tuple((c.anchor_id, c.value) for c in parent_chain)
         )
+
+    def count_anchor_if_present(self, node: Any) -> None:
+        """To be used in DFS visitor passes for renderers that directly use CounterSet for counting."""
+        # Counter pass
+        anchor = getattr(node, "anchor", None)
+        if isinstance(anchor, Anchor):
+            self.count_anchor(anchor)
