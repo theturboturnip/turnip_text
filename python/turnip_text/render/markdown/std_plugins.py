@@ -139,9 +139,6 @@ class StructureRenderPlugin(MarkdownPlugin):
                         head.anchor, renderer.anchor_to_number_text(head.anchor), " "
                     )
                 renderer.emit(head.contents)
-
-            renderer.emit_break_paragraph()
-            renderer.emit_blockscope(contents)
         else:
             renderer.emit_raw("#" * (head.weight) + " ")
             if head.anchor:
@@ -149,8 +146,11 @@ class StructureRenderPlugin(MarkdownPlugin):
                     head.anchor, renderer.anchor_to_number_text(head.anchor), " "
                 )
             renderer.emit(head.contents)
-            renderer.emit_break_paragraph()
-            renderer.emit_blockscope(contents)
+
+        renderer.emit_break_paragraph()
+        renderer.emit_blockscope(contents)
+        for s in subsegments:
+            renderer.emit_segment(s)
 
 
 # TODO footnotes and citations
@@ -265,7 +265,7 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
         setup.emitter.register_block_or_inline(FootnoteList, self._emit_footnotes)
         setup.define_counter_rendering(
             "footnote",
-            MarkdownCounterFormatting(name="footnote", style=ARABIC_NUMBERING),
+            MarkdownCounterFormatting(name="^", style=ARABIC_NUMBERING),
             parent_counter=None,
         )
 
