@@ -59,6 +59,7 @@ class FootnoteRef(Inline, NodePortal):
 
 @dataclass(frozen=True)
 class FootnoteContents(Block):
+    anchor: Anchor
     contents: Inline
 
 
@@ -286,7 +287,7 @@ class FootnoteDocPlugin(DocPlugin):
         @inline_scope_builder
         def footnote_builder(contents: InlineScope) -> Inline:
             anchor = doc.anchors.register_new_anchor_with_float(
-                "footnote", None, FootnoteContents(contents)
+                "footnote", None, lambda anchor: FootnoteContents(anchor, contents)
             )
             return FootnoteRef(portal_to=anchor.to_backref())
 
@@ -310,7 +311,9 @@ class FootnoteDocPlugin(DocPlugin):
             doc.anchors.register_new_anchor_with_float(
                 "footnote",
                 footnote_id,
-                FootnoteContents(InlineScope(list(next(iter(p))))),
+                lambda anchor: FootnoteContents(
+                    anchor, InlineScope(list(next(iter(p))))
+                ),
             )
             return None
 

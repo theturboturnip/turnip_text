@@ -355,9 +355,7 @@ class FormatContext:
 
 
 class DocState:
-    _frozen: bool = (
-        False  # Set to True when rendering the document, which disables functions annotated with @stateful.
-    )
+    _frozen: bool = False  # Set to True when rendering the document, which disables functions annotated with @stateful.
 
     # These are reserved fields, so plugins can't export them.
     # Evaluated code can call directly out to doc.blah or fmt.blah.
@@ -440,10 +438,13 @@ class DocAnchors(DocPlugin):
         return l
 
     def register_new_anchor_with_float(
-        self, kind: str, id: Optional[str], float: Block
+        self,
+        kind: str,
+        id: Optional[str],
+        float_gen: Callable[[Anchor], Block],
     ) -> Anchor:
         a = self.register_new_anchor(kind, id)
-        self._anchored_floats[a] = float
+        self._anchored_floats[a] = float_gen(a)
         return a
 
     def lookup_backref(self, backref: Backref) -> Anchor:

@@ -250,7 +250,7 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
     ) -> DocSegment:
         toplevel.push_subsegment(
             DocSegment(
-                doc.heading1() @ paragraph_of("Footnotes"),
+                doc.heading1(num=False) @ paragraph_of("Footnotes"),
                 BlockScope([FootnoteList()]),
                 [],
             )
@@ -270,7 +270,7 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
         )
 
     def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
-        return [(FootnoteRef, lambda f: self.footnote_anchors.append(f.backref))]
+        return [(FootnoteRef, lambda f: self.footnote_anchors.append(f.portal_to))]
 
     def _emit_footnote_ref(
         self,

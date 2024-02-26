@@ -227,6 +227,11 @@ class DocumentDfsPass:
                 children = reversed(tuple(node))
             elif isinstance(node, DocSegment):
                 children = reversed((node.header, node.contents, *node.subsegments))
+            elif isinstance(node, Paragraph):
+                inls: List[Inline] = []
+                for s in reversed(list(node)):
+                    inls.extend(reversed(list(s)))
+                children = inls
             elif node is None:
                 children = None
             else:
