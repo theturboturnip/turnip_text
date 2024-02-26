@@ -15,27 +15,12 @@ from typing import (
 
 from turnip_text.doc.anchors import Anchor
 
-
-@dataclass
-class CounterChainValue:
-    # The chain of counters, where element [-1] is the main counter for this value
-    # and [-2], [-3]... are parent, grandparent... counters etc.
-    # Each element of this tuple is a pair (counter_anchor_id, value).
-    parent_counters: Tuple[Tuple[str, int], ...]
-
-    def __post_init__(self) -> None:
-        if not self.parent_counters:
-            raise ValueError(
-                "CounterChainValue must have at least one (counter id, value) pair"
-            )
-
-    # def render(self) -> Inline:
-    #     """Take the last-level counter and use it to render out the whole counter chain.
-
-    #     e.g. if Figures were per-chapter per-section, the chain is ((chapter, X), (section, Y), (figure, Z)).
-    #     Use `figure` to render that chain into e.g. 'Figure X.Y.Z'.
-    #     """
-    #     return self.parent_counters[-1][0].render_counter(self.parent_counters)
+CounterChainValue = Tuple[Tuple[str, int], ...]
+"""
+The chain of counters, where element [-1] is the main counter for this value
+and [-2], [-3]... are parent, grandparent... counters etc.
+Each element of this tuple is a pair (counter_anchor_id, value).
+"""
 
 
 @dataclass
@@ -227,8 +212,8 @@ class CounterState:
         # The one at the end of the chain is the counter for this anchor kind
         parent_chain[-1].increment()
 
-        self.anchor_counters[anchor] = CounterChainValue(
-            tuple((c.anchor_id, c.value) for c in parent_chain)
+        self.anchor_counters[anchor] = tuple(
+            (c.anchor_id, c.value) for c in parent_chain
         )
 
     def count_anchor_if_present(self, node: Any) -> None:

@@ -1,11 +1,13 @@
 import string
-from typing import Protocol
+from dataclasses import dataclass
+from typing import Generic, List, Protocol, Sequence, Tuple, TypeVar
 
-from turnip_text import UnescapedText
+from turnip_text import Inline, InlineScope, UnescapedText
 
 
 class ManualNumbering(Protocol):
-    def __getitem__(self, num: int) -> UnescapedText: ...
+    def __getitem__(self, num: int) -> str:
+        ...
 
 
 class BasicManualNumbering(ManualNumbering):
@@ -14,12 +16,12 @@ class BasicManualNumbering(ManualNumbering):
     def __init__(self, lookup: str) -> None:
         self.lookup = lookup
 
-    def __getitem__(self, num: int) -> UnescapedText:
+    def __getitem__(self, num: int) -> str:
         if num < 1:
             raise RuntimeError(f"Can't represent number {num} - too small")
         if num > len(self.lookup):
             raise RuntimeError(f"Can't represent number {num} - too large")
-        return UnescapedText(self.lookup[num - 1])
+        return self.lookup[num - 1]
 
 
 # Roman numbering based on https://www.geeksforgeeks.org/python-program-to-convert-integer-to-roman/
@@ -46,7 +48,7 @@ class RomanManualNumbering(ManualNumbering):
     def __init__(self, upper: bool) -> None:
         self.upper = upper
 
-    def __getitem__(self, num: int) -> UnescapedText:
+    def __getitem__(self, num: int) -> str:
         if num <= 0:
             raise RuntimeError(f"Can't represent {num} with roman numerals")
 
@@ -57,12 +59,12 @@ class RomanManualNumbering(ManualNumbering):
         if self.upper:
             s = s.upper()
 
-        return UnescapedText(s)
+        return s
 
 
 class ArabicManualNumbering(ManualNumbering):
-    def __getitem__(self, num: int) -> UnescapedText:
-        return UnescapedText(str(num))
+    def __getitem__(self, num: int) -> str:
+        return str(num)
 
 
 ARABIC_NUMBERING = ArabicManualNumbering()
@@ -70,3 +72,47 @@ LOWER_ROMAN_NUMBERING = RomanManualNumbering(upper=False)
 UPPER_ROMAN_NUMBERING = RomanManualNumbering(upper=True)
 LOWER_ALPH_NUMBERING = BasicManualNumbering(string.ascii_lowercase)
 UPPER_ALPH_NUMBERING = BasicManualNumbering(string.ascii_uppercase)
+
+
+TNumbering = TypeVar("TNumbering", bound=ManualNumbering)
+
+
+@dataclass
+class SimpleCounterFormat(Generic[TNumbering]):
+    """
+    The numbering style for a given counter and how it's combined with other counters.
+    """
+
+    name: str
+    """The name references use as a prefix e.g. for figures this would be 'Figure' to produce 'Figure 1.2'. Only the name of the last counter in the chain is used."""
+
+    style: TNumbering
+    """The style of the numerical counter."""
+
+    postfix_for_child: str = "."
+    """When combined with a child counter, what should be placed between this counter and the child? e.g. for 'Figure 1-2' the parent (section) counter would have `postfix_for_child='-'`"""
+
+    postfix_for_end: str = ""
+    """If this is the end of the string of counters, what (if anything) should be placed at the end? e.g. for 'Question 1a)' the final counter would have `postfix_for_end=')'`"""
+
+    # TODO the thing that resolves this to text should be able to resolve to "" empty string when name=""
+
+    @classmethod
+    def resolve(
+        cls,
+        counters: Sequence[Tuple["SimpleCounterFormat", int]],
+        with_name: bool = True,
+    ) -> UnescapedText:
+        if with_name and counters[-1][0].name:
+            c = counters[-1][0].name + " "
+        else:
+            c = ""
+        prev_fmt = None
+        for fmt, i in counters:
+            if prev_fmt:
+                c += prev_fmt.postfix_for_child
+            c += fmt.style[i]
+            prev_fmt = fmt
+        c += fmt.postfix_for_end
+
+        return UnescapedText(c)

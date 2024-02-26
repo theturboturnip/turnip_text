@@ -19,6 +19,7 @@ from turnip_text import (
     DocSegment,
     DocSegmentHeader,
     Inline,
+    InlineScope,
     UnescapedText,
 )
 from turnip_text.doc import DocState, FormatContext
@@ -51,7 +52,9 @@ from turnip_text.render.counters import (
     CounterState,
     build_counter_hierarchy,
 )
+from turnip_text.render.manual_numbering import ARABIC_NUMBERING
 from turnip_text.render.markdown.renderer import (
+    MarkdownCounterFormatting,
     MarkdownPlugin,
     MarkdownRenderer,
     MarkdownSetup,
@@ -85,11 +88,38 @@ class StructureRenderPlugin(MarkdownPlugin):
 
     def _register(self, setup: MarkdownSetup) -> None:
         setup.emitter.register_header(StructureBlockHeader, self._emit_structure)
-        setup.request_counter_links(
-            (None, "h1"),
-            ("h1", "h2"),
-            ("h2", "h3"),
-            ("h3", "h4"),
+        # TODO make this overridable
+        setup.define_counter_rendering(
+            "h1",
+            MarkdownCounterFormatting(
+                name=("chapter" if self._has_chapter else "section"),
+                style=ARABIC_NUMBERING,
+            ),
+            parent_counter=None,
+        )
+        setup.define_counter_rendering(
+            "h2",
+            MarkdownCounterFormatting(
+                name=("section" if self._has_chapter else "subsection"),
+                style=ARABIC_NUMBERING,
+            ),
+            parent_counter="h1",
+        )
+        setup.define_counter_rendering(
+            "h3",
+            MarkdownCounterFormatting(
+                name=("subsection" if self._has_chapter else "subsubsection"),
+                style=ARABIC_NUMBERING,
+            ),
+            parent_counter="h2",
+        )
+        setup.define_counter_rendering(
+            "h4",
+            MarkdownCounterFormatting(
+                name=("subsubsection" if self._has_chapter else "subsubsubsection"),
+                style=ARABIC_NUMBERING,
+            ),
+            parent_counter="h3",
         )
 
     def _emit_structure(
@@ -233,7 +263,11 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
             FootnoteContents, lambda _, __, ___: None
         )
         setup.emitter.register_block_or_inline(FootnoteList, self._emit_footnotes)
-        setup.request_counter_links((None, "footnote"))
+        setup.define_counter_rendering(
+            "footnote",
+            MarkdownCounterFormatting(name="footnote", style=ARABIC_NUMBERING),
+            parent_counter=None,
+        )
 
     def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
         return [(FootnoteRef, lambda f: self.footnote_anchors.append(f.backref))]
@@ -387,34 +421,8 @@ class InlineFormatRenderPlugin(MarkdownPlugin):
 
 
 class UrlRenderPlugin(MarkdownPlugin):
-    # TODO add dependency on hyperref!!
     def _register(self, setup: MarkdownSetup) -> None:
         setup.emitter.register_block_or_inline(NamedUrl, self._emit_url)
-        handlers.register_anchor_render_method(
-            "url", self._emit_anchor_url, self._emit_backref_url, can_be_default=True
-        )
-
-    def _emit_anchor_url(
-        self,
-        renderer: MarkdownRenderer,
-        fmt: FormatContext,
-        anchor: Anchor,
-    ):
-        renderer.emit_empty_tag("a", f'id="{anchor.canonical()}"')
-
-    def _emit_backref_url(
-        self,
-        renderer: MarkdownRenderer,
-        fmt: FormatContext,
-        backref: Backref,
-    ):
-        anchor = renderer.anchors.lookup_backref(backref)
-        if backref.label_contents:
-            renderer.emit(fmt.url(f"#{anchor.canonical()}") @ backref.label_contents)
-        else:
-            renderer.emit(
-                fmt.url(f"#{anchor.canonical()}") @ renderer.anchor_to_ref_text(anchor)
-            )
 
     def _emit_url(
         self,
@@ -422,26 +430,6 @@ class UrlRenderPlugin(MarkdownPlugin):
         renderer: MarkdownRenderer,
         fmt: FormatContext,
     ) -> None:
-        if "<" in url.url or ">" in url.url or ")" in url.url:
-            raise RuntimeError(
-                f"Can't handle url {url.url} with a <, >, or ) in it. Please use proper percent-encoding to escape it."
-            )
-
-        if renderer.in_html_mode:
-            assert ">" not in url.url and "<" not in url.url
-            renderer.emit_raw(f'<a href="{url.url}">')
-            if url.contents is None:
-                # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal markdown
-                renderer.emit_unescapedtext(UnescapedText(url.url))
-            else:
-                renderer.emit(*url.contents)
-            renderer.emit_raw("</a>")
-        else:
-            assert ")" not in url.url
-            renderer.emit_raw("[")
-            if url.contents is None:
-                # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal markdown
-                renderer.emit_unescapedtext(UnescapedText(url.url))
-            else:
-                renderer.emit(*url.contents)
-            renderer.emit_raw(f"]({url.url})")
+        renderer.emit_url(
+            url.url, InlineScope(list(url.contents)) if url.contents else None
+        )

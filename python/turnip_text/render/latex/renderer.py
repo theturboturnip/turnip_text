@@ -27,6 +27,8 @@ class LatexCounterStyle(Enum):
     """
     Possible numbering styles for a counter. This is only for the counter number itself, not the surrounding content e.g. dots between numbers.
 
+    TODO use this for something
+
     See https://en.wikibooks.org/wiki/LaTeX/Counters#Counter_style
     """
 
@@ -36,30 +38,6 @@ class LatexCounterStyle(Enum):
     RomanLower = "roman"
     RomanUpper = "Roman"
     Symbol = "fnsymbol"
-
-
-@dataclass
-class LatexCounterFormat:
-    """
-    The numbering style for a given counter and how it's combined with other counters.
-    """
-
-    latex_counter: str
-    """The equivalent counter in a LaTeX document. Right now only default LaTeX counters are supported"""
-
-    name: UnescapedText
-    """The name references use as a prefix e.g. for figures this would be 'Figure' to produce 'Figure 1.2'. Only the name of the last counter in the chain is used."""
-
-    style: Optional[LatexCounterStyle]
-    """The style of the numerical counter, e.g. if set to RomanUpper would produce 'Chapter XI'. Skipped if None"""
-
-    postfix_for_child: str = "."
-    """When combined with a child counter, what should be placed between this counter and the child? e.g. for 'Figure 1-2' the parent (section) counter would have `postfix_for_child='-'`"""
-
-    postfix_for_end: str = ""
-    """If this is the end of the string of counters, what (if anything) should be placed at the end? e.g. for 'Question 1a)' the final counter would have `postfix_for_end=')'`"""
-
-    # TODO the thing that resolves this to text should be able to resolve to "" empty string when name=""
 
 
 class LatexBackrefMethodImpl(abc.ABC):

@@ -79,13 +79,13 @@ class StructureRenderPlugin(LatexPlugin):
             "h1", backref_method=LatexBackrefMethod.Cleveref, parent_counter=None
         )
         setup.define_counter_rendering(
-            "h2", backref_method=LatexBackrefMethod.Cleveref, parent_counter="h2"
+            "h2", backref_method=LatexBackrefMethod.Cleveref, parent_counter="h1"
         )
         setup.define_counter_rendering(
-            "h3", backref_method=LatexBackrefMethod.Cleveref, parent_counter="h3"
+            "h3", backref_method=LatexBackrefMethod.Cleveref, parent_counter="h2"
         )
         setup.define_counter_rendering(
-            "h4", backref_method=LatexBackrefMethod.Cleveref, parent_counter="h4"
+            "h4", backref_method=LatexBackrefMethod.Cleveref, parent_counter="h3"
         )
 
     def _emit_structure(
