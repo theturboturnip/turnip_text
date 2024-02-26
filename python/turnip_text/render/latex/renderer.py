@@ -12,6 +12,8 @@ from turnip_text.render import (
     Renderer,
     RendererSetup,
     RenderPlugin,
+    VisitorFilter,
+    VisitorFunc,
     Writable,
 )
 from turnip_text.render.counters import (
@@ -64,7 +66,9 @@ class LatexBackrefMethodImpl(abc.ABC):
     @abc.abstractmethod
     def emit_anchor(
         self, anchor: Anchor, renderer: "LatexRenderer", fmt: FormatContext
-    ) -> None: ...
+    ) -> None:
+        ...
+
     @abc.abstractmethod
     def emit_backref(
         self,
@@ -72,7 +76,8 @@ class LatexBackrefMethodImpl(abc.ABC):
         anchor: Anchor,
         renderer: "LatexRenderer",
         fmt: FormatContext,
-    ) -> None: ...
+    ) -> None:
+        ...
 
 
 class LatexBackrefMethod(IntEnum):
@@ -291,10 +296,23 @@ class LatexSetup(RendererSetup[LatexRenderer]):
             build_counter_hierarchy(self.requested_counter_links)
         )
 
+    def gen_dfs_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
+        vs: List[Tuple[VisitorFilter, VisitorFunc]] = [
+            (None, self.counters.count_anchor_if_present)
+        ]
+        for p in self.plugins:
+            v = p._make_visitors()
+            if v:
+                vs.extend(v)
+        return vs
+
     def known_node_types(
         self,
     ) -> Iterable[type[Block] | type[Inline] | type[DocSegmentHeader]]:
         return self.emitter.renderer_keys()
+
+    def known_countables(self) -> Iterable[str]:
+        return self.counters.anchor_kind_to_parent_chain.keys()
 
     def define_counter_rendering(
         self,

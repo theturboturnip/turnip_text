@@ -249,7 +249,8 @@ class DocumentDfsPass:
 
 
 class Writable(Protocol):
-    def write(self, s: str, /) -> int: ...
+    def write(self, s: str, /) -> int:
+        ...
 
 
 class Renderer(abc.ABC):
@@ -472,19 +473,23 @@ class RendererSetup(abc.ABC, Generic[TRenderer]):
         super().__init__()
         self.plugins = plugins
 
-    @abc.abstractproperty
-    def counters(self) -> CounterState: ...
+    @abc.abstractmethod
+    def gen_dfs_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
+        ...
 
     @abc.abstractmethod
     def known_node_types(
         self,
-    ) -> Iterable[Type[Union[Block, Inline, DocSegmentHeader]]]: ...
-
-    def known_countables(self) -> Iterable[str]:
-        return self.counters.anchor_kind_to_parent_chain.keys()
+    ) -> Iterable[Type[Union[Block, Inline, DocSegmentHeader]]]:
+        ...
 
     @abc.abstractmethod
-    def to_renderer(self, doc_setup: DocSetup, write_to: Writable) -> TRenderer: ...
+    def known_countables(self) -> Iterable[str]:
+        ...
+
+    @abc.abstractmethod
+    def to_renderer(self, doc_setup: DocSetup, write_to: Writable) -> TRenderer:
+        ...
 
 
 class RenderPlugin(DocMutator, Generic[TRenderer_contra, TRendererSetup]):

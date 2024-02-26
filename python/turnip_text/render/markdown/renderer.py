@@ -1,6 +1,6 @@
 import html
 from contextlib import contextmanager
-from typing import Dict, Iterable, Iterator, List, Optional
+from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
 from turnip_text import Block, DocSegmentHeader, Inline, Paragraph, UnescapedText
 from turnip_text.doc import DocAnchors, DocSetup, DocState, FormatContext
@@ -10,6 +10,8 @@ from turnip_text.render import (
     Renderer,
     RendererSetup,
     RenderPlugin,
+    VisitorFilter,
+    VisitorFunc,
     Writable,
 )
 from turnip_text.render.counters import (
@@ -152,10 +154,23 @@ class MarkdownSetup(RendererSetup[MarkdownRenderer]):
             build_counter_hierarchy(self.requested_counter_links)
         )
 
+    def gen_dfs_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
+        vs: List[Tuple[VisitorFilter, VisitorFunc]] = [
+            (None, self.counters.count_anchor_if_present)
+        ]
+        for p in self.plugins:
+            v = p._make_visitors()
+            if v:
+                vs.extend(v)
+        return vs
+
     def known_node_types(
         self,
     ) -> Iterable[type[Block] | type[Inline] | type[DocSegmentHeader]]:
         return self.emitter.renderer_keys()
+
+    def known_countables(self) -> Iterable[str]:
+        return self.counters.anchor_kind_to_parent_chain.keys()
 
     def request_counter_links(self, *new_links: CounterLink):
         self.requested_counter_links.extend(new_links)

@@ -91,8 +91,6 @@ def parse_and_emit(
             f"Some node types were not given renderers by any plugin, but are used by the document: {missing_renderers}"
         )
 
-    # TODO don't force the renderersetup to expose the counterset - it breaks the API
-
     # Check that all the countables in the document are known by the renderer setup and can be counted
     missing_doc_counters = exported_countables.difference(
         renderer_setup.known_countables()
@@ -103,14 +101,7 @@ def parse_and_emit(
         )
 
     # Phase 3 - Visiting and Counting
-    dfs_visitors: List[Tuple[VisitorFilter, VisitorFunc]] = [
-        (None, renderer_setup.counters.count_anchor_if_present)
-    ]
-    for render_plugin in renderer_setup.plugins:
-        v = render_plugin._make_visitors()
-        if v:
-            dfs_visitors.extend(v)
-    DocumentDfsPass(dfs_visitors).dfs_over_document(
+    DocumentDfsPass(renderer_setup.gen_dfs_visitors()).dfs_over_document(
         toplevel_docsegment,
         doc_setup.anchors,
     )
