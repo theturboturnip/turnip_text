@@ -212,7 +212,6 @@ class CounterState:
         # The one at the end of the chain is the counter for this anchor kind
         parent_chain[-1].increment()
 
-        print(f"counting {anchor}")
         self.anchor_counters[anchor] = tuple(
             (c.anchor_id, c.value) for c in parent_chain
         )

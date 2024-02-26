@@ -287,10 +287,12 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
         renderer: MarkdownRenderer,
         ctx: FormatContext,
     ) -> None:
-        for i, backref in enumerate(self.footnote_anchors):
+        for backref in self.footnote_anchors:
             anchor, footnote = renderer.anchors.lookup_backref_float(backref)
             assert isinstance(footnote, FootnoteContents)
-            renderer.emit(anchor, f"^{i}: ", footnote.contents)
+            renderer.emit(
+                anchor, renderer.anchor_to_ref_text(anchor), f": ", footnote.contents
+            )
             renderer.emit_break_sentence()
         renderer.emit_break_paragraph()
 
