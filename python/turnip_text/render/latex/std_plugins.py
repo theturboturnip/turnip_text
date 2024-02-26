@@ -31,7 +31,12 @@ from turnip_text.render.counters import (
     CounterState,
     build_counter_hierarchy,
 )
-from turnip_text.render.latex.renderer import LatexPlugin, LatexRenderer, LatexSetup
+from turnip_text.render.latex.renderer import (
+    LatexBackrefMethod,
+    LatexPlugin,
+    LatexRenderer,
+    LatexSetup,
+)
 
 
 def STD_LATEX_RENDER_PLUGINS(
@@ -46,12 +51,13 @@ def STD_LATEX_RENDER_PLUGINS(
         ListRenderPlugin(indent_list_items),
         InlineFormatRenderPlugin(),
         UrlRenderPlugin(),
-        CleverefBackrefPlugin(),
     ]
 
 
 class StructureRenderPlugin(LatexPlugin):
     level_to_latex: List[Optional[str]]
+
+    # TODO this might need to enable \part?
 
     def __init__(self, use_chapters: bool) -> None:
         super().__init__()
@@ -68,11 +74,18 @@ class StructureRenderPlugin(LatexPlugin):
 
     def _register(self, setup: LatexSetup) -> None:
         setup.emitter.register_header(StructureBlockHeader, self._emit_structure)
-        setup.request_counter_links(
-            (None, "h1"),
-            ("h1", "h2"),
-            ("h2", "h3"),
-            ("h3", "h4"),
+        # TODO enable more backref methods
+        setup.define_counter_rendering(
+            "h1", backref_method=LatexBackrefMethod.Cleveref, parent_counter=None
+        )
+        setup.define_counter_rendering(
+            "h2", backref_method=LatexBackrefMethod.Cleveref, parent_counter="h2"
+        )
+        setup.define_counter_rendering(
+            "h3", backref_method=LatexBackrefMethod.Cleveref, parent_counter="h3"
+        )
+        setup.define_counter_rendering(
+            "h4", backref_method=LatexBackrefMethod.Cleveref, parent_counter="h4"
         )
 
     def _emit_structure(
@@ -151,7 +164,9 @@ class FootnoteRenderPlugin(LatexPlugin):
         setup.emitter.register_block_or_inline(
             FootnoteContents, lambda _, __, ___: None
         )
-        setup.request_counter_links((None, "footnote"))
+        setup.define_counter_rendering(
+            "footnote", backref_method=None, parent_counter=None
+        )
 
     def _emit_footnote(
         self,
@@ -260,39 +275,3 @@ class UrlRenderPlugin(LatexPlugin):
             renderer.emit_macro("href")
             renderer.emit_braced(url.url.replace("#", "\\#"))
             renderer.emit_braced(url.contents)
-
-
-class CleverefBackrefPlugin(LatexPlugin):
-    # TODO add dependency on cleveref?
-
-    def _register(self, setup: LatexSetup) -> None:
-        raise RuntimeError(
-            "TODO fix up cleveref to be embedded inside latexrenderer as a selectable anchor backend"
-        )
-        handlers.register_anchor_render_method(
-            "cleveref",
-            self._emit_anchor_cleveref,
-            self._emit_backref_cleveref,
-            can_be_default=True,
-        )
-
-    def _emit_backref_cleveref(
-        self,
-        renderer: LatexRenderer,
-        fmt: FormatContext,
-        backref: Backref,
-    ):
-        # TODO if the backref has label_contents, respect that
-        renderer.emit_macro("cref")
-        renderer.emit_braced(renderer.anchors.lookup_backref(backref).canonical())
-
-    def _emit_anchor_cleveref(
-        self,
-        renderer: LatexRenderer,
-        fmt: FormatContext,
-        anchor: Anchor,
-    ):
-        # TODO this isn't what we want at all!!! If the anchor is not directly next to the counter of its kind, cleveref will pick up the wrong type
-        if anchor.id:
-            renderer.emit_macro("label")
-            renderer.emit_braced(anchor.canonical())
