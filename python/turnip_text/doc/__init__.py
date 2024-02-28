@@ -73,7 +73,7 @@ class DocSetup:
     def parse(self, f: InsertedFile) -> DocSegment:
         return parse_file_native(f, self.doc.__dict__)
 
-    def freeze(self):
+    def freeze(self) -> None:
         self.doc._frozen = True
 
 
@@ -168,7 +168,7 @@ class DocPlugin(DocMutator):
         fmt = FormatContext()
         doc = DocState(fmt, anchors)
 
-        def register_plugin(plugin: "DocPlugin"):
+        def register_plugin(plugin: "DocPlugin") -> None:
             i = plugin._interface()
 
             for key, value in i.items():
@@ -355,7 +355,9 @@ class FormatContext:
 
 
 class DocState:
-    _frozen: bool = False  # Set to True when rendering the document, which disables functions annotated with @stateful.
+    _frozen: bool = (
+        False  # Set to True when rendering the document, which disables functions annotated with @stateful.
+    )
 
     # These are reserved fields, so plugins can't export them.
     # Evaluated code can call directly out to doc.blah or fmt.blah.

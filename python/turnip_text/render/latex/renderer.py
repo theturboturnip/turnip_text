@@ -44,8 +44,7 @@ class LatexBackrefMethodImpl(abc.ABC):
     @abc.abstractmethod
     def emit_anchor(
         self, anchor: Anchor, renderer: "LatexRenderer", fmt: FormatContext
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @abc.abstractmethod
     def emit_backref(
@@ -54,8 +53,7 @@ class LatexBackrefMethodImpl(abc.ABC):
         anchor: Anchor,
         renderer: "LatexRenderer",
         fmt: FormatContext,
-    ) -> None:
-        ...
+    ) -> None: ...
 
 
 class LatexBackrefMethod(IntEnum):
@@ -300,7 +298,7 @@ class LatexSetup(RendererSetup[LatexRenderer]):
             None, LatexBackrefMethod, Tuple[LatexBackrefMethod, ...]
         ],  # Either one or multiple possible backref methods. If a tuple, the first element that is present in self.backref_impls will be selected
         parent_counter: Optional[str] = None,
-    ):
+    ) -> None:
         """
         Given a counter, define:
         - how it's name is formatted in backreferences

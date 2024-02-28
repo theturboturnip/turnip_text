@@ -60,7 +60,7 @@ def parse_and_emit(
     exported_nodes: Set[Type[Union[Block, Inline, DocSegmentHeader]]] = set()
     exported_countables: Set[str] = set()
 
-    def apply_mutation(m: DocMutator):
+    def apply_mutation(m: DocMutator) -> None:
         nonlocal toplevel_docsegment, exported_nodes, exported_countables
 
         exported_nodes.update(m._doc_nodes())

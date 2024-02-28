@@ -123,5 +123,5 @@ class raw_scope_builder(RawScopeBuilder):
         )
 
 
-def paragraph_of(i: CoercibleToInline):
+def paragraph_of(i: CoercibleToInline) -> Paragraph:
     return Paragraph([Sentence([coerce_to_inline(i)])])

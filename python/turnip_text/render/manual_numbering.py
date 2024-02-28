@@ -6,8 +6,7 @@ from turnip_text import Inline, InlineScope, UnescapedText
 
 
 class ManualNumbering(Protocol):
-    def __getitem__(self, num: int) -> str:
-        ...
+    def __getitem__(self, num: int) -> str: ...
 
 
 class BasicManualNumbering(ManualNumbering):
@@ -77,6 +76,7 @@ UPPER_ALPH_NUMBERING = BasicManualNumbering(string.ascii_uppercase)
 TNumbering = TypeVar("TNumbering", bound=ManualNumbering)
 
 
+# TODO should this really be generic on TNumbering? It looks like we're just enforcing subclasses of ManualNumbering
 @dataclass
 class SimpleCounterFormat(Generic[TNumbering]):
     """
@@ -100,7 +100,8 @@ class SimpleCounterFormat(Generic[TNumbering]):
     @classmethod
     def resolve(
         cls,
-        counters: Sequence[Tuple["SimpleCounterFormat", int]],
+        # The bound on the SimpleCounterFormat type-argument is sufficient that here we don't care what the concrete type is.
+        counters: Sequence[Tuple["SimpleCounterFormat", int]],  # type: ignore[type-arg]
         with_name: bool = True,
     ) -> UnescapedText:
         if with_name and counters[-1][0].name:

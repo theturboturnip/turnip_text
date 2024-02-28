@@ -1,7 +1,7 @@
 import html
 from contextlib import contextmanager
 from enum import Enum
-from typing import Dict, Iterable, Iterator, List, Optional, Tuple, Type
+from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple, Type
 
 from turnip_text import Block, DocSegmentHeader, Inline, Paragraph, UnescapedText
 from turnip_text.doc import DocAnchors, DocSetup, DocState, FormatContext
@@ -140,7 +140,9 @@ class MarkdownRenderer(Renderer):
             self.html_mode_stack.pop()
 
     @contextmanager
-    def emit_tag(self, tag: str, props: str | None = None, indent: int = 0):
+    def emit_tag(
+        self, tag: str, props: str | None = None, indent: int = 0
+    ) -> Generator[None, None, None]:
         if not self.in_html_mode:
             raise RuntimeError("Can't emit_tag without going into HTML mode!")
 
@@ -160,14 +162,14 @@ class MarkdownRenderer(Renderer):
         finally:
             self.emit_raw(f"</{tag}>")
 
-    def emit_empty_tag(self, tag: str, props: str | None = None):
+    def emit_empty_tag(self, tag: str, props: str | None = None) -> None:
         # This is allowed outside of HTML mode because it doesn't contain anything.
         if props:
             self.emit_raw(f"<{tag} {props}></{tag}>")
         else:
             self.emit_raw(f"<{tag}></{tag}>")
 
-    def emit_url(self, url: str, label: Optional[Inline]):
+    def emit_url(self, url: str, label: Optional[Inline]) -> None:
         if "<" in url or ">" in url or ")" in url or '"' in url:
             raise RuntimeError(
                 f"Can't handle url {url} with a <, >, \", or ) in it. Please use proper percent-encoding to escape it."
@@ -282,7 +284,7 @@ class MarkdownSetup(RendererSetup[MarkdownRenderer]):
         counter: str,
         counter_format: MarkdownCounterFormatting,
         parent_counter: Optional[str] = None,
-    ):
+    ) -> None:
         """
         Given a counter, define:
         - how it's name is formatted in backreferences

@@ -205,12 +205,10 @@ class DocumentDfsPass:
     def dfs_over_document(
         self, toplevel_docsegment: DocSegment, anchors: DocAnchors
     ) -> None:
-        # Parse the floats in ""order""
-        # type-ignore because this relies on covariance.
-        # doc.floats.values() is a sequence of Block, [toplevel_docsegment] is a list of DocSegment
+        # Floats are parsed when their portals are encountered
         dfs_queue: List[Block | Inline | DocSegment | DocSegmentHeader] = [
             toplevel_docsegment
-        ]  # type: ignore
+        ]
         visited_floats: Set[Anchor] = set()
         while dfs_queue:
             node = dfs_queue.pop()
@@ -254,8 +252,7 @@ class DocumentDfsPass:
 
 
 class Writable(Protocol):
-    def write(self, s: str, /) -> int:
-        ...
+    def write(self, s: str, /) -> int: ...
 
 
 class Renderer(abc.ABC):
@@ -448,26 +445,12 @@ class Renderer(abc.ABC):
         finally:
             self.pop_indent(n)
 
-    # @abc.abstractmethod
-    # def anchor_to_number_text(self, anchor: Anchor) -> Inline:
-    #     """Given an anchor, look it up in the counter list and return an Inline rendering to the counters.
 
-    #     e.g. if asking about a subsection, could return "1.2.4" - chapter.section.subsection
-    #     """
-    #     ...
-
-    # @abc.abstractmethod
-    # def anchor_to_ref_text(self, anchor: Anchor) -> Inline:
-    #     """Given an anchor, look it up in the counter list and return an Inline which would be used as its backreference.
-
-    #     e.g. if asking about a subsection, could return 'Subsection 1.2.4'"""
-    #     ...
+# Can't specify generic type bounds inside a TypeVar bound, so RendererSetup doesn't have a generic here
+TRendererSetup = TypeVar("TRendererSetup", bound="RendererSetup", contravariant=True)  # type: ignore[type-arg]
 
 
-TRendererSetup = TypeVar("TRendererSetup", bound="RendererSetup", contravariant=True)
-
-
-# TODO RenderSetup
+# TODO rename to RenderSetup
 class RendererSetup(abc.ABC, Generic[TRenderer]):
     plugins: Iterable["RenderPlugin[TRenderer]"]  # type: ignore[type-arg]
 
@@ -479,22 +462,18 @@ class RendererSetup(abc.ABC, Generic[TRenderer]):
         self.plugins = plugins
 
     @abc.abstractmethod
-    def gen_dfs_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
-        ...
+    def gen_dfs_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]: ...
 
     @abc.abstractmethod
     def known_node_types(
         self,
-    ) -> Iterable[Type[Union[Block, Inline, DocSegmentHeader]]]:
-        ...
+    ) -> Iterable[Type[Union[Block, Inline, DocSegmentHeader]]]: ...
 
     @abc.abstractmethod
-    def known_countables(self) -> Iterable[str]:
-        ...
+    def known_countables(self) -> Iterable[str]: ...
 
     @abc.abstractmethod
-    def to_renderer(self, doc_setup: DocSetup, write_to: Writable) -> TRenderer:
-        ...
+    def to_renderer(self, doc_setup: DocSetup, write_to: Writable) -> TRenderer: ...
 
 
 class RenderPlugin(DocMutator, Generic[TRenderer_contra, TRendererSetup]):

@@ -168,12 +168,6 @@ class StructureBlockHeaderGenerator(BlockScopeBuilder):
         return StructureBlockHeaderGenerator(self.doc, self.weight, label, num)
 
     def build_from_blocks(self, bs: BlockScope) -> StructureBlockHeader:
-        if self.label and not self.num:
-            # TODO can we make this error latex-specific?? Markdown would support this
-            raise ValueError(
-                "Some backends do not support labeled non-numbered headings."
-            )
-
         kind = f"h{self.weight}"
         weight = self.weight
 
@@ -186,7 +180,6 @@ class StructureBlockHeaderGenerator(BlockScopeBuilder):
         return StructureBlockHeader(contents=bs, anchor=None, weight=weight)
 
 
-# TODO make the headings builders that are also callable?
 class StructureDocPlugin(DocPlugin):
     def _doc_nodes(
         self,

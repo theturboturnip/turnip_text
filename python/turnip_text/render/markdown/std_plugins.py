@@ -82,10 +82,6 @@ class StructureRenderPlugin(MarkdownPlugin):
         super().__init__()
         self._has_chapter = use_chapters
 
-    # TODO register name generators for counters based on _has_chapter
-    # if has_chapter, weight=1 => chapter, weight=2 => section
-    # else weight=1 => section
-
     def _register(self, setup: MarkdownSetup) -> None:
         setup.emitter.register_header(StructureBlockHeader, self._emit_structure)
         # TODO make this overridable
@@ -176,7 +172,7 @@ class UncheckedBibMarkdownRenderPlugin(MarkdownPlugin):
             self._ordered_citations.append(citekey)
 
     def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
-        def regsiter_many_citations(c: Citation):
+        def regsiter_many_citations(c: Citation) -> None:
             for k in c.citekeys:
                 self._register_citation(k)
 
@@ -278,7 +274,6 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
         renderer: MarkdownRenderer,
         ctx: FormatContext,
     ) -> None:
-        # TODO hook into the anchor rendering and register a handler for footnotes
         renderer.emit(footnote.portal_to)
 
     def _emit_footnotes(
