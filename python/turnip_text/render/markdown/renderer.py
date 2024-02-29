@@ -78,13 +78,6 @@ class MarkdownRenderer(Renderer):
         # If they didn't, we start in Markdown mode.
         self.html_mode_stack = [html_mode]
 
-    # def __init__(self, plugins: List[Plugin["MarkdownRenderer"]], html_mode_only: bool=False) -> None:
-    #     super().__init__(plugins)
-    #     # Once you're in HTML mode, you can't drop down to Markdown mode again.
-    #     # If they asked for HTML mode only, just make that the first entry in the stack.
-    #     # If they didn't, we start in Markdown mode.
-    #     self.html_mode_stack = [html_mode_only]
-
     def emit_unescapedtext(self, t: UnescapedText) -> None:
         if self.in_html_mode:
             self.emit_raw(html.escape(t.text))
@@ -109,7 +102,8 @@ class MarkdownRenderer(Renderer):
             self.emit_newline()
             with self.indent(4):
                 super().emit_paragraph(p)
-                # emit_paragraph already ends with a newline
+                # emit_paragraph *joins* the sentences, but it doesn't end with a newline
+                self.emit_break_sentence()
             self.emit_raw("</p>")
         else:
             super().emit_paragraph(p)
