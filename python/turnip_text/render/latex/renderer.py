@@ -10,8 +10,8 @@ from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.render import (
     EmitterDispatch,
     Renderer,
-    RendererSetup,
     RenderPlugin,
+    RenderSetup,
     VisitorFilter,
     VisitorFunc,
     Writable,
@@ -237,7 +237,7 @@ class LatexRenderer(Renderer):
 
 
 # TODO this is a great place to put in stuff for calculating the preamble!
-class LatexSetup(RendererSetup[LatexRenderer]):
+class LatexSetup(RenderSetup[LatexRenderer]):
     emitter: EmitterDispatch[LatexRenderer]
     counter_kind_to_backref_method: Dict[str, Optional[LatexBackrefMethod]]
     backref_impls: Dict[LatexBackrefMethod, LatexBackrefMethodImpl]

@@ -284,7 +284,7 @@ class Renderer(abc.ABC):
     def default_emitter_dispatch(
         cls: Type[TRenderer],
     ) -> EmitterDispatch[TRenderer]:
-        """This is a convenience method that generates the most basic EmitterDispatch for a renderer. It is meant to be called by RendererSetup classes. It can be overridden in renderers that provide more than the basic emitters."""
+        """This is a convenience method that generates the most basic EmitterDispatch for a renderer. It is meant to be called by RenderSetup classes. It can be overridden in renderers that provide more than the basic emitters."""
         handlers: EmitterDispatch[TRenderer] = EmitterDispatch()
         handlers.register_block_or_inline(
             BlockScope, lambda bs, r, fmt: r.emit_blockscope(bs)
@@ -366,13 +366,7 @@ class Renderer(abc.ABC):
         """
         raise NotImplementedError(f"Need to implement emit_unescapedtext")
 
-    # TODO this is probably a bad idea to implement because it will get mixed up with raw.
-    # def emit(self, x: Any) -> None:
-    #     if isinstance(x, Inline):
-    #         self.emit_inline(x)
-    #     else:
-    #         self.emit_block(x)
-
+    # TODO need to handle confusion between raw str and text str. too easy to accidentally pass text str
     # TODO or i could get even crazier with it - make it expand tuples?
     def emit(self, *args: Any, joiner: Optional[Callable[[], None]] = None) -> None:
         first = True
@@ -446,17 +440,16 @@ class Renderer(abc.ABC):
             self.pop_indent(n)
 
 
-# Can't specify generic type bounds inside a TypeVar bound, so RendererSetup doesn't have a generic here
-TRendererSetup = TypeVar("TRendererSetup", bound="RendererSetup", contravariant=True)  # type: ignore[type-arg]
+# Can't specify generic type bounds inside a TypeVar bound, so RenderSetup doesn't have a generic here
+TRenderSetup = TypeVar("TRenderSetup", bound="RenderSetup", contravariant=True)  # type: ignore[type-arg]
 
 
-# TODO rename to RenderSetup
-class RendererSetup(abc.ABC, Generic[TRenderer]):
+class RenderSetup(abc.ABC, Generic[TRenderer]):
     plugins: Iterable["RenderPlugin[TRenderer]"]  # type: ignore[type-arg]
 
     def __init__(
-        self: TRendererSetup,
-        plugins: Iterable["RenderPlugin[TRenderer, TRendererSetup]"],
+        self: TRenderSetup,
+        plugins: Iterable["RenderPlugin[TRenderer, TRenderSetup]"],
     ) -> None:
         super().__init__()
         self.plugins = plugins
@@ -476,8 +469,8 @@ class RendererSetup(abc.ABC, Generic[TRenderer]):
     def to_renderer(self, doc_setup: DocSetup, write_to: Writable) -> TRenderer: ...
 
 
-class RenderPlugin(DocMutator, Generic[TRenderer_contra, TRendererSetup]):
-    def _register(self, setup: TRendererSetup) -> None:
+class RenderPlugin(DocMutator, Generic[TRenderer_contra, TRenderSetup]):
+    def _register(self, setup: TRenderSetup) -> None:
         return None
 
     # TODO make this include serial passes, not parallel? is that useful?

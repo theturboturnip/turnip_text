@@ -95,8 +95,6 @@ class SimpleCounterFormat(Generic[TNumbering]):
     postfix_for_end: str = ""
     """If this is the end of the string of counters, what (if anything) should be placed at the end? e.g. for 'Question 1a)' the final counter would have `postfix_for_end=')'`"""
 
-    # TODO the thing that resolves this to text should be able to resolve to "" empty string when name=""
-
     @classmethod
     def resolve(
         cls,

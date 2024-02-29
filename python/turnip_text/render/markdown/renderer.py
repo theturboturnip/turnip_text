@@ -10,8 +10,8 @@ from turnip_text.render import (
     EmitterDispatch,
     RefEmitterDispatch,
     Renderer,
-    RendererSetup,
     RenderPlugin,
+    RenderSetup,
     VisitorFilter,
     VisitorFunc,
     Writable,
@@ -232,7 +232,7 @@ class MarkdownRenderer(Renderer):
         return emitter
 
 
-class MarkdownSetup(RendererSetup[MarkdownRenderer]):
+class MarkdownSetup(RenderSetup[MarkdownRenderer]):
     html_only: bool
     emitter: EmitterDispatch[MarkdownRenderer]
     counter_rendering: Dict[str, MarkdownCounterFormatting]
