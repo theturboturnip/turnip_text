@@ -407,7 +407,7 @@ class DocAnchors(DocPlugin):
     _VALID_USER_ANCHOR_ID_REGEX = re.compile(r"\w*[a-zA-Z]\w*")
 
     def __init__(self) -> None:
-        self._anchor_kind_counters = defaultdict(lambda: 0)
+        self._anchor_kind_counters = defaultdict(lambda: 1)
         self._anchor_id_to_possible_kinds = defaultdict(dict)
         self._anchored_floats = {}
 
