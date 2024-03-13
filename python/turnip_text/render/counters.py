@@ -84,6 +84,7 @@ CounterHierarchy = Mapping[str, str | List[str] | "CounterHierarchy"]
 
 def build_counter_hierarchy(
     conflicting_links: Iterable[CounterLink],
+    known_counters: Set[str],
 ) -> CounterHierarchy:
     handled_counters: Set[str] = set()
     subordinate_to_superior: Dict[str, Optional[str]] = {}
@@ -130,7 +131,10 @@ def build_counter_hierarchy(
         # Everything in this chain has now been checked for loops
         counters_to_check_for_loops.difference_update(chain)
 
-    # TODO any missing but handleable counters should also get auto-assigned to None
+    # Any missing but handleable counters should also get auto-assigned to None
+    for c in known_counters.difference(handled_counters):
+        subordinate_to_superior[c] = None
+        superior_to_subordinate[None].append(c)
 
     # Now we have the set of direct links with no conflicts, connect them to make a CounterHierarchy
     def recursive_build_counters(subordinates: List[str]) -> CounterHierarchy:

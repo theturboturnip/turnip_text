@@ -252,7 +252,9 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
             p._register(self)
         # Now we know the full hierarchy we can build the CounterState
         self.counters = CounterState(
-            build_counter_hierarchy(self.requested_counter_links)
+            build_counter_hierarchy(
+                self.requested_counter_links, set(self.counter_rendering.keys())
+            ),
         )
 
     def gen_dfs_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
@@ -277,20 +279,19 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
         self,
         counter: str,
         counter_format: MarkdownCounterFormatting,
-        parent_counter: Optional[str] = None,
     ) -> None:
         """
         Given a counter, define:
         - how it's name is formatted in backreferences
         - what macros are used to backreference the counter
-        - what the counter's parent should be.
         """
-        # TODO check if we've defined this counter before already
+        if counter not in self.counter_rendering:
+            self.counter_rendering[counter] = counter_format
 
-        self.counter_rendering[counter] = counter_format
-
+    def request_counter_parent(
+        self, counter: str, parent_counter: Optional[str]
+    ) -> None:
         # Apply the requested counter links
-        # TODO in the not-set case we probably shouldn't do this? but then how would the CounterState know about them
         self.requested_counter_links.append((parent_counter, counter))
 
     def to_renderer(self, doc_setup: DocSetup, write_to: Writable) -> MarkdownRenderer:

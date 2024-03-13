@@ -75,18 +75,13 @@ class StructureRenderPlugin(LatexPlugin):
     def _register(self, setup: LatexSetup) -> None:
         setup.emitter.register_header(StructureBlockHeader, self._emit_structure)
         # TODO enable more backref methods
-        setup.define_counter_rendering(
-            "h1", backref_method=LatexBackrefMethod.Cleveref, parent_counter=None
-        )
-        setup.define_counter_rendering(
-            "h2", backref_method=LatexBackrefMethod.Cleveref, parent_counter="h1"
-        )
-        setup.define_counter_rendering(
-            "h3", backref_method=LatexBackrefMethod.Cleveref, parent_counter="h2"
-        )
-        setup.define_counter_rendering(
-            "h4", backref_method=LatexBackrefMethod.Cleveref, parent_counter="h3"
-        )
+        method = LatexBackrefMethod.Cleveref
+        for c in ["h1", "h2", "h3", "h4"]:
+            setup.define_counter_backref_method(c, method)
+        setup.request_counter_parent("h1", parent_counter=None)
+        setup.request_counter_parent("h2", parent_counter="h1")
+        setup.request_counter_parent("h3", parent_counter="h2")
+        setup.request_counter_parent("h4", parent_counter="h3")
 
     def _emit_structure(
         self,
@@ -164,9 +159,7 @@ class FootnoteRenderPlugin(LatexPlugin):
         setup.emitter.register_block_or_inline(
             FootnoteContents, lambda _, __, ___: None
         )
-        setup.define_counter_rendering(
-            "footnote", backref_method=None, parent_counter=None
-        )
+        setup.define_counter_backref_method("footnote", backref_method=None)
 
     def _emit_footnote(
         self,

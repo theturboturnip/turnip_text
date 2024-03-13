@@ -84,14 +84,12 @@ class StructureRenderPlugin(MarkdownPlugin):
 
     def _register(self, setup: MarkdownSetup) -> None:
         setup.emitter.register_header(StructureBlockHeader, self._emit_structure)
-        # TODO make this overridable
         setup.define_counter_rendering(
             "h1",
             MarkdownCounterFormatting(
                 name=("chapter" if self._has_chapter else "section"),
                 style=ARABIC_NUMBERING,
             ),
-            parent_counter=None,
         )
         setup.define_counter_rendering(
             "h2",
@@ -99,7 +97,6 @@ class StructureRenderPlugin(MarkdownPlugin):
                 name=("section" if self._has_chapter else "subsection"),
                 style=ARABIC_NUMBERING,
             ),
-            parent_counter="h1",
         )
         setup.define_counter_rendering(
             "h3",
@@ -107,7 +104,6 @@ class StructureRenderPlugin(MarkdownPlugin):
                 name=("subsection" if self._has_chapter else "subsubsection"),
                 style=ARABIC_NUMBERING,
             ),
-            parent_counter="h2",
         )
         setup.define_counter_rendering(
             "h4",
@@ -115,8 +111,11 @@ class StructureRenderPlugin(MarkdownPlugin):
                 name=("subsubsection" if self._has_chapter else "subsubsubsection"),
                 style=ARABIC_NUMBERING,
             ),
-            parent_counter="h3",
         )
+        setup.request_counter_parent("h1", parent_counter=None)
+        setup.request_counter_parent("h2", parent_counter="h1")
+        setup.request_counter_parent("h3", parent_counter="h2")
+        setup.request_counter_parent("h4", parent_counter="h3")
 
     def _emit_structure(
         self,
@@ -262,7 +261,6 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
         setup.define_counter_rendering(
             "footnote",
             MarkdownCounterFormatting(name="^", style=ARABIC_NUMBERING),
-            parent_counter=None,
         )
 
     def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:

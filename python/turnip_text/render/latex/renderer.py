@@ -269,7 +269,10 @@ class LatexSetup(RenderSetup[LatexRenderer]):
             p._register(self)
         # Now we know the full hierarchy we can build the CounterState
         self.counters = CounterState(
-            build_counter_hierarchy(self.requested_counter_links)
+            build_counter_hierarchy(
+                self.requested_counter_links,
+                set(self.counter_kind_to_backref_method.keys()),
+            )
         )
 
     def gen_dfs_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
@@ -290,22 +293,22 @@ class LatexSetup(RenderSetup[LatexRenderer]):
     def known_countables(self) -> Iterable[str]:
         return self.counters.anchor_kind_to_parent_chain.keys()
 
-    def define_counter_rendering(
+    def define_counter_backref_method(
         self,
         counter: str,
         # counter_format: Optional[LatexCounterFormat],
         backref_method: Union[
             None, LatexBackrefMethod, Tuple[LatexBackrefMethod, ...]
         ],  # Either one or multiple possible backref methods. If a tuple, the first element that is present in self.backref_impls will be selected
-        parent_counter: Optional[str] = None,
     ) -> None:
         """
         Given a counter, define:
-        - how it's name is formatted in backreferences
+        - TODO how it's name is formatted in backreferences
         - what macros are used to backreference the counter
-        - what the counter's parent should be.
         """
-        # TODO check if we've defined this counter before already
+
+        if counter in self.counter_kind_to_backref_method:
+            return
 
         # Figure out which backref_method we can use
         if backref_method is not None:
@@ -326,8 +329,10 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         else:
             self.counter_kind_to_backref_method[counter] = None
 
+    def request_counter_parent(
+        self, counter: str, parent_counter: Optional[str]
+    ) -> None:
         # Apply the requested counter links
-        # TODO in the not-set case we probably shouldn't do this? but then how would the CounterState know about them
         self.requested_counter_links.append((parent_counter, counter))
 
     def to_renderer(self, doc_setup: DocSetup, write_to: Writable) -> LatexRenderer:
