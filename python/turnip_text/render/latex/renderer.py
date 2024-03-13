@@ -247,6 +247,9 @@ class LatexSetup(RenderSetup[LatexRenderer]):
     def __init__(
         self,
         plugins: Iterable[RenderPlugin[LatexRenderer, "LatexSetup"]],
+        requested_counter_backref_methods: Dict[
+            str, Union[None, LatexBackrefMethod, Tuple[LatexBackrefMethod, ...]]
+        ] = {},
         requested_counter_links: Optional[Iterable[CounterLink]] = None,
         # TODO config for the backref methods
     ) -> None:
@@ -264,6 +267,8 @@ class LatexSetup(RenderSetup[LatexRenderer]):
             self.requested_counter_links = list(requested_counter_links)
         else:
             self.requested_counter_links = []
+        for counter, backref_method in requested_counter_backref_methods.items():
+            self.define_counter_backref_method(counter, backref_method)
         # This allows plugins to register with the emitter and request specific counter links
         for p in plugins:
             p._register(self)

@@ -11,7 +11,12 @@ from turnip_text.doc.std_plugins import STD_DOC_PLUGINS
 from turnip_text.render import Renderer
 from turnip_text.render.latex.renderer import LatexSetup
 from turnip_text.render.latex.std_plugins import STD_LATEX_RENDER_PLUGINS
-from turnip_text.render.markdown.renderer import HtmlSetup, MarkdownSetup
+from turnip_text.render.manual_numbering import LOWER_ROMAN_NUMBERING
+from turnip_text.render.markdown.renderer import (
+    HtmlSetup,
+    MarkdownCounterFormatting,
+    MarkdownSetup,
+)
 from turnip_text.render.markdown.std_plugins import STD_MARKDOWN_RENDER_PLUGINS
 from turnip_text.system import parse_and_emit
 
@@ -63,7 +68,13 @@ if __name__ == "__main__":
     rendered_html = parse_and_emit(
         InsertedFile.from_path("./examples/phdprop.ttext"),
         DocSetup(STD_DOC_PLUGINS()),
-        HtmlSetup(STD_MARKDOWN_RENDER_PLUGINS(use_chapters=False)),
+        HtmlSetup(
+            STD_MARKDOWN_RENDER_PLUGINS(use_chapters=False),
+            requested_counter_formatting={
+                "footnote": MarkdownCounterFormatting("", style=LOWER_ROMAN_NUMBERING)
+            },
+            requested_counter_links=[("h1", "footnote")],
+        ),
         write_to=io.StringIO(),
     )
     if args.ohtml:

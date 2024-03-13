@@ -236,6 +236,7 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
     def __init__(
         self,
         plugins: Iterable[RenderPlugin[MarkdownRenderer, "MarkdownSetup"]],
+        requested_counter_formatting: Dict[str, MarkdownCounterFormatting] = {},
         requested_counter_links: Optional[Iterable[CounterLink]] = None,
         html_only: bool = False,
     ) -> None:
@@ -247,6 +248,8 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
             self.requested_counter_links = list(requested_counter_links)
         else:
             self.requested_counter_links = []
+        for counter, counter_format in requested_counter_formatting.items():
+            self.define_counter_rendering(counter, counter_format)
         # This allows plugins to register with the emitter and request specific counter links
         for p in plugins:
             p._register(self)
@@ -309,9 +312,15 @@ class HtmlSetup(MarkdownSetup):
     def __init__(
         self,
         plugins: Iterable[RenderPlugin[MarkdownRenderer, "MarkdownSetup"]],
+        requested_counter_formatting: Dict[str, MarkdownCounterFormatting] = {},
         requested_counter_links: Optional[Iterable[CounterLink]] = None,
     ) -> None:
-        super().__init__(plugins, requested_counter_links, html_only=True)
+        super().__init__(
+            plugins,
+            requested_counter_formatting,
+            requested_counter_links,
+            html_only=True,
+        )
 
 
 MarkdownPlugin = RenderPlugin[MarkdownRenderer, MarkdownSetup]
