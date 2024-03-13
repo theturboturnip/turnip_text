@@ -16,7 +16,7 @@ class BasicManualNumbering(ManualNumbering):
         self.lookup = lookup
 
     def __getitem__(self, num: int) -> str:
-        if num < 1:
+        if num < 0:
             raise RuntimeError(f"Can't represent number {num} - too small")
         if num > len(self.lookup):
             raise RuntimeError(f"Can't represent number {num} - too large")
@@ -48,8 +48,10 @@ class RomanManualNumbering(ManualNumbering):
         self.upper = upper
 
     def __getitem__(self, num: int) -> str:
-        if num <= 0:
+        if num < 0:
             raise RuntimeError(f"Can't represent {num} with roman numerals")
+        if num == 0:
+            return "0"
 
         s = ""
         for divisor, roman in ROMAN_NUMBER_LOWER:
@@ -69,8 +71,8 @@ class ArabicManualNumbering(ManualNumbering):
 ARABIC_NUMBERING = ArabicManualNumbering()
 LOWER_ROMAN_NUMBERING = RomanManualNumbering(upper=False)
 UPPER_ROMAN_NUMBERING = RomanManualNumbering(upper=True)
-LOWER_ALPH_NUMBERING = BasicManualNumbering(string.ascii_lowercase)
-UPPER_ALPH_NUMBERING = BasicManualNumbering(string.ascii_uppercase)
+LOWER_ALPH_NUMBERING = BasicManualNumbering("0" + string.ascii_lowercase)
+UPPER_ALPH_NUMBERING = BasicManualNumbering("0" + string.ascii_uppercase)
 
 
 TNumbering = TypeVar("TNumbering", bound=ManualNumbering)
