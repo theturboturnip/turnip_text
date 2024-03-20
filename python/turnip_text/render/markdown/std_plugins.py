@@ -147,9 +147,6 @@ class StructureRenderPlugin(MarkdownPlugin):
             renderer.emit_segment(s)
 
 
-# TODO footnotes and citations
-# Footnotes may require changes to document structure (e.g. a FootnoteFlush block after a paragraph with a footnote in it?)
-# How to handle this?
 class UncheckedBibMarkdownRenderPlugin(MarkdownPlugin):
     _ordered_citations: List[str]
     _referenced_citations: Set[str]
@@ -179,7 +176,7 @@ class UncheckedBibMarkdownRenderPlugin(MarkdownPlugin):
             (CiteAuthor, lambda ca: self._register_citation(ca.citekey)),
         ]
 
-    # TODO make Citations use backrefs?
+    # TODO make Citations use backrefs? Requires document mutations which we don't have yet.
 
     def _emit_cite(
         self, cite: Citation, renderer: MarkdownRenderer, ctx: FormatContext
@@ -227,6 +224,8 @@ class FootnoteList(Block):
     pass
 
 
+# TODO FootnoteBeforeNextParagraphRenderPlugin
+# - FootnoteAfterBlock may try to emit something in the middle of a custom block, Paragraphs are (I think?) guaranteed to be inside a BlockScope and we can kind emit them there
 class FootnoteAtEndRenderPlugin(MarkdownPlugin):
     footnote_anchors: List[Backref]
 

@@ -93,6 +93,8 @@ class MarkdownRenderer(Renderer):
                 data = data.replace(char, "\\" + char)
             self.emit_raw(data)
 
+    # Surround paragraphs with <p> where applicable in HTML mode.
+    # Blocks in general do not need to be surrounded with <p>, but can choose to if they want.
     def emit_paragraph(self, p: Paragraph) -> None:
         if self.in_html_mode:
             self.emit_raw("<p>")
@@ -104,18 +106,6 @@ class MarkdownRenderer(Renderer):
             self.emit_raw("</p>")
         else:
             super().emit_paragraph(p)
-
-    # TODO do this for blocks instead of paragraphs?
-    # def emit_block(self, b: Block) -> None:
-    #     if self.in_html_mode:
-    #         self.emit_raw("<p>")
-    #         with self.indent(4):
-    #             self.emit_line_break()
-    #             super().emit_block(b)
-    #         self.emit_line_break()
-    #         self.emit_raw("</p>")
-    #     else:
-    #         super().emit_block(b)
 
     @property
     def in_html_mode(self) -> bool:
