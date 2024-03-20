@@ -1,8 +1,7 @@
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, cast
+from typing import Dict, Iterator, List, Optional
 
-from turnip_text import Block, BlockScope, DocSegment, Inline
+from turnip_text import BlockScope, DocSegment
 from turnip_text.doc import FormatContext
-from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.std_plugins import (
     Bibliography,
     Citation,
@@ -17,26 +16,12 @@ from turnip_text.doc.std_plugins import (
     NamedUrl,
     StructureBlockHeader,
 )
-from turnip_text.render import (
-    EmitterDispatch,
-    RefEmitterDispatch,
-    RenderPlugin,
-    VisitorFilter,
-    VisitorFunc,
-)
-from turnip_text.render.counters import (
-    CounterChainValue,
-    CounterHierarchy,
-    CounterLink,
-    CounterState,
-    build_counter_hierarchy,
-)
-from turnip_text.render.latex.renderer import (
-    LatexBackrefMethod,
-    LatexPlugin,
-    LatexRenderer,
-    LatexSetup,
-)
+from turnip_text.render import RenderPlugin
+from turnip_text.render.latex.backrefs import LatexBackrefMethod
+from turnip_text.render.latex.renderer import LatexRenderer
+from turnip_text.render.latex.setup import LatexSetup
+
+LatexPlugin = RenderPlugin[LatexRenderer, LatexSetup]
 
 
 def STD_LATEX_RENDER_PLUGINS(

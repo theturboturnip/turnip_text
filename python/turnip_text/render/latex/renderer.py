@@ -1,26 +1,12 @@
 import abc
 from contextlib import contextmanager
-from dataclasses import dataclass
-from enum import Enum, IntEnum
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Type, Union
+from enum import Enum
+from typing import Any, Dict, Iterator
 
-from turnip_text import Block, DocSegmentHeader, Inline, UnescapedText
+from turnip_text import UnescapedText
 from turnip_text.doc import DocSetup, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
-from turnip_text.render import (
-    EmitterDispatch,
-    Renderer,
-    RenderPlugin,
-    RenderSetup,
-    VisitorFilter,
-    VisitorFunc,
-    Writable,
-)
-from turnip_text.render.counters import (
-    CounterLink,
-    CounterState,
-    build_counter_hierarchy,
-)
+from turnip_text.render import EmitterDispatch, Renderer, Writable
 
 
 class LatexCounterStyle(Enum):
@@ -40,6 +26,9 @@ class LatexCounterStyle(Enum):
     Symbol = "fnsymbol"
 
 
+# A class that emits anchors and backrefs in a specific way.
+# The renderer receives a mapping of (anchor kind) -> (backref method impl) from the LatexSetup.
+# Implementations are stored in backrefs.py
 class LatexBackrefMethodImpl(abc.ABC):
     @abc.abstractmethod
     def emit_anchor(
@@ -54,100 +43,6 @@ class LatexBackrefMethodImpl(abc.ABC):
         renderer: "LatexRenderer",
         fmt: FormatContext,
     ) -> None: ...
-
-
-class LatexBackrefMethod(IntEnum):
-    Cleveref = 0
-    Hyperlink = 1
-    PageRef = 2
-
-
-# TODO latex \autoref support?
-
-
-class LatexHyperlink(LatexBackrefMethodImpl):
-    """A means of referring back to a position in the document using the \\hypertarget and \\hyperlink macros instead of \\label and \\XXXref"""
-
-    def emit_anchor(
-        self, anchor: Anchor, renderer: "LatexRenderer", fmt: FormatContext
-    ) -> None:
-        renderer.emit_macro("hypertarget")
-        renderer.emit_braced(anchor.canonical())
-        renderer.emit_braced("")  # TODO include caption for anchor?
-
-    def emit_backref(
-        self,
-        backref: Backref,
-        anchor: Anchor,
-        renderer: "LatexRenderer",
-        fmt: FormatContext,
-    ) -> None:
-        renderer.emit_macro("hyperlink")
-        renderer.emit_braced(anchor.canonical())
-        assert (
-            backref.label_contents is not None
-        ), "Can't emit a backreferences as a \\hyperlink without a label/caption"
-        # TODO enable using LatexCounterFormat to compute this
-        renderer.emit_braced(backref.label_contents)
-
-
-class LatexCleveref(LatexBackrefMethodImpl):
-    """Cross-referencing using the `cleveref` LaTeX package, which has built-in sane defaults for many counters and languages. If backref.label_contents is provided, falls back to `\\hyperref`"""
-
-    # TODO more cleveref initialization
-    capitalize = True
-    nameinref = True
-
-    def emit_anchor(
-        self, anchor: Anchor, renderer: "LatexRenderer", fmt: FormatContext
-    ) -> None:
-        renderer.emit_macro("label")
-        renderer.emit_braced(anchor.canonical())
-
-    def emit_backref(
-        self,
-        backref: Backref,
-        anchor: Anchor,
-        renderer: "LatexRenderer",
-        fmt: FormatContext,
-    ) -> None:
-        if backref.label_contents:
-            renderer.emit_macro("hyperref")
-            renderer.emit_sqr_bracketed(anchor.canonical())
-            renderer.emit_braced(backref.label_contents)
-        else:
-            renderer.emit_macro("cref")
-            renderer.emit_braced(anchor.canonical())
-
-
-class LatexPageRef(LatexBackrefMethodImpl):
-    """Cross-referencing for backreferences to non-floating non-counted things, i.e. by page number, using `\\phantomsection\\label` and `\\pageref` or `\\hyperref` when a backref caption is provided."""
-
-    def emit_anchor(
-        self, anchor: Anchor, renderer: "LatexRenderer", fmt: FormatContext
-    ) -> None:
-        renderer.emit_macro("phantomsection")
-        renderer.emit_newline()  # TODO not sure this is necessary but it's included in a lot of examples
-        renderer.emit_macro("label")
-        renderer.emit_braced(anchor.canonical())
-
-    def emit_backref(
-        self,
-        backref: Backref,
-        anchor: Anchor,
-        renderer: "LatexRenderer",
-        fmt: FormatContext,
-    ) -> None:
-        if backref.label_contents:
-            renderer.emit_macro("hyperref")
-            renderer.emit_sqr_bracketed(anchor.canonical())
-            renderer.emit_braced(backref.label_contents)
-        else:
-            renderer.emit(
-                UnescapedText("page ")
-            )  ## hooooo boy yeah this isn't great... capitalization is annoying
-            renderer.emit_macro("pageref")
-            renderer.emit_braced(backref.label_contents)
 
 
 class LatexRenderer(Renderer):
@@ -238,123 +133,3 @@ class LatexRenderer(Renderer):
             Backref, lambda backref, renderer, _: renderer.emit_backref(backref)
         )
         return emitter
-
-
-# TODO this is a great place to put in stuff for calculating the preamble!
-class LatexSetup(RenderSetup[LatexRenderer]):
-    emitter: EmitterDispatch[LatexRenderer]
-    counter_kind_to_backref_method: Dict[str, Optional[LatexBackrefMethod]]
-    backref_impls: Dict[LatexBackrefMethod, LatexBackrefMethodImpl]
-    requested_counter_links: List[CounterLink]
-    counters: CounterState
-
-    def __init__(
-        self,
-        plugins: Iterable[RenderPlugin[LatexRenderer, "LatexSetup"]],
-        requested_counter_backref_methods: Dict[
-            str, Union[None, LatexBackrefMethod, Tuple[LatexBackrefMethod, ...]]
-        ] = {},
-        requested_counter_links: Optional[Iterable[CounterLink]] = None,
-        # TODO config for the backref methods
-    ) -> None:
-        super().__init__(plugins)
-        self.emitter = LatexRenderer.default_emitter_dispatch()
-        self.counter_kind_to_backref_method = {}
-        self.backref_impls = {
-            # TODO make sure we load hyperref and cleveref!
-            # TODO make loading cleveref optional
-            LatexBackrefMethod.Cleveref: LatexCleveref(),
-            LatexBackrefMethod.Hyperlink: LatexHyperlink(),
-            LatexBackrefMethod.PageRef: LatexPageRef(),
-        }
-        if requested_counter_links:
-            self.requested_counter_links = list(requested_counter_links)
-        else:
-            self.requested_counter_links = []
-        for counter, backref_method in requested_counter_backref_methods.items():
-            self.define_counter_backref_method(counter, backref_method)
-        # This allows plugins to register with the emitter and request specific counter links
-        for p in plugins:
-            p._register(self)
-        # Now we know the full hierarchy we can build the CounterState
-        self.counters = CounterState(
-            build_counter_hierarchy(
-                self.requested_counter_links,
-                set(self.counter_kind_to_backref_method.keys()),
-            )
-        )
-
-    def gen_dfs_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
-        vs: List[Tuple[VisitorFilter, VisitorFunc]] = [
-            (None, self.counters.count_anchor_if_present)
-        ]
-        for p in self.plugins:
-            v = p._make_visitors()
-            if v:
-                vs.extend(v)
-        return vs
-
-    def known_node_types(
-        self,
-    ) -> Iterable[type[Block] | type[Inline] | type[DocSegmentHeader]]:
-        return self.emitter.renderer_keys()
-
-    def known_countables(self) -> Iterable[str]:
-        return self.counters.anchor_kind_to_parent_chain.keys()
-
-    def define_counter_backref_method(
-        self,
-        counter: str,
-        # counter_format: Optional[LatexCounterFormat],
-        backref_method: Union[
-            None, LatexBackrefMethod, Tuple[LatexBackrefMethod, ...]
-        ],  # Either one or multiple possible backref methods. If a tuple, the first element that is present in self.backref_impls will be selected
-    ) -> None:
-        """
-        Given a counter, define:
-        - TODO how it's name is formatted in backreferences
-        - what macros are used to backreference the counter
-        """
-
-        if counter in self.counter_kind_to_backref_method:
-            return
-
-        # Figure out which backref_method we can use
-        if backref_method is not None:
-            if isinstance(backref_method, LatexBackrefMethod):
-                backref_methods: Tuple[LatexBackrefMethod, ...] = (backref_method,)
-            else:
-                backref_methods = backref_method
-            found_valid_method = False
-            for backref_method in backref_methods:
-                if backref_method in self.backref_impls:
-                    self.counter_kind_to_backref_method[counter] = backref_method
-                    found_valid_method = True
-                    break
-            if not found_valid_method:
-                raise ValueError(
-                    f"None of the supplied backref methods {backref_methods} for counter '{counter}' were available in the document. Available methods: {self.backref_impls.keys()}"
-                )
-        else:
-            self.counter_kind_to_backref_method[counter] = None
-
-    def request_counter_parent(
-        self, counter: str, parent_counter: Optional[str]
-    ) -> None:
-        # Apply the requested counter links
-        self.requested_counter_links.append((parent_counter, counter))
-
-    def to_renderer(self, doc_setup: DocSetup, write_to: Writable) -> LatexRenderer:
-        return LatexRenderer(
-            doc_setup,
-            self.emitter,
-            {
-                counter: self.backref_impls[method]
-                for counter, method in self.counter_kind_to_backref_method.items()
-                if method is not None
-            },
-            write_to,
-        )
-
-
-LatexPlugin = RenderPlugin[LatexRenderer, LatexSetup]

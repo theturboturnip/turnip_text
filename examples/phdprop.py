@@ -9,7 +9,7 @@ from turnip_text import *
 from turnip_text.doc import DocSetup
 from turnip_text.doc.std_plugins import STD_DOC_PLUGINS
 from turnip_text.render import Renderer
-from turnip_text.render.latex.renderer import LatexSetup
+from turnip_text.render.latex.setup import LatexSetup
 from turnip_text.render.latex.std_plugins import STD_LATEX_RENDER_PLUGINS
 from turnip_text.render.manual_numbering import (
     LOWER_ROMAN_NUMBERING,
