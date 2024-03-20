@@ -53,20 +53,17 @@ STYLE_TO_NUMBERING = {
 }
 
 
-MarkdownCounterFormatting = SimpleCounterFormat[ManualNumbering]
-
-
 class MarkdownRenderer(Renderer):
     html_mode_stack: List[bool]
     counters: CounterState
-    counter_rendering: Dict[str, MarkdownCounterFormatting]
+    counter_rendering: Dict[str, SimpleCounterFormat]
 
     def __init__(
         self,
         doc_setup: DocSetup,
         handlers: EmitterDispatch["MarkdownRenderer"],
         counters: CounterState,
-        counter_rendering: Dict[str, MarkdownCounterFormatting],
+        counter_rendering: Dict[str, SimpleCounterFormat],
         write_to: Writable,
         html_mode: bool = False,
     ) -> None:
@@ -201,13 +198,13 @@ class MarkdownRenderer(Renderer):
 
     def anchor_to_ref_text(self, anchor: Anchor) -> UnescapedText:
         counters = self.counters.anchor_counters[anchor]
-        return MarkdownCounterFormatting.resolve(
+        return SimpleCounterFormat.resolve(
             [(self.counter_rendering[kind], i) for (kind, i) in counters]
         )
 
     def anchor_to_number_text(self, anchor: Anchor) -> UnescapedText:
         counters = self.counters.anchor_counters[anchor]
-        return MarkdownCounterFormatting.resolve(
+        return SimpleCounterFormat.resolve(
             [(self.counter_rendering[kind], i) for (kind, i) in counters],
             with_name=False,
         )
@@ -229,14 +226,14 @@ class MarkdownRenderer(Renderer):
 class MarkdownSetup(RenderSetup[MarkdownRenderer]):
     html_only: bool
     emitter: EmitterDispatch[MarkdownRenderer]
-    counter_rendering: Dict[str, MarkdownCounterFormatting]
+    counter_rendering: Dict[str, SimpleCounterFormat]
     requested_counter_links: List[CounterLink]
     counters: CounterState
 
     def __init__(
         self,
         plugins: Iterable[RenderPlugin[MarkdownRenderer, "MarkdownSetup"]],
-        requested_counter_formatting: Dict[str, MarkdownCounterFormatting] = {},
+        requested_counter_formatting: Dict[str, SimpleCounterFormat] = {},
         requested_counter_links: Optional[Iterable[CounterLink]] = None,
         html_only: bool = False,
     ) -> None:
@@ -281,7 +278,7 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
     def define_counter_rendering(
         self,
         counter: str,
-        counter_format: MarkdownCounterFormatting,
+        counter_format: SimpleCounterFormat,
     ) -> None:
         """
         Given a counter, define:
@@ -312,7 +309,7 @@ class HtmlSetup(MarkdownSetup):
     def __init__(
         self,
         plugins: Iterable[RenderPlugin[MarkdownRenderer, "MarkdownSetup"]],
-        requested_counter_formatting: Dict[str, MarkdownCounterFormatting] = {},
+        requested_counter_formatting: Dict[str, SimpleCounterFormat] = {},
         requested_counter_links: Optional[Iterable[CounterLink]] = None,
     ) -> None:
         super().__init__(

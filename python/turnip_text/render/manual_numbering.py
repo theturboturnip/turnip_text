@@ -75,12 +75,8 @@ LOWER_ALPH_NUMBERING = BasicManualNumbering("0" + string.ascii_lowercase)
 UPPER_ALPH_NUMBERING = BasicManualNumbering("0" + string.ascii_uppercase)
 
 
-TNumbering = TypeVar("TNumbering", bound=ManualNumbering)
-
-
-# TODO should this really be generic on TNumbering? It looks like we're just enforcing subclasses of ManualNumbering
 @dataclass
-class SimpleCounterFormat(Generic[TNumbering]):
+class SimpleCounterFormat:
     """
     The numbering style for a given counter and how it's combined with other counters.
     """
@@ -88,7 +84,7 @@ class SimpleCounterFormat(Generic[TNumbering]):
     name: str
     """The name references use as a prefix e.g. for figures this would be 'Figure' to produce 'Figure 1.2'. Only the name of the last counter in the chain is used."""
 
-    style: TNumbering
+    style: ManualNumbering
     """The style of the numerical counter."""
 
     postfix_for_child: str = "."
@@ -101,7 +97,7 @@ class SimpleCounterFormat(Generic[TNumbering]):
     def resolve(
         cls,
         # The bound on the SimpleCounterFormat type-argument is sufficient that here we don't care what the concrete type is.
-        counters: Sequence[Tuple["SimpleCounterFormat", int]],  # type: ignore[type-arg]
+        counters: Sequence[Tuple["SimpleCounterFormat", int]],
         with_name: bool = True,
     ) -> UnescapedText:
         if with_name and counters[-1][0].name:

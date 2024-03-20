@@ -52,9 +52,8 @@ from turnip_text.render.counters import (
     CounterState,
     build_counter_hierarchy,
 )
-from turnip_text.render.manual_numbering import ARABIC_NUMBERING
+from turnip_text.render.manual_numbering import ARABIC_NUMBERING, SimpleCounterFormat
 from turnip_text.render.markdown.renderer import (
-    MarkdownCounterFormatting,
     MarkdownPlugin,
     MarkdownRenderer,
     MarkdownSetup,
@@ -86,28 +85,28 @@ class StructureRenderPlugin(MarkdownPlugin):
         setup.emitter.register_header(StructureBlockHeader, self._emit_structure)
         setup.define_counter_rendering(
             "h1",
-            MarkdownCounterFormatting(
+            SimpleCounterFormat(
                 name=("chapter" if self._has_chapter else "section"),
                 style=ARABIC_NUMBERING,
             ),
         )
         setup.define_counter_rendering(
             "h2",
-            MarkdownCounterFormatting(
+            SimpleCounterFormat(
                 name=("section" if self._has_chapter else "subsection"),
                 style=ARABIC_NUMBERING,
             ),
         )
         setup.define_counter_rendering(
             "h3",
-            MarkdownCounterFormatting(
+            SimpleCounterFormat(
                 name=("subsection" if self._has_chapter else "subsubsection"),
                 style=ARABIC_NUMBERING,
             ),
         )
         setup.define_counter_rendering(
             "h4",
-            MarkdownCounterFormatting(
+            SimpleCounterFormat(
                 name=("subsubsection" if self._has_chapter else "subsubsubsection"),
                 style=ARABIC_NUMBERING,
             ),
@@ -260,7 +259,7 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
         setup.emitter.register_block_or_inline(FootnoteList, self._emit_footnotes)
         setup.define_counter_rendering(
             "footnote",
-            MarkdownCounterFormatting(name="^", style=ARABIC_NUMBERING),
+            SimpleCounterFormat(name="^", style=ARABIC_NUMBERING),
         )
 
     def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
