@@ -117,11 +117,15 @@ Linux does the latter by parsing a SoC-specific device tree file at boot time[ci
 Peripherals will store larger datasets, such as decoded Bluetooth audio signals, in their own internal buffers (essentially a separate [emph]{domain} to the rest of the system).
 To access this data, the main CPU has to request a Direct Memory Access (DMA) from this buffer into main memory.
 
-DMAs are performed by setting registers in a DMA Controller (DMAC) peripheral[footnote]{One such example is the Arm AMBA DMA-330 [cite("armltdAMBADMAController2009")]}, including the base address in the source and destination domains.
+DMAs are performed by setting registers in a DMA Controller (DMAC) peripheral[footnote_ref("amba_example")], including the base address in the source and destination domains.
 For a peripheral-to-memory transfer, the source address will be in the peripheral domain, and the destination address could be a physical address.
 The DMAC then pulls data from the peripheral domain and writes it out to the physical main memory domain, pulling data across the domain boundary.
 This is a very simple example of domain crossing for physically separated hardware domains, but it isn't enough for dynamic software domains.
 For example, accessing peripherals from Virtual Machines (VMs) adds a layer of translation between the guest-domains and the host-domains.
+
+[footnote_text("amba_example")]{
+    One such example is the Arm AMBA DMA-330 [cite("armltdAMBADMAController2009")]
+}
 
 # ------------------------------------
 [subsection()]{

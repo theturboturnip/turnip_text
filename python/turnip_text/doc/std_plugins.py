@@ -41,11 +41,11 @@ from turnip_text.doc.user_nodes import (
 from turnip_text.helpers import block_scope_builder, inline_scope_builder, paragraph_of
 
 
-def STD_DOC_PLUGINS() -> List[DocPlugin]:
+def STD_DOC_PLUGINS(allow_multiple_footnote_refs: bool = False) -> List[DocPlugin]:
     return [
         StructureDocPlugin(),
         CitationDocPlugin(),
-        FootnoteDocPlugin(),
+        FootnoteDocPlugin(allow_multiple_refs=allow_multiple_footnote_refs),
         ListDocPlugin(),
         InlineFormatDocPlugin(),
         UrlDocPlugin(),
@@ -267,6 +267,14 @@ class CitationDocPlugin(DocPlugin):
 
 
 class FootnoteDocPlugin(DocPlugin):
+    allow_multiple_refs: bool
+    footnotes_with_refs: Set[str]
+
+    def __init__(self, allow_multiple_refs: bool = False) -> None:
+        super().__init__()
+        self.allow_multiple_refs = allow_multiple_refs
+        self.footnotes_with_refs = set()
+
     def _doc_nodes(
         self,
     ) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
@@ -283,13 +291,16 @@ class FootnoteDocPlugin(DocPlugin):
             anchor = doc.anchors.register_new_anchor_with_float(
                 "footnote", None, lambda anchor: FootnoteContents(anchor, contents)
             )
+            self.footnotes_with_refs.add(anchor.id)
             return FootnoteRef(portal_to=anchor.to_backref())
 
         return footnote_builder
 
     @stateless
     def footnote_ref(self, fmt: FormatContext, footnote_id: str) -> Inline:
-        # TODO make it only possible to have a single footnoteref per footnote?
+        if (not self.allow_multiple_refs) and (footnote_id in self.footnotes_with_refs):
+            raise ValueError(f"Tried to refer to footnote {footnote_id} twice!")
+        self.footnotes_with_refs.add(footnote_id)
         return FootnoteRef(
             portal_to=Backref(id=footnote_id, kind="footnote", label_contents=None)
         )
