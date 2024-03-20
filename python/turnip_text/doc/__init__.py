@@ -82,7 +82,6 @@ class DocMutator(Protocol):
 
     They inherit this interface."""
 
-    # TODO rename to exported_doc_nodes or soemthing
     def _doc_nodes(self) -> Sequence[Type[Union[Block, Inline, DocSegmentHeader]]]:
         """
         Tell the Document what nodes this plugin exports

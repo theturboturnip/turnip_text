@@ -325,7 +325,6 @@ class Renderer(abc.ABC):
         self.write_to.write("\n")
         self._need_indent = True
 
-    # TODO pass a generator instead of emit_t, ts!
     def emit_join(
         self,
         emit_t: Callable[[T], None],
@@ -367,7 +366,6 @@ class Renderer(abc.ABC):
         raise NotImplementedError(f"Need to implement emit_unescapedtext")
 
     # TODO need to handle confusion between raw str and text str. too easy to accidentally pass text str
-    # TODO or i could get even crazier with it - make it expand tuples?
     def emit(self, *args: Any, joiner: Optional[Callable[[], None]] = None) -> None:
         first = True
         for a in args:
@@ -419,7 +417,6 @@ class Renderer(abc.ABC):
 
     def emit_sentence(self, s: Sentence) -> None:
         # Default: join internal inline elements directly
-        # TODO could be extended by e.g. latex to ensure you get sentence-break-whitespace at the end of each sentence?
         for i in s:
             self.emit_inline(i)
 
@@ -473,6 +470,8 @@ class RenderPlugin(DocMutator, Generic[TRenderer_contra, TRenderSetup]):
     def _register(self, setup: TRenderSetup) -> None:
         return None
 
-    # TODO make this include serial passes, not parallel? is that useful?
+    # Return a list of (filter, visitor) functions which are run in parallel over a single DFS pass on the frozen document.
+    # Right now there are no usecases for emitting serial sets of DFS passes, because these fundamentally don't mutate state.
+    # If you have some complex computation on the state of the document, you can glean all necessary information up front and then do the computation.
     def _make_visitors(self) -> Optional[List[Tuple[VisitorFilter, VisitorFunc]]]:
         return None
