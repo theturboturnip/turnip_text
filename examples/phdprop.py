@@ -43,7 +43,9 @@ if __name__ == "__main__":
     rendered_latex = parse_and_emit(
         InsertedFile.from_path("./examples/phdprop.ttext"),
         DocSetup(STD_DOC_PLUGINS()),
-        LatexSetup(STD_LATEX_RENDER_PLUGINS(use_chapters=False)),
+        LatexSetup(
+            STD_LATEX_RENDER_PLUGINS(use_chapters=False), document_class="article"
+        ),
         write_to=io.StringIO(),
     )
     if args.olatex:

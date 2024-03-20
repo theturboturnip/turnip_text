@@ -389,6 +389,10 @@ class Renderer(abc.ABC):
     def emit_block(self: Self, b: Block) -> None:
         self.handlers.emit_block_or_inline(b, self, self.fmt)
 
+    # This can be overridden by renderers to add stuff at the top level
+    def emit_document(self: Self, doc: DocSegment) -> None:
+        self.emit_segment(doc)
+
     def emit_segment(self: Self, s: DocSegment) -> None:
         if s.header is None:
             self.emit_blockscope(s.contents)

@@ -108,7 +108,7 @@ def parse_and_emit(
 
     # Phase 4 - Rendering
     renderer: TRenderer = render_setup.to_renderer(doc_setup, write_to)
-    renderer.emit_segment(toplevel_docsegment)
+    renderer.emit_document(toplevel_docsegment)
 
     return write_to
 

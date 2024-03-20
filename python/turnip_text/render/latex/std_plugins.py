@@ -208,7 +208,7 @@ FORMAT_TYPE_TO_MACRO = {
 
 
 class InlineFormatRenderPlugin(LatexPlugin):
-    # TODO enquote/csquotes package?
+    # TODO If we don't use squotes,dquotes manually it would make sense to use enquote from csquotes package
     def _register(self, setup: LatexSetup) -> None:
         setup.emitter.register_block_or_inline(InlineFormatted, self._emit_formatted)
 
@@ -229,8 +229,8 @@ class InlineFormatRenderPlugin(LatexPlugin):
 
 
 class UrlRenderPlugin(LatexPlugin):
-    # TODO add dependency on hyperref!!
     def _register(self, setup: LatexSetup) -> None:
+        setup.require_latex_package("hyperref", "URL rendering")
         setup.emitter.register_block_or_inline(NamedUrl, self._emit_url)
 
     def _emit_url(
