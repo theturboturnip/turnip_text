@@ -69,8 +69,9 @@ class HeadedBlock(UserAnchorBlock):
     num: bool = True
 
 
-# TODO instead of emitting Citation you could emit a Backref to an anchor of type Cite?
-# Maybe, maybe not - citation note would get lost I fear
+# Moons ago I considered replacing this with Backref. This should not be replaced with Backref,
+# because it has specific context in how it is rendered. Renderer plugins may mutate the document
+# and replace these with Backrefs if they so choose.
 @dataclass(frozen=True)
 class Citation(UserInline):
     contents: InlineScope | None  # the citation note
