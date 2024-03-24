@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, List, Optional, TypeVar, Union
 
 from turnip_text import (
     Block,
@@ -125,3 +125,16 @@ class raw_scope_builder(RawScopeBuilder):
 
 def paragraph_of(i: CoercibleToInline) -> Paragraph:
     return Paragraph([Sentence([coerce_to_inline(i)])])
+
+
+class Unset:
+    def __eq__(self, __value: object) -> bool:
+        if isinstance(__value, Unset):
+            return True
+        return False
+
+
+UNSET = Unset()
+
+T = TypeVar("T")
+MaybeUnset = Union[T, Unset]

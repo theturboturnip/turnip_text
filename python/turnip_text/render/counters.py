@@ -2,6 +2,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import (
     Any,
+    Callable,
     DefaultDict,
     Dict,
     Iterable,
@@ -79,13 +80,48 @@ CounterLink = Tuple[
 ]  # superior -> subordinate counter kinds. superior = None => top-of-list
 
 
-CounterHierarchy = Mapping[str, str | List[str] | "CounterHierarchy"]
+CounterHierarchy = Dict[str, str | List[str] | "CounterHierarchy"]
 
 
-def build_counter_hierarchy(
+# TODO automated test
+def map_counter_hierarchy(
+    h: CounterHierarchy, f: Callable[[str], Optional[str]]
+) -> CounterHierarchy:
+    """Map the counter names in a hierarchy through a function that may return a new name or may return None.
+
+    If it returns None, eliminate that point in the hierarchy and merge its children (if any) up to its position.
+    """
+    mapped_h: CounterHierarchy = {}
+    for parent, child in h.items():
+        mapped_parent = f(parent)
+
+        mapped_children: CounterHierarchy = {}
+        if isinstance(child, str):
+            mapped_child = f(child)
+            if mapped_child is not None:
+                mapped_children[mapped_child] = {}
+        elif isinstance(child, list):
+            for c in child:
+                mapped_child = f(c)
+                if mapped_child is not None:
+                    mapped_children[mapped_child] = {}
+        else:
+            mapped_children = map_counter_hierarchy(child, f)
+
+        if mapped_parent is None:
+            # Merge the children directly into mapped_h
+            mapped_h.update(mapped_children)
+        else:
+            # Create a new set of children and set mapped_h[mapped_parent] = mapped_children
+            mapped_h[mapped_parent] = mapped_children
+
+    return mapped_h
+
+
+def resolve_counter_links(
     conflicting_links: Iterable[CounterLink],
     known_counters: Set[str],
-) -> CounterHierarchy:
+) -> Tuple[Dict[str, Optional[str]], Dict[Optional[str], List[str]]]:
     handled_counters: Set[str] = set()
     subordinate_to_superior: Dict[str, Optional[str]] = {}
     superior_to_subordinate: DefaultDict[Optional[str], List[str]] = defaultdict(list)
@@ -136,9 +172,20 @@ def build_counter_hierarchy(
         subordinate_to_superior[c] = None
         superior_to_subordinate[None].append(c)
 
+    return subordinate_to_superior, superior_to_subordinate
+
+
+def build_counter_hierarchy(
+    conflicting_links: Iterable[CounterLink],
+    known_counters: Set[str],
+) -> CounterHierarchy:
+    _, superior_to_subordinate = resolve_counter_links(
+        conflicting_links, known_counters
+    )
+
     # Now we have the set of direct links with no conflicts, connect them to make a CounterHierarchy
     def recursive_build_counters(subordinates: List[str]) -> CounterHierarchy:
-        hierarchy = {}
+        hierarchy: CounterHierarchy = {}
         for s in subordinates:
             hierarchy[s] = recursive_build_counters(superior_to_subordinate[s])
         return hierarchy

@@ -19,18 +19,19 @@ from turnip_text.doc.std_plugins import (
 from turnip_text.render import RenderPlugin
 from turnip_text.render.latex.backrefs import LatexBackrefMethod
 from turnip_text.render.latex.renderer import LatexRenderer
-from turnip_text.render.latex.setup import LatexSetup
+from turnip_text.render.latex.setup import LatexCounterDecl, LatexSetup
+from turnip_text.render.manual_numbering import ARABIC_NUMBERING, SimpleCounterFormat
 
 LatexPlugin = RenderPlugin[LatexRenderer, LatexSetup]
 
 
-def STD_LATEX_RENDER_PLUGINS(
+def STD_LATEX_ARTICLE_RENDER_PLUGINS(
     use_chapters: bool,
     indent_list_items: bool = True,
     requested_counter_links: Optional[Dict[Optional[str], str]] = None,
 ) -> List[LatexPlugin]:
     return [
-        StructureRenderPlugin(use_chapters),
+        ArticleRenderPlugin(use_chapters),
         UncheckedBiblatexRenderPlugin(),
         FootnoteRenderPlugin(),
         ListRenderPlugin(indent_list_items),
@@ -39,7 +40,7 @@ def STD_LATEX_RENDER_PLUGINS(
     ]
 
 
-class StructureRenderPlugin(LatexPlugin):
+class ArticleRenderPlugin(LatexPlugin):
     level_to_latex: List[Optional[str]]
 
     # TODO this might need to enable \part?
@@ -58,15 +59,36 @@ class StructureRenderPlugin(LatexPlugin):
             self.level_to_latex = [None, "section", "subsection", "subsubsection"]
 
     def _register(self, setup: LatexSetup) -> None:
-        setup.emitter.register_header(StructureBlockHeader, self._emit_structure)
+        setup.reqire_document_class("article")
         # TODO enable more backref methods
-        method = LatexBackrefMethod.Cleveref
-        for c in ["h1", "h2", "h3", "h4"]:
-            setup.define_counter_backref_method(c, method)
-        setup.request_counter_parent("h1", parent_counter=None)
-        setup.request_counter_parent("h2", parent_counter="h1")
-        setup.request_counter_parent("h3", parent_counter="h2")
-        setup.request_counter_parent("h4", parent_counter="h3")
+        backref_methods = (LatexBackrefMethod.Cleveref, LatexBackrefMethod.Hyperlink)
+        # Declare the preexisting LaTeX counters
+        counters = [
+            (None, "part"),
+            ("part", "chapter"),
+            ("chapter", "section"),
+            ("section", "subsection"),
+            ("subsection", "subsubsection"),
+        ]
+        for parent, counter in counters:
+            setup.declare_latex_counter(
+                counter,
+                LatexCounterDecl(
+                    provided_by_docclass_or_package=True,
+                    default_reset_latex_counter=parent,
+                    fallback_fmt=SimpleCounterFormat(counter, ARABIC_NUMBERING),
+                ),
+                backref_methods,
+            )
+        # Map the turnip_text counters to the LaTeX counter
+        for i in [1, 2, 3, 4]:
+            tt_counter = f"h{i}"
+            if i < len(self.level_to_latex):
+                latex_counter = self.level_to_latex[i]
+                if latex_counter is not None:
+                    setup.declare_tt_counter(tt_counter, latex_counter)
+
+        setup.emitter.register_header(StructureBlockHeader, self._emit_structure)
 
     def _emit_structure(
         self,
@@ -144,7 +166,12 @@ class FootnoteRenderPlugin(LatexPlugin):
         setup.emitter.register_block_or_inline(
             FootnoteContents, lambda _, __, ___: None
         )
-        setup.define_counter_backref_method("footnote", backref_method=None)
+        # This internally uses the footnote counter but it's a *magic* counter that doesn't correspond 1:1 to a turnip_text counter in value
+        # For example the value is page dependent
+        # => don't treat it as a normal counter
+        setup.declare_magic_tt_and_latex_counter(
+            tt_counter="footnote", latex_counter="footnote"
+        )
 
     def _emit_footnote(
         self,
@@ -230,7 +257,7 @@ class InlineFormatRenderPlugin(LatexPlugin):
 
 class UrlRenderPlugin(LatexPlugin):
     def _register(self, setup: LatexSetup) -> None:
-        setup.require_latex_package("hyperref", "URL rendering")
+        setup.request_latex_package("hyperref", "URL rendering")
         setup.emitter.register_block_or_inline(NamedUrl, self._emit_url)
 
     def _emit_url(
