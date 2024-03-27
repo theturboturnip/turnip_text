@@ -164,6 +164,7 @@ class LatexRenderer(Renderer):
         requirements: LatexRequirements,
         tt_counters: CounterState,
         handlers: EmitterDispatch["LatexRenderer"],
+        # TODO config option to write the full counter setup regardless of what we think the defaults are?
         write_to: Writable,
     ) -> None:
         super().__init__(doc_setup, handlers, write_to)
@@ -213,17 +214,16 @@ class LatexRenderer(Renderer):
                 if latex_counter_spec.provided_by_docclass_or_package:
                     if tt_counter:
                         self.emit_raw(
-                            f"%%% turnip_text counter '{tt_counter}' maps to LaTeX '{latex_counter_spec.latex_counter}'\n"
+                            f"%%% turnip_text counter '{tt_counter}' maps to LaTeX '{latex_counter_spec.latex_counter}', uses reset counter '{latex_counter_spec.reset_latex_counter}'\n"
                         )
                     else:
                         self.emit_raw(
-                            f"%%% LaTeX counter '{latex_counter}' is known but doesn't map to a turnip_text counter\n"
+                            f"%%% LaTeX counter '{latex_counter}' is known but doesn't map to a turnip_text counter, uses reset counter '{latex_counter_spec.reset_latex_counter}'\n"
                         )
                     if (
                         latex_counter_spec.reset_latex_counter
                         != latex_counter_spec.default_reset_latex_counter
                     ):
-                        # TODO emit a LaTeX comment
                         if latex_counter_spec.reset_latex_counter is None:
                             # counterwithout = pass in (slave counter) (old master counter) and it will undo the connection to (old master counter)
                             self.emit_macro("counterwithout")
