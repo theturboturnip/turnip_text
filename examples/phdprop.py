@@ -9,6 +9,7 @@ from turnip_text import *
 from turnip_text.doc import DocSetup
 from turnip_text.doc.std_plugins import STD_DOC_PLUGINS
 from turnip_text.render import Renderer
+from turnip_text.render.latex.renderer import LatexCounterStyle
 from turnip_text.render.latex.setup import LatexSetup
 from turnip_text.render.latex.std_plugins import STD_LATEX_ARTICLE_RENDER_PLUGINS
 from turnip_text.render.manual_numbering import (
@@ -46,6 +47,11 @@ if __name__ == "__main__":
         LatexSetup(
             STD_LATEX_ARTICLE_RENDER_PLUGINS(use_chapters=False),
             standalone=False,
+            requested_override_formats={
+                "section": SimpleCounterFormat(
+                    "section", LatexCounterStyle.RomanUpper, postfix_for_child="-"
+                ),
+            },
         ),
         write_to=io.StringIO(),
     )

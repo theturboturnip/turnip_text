@@ -18,9 +18,9 @@ from turnip_text.doc.std_plugins import (
 )
 from turnip_text.render import RenderPlugin
 from turnip_text.render.latex.backrefs import LatexBackrefMethod
-from turnip_text.render.latex.renderer import LatexRenderer
+from turnip_text.render.latex.renderer import LatexCounterStyle, LatexRenderer
 from turnip_text.render.latex.setup import LatexCounterDecl, LatexSetup
-from turnip_text.render.manual_numbering import ARABIC_NUMBERING, SimpleCounterFormat
+from turnip_text.render.manual_numbering import SimpleCounterFormat
 
 LatexPlugin = RenderPlugin[LatexRenderer, LatexSetup]
 
@@ -76,7 +76,7 @@ class ArticleRenderPlugin(LatexPlugin):
                 LatexCounterDecl(
                     provided_by_docclass_or_package=True,
                     default_reset_latex_counter=parent,
-                    fallback_fmt=SimpleCounterFormat(counter, ARABIC_NUMBERING),
+                    fallback_fmt=SimpleCounterFormat(counter, LatexCounterStyle.Arabic),
                 ),
                 backref_methods,
             )

@@ -28,6 +28,7 @@ from turnip_text.render.latex.backrefs import (
 from turnip_text.render.latex.renderer import (
     LatexBackrefMethodImpl,
     LatexCounterSpec,
+    LatexCounterStyle,
     LatexPackageRequirements,
     LatexRenderer,
     LatexRequirements,
@@ -43,7 +44,7 @@ class LatexCounterDecl:
     default_reset_latex_counter: Optional[str]
     """If this was provided_by_docclass_or_package, what is the standard 'reset counter' for this counter?"""
 
-    fallback_fmt: SimpleCounterFormat  # TODO make SimpleCounterFormat take something that can convert itself to ManualNumbering
+    fallback_fmt: SimpleCounterFormat[LatexCounterStyle]
 
 
 class LatexSetup(RenderSetup[LatexRenderer]):
@@ -54,7 +55,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
     """What is the \\documentclass (must be set by a plugin through require_document_class() if standalone"""
     declared_latex_counters: Dict[str, LatexCounterDecl]
     """The non-magic LaTeX counters that have been declared"""
-    latex_counter_override_fmt: Dict[str, SimpleCounterFormat]
+    latex_counter_override_fmt: Dict[str, SimpleCounterFormat[LatexCounterStyle]]
     """Overridden formatting for non-magic LaTeX counters. Backref methods must configure themselves to use these."""
     latex_counter_backref_method: Dict[str, Optional[LatexBackrefMethod]]
     """The backref method for each non-magic LaTeX counters. Will always be a key to backref_impls."""
@@ -86,6 +87,9 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         plugins: Iterable[RenderPlugin[LatexRenderer, "LatexSetup"]],
         standalone: bool = False,
         requested_counter_links: Optional[Iterable[CounterLink]] = None,
+        requested_override_formats: Optional[
+            Dict[str, SimpleCounterFormat[LatexCounterStyle]]
+        ] = None,
         # TODO config for the backref methods
     ) -> None:
         super().__init__(plugins)
@@ -94,7 +98,10 @@ class LatexSetup(RenderSetup[LatexRenderer]):
 
         self.document_class = UNSET
         self.declared_latex_counters = {}
-        self.latex_counter_override_fmt = {}
+        if requested_override_formats:
+            self.latex_counter_override_fmt = requested_override_formats
+        else:
+            self.latex_counter_override_fmt = {}
         self.latex_counter_backref_method = {}
 
         self.shell_escape_reasons = []
@@ -238,7 +245,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
             self.latex_counter_backref_method[latex_counter] = None
 
     def request_latex_counter_fmt(
-        self, latex_counter: str, override_fmt: SimpleCounterFormat
+        self, latex_counter: str, override_fmt: SimpleCounterFormat[LatexCounterStyle]
     ) -> None:
         if latex_counter in self.latex_counter_override_fmt:
             raise RuntimeError(
@@ -336,8 +343,9 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         else:
             document_class = cast(str, self.document_class)
 
-        counters = {}
-        for tt_counter, latex_counter in self.tt_counter_to_latex_counter.items():
+        tt_counter_to_spec = {}
+        latex_counter_to_spec = {}
+        for latex_counter in self.declared_latex_counters:
             decl = self.declared_latex_counters[latex_counter]
             backref_method = self.latex_counter_backref_method[latex_counter]
 
@@ -354,13 +362,17 @@ class LatexSetup(RenderSetup[LatexRenderer]):
                 fallback_fmt=decl.fallback_fmt,
                 override_fmt=self.latex_counter_override_fmt.get(latex_counter),
             )
-            counters[tt_counter] = spec
+            tt_counter = self.latex_counter_to_tt_counter.get(latex_counter)
+            if tt_counter:
+                tt_counter_to_spec[tt_counter] = spec
+            latex_counter_to_spec[latex_counter] = spec
 
         requirements = LatexRequirements(
             document_class,
             shell_escape=self.shell_escape_reasons,
             packages=self.requested_packages,
-            tt_counter_to_latex=counters,
+            tt_counter_to_latex=tt_counter_to_spec,
+            latex_counter_to_latex=latex_counter_to_spec,
             magic_tt_counters=self.magic_tt_counter_to_latex_counter,
         )
 

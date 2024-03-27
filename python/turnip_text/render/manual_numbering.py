@@ -1,6 +1,6 @@
 import string
 from dataclasses import dataclass
-from typing import Generic, List, Protocol, Sequence, Tuple, TypeVar
+from typing import Generic, Protocol, Sequence, Tuple, TypeVar
 
 from turnip_text import Inline, InlineScope, UnescapedText
 
@@ -10,9 +10,9 @@ class ManualNumbering(Protocol):
 
 
 class BasicManualNumbering(ManualNumbering):
-    lookup: str
+    lookup: Sequence[str]
 
-    def __init__(self, lookup: str) -> None:
+    def __init__(self, lookup: Sequence[str]) -> None:
         self.lookup = lookup
 
     def __getitem__(self, num: int) -> str:
@@ -20,7 +20,7 @@ class BasicManualNumbering(ManualNumbering):
             raise RuntimeError(f"Can't represent number {num} - too small")
         if num > len(self.lookup):
             raise RuntimeError(f"Can't represent number {num} - too large")
-        return self.lookup[num - 1]
+        return self.lookup[num]
 
 
 # Roman numbering based on https://www.geeksforgeeks.org/python-program-to-convert-integer-to-roman/
@@ -75,8 +75,11 @@ LOWER_ALPH_NUMBERING = BasicManualNumbering("0" + string.ascii_lowercase)
 UPPER_ALPH_NUMBERING = BasicManualNumbering("0" + string.ascii_uppercase)
 
 
+TNumbering = TypeVar("TNumbering", bound=ManualNumbering)
+
+
 @dataclass
-class SimpleCounterFormat:
+class SimpleCounterFormat(Generic[TNumbering]):
     """
     The numbering style for a given counter and how it's combined with other counters.
     """
@@ -84,7 +87,7 @@ class SimpleCounterFormat:
     name: str
     """The name references use as a prefix e.g. for figures this would be 'Figure' to produce 'Figure 1.2'. Only the name of the last counter in the chain is used."""
 
-    style: ManualNumbering
+    style: TNumbering
     """The style of the numerical counter."""
 
     postfix_for_child: str = "."

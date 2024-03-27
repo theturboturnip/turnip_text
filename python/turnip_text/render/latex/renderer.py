@@ -16,6 +16,8 @@ from turnip_text.render.manual_numbering import (
     LOWER_ROMAN_NUMBERING,
     UPPER_ALPH_NUMBERING,
     UPPER_ROMAN_NUMBERING,
+    BasicManualNumbering,
+    ManualNumbering,
     SimpleCounterFormat,
 )
 
@@ -34,6 +36,25 @@ class LatexCounterStyle(Enum):
     RomanUpper = "Roman"
     Symbol = "fnsymbol"
 
+    def __getitem__(self, num: int) -> str:
+        return COUNTER_STYLE_TO_MANUAL[self][num]
+
+
+# TODO use latex \symbols, not unicode chars
+LATEX_SYMBOL_NUMBERING = BasicManualNumbering(
+    [
+        "",
+        "∗",
+        "†",
+        "‡",
+        "§",
+        "¶",
+        "∥",
+        "∗∗",
+        "††",
+        "‡‡",
+    ]
+)
 
 COUNTER_STYLE_TO_MANUAL = {
     LatexCounterStyle.Arabic: ARABIC_NUMBERING,
@@ -41,9 +62,8 @@ COUNTER_STYLE_TO_MANUAL = {
     LatexCounterStyle.AlphUpper: UPPER_ALPH_NUMBERING,
     LatexCounterStyle.RomanLower: LOWER_ROMAN_NUMBERING,
     LatexCounterStyle.RomanUpper: UPPER_ROMAN_NUMBERING,
+    LatexCounterStyle.Symbol: LATEX_SYMBOL_NUMBERING,
 }
-
-CounterToResolve = List[Tuple[SimpleCounterFormat, int]]
 
 
 # A class that emits anchors and backrefs in a specific way.
@@ -106,13 +126,13 @@ class LatexCounterSpec:
     """If this was provided_by_docclass_or_package, what is the standard 'reset counter' for this counter?"""
     reset_latex_counter: Optional[str]
 
-    fallback_fmt: SimpleCounterFormat  # TODO make SimpleCounterFormat take something that can convert itself to ManualNumbering
-    override_fmt: Optional[SimpleCounterFormat]
+    fallback_fmt: SimpleCounterFormat[LatexCounterStyle]
+    override_fmt: Optional[SimpleCounterFormat[LatexCounterStyle]]
 
     # TODO should this be optional?
     backref_impl: Optional[LatexBackrefMethodImpl]
 
-    def get_manual_fmt(self) -> SimpleCounterFormat:
+    def get_manual_fmt(self) -> SimpleCounterFormat[LatexCounterStyle]:
         if self.override_fmt:
             return self.override_fmt
         return self.fallback_fmt
@@ -124,6 +144,7 @@ class LatexRequirements:
     shell_escape: List[str]
     packages: Dict[str, LatexPackageRequirements]
     tt_counter_to_latex: Dict[str, LatexCounterSpec]
+    latex_counter_to_latex: Dict[str, LatexCounterSpec]
     magic_tt_counters: Dict[str, str]
 
     # TODO fixup package order
@@ -178,10 +199,12 @@ class LatexRenderer(Renderer):
                     f"%%% turnip_text counter '{tt_counter}' maps to magic LaTeX '{latex_counter}' which turnip_text cannot predict\n"
                 )
             # Handle not-magic counters
+            # TODO top-down counter ordering down the hierarchy
             for (
                 tt_counter,
                 latex_counter_spec,
             ) in self.requirements.tt_counter_to_latex.items():
+                latex_counter = latex_counter_spec.latex_counter
                 if latex_counter_spec.provided_by_docclass_or_package:
                     self.emit_raw(
                         f"%%% turnip_text counter '{tt_counter}' maps to LaTeX '{latex_counter_spec.latex_counter}'\n"
@@ -212,7 +235,48 @@ class LatexRenderer(Renderer):
                     if latex_counter_spec.reset_latex_counter:
                         self.emit_sqr_bracketed(latex_counter_spec.reset_latex_counter)
 
-                # TODO setup counter numbering?, change counterwithin to counterwithin* etc.
+                # Setup counter numbering
+                # A counter's formatting in LaTeX is ({parent counter}{parent counter.postfix_for_child}{numbering(this counter)})
+                # By default, LaTeX uses {parent counter}.{arabic(this counter)}
+                # => the counter's formatting will get updated if
+                # - it uses non-arabic numbering
+                # - it's parent doesn't use a period as a postfix-for-child
+                reasons_to_reset_counter_fmt = []
+                latex_counter_fmt = latex_counter_spec.get_manual_fmt()
+                if latex_counter_fmt.style != LatexCounterStyle.Arabic:
+                    reasons_to_reset_counter_fmt.append(
+                        f"it uses non-default numbering {latex_counter_fmt.style.value}"
+                    )
+
+                reset_counter_fmt = (
+                    self.requirements.latex_counter_to_latex[
+                        latex_counter_spec.reset_latex_counter
+                    ].get_manual_fmt()
+                    if latex_counter_spec.reset_latex_counter
+                    else None
+                )
+                if reset_counter_fmt and reset_counter_fmt.postfix_for_child != ".":
+                    reasons_to_reset_counter_fmt.append(
+                        f"parent counter '{latex_counter_spec.reset_latex_counter}' uses a non-default parent-child separator '{reset_counter_fmt.postfix_for_child}'"
+                    )
+
+                if reasons_to_reset_counter_fmt:
+                    self.emit_raw(
+                        f"%%% Redefining format for '{latex_counter}' because {','.join(reasons_to_reset_counter_fmt)}\n"
+                    )
+                    fmt = latex_counter_spec.get_manual_fmt()
+                    self.emit_macro("renewcommand")
+                    self.emit(f"{{\\the{latex_counter}}}{{")
+                    if reset_counter_fmt:
+                        self.emit(
+                            f"\\the{latex_counter_spec.reset_latex_counter}{{}}",
+                            UnescapedText(reset_counter_fmt.postfix_for_child),
+                        )
+                    self.emit_macro(fmt.style.value)
+                    self.emit_braced(latex_counter)
+                    # Do not apply fmt.postfix_for_end here - if you do, it'll get lumped in with children
+                    self.emit("}}\n")
+
                 backref_impl = latex_counter_spec.backref_impl
                 if backref_impl:
                     self.emit_raw(

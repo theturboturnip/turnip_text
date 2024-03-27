@@ -84,6 +84,7 @@ class LatexCleveref(LatexBackrefMethodImpl):
                 UnescapedText(fmt.postfix_for_end),
                 "#3",
             )
+            renderer.emit_break_sentence()
 
     def emit_anchor(
         self, anchor: Anchor, renderer: "LatexRenderer", fmt: FormatContext
