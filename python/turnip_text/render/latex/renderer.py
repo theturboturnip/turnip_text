@@ -118,6 +118,7 @@ class LatexCounterSpec:
     """The specification for a Latex counter"""
 
     latex_counter: str
+    tt_counter: Optional[str]
 
     provided_by_docclass_or_package: bool
     """Does any package or the documentclass define this counter already? If not, we need to declare it with newcounter"""
@@ -144,8 +145,11 @@ class LatexRequirements:
     shell_escape: List[str]
     packages: Dict[str, LatexPackageRequirements]
     tt_counter_to_latex: Dict[str, LatexCounterSpec]
+    """A mapping of (turnip_text counter) -> LatexCounterSpec for the LaTeX counter mapping to that turnip_text counter. No restrictions on ordering."""
     latex_counter_to_latex: Dict[str, LatexCounterSpec]
+    """A mapping of LaTeX counter -> its LatexCounterSpec. Must iterate in a hierarchy compatible order i.e. if x is a reset counter for y then x must appear before y."""
     magic_tt_counters: Dict[str, str]
+    """A mapping of (turnip_text counter) -> (magic LaTeX counter). Magic LaTeX counters are incremented in a way turnip_text cannot predict."""
 
     # TODO fixup package order
 
@@ -190,6 +194,8 @@ class LatexRenderer(Renderer):
 
             self.emit_break_paragraph()
             self.emit_raw("%%% Configuring counters...\n")
+            tt_counter: Optional[str]
+            latex_counter: str
             # Note magic counters, which LaTeX steps automatically and turnip_text cannot imitate
             for (
                 tt_counter,
@@ -199,16 +205,20 @@ class LatexRenderer(Renderer):
                     f"%%% turnip_text counter '{tt_counter}' maps to magic LaTeX '{latex_counter}' which turnip_text cannot predict\n"
                 )
             # Handle not-magic counters
-            # TODO top-down counter ordering down the hierarchy
             for (
-                tt_counter,
+                latex_counter,
                 latex_counter_spec,
-            ) in self.requirements.tt_counter_to_latex.items():
-                latex_counter = latex_counter_spec.latex_counter
+            ) in self.requirements.latex_counter_to_latex.items():
+                tt_counter = latex_counter_spec.tt_counter
                 if latex_counter_spec.provided_by_docclass_or_package:
-                    self.emit_raw(
-                        f"%%% turnip_text counter '{tt_counter}' maps to LaTeX '{latex_counter_spec.latex_counter}'\n"
-                    )
+                    if tt_counter:
+                        self.emit_raw(
+                            f"%%% turnip_text counter '{tt_counter}' maps to LaTeX '{latex_counter_spec.latex_counter}'\n"
+                        )
+                    else:
+                        self.emit_raw(
+                            f"%%% LaTeX counter '{latex_counter}' is known but doesn't map to a turnip_text counter\n"
+                        )
                     if (
                         latex_counter_spec.reset_latex_counter
                         != latex_counter_spec.default_reset_latex_counter
@@ -227,9 +237,14 @@ class LatexRenderer(Renderer):
                             self.emit_braced(latex_counter_spec.latex_counter)
                             self.emit_braced(latex_counter_spec.reset_latex_counter)
                 else:
-                    self.emit_raw(
-                        f"%%% turnip_text counter '{tt_counter}' maps to a new LaTeX counter '{latex_counter_spec.latex_counter}'\n"
-                    )
+                    if tt_counter:
+                        self.emit_raw(
+                            f"%%% turnip_text counter '{tt_counter}' maps to a new LaTeX counter '{latex_counter_spec.latex_counter}'\n"
+                        )
+                    else:
+                        self.emit_raw(
+                            f"%%% LaTeX counter '{latex_counter}' is created but doesn't map to a turnip_text counter"
+                        )
                     self.emit_macro("newcounter")
                     self.emit_braced(latex_counter_spec.latex_counter)
                     if latex_counter_spec.reset_latex_counter:

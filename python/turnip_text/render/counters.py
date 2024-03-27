@@ -193,6 +193,24 @@ def build_counter_hierarchy(
     return recursive_build_counters(superior_to_subordinate[None])
 
 
+def counter_hierarchy_dfs(h: CounterHierarchy) -> List[str]:
+    """Given a hierarchy of counters, return the depth-first iteration over that hierarchy as a list"""
+    counters = []
+
+    def recurse(h1: CounterHierarchy):
+        for parent, child in h1.items():
+            counters.append(parent)
+            if isinstance(child, str):
+                counters.append(child)
+            elif isinstance(child, list):
+                counters.extend(child)
+            else:
+                recurse(child)
+
+    recurse(h)
+    return counters
+
+
 class CounterState:
     # The roots of the tree of labels
     counter_tree_roots: List[DocCounter]

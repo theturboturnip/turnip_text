@@ -13,9 +13,11 @@ from turnip_text.render import (
     Writable,
 )
 from turnip_text.render.counters import (
+    CounterHierarchy,
     CounterLink,
     CounterState,
     build_counter_hierarchy,
+    counter_hierarchy_dfs,
     map_counter_hierarchy,
     resolve_counter_links,
 )
@@ -80,6 +82,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
 
     # These are initialized at the end of __init__ after the plugins have set up the counter links and turnip_text:latex mappings
     tt_counters: CounterState
+    latex_counter_hierarchy: CounterHierarchy
     latex_counter_to_parent: Dict[str, Optional[str]]
 
     def __init__(
@@ -186,17 +189,17 @@ class LatexSetup(RenderSetup[LatexRenderer]):
             )
             for parent, child in self.tt_counter_links
         ]
-        latex_hierarchy = build_counter_hierarchy(
+        self.latex_counter_hierarchy = build_counter_hierarchy(
             full_latex_counter_links, set(self.declared_latex_counters.keys())
         )
-        tt_hierarchy = map_counter_hierarchy(
-            latex_hierarchy,
+        tt_counter_hierarchy = map_counter_hierarchy(
+            self.latex_counter_hierarchy,
             lambda latex_counter: self.latex_counter_to_tt_counter.get(latex_counter),
         )
         # Add the magic turnip_text counters to the tt_hierarchy - LaTeX doesn't consider them, but internally we still need to be able to step them
         for magic_tt_counter in self.magic_tt_counter_to_latex_counter:
-            tt_hierarchy[magic_tt_counter] = {}
-        self.tt_counters = CounterState(tt_hierarchy)
+            tt_counter_hierarchy[magic_tt_counter] = {}
+        self.tt_counters = CounterState(tt_counter_hierarchy)
 
         # We can also build a hierarchy of LaTeX counters, which we use to generate the final point-to-point relations
         # TODO don't do the work of resolving the counter links twice :(
@@ -345,11 +348,13 @@ class LatexSetup(RenderSetup[LatexRenderer]):
 
         tt_counter_to_spec = {}
         latex_counter_to_spec = {}
-        for latex_counter in self.declared_latex_counters:
+        for latex_counter in counter_hierarchy_dfs(self.latex_counter_hierarchy):
             decl = self.declared_latex_counters[latex_counter]
             backref_method = self.latex_counter_backref_method[latex_counter]
+            tt_counter = self.latex_counter_to_tt_counter.get(latex_counter)
 
             spec = LatexCounterSpec(
+                tt_counter=tt_counter,
                 latex_counter=latex_counter,
                 backref_impl=(
                     self.backref_impls[backref_method]
@@ -362,7 +367,6 @@ class LatexSetup(RenderSetup[LatexRenderer]):
                 fallback_fmt=decl.fallback_fmt,
                 override_fmt=self.latex_counter_override_fmt.get(latex_counter),
             )
-            tt_counter = self.latex_counter_to_tt_counter.get(latex_counter)
             if tt_counter:
                 tt_counter_to_spec[tt_counter] = spec
             latex_counter_to_spec[latex_counter] = spec
