@@ -29,8 +29,8 @@ from turnip_text.render.latex.backrefs import (
 )
 from turnip_text.render.latex.renderer import (
     LatexBackrefMethodImpl,
+    LatexCounterFormat,
     LatexCounterSpec,
-    LatexCounterStyle,
     LatexPackageRequirements,
     LatexRenderer,
     LatexRequirements,
@@ -46,7 +46,7 @@ class LatexCounterDecl:
     default_reset_latex_counter: Optional[str]
     """If this was provided_by_docclass_or_package, what is the standard 'reset counter' for this counter?"""
 
-    fallback_fmt: SimpleCounterFormat[LatexCounterStyle]
+    fallback_fmt: LatexCounterFormat
 
 
 class LatexSetup(RenderSetup[LatexRenderer]):
@@ -57,7 +57,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
     """What is the \\documentclass (must be set by a plugin through require_document_class() if standalone"""
     declared_latex_counters: Dict[str, LatexCounterDecl]
     """The non-magic LaTeX counters that have been declared"""
-    latex_counter_override_fmt: Dict[str, SimpleCounterFormat[LatexCounterStyle]]
+    latex_counter_override_fmt: Dict[str, LatexCounterFormat]
     """Overridden formatting for non-magic LaTeX counters. Backref methods must configure themselves to use these."""
     latex_counter_backref_method: Dict[str, Optional[LatexBackrefMethod]]
     """The backref method for each non-magic LaTeX counters. Will always be a key to backref_impls."""
@@ -90,9 +90,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         plugins: Iterable[RenderPlugin[LatexRenderer, "LatexSetup"]],
         standalone: bool = False,
         requested_counter_links: Optional[Iterable[CounterLink]] = None,
-        requested_override_formats: Optional[
-            Dict[str, SimpleCounterFormat[LatexCounterStyle]]
-        ] = None,
+        requested_override_formats: Optional[Dict[str, LatexCounterFormat]] = None,
         # TODO config for the backref methods
     ) -> None:
         super().__init__(plugins)
@@ -248,7 +246,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
             self.latex_counter_backref_method[latex_counter] = None
 
     def request_latex_counter_fmt(
-        self, latex_counter: str, override_fmt: SimpleCounterFormat[LatexCounterStyle]
+        self, latex_counter: str, override_fmt: LatexCounterFormat
     ) -> None:
         if latex_counter in self.latex_counter_override_fmt:
             raise RuntimeError(

@@ -197,7 +197,7 @@ def counter_hierarchy_dfs(h: CounterHierarchy) -> List[str]:
     """Given a hierarchy of counters, return the depth-first iteration over that hierarchy as a list"""
     counters = []
 
-    def recurse(h1: CounterHierarchy):
+    def recurse(h1: CounterHierarchy) -> None:
         for parent, child in h1.items():
             counters.append(parent)
             if isinstance(child, str):

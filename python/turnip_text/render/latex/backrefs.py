@@ -6,6 +6,7 @@ from turnip_text.doc import FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.render.latex.renderer import (
     LatexBackrefMethodImpl,
+    LatexCounterFormat,
     LatexCounterSpec,
     LatexRenderer,
 )
@@ -25,7 +26,7 @@ class LatexBackrefMethod(IntEnum):
 class LatexHyperlink(LatexBackrefMethodImpl):
     """A means of referring back to a position in the document using the \\hypertarget and \\hyperlink macros instead of \\label and \\XXXref"""
 
-    manual_counter_method: Dict[str, SimpleCounterFormat]
+    manual_counter_method: Dict[str, LatexCounterFormat]
 
     description: str = "\\hypertarget and \\hyperlink"
 

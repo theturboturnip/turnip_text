@@ -54,6 +54,7 @@ from turnip_text.render.counters import (
 )
 from turnip_text.render.manual_numbering import ARABIC_NUMBERING, SimpleCounterFormat
 from turnip_text.render.markdown.renderer import (
+    MarkdownCounterStyle,
     MarkdownPlugin,
     MarkdownRenderer,
     MarkdownSetup,
@@ -87,28 +88,28 @@ class StructureRenderPlugin(MarkdownPlugin):
             "h1",
             SimpleCounterFormat(
                 name=("chapter" if self._has_chapter else "section"),
-                style=ARABIC_NUMBERING,
+                style=MarkdownCounterStyle.Arabic,
             ),
         )
         setup.define_counter_rendering(
             "h2",
             SimpleCounterFormat(
                 name=("section" if self._has_chapter else "subsection"),
-                style=ARABIC_NUMBERING,
+                style=MarkdownCounterStyle.Arabic,
             ),
         )
         setup.define_counter_rendering(
             "h3",
             SimpleCounterFormat(
                 name=("subsection" if self._has_chapter else "subsubsection"),
-                style=ARABIC_NUMBERING,
+                style=MarkdownCounterStyle.Arabic,
             ),
         )
         setup.define_counter_rendering(
             "h4",
             SimpleCounterFormat(
                 name=("subsubsection" if self._has_chapter else "subsubsubsection"),
-                style=ARABIC_NUMBERING,
+                style=MarkdownCounterStyle.Arabic,
             ),
         )
         setup.request_counter_parent("h1", parent_counter=None)
@@ -258,7 +259,7 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
         setup.emitter.register_block_or_inline(FootnoteList, self._emit_footnotes)
         setup.define_counter_rendering(
             "footnote",
-            SimpleCounterFormat(name="^", style=ARABIC_NUMBERING),
+            SimpleCounterFormat(name="^", style=MarkdownCounterStyle.Arabic),
         )
 
     def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:

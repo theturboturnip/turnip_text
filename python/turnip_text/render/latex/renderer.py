@@ -66,6 +66,9 @@ COUNTER_STYLE_TO_MANUAL = {
 }
 
 
+LatexCounterFormat = SimpleCounterFormat[LatexCounterStyle]
+
+
 # A class that emits anchors and backrefs in a specific way.
 # The renderer receives a mapping of (anchor kind) -> (backref method impl) from the LatexSetup.
 # Implementations are stored in backrefs.py
@@ -127,13 +130,13 @@ class LatexCounterSpec:
     """If this was provided_by_docclass_or_package, what is the standard 'reset counter' for this counter?"""
     reset_latex_counter: Optional[str]
 
-    fallback_fmt: SimpleCounterFormat[LatexCounterStyle]
-    override_fmt: Optional[SimpleCounterFormat[LatexCounterStyle]]
+    fallback_fmt: LatexCounterFormat
+    override_fmt: Optional[LatexCounterFormat]
 
     # TODO should this be optional?
     backref_impl: Optional[LatexBackrefMethodImpl]
 
-    def get_manual_fmt(self) -> SimpleCounterFormat[LatexCounterStyle]:
+    def get_manual_fmt(self) -> LatexCounterFormat:
         if self.override_fmt:
             return self.override_fmt
         return self.fallback_fmt

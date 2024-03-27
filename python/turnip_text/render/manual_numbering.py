@@ -100,7 +100,7 @@ class SimpleCounterFormat(Generic[TNumbering]):
     def resolve(
         cls,
         # The bound on the SimpleCounterFormat type-argument is sufficient that here we don't care what the concrete type is.
-        counters: Sequence[Tuple["SimpleCounterFormat", int]],
+        counters: Sequence[Tuple["SimpleCounterFormat", int]],  # type: ignore[type-arg]
         with_name: bool = True,
     ) -> UnescapedText:
         if with_name and counters[-1][0].name:
