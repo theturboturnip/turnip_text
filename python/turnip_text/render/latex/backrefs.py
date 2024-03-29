@@ -77,6 +77,14 @@ class LatexCleveref(LatexBackrefMethodImpl):
         known_to_cleveref = spec.provided_by_docclass_or_package
         if spec.override_fmt or (not known_to_cleveref):
             fmt = spec.get_manual_fmt()
+            if not known_to_cleveref:
+                renderer.emit_comment_line(
+                    "This is a new counter, tell cleveref how to format references to it"
+                )
+            elif spec.override_fmt:
+                renderer.emit_comment_line(
+                    "The counter has had its formatting overridden, pass that through to cleveref"
+                )
             renderer.emit_macro("crefformat")
             renderer.emit_braced(spec.latex_counter)
             renderer.emit_braced(
