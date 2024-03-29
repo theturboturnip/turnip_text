@@ -47,7 +47,7 @@ if __name__ == "__main__":
         LatexSetup(
             STD_LATEX_ARTICLE_RENDER_PLUGINS(use_chapters=False),
             standalone=False,
-            requested_override_formats={
+            latex_counter_format_override={
                 "section": SimpleCounterFormat(
                     "section", LatexCounterStyle.RomanUpper, postfix_for_child="-"
                 ),

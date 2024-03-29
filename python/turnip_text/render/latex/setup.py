@@ -89,8 +89,8 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         self,
         plugins: Iterable[RenderPlugin[LatexRenderer, "LatexSetup"]],
         standalone: bool = False,
-        requested_counter_links: Optional[Iterable[CounterLink]] = None,
-        requested_override_formats: Optional[Dict[str, LatexCounterFormat]] = None,
+        counter_link_override: Optional[Iterable[CounterLink]] = None,
+        latex_counter_format_override: Optional[Dict[str, LatexCounterFormat]] = None,
         # TODO config for the backref methods
     ) -> None:
         super().__init__(plugins)
@@ -99,8 +99,8 @@ class LatexSetup(RenderSetup[LatexRenderer]):
 
         self.document_class = UNSET
         self.declared_latex_counters = {}
-        if requested_override_formats:
-            self.latex_counter_override_fmt = requested_override_formats
+        if latex_counter_format_override:
+            self.latex_counter_override_fmt = latex_counter_format_override
         else:
             self.latex_counter_override_fmt = {}
         self.latex_counter_backref_method = {}
@@ -108,8 +108,8 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         self.shell_escape_reasons = []
         self.requested_packages = {}
 
-        if requested_counter_links:
-            self.tt_counter_links = list(requested_counter_links)
+        if counter_link_override:
+            self.tt_counter_links = list(counter_link_override)
         else:
             self.tt_counter_links = []
         self.tt_counter_to_latex_counter = {}
