@@ -11,41 +11,58 @@ The BuildSystem considers project-relative paths for input files and output-rela
 In the simple case these are relative to a single project folder and output folder respectively, but there may be room for the BuildSystem to transparently remap them into different folders later down the line.
 
 TODO it would be useful to rework this to support transparent remapping to in-memory file systems - instead of giving people Paths, give them opaque file handles directly?
+TODO can't quite do that :/ because in some cases it may be delegating to shell scripts or external programs that need files??
 """
 
 import abc
+import io
 from pathlib import Path
 from typing import Callable, Dict, Set, Tuple
 
+ProjectRelativePath = Path
+OutputRelativePath = Path
+ResolvedPath = Path
+
+FileJobInputs = Dict[str, ResolvedPath]
+
 # A FileJob is a function the BuildSystem eventually calls with the resolved path to an output file.
 # It is the responsibility of the FileJob to open the file in the correct mode and produce the output.
-FileJob = Callable[[Path], None]
+FileJob = Callable[[FileJobInputs, ResolvedPath], None]
 
 
 class BuildSystem(abc.ABC):
-    file_jobs: Dict[Path, FileJob]
+    file_jobs: Dict[ResolvedPath, Tuple[Dict[str, ProjectRelativePath], FileJob]]
 
     def __init__(self) -> None:
         super().__init__()
         self.file_jobs = {}
 
     @abc.abstractmethod
-    def resolve_project_relative_path(self, project_relative_path: Path) -> Path: ...
+    def _resolve_project_relative_path(
+        self, project_relative_path: ProjectRelativePath
+    ) -> ResolvedPath: ...
 
     @abc.abstractmethod
-    def resolve_output_relative_path(self, output_relative_path: Path) -> Path: ...
+    def _resolve_output_relative_path(
+        self, output_relative_path: OutputRelativePath
+    ) -> ResolvedPath: ...
 
-    def register_file_generator(self, job: FileJob, output_relative_path: Path) -> None:
+    def register_file_generator(
+        self,
+        job: FileJob,
+        inputs: Dict[str, ProjectRelativePath],
+        output_relative_path: OutputRelativePath,
+    ) -> None:
         """Track a job and an output-relative path that will eventually be populated with data by the job"""
 
-        output_path = self.resolve_output_relative_path(output_relative_path).resolve()
+        output_path = self._resolve_output_relative_path(output_relative_path).resolve()
 
         if output_path in self.file_jobs:
             raise ValueError(
                 f"Two jobs tried to generate the same overall file {output_path}"
             )
 
-        self.file_jobs[output_path] = job
+        self.file_jobs[output_path] = (inputs, job)
 
 
 class SimpleBuildSystem(BuildSystem):
@@ -67,8 +84,12 @@ class SimpleBuildSystem(BuildSystem):
         self.project_dir = project_dir
         self.output_dir = output_dir
 
-    def resolve_project_relative_path(self, project_relative_path: Path) -> Path:
+    def _resolve_project_relative_path(
+        self, project_relative_path: ProjectRelativePath
+    ) -> ResolvedPath:
         return (self.project_dir / project_relative_path).resolve()
 
-    def resolve_output_relative_path(self, output_relative_path: Path) -> Path:
+    def _aresolve_output_relative_path(
+        self, output_relative_path: OutputRelativePath
+    ) -> ResolvedPath:
         return (self.output_dir / output_relative_path).resolve()
