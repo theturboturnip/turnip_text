@@ -1,11 +1,9 @@
-"""When generating a document you might need to generate supplementary files e.g. a bibliography, diagrams in the right format, etc.
+"""Generating a document requires reading from the main document source code and possibly supplementary files, and writing out a new document file and possibly other supplementary files e.g. a bibliography, diagrams in the right format, etc.
 
-This requires a (minimal) build system to track the supplementary files and where they should be saved.
+This requires a (minimal) build system to track the supplementary files and where they should be opened from + saved.
 
 This build system does not support dependencies or e.g. skipping tasks based on not-modified files.
 Dependencies are unnecessary as these jobs do not mutate program state, they just push data into output files.
-
-Every Renderer instance should take a BuildSystem as an arugment to __init__, although the RendererSetup that created it may restrict what types of BuildSystem are passed through for a given format.
 
 The BuildSystem considers project-relative paths for input files and output-relative paths for output files.
 In the simple case these are relative to a single project folder and output folder respectively, but there may be room for the BuildSystem to transparently remap them into different folders later down the line.
@@ -21,6 +19,8 @@ import io
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, ContextManager, Dict, Generator, Optional, Tuple, TypeAlias
+
+from turnip_text import InsertedFile
 
 # TODO right now this doesn't handle ../s. That's probably a good thing.
 ProjectRelativePath = str
@@ -79,6 +79,11 @@ class BuildSystem(abc.ABC):
         self.file_jobs = {}
 
     @abc.abstractmethod
+    def _resolve_turnip_text_source(
+        self, project_relative_path: ProjectRelativePath
+    ) -> InsertedFile: ...
+
+    @abc.abstractmethod
     def _resolve_input_file(
         self, project_relative_path: ProjectRelativePath
     ) -> JobInputFile: ...
@@ -123,9 +128,17 @@ class SimpleBuildSystem(BuildSystem):
         self.project_dir = project_dir
         self.output_dir = output_dir
 
+    def _resolve_turnip_text_source(
+        self, project_relative_path: ProjectRelativePath
+    ) -> InsertedFile:
+        return InsertedFile.from_path(
+            str((self.project_dir / Path(project_relative_path)).resolve())
+        )
+
     def _resolve_input_file(
         self, project_relative_path: ProjectRelativePath
     ) -> JobInputFile:
+        # TODO check if the project_relative_path file really exists
         return RealJobInputFile(
             (self.project_dir / Path(project_relative_path)).resolve()
         )
@@ -133,6 +146,7 @@ class SimpleBuildSystem(BuildSystem):
     def _resolve_output_file(
         self, output_relative_path: OutputRelativePath
     ) -> JobOutputFile:
+        # TODO make sure the top-level directory for output_relative_path exists
         return RealJobOutputFile(
             (self.output_dir / Path(output_relative_path)).resolve()
         )
@@ -188,6 +202,13 @@ class InMemoryBuildSystem(BuildSystem):
         super().__init__()
         self.input_files = input_files
         self.output_files = {}
+
+    def _resolve_turnip_text_source(self, project_relative_path: str) -> InsertedFile:
+        data = self.input_files.get(project_relative_path)
+        if data:
+            # TODO - make it possible to insert a custom "path" into InsertedFile
+            return InsertedFile.from_string(data.decode("utf-8"))
+        raise ValueError(f"Input file '{project_relative_path}' doesn't exist")
 
     def _resolve_input_file(self, project_relative_path: str) -> JobInputFile:
         data = self.input_files.get(project_relative_path)
