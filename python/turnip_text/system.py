@@ -1,4 +1,5 @@
 """The phases of parsing and creating a new document:
+
 1. Parsing
    This requires creating a set of turnip_text.doc.DocPlugin, which define the interface used by inline code inside the document.
    The document may also have metadata which can be retrieved at this point.
@@ -34,6 +35,7 @@ import os
 from typing import Any, List, Optional, Set, Tuple, Type, TypeVar, Union, overload
 
 from turnip_text import Block, DocSegmentHeader, Inline, InsertedFile
+from turnip_text.build_system import BuildSystem
 from turnip_text.doc import DocMutator, DocSetup
 from turnip_text.render import (
     DocumentDfsPass,
@@ -44,17 +46,14 @@ from turnip_text.render import (
     Writable,
 )
 
-TWritable = TypeVar("TWritable", bound=Writable)
-
 
 def parse_and_emit(
-    src: InsertedFile,
     doc_setup: DocSetup,
     render_setup: RenderSetup[TRenderer],
-    write_to: TWritable,
-) -> TWritable:
+    output_file_name: str,
+) -> None:
     # Phase 1 - Parsing
-    toplevel_docsegment = doc_setup.parse(src)
+    toplevel_docsegment = doc_setup.parse()
 
     # Phase 2 - Mutation
     exported_nodes: Set[Type[Union[Block, Inline, DocSegmentHeader]]] = set()
@@ -107,18 +106,9 @@ def parse_and_emit(
     )
 
     # Phase 4 - Rendering
-    renderer: TRenderer = render_setup.to_renderer(doc_setup, write_to)
-    renderer.emit_document(toplevel_docsegment)
-
-    return write_to
-
-
-def parse_and_emit_to_path(
-    src: InsertedFile,
-    doc_setup: DocSetup,
-    render_setup: RenderSetup[TRenderer],
-    write_to_path: Union[str, bytes, "os.PathLike[Any]"],
-    encoding: str = "utf-8",
-) -> None:
-    with open(write_to_path, "w", encoding=encoding) as write_to:
-        parse_and_emit(src, doc_setup, render_setup, write_to)
+    # Create the main document render jobs
+    render_setup.register_file_generator_jobs(
+        doc_setup, toplevel_docsegment, output_file_name
+    )
+    # Run all the jobs accumulated in the build system.
+    doc_setup.build_sys.run_jobs()

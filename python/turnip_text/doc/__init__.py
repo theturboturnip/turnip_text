@@ -35,6 +35,7 @@ from turnip_text import (
     InsertedFile,
     parse_file_native,
 )
+from turnip_text.build_system import BuildSystem
 from turnip_text.doc.anchors import Anchor, Backref
 
 __all__ = [
@@ -58,20 +59,30 @@ T = TypeVar("T")
 
 
 class DocSetup:
+    build_sys: BuildSystem
+    doc_project_relative_path: str
     plugins: Sequence["DocPlugin"]
     fmt: "FormatContext"
     doc: "DocState"
 
-    def __init__(self, plugins: Sequence["DocPlugin"]) -> None:
+    def __init__(
+        self,
+        build_sys: BuildSystem,
+        doc_project_relative_path: str,
+        plugins: Sequence["DocPlugin"],
+    ) -> None:
+        self.build_sys = build_sys
+        self.doc_project_relative_path = doc_project_relative_path
         self.plugins = plugins
-        self.fmt, self.doc = DocPlugin._make_contexts(plugins)
+        self.fmt, self.doc = DocPlugin._make_contexts(build_sys, plugins)
 
     @property
     def anchors(self) -> "DocAnchors":
         return self.doc.anchors
 
-    def parse(self, f: InsertedFile) -> DocSegment:
-        return parse_file_native(f, self.doc.__dict__)
+    def parse(self) -> DocSegment:
+        src = self.build_sys.resolve_turnip_text_source(self.doc_project_relative_path)
+        return parse_file_native(src, self.doc.__dict__)
 
     def freeze(self) -> None:
         self.doc._frozen = True
@@ -161,11 +172,12 @@ class DocPlugin(DocMutator):
 
     @staticmethod
     def _make_contexts(
+        build_sys: BuildSystem,
         plugins: Sequence["DocPlugin"],
     ) -> Tuple["FormatContext", "DocState"]:
         anchors = DocAnchors()
         fmt = FormatContext()
-        doc = DocState(fmt, anchors)
+        doc = DocState(build_sys, fmt, anchors)
 
         def register_plugin(plugin: "DocPlugin") -> None:
             i = plugin._interface()
@@ -360,13 +372,17 @@ class DocState:
 
     # These are reserved fields, so plugins can't export them.
     # Evaluated code can call directly out to doc.blah or fmt.blah.
+    build_sys: BuildSystem
     doc: "DocState"
     fmt: "FormatContext"
     anchors: "DocAnchors"
     # This can be used by all document code to create backrefs, optionally with custom labels.
     backref = Backref
 
-    def __init__(self, fmt: "FormatContext", anchors: "DocAnchors") -> None:
+    def __init__(
+        self, build_sys: BuildSystem, fmt: "FormatContext", anchors: "DocAnchors"
+    ) -> None:
+        self.build_sys = build_sys
         self.doc = self
         self.fmt = fmt
         self.anchors = anchors

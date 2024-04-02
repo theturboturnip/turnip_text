@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple, Union, cast
 
-from turnip_text import Block, DocSegmentHeader, Inline
+from turnip_text import Block, DocSegment, DocSegmentHeader, Inline
+from turnip_text.build_system import JobInputFile, JobOutputFile
 from turnip_text.doc import DocSetup
 from turnip_text.helpers import UNSET, MaybeUnset
 from turnip_text.render import (
@@ -335,7 +336,12 @@ class LatexSetup(RenderSetup[LatexRenderer]):
     def known_countables(self) -> Iterable[str]:
         return self.tt_counters.anchor_kind_to_parent_chain.keys()
 
-    def to_renderer(self, doc_setup: DocSetup, write_to: Writable) -> LatexRenderer:
+    def register_file_generator_jobs(
+        self,
+        doc_setup: DocSetup,
+        toplevel_segment: DocSegment,
+        output_file_name: Optional[str],
+    ) -> None:
         if self.document_class is UNSET:
             if self.standalone:
                 raise RuntimeError("Document class was not declared by any plugin!")
@@ -378,10 +384,20 @@ class LatexSetup(RenderSetup[LatexRenderer]):
             magic_tt_counters=self.magic_tt_counter_to_latex_counter,
         )
 
-        return LatexRenderer(
-            doc_setup,
-            requirements,
-            self.tt_counters,
-            self.emitter,
-            write_to,
+        # Make a render job and register it in the build system.
+        def render_job(_ins: Dict[str, JobInputFile], out: JobOutputFile) -> None:
+            with out.open_write_text() as write_to:
+                renderer = LatexRenderer(
+                    doc_setup,
+                    requirements,
+                    self.tt_counters,
+                    self.emitter,
+                    write_to,
+                )
+                renderer.emit_document(toplevel_segment)
+
+        doc_setup.build_sys.register_file_generator(
+            render_job,
+            inputs={},
+            output_relative_path=output_file_name or "document.tex",
         )

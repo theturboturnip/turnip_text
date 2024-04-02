@@ -442,6 +442,8 @@ class Renderer(abc.ABC):
 
 
 # Can't specify generic type bounds inside a TypeVar bound, so RenderSetup doesn't have a generic here
+# Contravariant so that if RenderSetupB subclasses RenderSetupA, i.e. RenderSetupB provides the same features as RenderSetupA, RenderPlugin[RenderSetupA] can be passed into a (self: RenderSetupB, plugins: Iterable[RenderPlugin[TRenderer, RenderSetupB]]) i.e. RenderPlugin[T, RenderSetupA] is considered a subtype of RenderPlugin[T, RenderSetupB].
+# See https://peps.python.org/pep-0483/#covariance-and-contravariance
 TRenderSetup = TypeVar("TRenderSetup", bound="RenderSetup", contravariant=True)  # type: ignore[type-arg]
 
 
@@ -467,7 +469,14 @@ class RenderSetup(abc.ABC, Generic[TRenderer]):
     def known_countables(self) -> Iterable[str]: ...
 
     @abc.abstractmethod
-    def to_renderer(self, doc_setup: DocSetup, write_to: Writable) -> TRenderer: ...
+    def register_file_generator_jobs(
+        self,
+        doc_setup: DocSetup,
+        toplevel_segment: DocSegment,
+        output_file_name: Optional[str],
+    ) -> None:
+        """Register the actual job to render the necessary files out from toplevel_segment into doc_setup.build_sys."""
+        ...
 
 
 class RenderPlugin(DocMutator, Generic[TRenderer_contra, TRenderSetup]):

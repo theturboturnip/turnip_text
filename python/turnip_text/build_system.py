@@ -117,12 +117,26 @@ class BuildSystem(abc.ABC):
 
         self.file_jobs[output_relative_path] = (inputs, job)
 
+    def run_jobs(self) -> None:
+        for output_relative_path, (relative_inputs, job) in self.file_jobs.items():
+            out_file = self._resolve_output_file(output_relative_path)
+            in_files = {
+                name: self._resolve_input_file(project_relative_path)
+                for name, project_relative_path in relative_inputs.items()
+            }
+            job(in_files, out_file)
+
+    def clear_jobs(self) -> None:
+        self.file_jobs.clear()
+
 
 class SimpleBuildSystem(BuildSystem):
     project_dir: Path
     output_dir: Path
 
-    def __init__(self, project_dir: Path, output_dir: Path) -> None:
+    def __init__(
+        self, project_dir: Path, output_dir: Path, make_output_dir: bool = True
+    ) -> None:
         super().__init__()
         project_dir = project_dir.resolve()
         if not project_dir.is_dir():
@@ -131,34 +145,54 @@ class SimpleBuildSystem(BuildSystem):
             )
         output_dir = output_dir.resolve()
         if not output_dir.is_dir():
-            raise ValueError(
-                f"Output dir '{output_dir}' either doesn't exist or isn't a directory"
-            )
+            if make_output_dir:
+                output_dir.mkdir(parents=True, exist_ok=True)
+            else:
+                raise ValueError(
+                    f"Output dir '{output_dir}' either doesn't exist or isn't a directory"
+                )
         self.project_dir = project_dir
         self.output_dir = output_dir
+
+    # TODO we need some way to make sure the relative paths don't jump out of the project_dirs.
+
+    def _resolve_project_relpath(
+        self, project_relative_path: ProjectRelativePath
+    ) -> ResolvedPath:
+        p = self.project_dir / Path(project_relative_path)
+        if not p.is_file():
+            raise ValueError(
+                f"Requested input '{project_relative_path}' doesn't exist in {self.project_dir} or is a directory"
+            )
+        return p.resolve()
+
+    def _resolve_output_relpath(
+        self, output_relative_path: OutputRelativePath
+    ) -> ResolvedPath:
+        p = (self.output_dir / Path(output_relative_path)).resolve()
+        if not p.parent.exists():
+            # TODO if we can verify we're within bounds, create the output directory.
+            raise ValueError(
+                f"Requested output '{output_relative_path}' doesn't have an existing parent directory '{p.parent}'."
+            )
+        return p
 
     def resolve_turnip_text_source(
         self, project_relative_path: ProjectRelativePath
     ) -> InsertedFile:
         return InsertedFile.from_path(
-            str((self.project_dir / Path(project_relative_path)).resolve())
+            str(self._resolve_project_relpath(project_relative_path))
         )
 
     def _resolve_input_file(
         self, project_relative_path: ProjectRelativePath
     ) -> JobInputFile:
-        # TODO check if the project_relative_path file really exists
-        return RealJobInputFile(
-            (self.project_dir / Path(project_relative_path)).resolve()
-        )
+        return RealJobInputFile(self._resolve_project_relpath(project_relative_path))
 
     def _resolve_output_file(
         self, output_relative_path: OutputRelativePath
     ) -> JobOutputFile:
-        # TODO make sure the directory for output_relative_path exists
-        return RealJobOutputFile(
-            (self.output_dir / Path(output_relative_path)).resolve()
-        )
+        return RealJobOutputFile(self._resolve_output_relpath(output_relative_path))
 
 
 class RealJobInputFile(JobInputFile):
@@ -273,10 +307,14 @@ def non_closing_text_wrapper(
     bytes_writer: io.BytesIO,
     encoding: str,
 ) -> Generator[TextWriter, None, None]:
+    wrapper = io.TextIOWrapper(bytes_writer, encoding=encoding)
     try:
-        yield io.TextIOWrapper(bytes_writer, encoding=encoding)
+        yield wrapper
     finally:
-        pass  # DON'T close it because then it would close bytes_writer (I think?)
+        # DON'T close the wrapper or let it be garbage collected because then it would close bytes_writer
+        buf = wrapper.detach()
+        assert not buf.closed
+        pass
 
 
 class InMemoryOutputFile(JobOutputFile):

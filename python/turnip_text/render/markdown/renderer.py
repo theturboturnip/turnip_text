@@ -3,7 +3,15 @@ from contextlib import contextmanager
 from enum import Enum
 from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple, Type
 
-from turnip_text import Block, DocSegmentHeader, Inline, Paragraph, UnescapedText
+from turnip_text import (
+    Block,
+    DocSegment,
+    DocSegmentHeader,
+    Inline,
+    Paragraph,
+    UnescapedText,
+)
+from turnip_text.build_system import JobInputFile, JobOutputFile
 from turnip_text.doc import DocAnchors, DocSetup, DocState, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.render import (
@@ -290,14 +298,31 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
         # Apply the requested counter links
         self.requested_counter_links.append((parent_counter, counter))
 
-    def to_renderer(self, doc_setup: DocSetup, write_to: Writable) -> MarkdownRenderer:
-        return MarkdownRenderer(
-            doc_setup,
-            self.emitter,
-            self.counters,
-            self.counter_rendering,
-            write_to,
-            html_mode=self.html_only,
+    def register_file_generator_jobs(
+        self,
+        doc_setup: DocSetup,
+        toplevel_segment: DocSegment,
+        output_file_name: Optional[str],
+    ) -> None:
+        # Make a render job and register it in the build system.
+        def render_job(_ins: Dict[str, JobInputFile], out: JobOutputFile) -> None:
+            with out.open_write_text() as write_to:
+                renderer = MarkdownRenderer(
+                    doc_setup,
+                    self.emitter,
+                    self.counters,
+                    self.counter_rendering,
+                    write_to,
+                    html_mode=self.html_only,
+                )
+                renderer.emit_document(toplevel_segment)
+
+        default_output_file_name = "document.html" if self.html_only else "document.md"
+
+        doc_setup.build_sys.register_file_generator(
+            render_job,
+            inputs={},
+            output_relative_path=output_file_name or default_output_file_name,
         )
 
 
