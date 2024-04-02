@@ -10,42 +10,83 @@ Every Renderer instance should take a BuildSystem as an arugment to __init__, al
 The BuildSystem considers project-relative paths for input files and output-relative paths for output files.
 In the simple case these are relative to a single project folder and output folder respectively, but there may be room for the BuildSystem to transparently remap them into different folders later down the line.
 
-TODO it would be useful to rework this to support transparent remapping to in-memory file systems - instead of giving people Paths, give them opaque file handles directly?
-TODO can't quite do that :/ because in some cases it may be delegating to shell scripts or external programs that need files??
+Indeed, the BuildSystem may use Path under the hood to identify files, but the JobFile instances it passes to the Jobs are an abstraction that do not need to map to files in a "real" filesystem.
+JobInputFiles provide open_read_{bin,text}() and JobOutputFiles provide open_write_{bin,text}() to open read/write handles to files regardless of where they are.
+This allows unit tests etc. to use in-memory filesystems without changing Job code.
+If a Job absolutely needs an external filesystem path to a file (for example to pass it through external programs) then it may request the path, but if the file is in-memory it may not have one.
 """
 
 import abc
 import io
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Dict, Set, Tuple
+from typing import Callable, ContextManager, Dict, Generator, Optional, Tuple, TypeAlias
 
-ProjectRelativePath = Path
-OutputRelativePath = Path
+# TODO right now this doesn't handle ../s. That's probably a good thing.
+ProjectRelativePath = str
+OutputRelativePath = str
 ResolvedPath = Path
 
-FileJobInputs = Dict[str, ResolvedPath]
+
+ByteReader: TypeAlias = io.BufferedIOBase
+ByteWriter: TypeAlias = io.BufferedIOBase
+TextReader: TypeAlias = io.TextIOBase
+TextWriter: TypeAlias = io.TextIOBase
+
+
+class JobFile(abc.ABC):
+    @abc.abstractproperty
+    def external_path(self) -> Optional[ResolvedPath]:
+        """The resolved path that refers to this file in the real/external filesystem - i.e. this path can be used with open() directly.
+
+        May be None if the file cannot be opened through open() e.g. if provided by an in-memory filesystem.
+        """
+        ...
+
+
+# TODO accept all other params to open()?
+class JobInputFile(JobFile, abc.ABC):
+    # TODO define how multiple-reader is handled
+    @abc.abstractmethod
+    def open_read_bin(self) -> ContextManager[ByteReader]: ...
+
+    @abc.abstractmethod
+    def open_read_text(self, encoding: str = "utf-8") -> ContextManager[TextReader]: ...
+
+
+class JobOutputFile(JobFile, abc.ABC):
+    # TODO define how multiple-writer is handled.
+    @abc.abstractmethod
+    def open_write_bin(self) -> ContextManager[ByteWriter]: ...
+
+    @abc.abstractmethod
+    def open_write_text(
+        self, encoding: str = "utf-8"
+    ) -> ContextManager[TextWriter]: ...
+
+
+FileJobInputs = Dict[str, JobInputFile]
 
 # A FileJob is a function the BuildSystem eventually calls with the resolved path to an output file.
-# It is the responsibility of the FileJob to open the file in the correct mode and produce the output.
-FileJob = Callable[[FileJobInputs, ResolvedPath], None]
+FileJob = Callable[[FileJobInputs, JobOutputFile], None]
 
 
 class BuildSystem(abc.ABC):
-    file_jobs: Dict[ResolvedPath, Tuple[Dict[str, ProjectRelativePath], FileJob]]
+    file_jobs: Dict[OutputRelativePath, Tuple[Dict[str, ProjectRelativePath], FileJob]]
 
     def __init__(self) -> None:
         super().__init__()
         self.file_jobs = {}
 
     @abc.abstractmethod
-    def _resolve_project_relative_path(
+    def _resolve_input_file(
         self, project_relative_path: ProjectRelativePath
-    ) -> ResolvedPath: ...
+    ) -> JobInputFile: ...
 
     @abc.abstractmethod
-    def _resolve_output_relative_path(
+    def _resolve_output_file(
         self, output_relative_path: OutputRelativePath
-    ) -> ResolvedPath: ...
+    ) -> JobOutputFile: ...
 
     def register_file_generator(
         self,
@@ -55,14 +96,12 @@ class BuildSystem(abc.ABC):
     ) -> None:
         """Track a job and an output-relative path that will eventually be populated with data by the job"""
 
-        output_path = self._resolve_output_relative_path(output_relative_path).resolve()
-
-        if output_path in self.file_jobs:
+        if output_relative_path in self.file_jobs:
             raise ValueError(
-                f"Two jobs tried to generate the same overall file {output_path}"
+                f"Two jobs tried to generate the same overall file {output_relative_path}"
             )
 
-        self.file_jobs[output_path] = (inputs, job)
+        self.file_jobs[output_relative_path] = (inputs, job)
 
 
 class SimpleBuildSystem(BuildSystem):
@@ -84,12 +123,147 @@ class SimpleBuildSystem(BuildSystem):
         self.project_dir = project_dir
         self.output_dir = output_dir
 
-    def _resolve_project_relative_path(
+    def _resolve_input_file(
         self, project_relative_path: ProjectRelativePath
-    ) -> ResolvedPath:
-        return (self.project_dir / project_relative_path).resolve()
+    ) -> JobInputFile:
+        return RealJobInputFile(
+            (self.project_dir / Path(project_relative_path)).resolve()
+        )
 
-    def _aresolve_output_relative_path(
+    def _resolve_output_file(
         self, output_relative_path: OutputRelativePath
-    ) -> ResolvedPath:
-        return (self.output_dir / output_relative_path).resolve()
+    ) -> JobOutputFile:
+        return RealJobOutputFile(
+            (self.output_dir / Path(output_relative_path)).resolve()
+        )
+
+
+class RealJobInputFile(JobInputFile):
+    """Implementation of JobInputFile for "real" files that exist in an external filesystem"""
+
+    _path: Path
+
+    def __init__(self, path: Path) -> None:
+        super().__init__()
+        self._path = path
+
+    @property
+    def external_path(self) -> Optional[ResolvedPath]:
+        return self._path
+
+    def open_read_bin(self) -> ContextManager[ByteReader]:
+        return open(self._path, "rb")
+
+    def open_read_text(self, encoding: str = "utf-8") -> ContextManager[TextReader]:
+        return open(self._path, "r", encoding=encoding)
+
+
+class RealJobOutputFile(JobOutputFile):
+    """Implementation of JobOutputFile for "real" files that exist in an external filesystem"""
+
+    _path: Path
+
+    def __init__(self, path: Path) -> None:
+        super().__init__()
+        self._path = path
+
+    @property
+    def external_path(self) -> Optional[ResolvedPath]:
+        return self._path
+
+    def open_write_bin(self) -> ContextManager[ByteWriter]:
+        return open(self._path, "wb")
+
+    def open_write_text(self, encoding: str = "utf-8") -> ContextManager[TextWriter]:
+        return open(self._path, "w", encoding=encoding)
+
+
+class InMemoryBuildSystem(BuildSystem):
+    """Implementation of BuildSystem that uses in-memory streams (BytesIO/StringIO) instead of real files."""
+
+    input_files: Dict[str, bytes]
+    output_files: Dict[str, "InMemoryOutputFile"]
+
+    def __init__(self, input_files: Dict[str, bytes]) -> None:
+        super().__init__()
+        self.input_files = input_files
+        self.output_files = {}
+
+    def _resolve_input_file(self, project_relative_path: str) -> JobInputFile:
+        data = self.input_files.get(project_relative_path)
+        if data:
+            return InMemoryInputFile(data)
+        raise ValueError(f"Input file '{project_relative_path}' doesn't exist")
+
+    def _resolve_output_file(self, output_relative_path: str) -> JobOutputFile:
+        # Creates and returns a usable file for an in-memory file system
+        f = self.output_files.get(output_relative_path)
+        if f:
+            return f
+        f = InMemoryOutputFile()
+        self.output_files[output_relative_path] = f
+        return f
+
+    def get_outputs(self) -> Dict[str, bytes]:
+        return {k: v._bytes_writer.getvalue() for k, v in self.output_files.items()}
+
+
+class InMemoryInputFile(JobInputFile):
+    """Implementation of JobInputFile for a file from an in-memory filesystem"""
+
+    _data: bytes
+
+    def __init__(self, data: bytes) -> None:
+        super().__init__()
+        self._data = data
+
+    @property
+    def external_path(self) -> None:
+        return None
+
+    def open_read_bin(self) -> ContextManager[ByteReader]:
+        return io.BytesIO(initial_bytes=self._data)
+
+    def open_read_text(self, encoding: str = "utf-8") -> ContextManager[TextReader]:
+        return io.StringIO(initial_value=self._data.decode(encoding=encoding))
+
+
+@contextmanager
+def non_closing_byte_writer(
+    bytes_writer: io.BytesIO,
+) -> Generator[ByteWriter, None, None]:
+    try:
+        yield bytes_writer
+    finally:
+        pass  # DON'T close bytes_writer
+
+
+@contextmanager
+def non_closing_text_wrapper(
+    bytes_writer: io.BytesIO,
+    encoding: str,
+) -> Generator[TextWriter, None, None]:
+    try:
+        yield io.TextIOWrapper(bytes_writer, encoding=encoding)
+    finally:
+        pass  # DON'T close it because then it would close bytes_writer (I think?)
+
+
+class InMemoryOutputFile(JobOutputFile):
+    """Implementation of JobInputFile for a file from an in-memory filesystem"""
+
+    _bytes_writer: io.BytesIO
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._bytes_writer = io.BytesIO()
+
+    @property
+    def external_path(self) -> None:
+        return None
+
+    def open_write_bin(self) -> ContextManager[ByteWriter]:
+        return non_closing_byte_writer(self._bytes_writer)
+
+    def open_write_text(self, encoding: str = "utf-8") -> ContextManager[TextWriter]:
+        return non_closing_text_wrapper(self._bytes_writer, encoding)
