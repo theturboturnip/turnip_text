@@ -44,7 +44,6 @@ impl Interpreter {
         file_idx: usize, // Attached to any LexError given
         data: &str,
     ) -> TurnipTextContextlessResult<InterpreterFileAction> {
-        self.push_subfile();
         for tok in toks {
             let tok = tok.map_err(|lex_err| (file_idx, lex_err))?;
             let transitions = self.mutate_and_find_transitions(py, py_env, tok, data)?;
@@ -55,7 +54,6 @@ impl Interpreter {
                 }
             }
         }
-        self.pop_subfile(py, py_env)?;
         Ok(InterpreterFileAction::FileEnded)
     }
 }
@@ -522,11 +520,15 @@ pub enum InterpreterFileAction {
 }
 
 impl Interpreter {
-    fn push_subfile(&mut self) {
+    pub fn push_subfile(&mut self) {
         self.structure.block_stacks.push(vec![])
     }
 
-    fn pop_subfile(&mut self, py: Python, py_env: &'_ PyDict) -> TurnipTextContextlessResult<()> {
+    pub fn pop_subfile(
+        &mut self,
+        py: Python,
+        py_env: &'_ PyDict,
+    ) -> TurnipTextContextlessResult<()> {
         // If we finish while we're parsing a paragraph, jump out of it with a state machine transition
         let transitions = match &mut self.block_state {
             InterpBlockState::ReadyForNewBlock => (None, None),
@@ -730,6 +732,8 @@ impl Interpreter {
     ) -> TurnipTextContextlessResult<Option<InsertedFile>> {
         let (block_transition, special_transition) = transitions;
 
+        let mut file_to_emit = None;
+
         if let Some(transition) = block_transition {
             use InterpBlockState as S;
             use InterpBlockTransition as T;
@@ -863,8 +867,13 @@ impl Interpreter {
                     }
                     S::ReadyForNewBlock
                 }
-                (S::ReadyForNewBlock, T::EmitNewFile(_emitter_span, file)) => {
-                    return Ok(Some(file))
+                (
+                    S::ReadyForNewBlock | S::BuildingCode { .. },
+                    T::EmitNewFile(_emitter_span, file),
+                ) => {
+                    file_to_emit = Some(file);
+                    // Discard the BuildingCode state so that it doesn't continue into the subfile
+                    S::ReadyForNewBlock
                 }
                 (_, transition) => {
                     return Err(TurnipTextContextlessError::Internal(format!(
@@ -893,6 +902,6 @@ impl Interpreter {
             }
         }
 
-        Ok(None)
+        Ok(file_to_emit)
     }
 }

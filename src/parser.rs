@@ -59,8 +59,9 @@ impl TurnipTextParser {
     pub fn new(py: Python, file_name: String, file_contents: String) -> TurnipTextResult<Self> {
         let file = ParsingFile::new(0, file_name, file_contents, None);
         let files = vec![file];
-        let interp = Interpreter::new(py)
+        let mut interp = Interpreter::new(py)
             .map_err(|pyerr| TurnipTextError::InternalPython(stringify_pyerr(py, &pyerr)))?;
+        interp.push_subfile(); // We start out with one subfile - the file we're initially parsing
         Ok(Self {
             file_stack: vec![0],
             files,
@@ -68,6 +69,9 @@ impl TurnipTextParser {
         })
     }
     pub fn parse(mut self, py: Python, py_env: &PyDict) -> TurnipTextResult<Py<DocSegment>> {
+        // Call handle_tokens until it breaks out returning FileInserted or FileEnded.
+        // FileEnded will be returned exactly once more than FileInserted - FileInserted is only returned for subfiles, FileEnded is returned for all subfiles AND the initial file.
+        // We handle this because the file stack, Vec<ParsingFile>, and interpreter each have one file's worth of content pushed in initially.
         loop {
             let action = {
                 let file_idx = match self.file_stack.last_mut() {
@@ -93,8 +97,13 @@ impl TurnipTextParser {
                     self.files
                         .push(ParsingFile::new(file_idx, name, contents, None));
                     self.file_stack.push(file_idx);
+                    self.interp.push_subfile();
                 }
                 InterpreterFileAction::FileEnded => {
+                    match self.interp.pop_subfile(py, py_env) {
+                        Ok(()) => {}
+                        Err(err) => return Err((self.files, err).into()),
+                    };
                     self.file_stack.pop().expect("There must be a file!");
                 }
             };
