@@ -18,7 +18,16 @@ import abc
 import io
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, ContextManager, Dict, Generator, Optional, Tuple, TypeAlias
+from typing import (
+    Callable,
+    ContextManager,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Tuple,
+    TypeAlias,
+)
 
 from turnip_text import InsertedFile
 
@@ -288,3 +297,71 @@ class InMemoryOutputFile(JobOutputFile):
 
     def open_write_text(self, encoding: str = "utf-8") -> ContextManager[TextWriter]:
         return non_closing_text_wrapper(self._bytes_writer, encoding)
+
+
+class StackBuildSystem(BuildSystem):
+    """Implementation of BuildSystem that works as a 'stack' of other build systems.
+    The internal build systems do not have jobs enqueued, but whenever an input or output file is resolved each build system is queried in order. The first one to not throw an error actually resolves the file.
+    """
+
+    _build_systems: List[BuildSystem]
+
+    def __init__(self, build_systems: List[BuildSystem]) -> None:
+        super().__init__()
+        self._build_systems = build_systems
+
+    def resolve_turnip_text_source(self, project_relative_path: str) -> InsertedFile:
+        for b in self._build_systems:
+            try:
+                return b.resolve_turnip_text_source(project_relative_path)
+            except:
+                continue
+        raise ValueError(
+            f"None of the supplementary build systems had '{project_relative_path}'"
+        )
+
+    def _resolve_input_file(self, project_relative_path: str) -> JobInputFile:
+        for b in self._build_systems:
+            try:
+                return b._resolve_input_file(project_relative_path)
+            except:
+                continue
+        raise ValueError(
+            f"None of the supplementary build systems had '{project_relative_path}'"
+        )
+
+    def _resolve_output_file(self, output_relative_path: str) -> JobOutputFile:
+        for b in self._build_systems:
+            try:
+                return b._resolve_output_file(output_relative_path)
+            except:
+                continue
+        raise ValueError(
+            f"None of the supplementary build systems could make the output file '{output_relative_path}'"
+        )
+
+
+class SplitBuildSystem(BuildSystem):
+    """Implementation of a BuildSystem that combines separate BuildSystems for input and output files.
+    The internal build systems do not have jobs enqueued, only this top-level one.
+    This allows e.g. input files to come from a real filesystem and output files to go to an in-memory filesystem.
+    """
+
+    _input_build_sys: BuildSystem
+    _output_build_sys: BuildSystem
+
+    def __init__(
+        self, input_build_sys: BuildSystem, output_build_sys: BuildSystem
+    ) -> None:
+        super().__init__()
+        self._input_build_sys = input_build_sys
+        self._output_build_sys = output_build_sys
+
+    def resolve_turnip_text_source(self, project_relative_path: str) -> InsertedFile:
+        return self._input_build_sys.resolve_turnip_text_source(project_relative_path)
+
+    def _resolve_input_file(self, project_relative_path: str) -> JobInputFile:
+        return self._input_build_sys._resolve_input_file(project_relative_path)
+
+    def _resolve_output_file(self, output_relative_path: str) -> JobOutputFile:
+        return self._output_build_sys._resolve_output_file(output_relative_path)
