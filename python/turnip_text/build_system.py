@@ -79,7 +79,7 @@ class BuildSystem(abc.ABC):
         self.file_jobs = {}
 
     @abc.abstractmethod
-    def _resolve_turnip_text_source(
+    def resolve_turnip_text_source(
         self, project_relative_path: ProjectRelativePath
     ) -> InsertedFile: ...
 
@@ -128,7 +128,7 @@ class SimpleBuildSystem(BuildSystem):
         self.project_dir = project_dir
         self.output_dir = output_dir
 
-    def _resolve_turnip_text_source(
+    def resolve_turnip_text_source(
         self, project_relative_path: ProjectRelativePath
     ) -> InsertedFile:
         return InsertedFile.from_path(
@@ -146,7 +146,7 @@ class SimpleBuildSystem(BuildSystem):
     def _resolve_output_file(
         self, output_relative_path: OutputRelativePath
     ) -> JobOutputFile:
-        # TODO make sure the top-level directory for output_relative_path exists
+        # TODO make sure the directory for output_relative_path exists
         return RealJobOutputFile(
             (self.output_dir / Path(output_relative_path)).resolve()
         )
@@ -203,7 +203,7 @@ class InMemoryBuildSystem(BuildSystem):
         self.input_files = input_files
         self.output_files = {}
 
-    def _resolve_turnip_text_source(self, project_relative_path: str) -> InsertedFile:
+    def resolve_turnip_text_source(self, project_relative_path: str) -> InsertedFile:
         data = self.input_files.get(project_relative_path)
         if data:
             # TODO - make it possible to insert a custom "path" into InsertedFile
