@@ -24,6 +24,7 @@ from turnip_text import (
     Inline,
     InlineScope,
     InlineScopeBuilder,
+    InsertedFile,
     Paragraph,
     Sentence,
     UnescapedText,
@@ -49,6 +50,7 @@ def STD_DOC_PLUGINS(allow_multiple_footnote_refs: bool = False) -> List[DocPlugi
         ListDocPlugin(),
         InlineFormatDocPlugin(),
         UrlDocPlugin(),
+        SubfileDocPlugin(),
     ]
 
 
@@ -421,3 +423,9 @@ class UrlDocPlugin(DocPlugin):
             contents=(UnescapedText(name),) if name is not None else None,
             url=url,
         )
+
+
+class SubfileDocPlugin(DocPlugin):
+    @stateful
+    def subfile(self, doc: DocState, project_relative_path: str) -> InsertedFile:
+        return doc.build_sys.resolve_turnip_text_source(project_relative_path)
