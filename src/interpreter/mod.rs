@@ -86,6 +86,11 @@ impl InterimDocumentStructure {
             0,
             "Tried to finalize the document while inside a file"
         );
+        assert_eq!(
+            self.segment_stack.len(),
+            0,
+            "Tried to finalize the document with in-progress segments?"
+        );
         Py::new(
             py,
             DocSegment::new_no_header(
@@ -115,6 +120,8 @@ impl InterimDocumentStructure {
         }
     }
 
+    /// This function returns the closest open block scope, which may have been opened in the current file or previous files.
+    /// If there isn't any open block scope, returns None.
     fn get_enclosing_block(&self) -> Option<&InterpManualBlockScopeState> {
         for block_stack in self.block_stacks.iter().rev() {
             match block_stack.last() {
@@ -561,6 +568,7 @@ impl Interpreter {
         py: Python,
         py_env: &PyDict,
     ) -> TurnipTextContextlessResult<Py<DocSegment>> {
+        self.structure.pop_segments_until_less_than(py, i64::MIN)?;
         self.structure.finalize(py).err_as_internal(py)
     }
 
