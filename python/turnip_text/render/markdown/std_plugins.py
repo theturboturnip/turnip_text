@@ -20,6 +20,7 @@ from turnip_text import (
     DocSegmentHeader,
     Inline,
     InlineScope,
+    Raw,
     Text,
 )
 from turnip_text.doc import DocState, FormatContext
@@ -131,14 +132,18 @@ class StructureRenderPlugin(MarkdownPlugin):
             with renderer.emit_tag(tag):
                 if head.anchor:
                     renderer.emit(
-                        head.anchor, renderer.anchor_to_number_text(head.anchor), " "
+                        head.anchor,
+                        renderer.anchor_to_number_text(head.anchor),
+                        Raw(" "),
                     )
                 renderer.emit(head.contents)
         else:
             renderer.emit_raw("#" * (head.weight) + " ")
             if head.anchor:
                 renderer.emit(
-                    head.anchor, renderer.anchor_to_number_text(head.anchor), " "
+                    head.anchor,
+                    renderer.anchor_to_number_text(head.anchor),
+                    Raw(" "),
                 )
             renderer.emit(head.contents)
 
@@ -281,7 +286,10 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
             anchor, footnote = renderer.anchors.lookup_backref_float(backref)
             assert isinstance(footnote, FootnoteContents)
             renderer.emit(
-                anchor, renderer.anchor_to_ref_text(anchor), f": ", footnote.contents
+                anchor,
+                renderer.anchor_to_ref_text(anchor),
+                Text(f": "),
+                footnote.contents,
             )
             renderer.emit_break_sentence()
         renderer.emit_break_paragraph()

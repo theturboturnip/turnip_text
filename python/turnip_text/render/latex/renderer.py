@@ -2,9 +2,9 @@ import abc
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Set, Tuple, Union
 
-from turnip_text import DocSegment, Text
+from turnip_text import Block, DocSegment, Inline, Raw, Text
 from turnip_text.doc import DocSetup, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.helpers import MaybeUnset
@@ -183,8 +183,7 @@ class LatexRenderer(Renderer):
                 f"Requires `--shell-escape` command-line option for {', '.join(self.requirements.shell_escape)}"
             )
         if self.requirements.document_class:
-            self.emit_macro("documentclass")
-            self.emit_braced(self.requirements.document_class)
+            self.emit_raw(f"\\documentclass{{{self.requirements.document_class}}}")
             self.emit_break_paragraph()
             for package, reason in self.requirements.packages.items():
                 self.emit_comment_line(f"{reason.package} required for")
@@ -192,8 +191,8 @@ class LatexRenderer(Renderer):
                     self.emit_comment_line(f"- {r}")
                 self.emit_macro("usepackage")
                 if reason.options:
-                    self.emit_sqr_bracketed(",".join(reason.options))
-                self.emit_braced(reason.package)
+                    self.emit_raw("[" + ",".join(reason.options) + "]")
+                self.emit_raw("{" + reason.package + "}")
                 self.emit_break_sentence()
 
             self.emit_break_paragraph()
@@ -230,15 +229,20 @@ class LatexRenderer(Renderer):
                         if latex_counter_spec.reset_latex_counter is None:
                             # counterwithout = pass in (slave counter) (old master counter) and it will undo the connection to (old master counter)
                             self.emit_macro("counterwithout")
-                            self.emit_braced(latex_counter_spec.latex_counter)
+                            self.emit_braced(Raw(latex_counter_spec.latex_counter))
+                            # reset_latex_counter is None and default_reset_latex_counter != reset_latex_counter => default_reset_latex_counter is not None
                             self.emit_braced(
-                                latex_counter_spec.default_reset_latex_counter
+                                Raw(
+                                    latex_counter_spec.default_reset_latex_counter  # type: ignore[arg-type]
+                                )
                             )
                         else:
                             # counterwithin = pass in (slave counter) (new master counter) and it will set the connection to (new master counter)
                             self.emit_macro("counterwithin")
-                            self.emit_braced(latex_counter_spec.latex_counter)
-                            self.emit_braced(latex_counter_spec.reset_latex_counter)
+                            self.emit_braced(Raw(latex_counter_spec.latex_counter))
+                            self.emit_braced(
+                                Raw(latex_counter_spec.reset_latex_counter)
+                            )
                 else:
                     if tt_counter:
                         self.emit_comment_line(
@@ -249,9 +253,11 @@ class LatexRenderer(Renderer):
                             f"LaTeX counter '{latex_counter}' is created but doesn't map to a turnip_text counter"
                         )
                     self.emit_macro("newcounter")
-                    self.emit_braced(latex_counter_spec.latex_counter)
+                    self.emit_braced(Raw(latex_counter_spec.latex_counter))
                     if latex_counter_spec.reset_latex_counter:
-                        self.emit_sqr_bracketed(latex_counter_spec.reset_latex_counter)
+                        self.emit_sqr_bracketed(
+                            Raw(latex_counter_spec.reset_latex_counter)
+                        )
 
                 # Setup counter numbering
                 # A counter's formatting in LaTeX is ({parent counter}{parent counter.postfix_for_child}{numbering(this counter)})
@@ -284,16 +290,16 @@ class LatexRenderer(Renderer):
                     )
                     fmt = latex_counter_spec.get_manual_fmt()
                     self.emit_macro("renewcommand")
-                    self.emit(f"{{\\the{latex_counter}}}{{")
+                    self.emit_raw(f"{{\\the{latex_counter}}}{{")
                     if reset_counter_fmt:
                         self.emit(
-                            f"\\the{latex_counter_spec.reset_latex_counter}{{}}",
+                            Raw(f"\\the{latex_counter_spec.reset_latex_counter}{{}}"),
                             Text(reset_counter_fmt.postfix_for_child),
                         )
                     self.emit_macro(fmt.style.value)
-                    self.emit_braced(latex_counter)
+                    self.emit_braced(Raw(latex_counter))
                     # Do not apply fmt.postfix_for_end here - if you do, it'll get lumped in with children
-                    self.emit("}}\n")
+                    self.emit_raw("}}\n")
 
                 backref_impl = latex_counter_spec.backref_impl
                 if backref_impl:
@@ -348,12 +354,12 @@ class LatexRenderer(Renderer):
     def emit_macro(self, name: str) -> None:
         self.emit_raw(f"\\{name}")
 
-    def emit_sqr_bracketed(self, *args: Any) -> None:
+    def emit_sqr_bracketed(self, *args: Union[Inline, Block, DocSegment]) -> None:
         self.emit_raw("[")
         self.emit(*args)
         self.emit_raw("]")
 
-    def emit_braced(self, *args: Any) -> None:
+    def emit_braced(self, *args: Union[Inline, Block, DocSegment]) -> None:
         self.emit_raw("{")
         self.emit(*args)
         self.emit_raw("}")
@@ -372,8 +378,7 @@ class LatexRenderer(Renderer):
 
     @contextmanager
     def emit_env(self, name: str, indent: int = 4) -> Iterator[None]:
-        self.emit_macro("begin")
-        self.emit_braced(name)
+        self.emit_raw(f"\\begin{{{name}}}")
         self.push_indent(indent)
         self.emit_break_sentence()
 
@@ -382,8 +387,7 @@ class LatexRenderer(Renderer):
         finally:
             self.pop_indent(indent)
             self.emit_break_sentence()
-            self.emit_macro("end")
-            self.emit_braced(name)
+            self.emit_raw(f"\end{{{name}}}")
 
     def emit_anchor(self, anchor: Anchor) -> None:
         backref_method = self.requirements.tt_counter_to_latex[anchor.kind].backref_impl

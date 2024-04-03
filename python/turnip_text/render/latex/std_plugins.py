@@ -1,6 +1,6 @@
 from typing import Dict, Iterator, List, Optional
 
-from turnip_text import BlockScope, DocSegment
+from turnip_text import BlockScope, DocSegment, Raw
 from turnip_text.doc import FormatContext
 from turnip_text.doc.std_plugins import (
     Bibliography,
@@ -132,7 +132,7 @@ class UncheckedBiblatexRenderPlugin(LatexPlugin):
         renderer.emit_macro("cite")
         if cite.contents:
             renderer.emit_sqr_bracketed(cite.contents)
-        renderer.emit_braced(",".join(cite.citekeys))
+        renderer.emit_braced(Raw(",".join(cite.citekeys)))
 
     def _emit_citeauthor(
         self,
@@ -140,8 +140,7 @@ class UncheckedBiblatexRenderPlugin(LatexPlugin):
         renderer: LatexRenderer,
         ctx: FormatContext,
     ) -> None:
-        renderer.emit_macro("citeauthor")
-        renderer.emit_braced(citeauthor.citekey)
+        renderer.emit_raw(f"\\citeauthor{{{citeauthor.citekey}}}")
 
     def _emit_bibliography(
         self,
@@ -149,14 +148,14 @@ class UncheckedBiblatexRenderPlugin(LatexPlugin):
         renderer: LatexRenderer,
         ctx: FormatContext,
     ) -> None:
-        renderer.emit("{")
+        renderer.emit_raw("{")
         renderer.emit_break_sentence()
         with renderer.indent(4):
-            renderer.emit("\\raggedright")
+            renderer.emit_raw("\\raggedright")
             renderer.emit_break_sentence()
-            renderer.emit("\\printbibliography[heading=none]")
+            renderer.emit_raw("\\printbibliography[heading=none]")
             renderer.emit_break_sentence()
-        renderer.emit("}")
+        renderer.emit_raw("}")
         renderer.emit_break_paragraph()
 
 
@@ -217,9 +216,8 @@ class ListRenderPlugin(LatexPlugin):
         renderer: LatexRenderer,
         ctx: FormatContext,
     ) -> None:
-        renderer.emit_macro("item")
         # Put {} after \item so square brackets at the start of render_block don't get swallowed as arguments
-        renderer.emit("{} ")
+        renderer.emit_raw("\\item{} ")
         indent_width = len("\\item{} ")
         with renderer.indent(indent_width):
             renderer.emit(list_item.contents)
@@ -246,9 +244,13 @@ class InlineFormatRenderPlugin(LatexPlugin):
         fmt: FormatContext,
     ) -> None:
         if f.format_type == InlineFormattingType.SingleQuote:
-            renderer.emit("`", f.contents, "'")
+            renderer.emit_raw("`")
+            renderer.emit_inlinescope(f.contents)
+            renderer.emit_raw("'")
         elif f.format_type == InlineFormattingType.DoubleQuote:
-            renderer.emit("``", f.contents, "''")
+            renderer.emit_raw("``")
+            renderer.emit_inlinescope(f.contents)
+            renderer.emit_raw("''")
         else:
             # All other kinds are just the contents wrapped in a macro
             renderer.emit_macro(FORMAT_TYPE_TO_MACRO[f.format_type])
@@ -275,8 +277,8 @@ class UrlRenderPlugin(LatexPlugin):
 
         if url.contents is None:
             renderer.emit_macro("url")
-            renderer.emit_braced(url.url.replace("#", "\\#"))
+            renderer.emit_braced(Raw(url.url.replace("#", "\\#")))
         else:
             renderer.emit_macro("href")
-            renderer.emit_braced(url.url.replace("#", "\\#"))
-            renderer.emit_braced(url.contents)
+            renderer.emit_braced(Raw(url.url.replace("#", "\\#")))
+            renderer.emit_braced(*url.contents)

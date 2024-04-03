@@ -33,6 +33,7 @@ from turnip_text import (
     Inline,
     InlineScope,
     Paragraph,
+    Raw,
     Sentence,
     Text,
 )
@@ -298,6 +299,7 @@ class Renderer(abc.ABC):
         handlers.register_block_or_inline(
             Text, lambda t, r, fmt: r.emit_unescapedtext(t)
         )
+        handlers.register_block_or_inline(Raw, lambda t, r, fmt: r.emit_raw(t.data))
         # handlers.register_block_or_inline(
         #     Anchor, lambda a, r, fmt: r.ref_handler.get_anchor_emitter(a)(r, fmt, a)
         # )
@@ -365,21 +367,22 @@ class Renderer(abc.ABC):
         """
         raise NotImplementedError(f"Need to implement emit_unescapedtext")
 
-    # TODO need to handle confusion between raw str and text str. too easy to accidentally pass text str
-    def emit(self, *args: Any, joiner: Optional[Callable[[], None]] = None) -> None:
+    def emit(
+        self,
+        *args: Union[Inline, Block, DocSegment],
+        joiner: Optional[Callable[[], None]] = None,
+    ) -> None:
         first = True
         for a in args:
             if joiner and not first:
                 joiner()
             first = False
-            if isinstance(a, str):
-                self.emit_raw(a)
-            elif isinstance(a, Inline):
+            if isinstance(a, Inline):
                 self.emit_inline(a)
-            elif isinstance(a, DocSegment):
-                self.emit_segment(a)
             elif isinstance(a, Block):
                 self.emit_block(a)
+            elif isinstance(a, DocSegment):
+                self.emit_segment(a)
             else:
                 raise ValueError(f"Don't know how to automatically render {a}")
 

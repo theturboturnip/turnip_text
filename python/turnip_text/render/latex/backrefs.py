@@ -1,7 +1,7 @@
 from enum import IntEnum
 from typing import Dict
 
-from turnip_text import Text
+from turnip_text import Raw, Text
 from turnip_text.doc import FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.render.latex.renderer import (
@@ -42,9 +42,9 @@ class LatexHyperlink(LatexBackrefMethodImpl):
     def emit_anchor(
         self, anchor: Anchor, renderer: "LatexRenderer", fmt: FormatContext
     ) -> None:
-        renderer.emit_macro("hypertarget")
-        renderer.emit_braced(anchor.canonical())
-        renderer.emit_braced("")  # TODO include caption for anchor?
+        renderer.emit_raw(
+            f"\\hypertarget{{{anchor.canonical()}}}{{}}"
+        )  # TODO include caption for anchor?
 
     def emit_backref(
         self,
@@ -54,7 +54,7 @@ class LatexHyperlink(LatexBackrefMethodImpl):
         _fmt: FormatContext,
     ) -> None:
         renderer.emit_macro("hyperlink")
-        renderer.emit_braced(anchor.canonical())
+        renderer.emit_braced(Raw(anchor.canonical()))
         if backref.label_contents is None:
             renderer.emit_braced(renderer.get_resolved_anchor_text(anchor))
         else:
@@ -86,20 +86,19 @@ class LatexCleveref(LatexBackrefMethodImpl):
                     "The counter has had its formatting overridden, pass that through to cleveref"
                 )
             renderer.emit_macro("crefformat")
-            renderer.emit_braced(spec.latex_counter)
+            renderer.emit_braced(Raw(spec.latex_counter))
             renderer.emit_braced(
                 Text(fmt.name),
-                "~#2#1",
+                Raw("~#2#1"),
                 Text(fmt.postfix_for_end),
-                "#3",
+                Raw("#3"),
             )
             renderer.emit_break_sentence()
 
     def emit_anchor(
         self, anchor: Anchor, renderer: "LatexRenderer", fmt: FormatContext
     ) -> None:
-        renderer.emit_macro("label")
-        renderer.emit_braced(anchor.canonical())
+        renderer.emit_raw(f"\\label{{{anchor.canonical()}}}")
 
     def emit_backref(
         self,
@@ -108,13 +107,14 @@ class LatexCleveref(LatexBackrefMethodImpl):
         renderer: "LatexRenderer",
         _fmt: FormatContext,
     ) -> None:
+        raw_anchor = Raw(anchor.canonical())
         if backref.label_contents:
             renderer.emit_macro("hyperref")
-            renderer.emit_sqr_bracketed(anchor.canonical())
+            renderer.emit_sqr_bracketed(raw_anchor)
             renderer.emit_braced(backref.label_contents)
         else:
             renderer.emit_macro("cref")
-            renderer.emit_braced(anchor.canonical())
+            renderer.emit_braced(raw_anchor)
 
 
 class LatexPageRef(LatexBackrefMethodImpl):
@@ -132,8 +132,7 @@ class LatexPageRef(LatexBackrefMethodImpl):
     ) -> None:
         renderer.emit_macro("phantomsection")
         renderer.emit_newline()  # TODO not sure this is necessary but it's included in a lot of examples
-        renderer.emit_macro("label")
-        renderer.emit_braced(anchor.canonical())
+        renderer.emit_raw(f"\\label{{{anchor.canonical()}}}")
 
     def emit_backref(
         self,
@@ -142,13 +141,14 @@ class LatexPageRef(LatexBackrefMethodImpl):
         renderer: "LatexRenderer",
         _fmt: FormatContext,
     ) -> None:
+        raw_anchor = Raw(anchor.canonical())
         if backref.label_contents:
             renderer.emit_macro("hyperref")
-            renderer.emit_sqr_bracketed(anchor.canonical())
+            renderer.emit_sqr_bracketed(raw_anchor)
             renderer.emit_braced(backref.label_contents)
         else:
             renderer.emit(
                 Text("page ")
             )  ## hooooo boy yeah this isn't great... capitalization is annoying
             renderer.emit_macro("pageref")
-            renderer.emit_braced(backref.label_contents)
+            renderer.emit_braced(raw_anchor)
