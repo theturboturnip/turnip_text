@@ -68,9 +68,9 @@ class DocCounter:
 #     def render_counter(self, parent_chain: Iterable[Tuple[Counter, int]]) -> Inline:
 #         return InlineScope(
 #             [
-#                 UnescapedText(f"{self.prefix} "),
+#                 Text(f"{self.prefix} "),
 #                 join_inlines(
-#                     (c.numbering[v] for c, v in parent_chain), UnescapedText(".")
+#                     (c.numbering[v] for c, v in parent_chain), Text(".")
 #                 ),
 #             ]
 #         )

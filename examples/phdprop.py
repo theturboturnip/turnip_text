@@ -34,7 +34,7 @@ class CustomEncoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, (BlockScope, InlineScope, Paragraph, Sentence)):
             return list(o)
-        if isinstance(o, UnescapedText):
+        if isinstance(o, Text):
             return o.text
         if hasattr(o, "__dict__"):
             d = vars(o)

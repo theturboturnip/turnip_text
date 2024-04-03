@@ -98,7 +98,7 @@ impl EvalBracketResult {
                     // Coercible to inline:
                     // - Inline        -> `x`
                     // - List[Inline]  -> `InlineScope(x)`
-                    // - str/float/int -> `UnescapedText(str(x))`
+                    // - str/float/int -> `Text(str(x))`
                     // Coercible to block:
                     // - Block             -> `x`
                     // - List[Block]       -> `BlockScope(x)`

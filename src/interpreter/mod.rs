@@ -412,15 +412,15 @@ pub(crate) enum InterpSpecialTransition {
 
 #[derive(Debug)]
 pub(crate) enum InlineNodeToCreate {
-    UnescapedText(String),
+    Text(String),
     RawText(String),
     PythonObject(PyTcRef<Inline>),
 }
 impl InlineNodeToCreate {
     fn to_py_intern(self, py: Python) -> PyResult<PyTcRef<Inline>> {
         match self {
-            InlineNodeToCreate::UnescapedText(s) => {
-                let unescaped_text = Py::new(py, UnescapedText::new_rs(py, s.as_str()))?;
+            InlineNodeToCreate::Text(s) => {
+                let unescaped_text = Py::new(py, Text::new_rs(py, s.as_str()))?;
                 PyTcRef::of(unescaped_text.as_ref(py))
             }
             InlineNodeToCreate::RawText(raw) => {

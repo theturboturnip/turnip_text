@@ -26,8 +26,8 @@ from turnip_text import (
     InlineScopeBuilder,
     Paragraph,
     Sentence,
+    Text,
     TurnipTextSource,
-    UnescapedText,
 )
 from turnip_text.doc import DocPlugin, DocState, FormatContext, stateful, stateless
 from turnip_text.doc.anchors import Anchor, Backref
@@ -420,7 +420,7 @@ class UrlDocPlugin(DocPlugin):
         if name is not None and not isinstance(name, str):
             raise ValueError(f"Url name {name} must be a string if not None")
         return NamedUrl(
-            contents=(UnescapedText(name),) if name is not None else None,
+            contents=(Text(name),) if name is not None else None,
             url=url,
         )
 

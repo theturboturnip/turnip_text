@@ -2,7 +2,7 @@ import string
 from dataclasses import dataclass
 from typing import Generic, Protocol, Sequence, Tuple, TypeVar
 
-from turnip_text import Inline, InlineScope, UnescapedText
+from turnip_text import Inline, InlineScope, Text
 
 
 class ManualNumbering(Protocol):
@@ -102,7 +102,7 @@ class SimpleCounterFormat(Generic[TNumbering]):
         # The bound on the SimpleCounterFormat type-argument is sufficient that here we don't care what the concrete type is.
         counters: Sequence[Tuple["SimpleCounterFormat", int]],  # type: ignore[type-arg]
         with_name: bool = True,
-    ) -> UnescapedText:
+    ) -> Text:
         if with_name and counters[-1][0].name:
             c = counters[-1][0].name + " "
         else:
@@ -115,4 +115,4 @@ class SimpleCounterFormat(Generic[TNumbering]):
             prev_fmt = fmt
         c += fmt.postfix_for_end
 
-        return UnescapedText(c)
+        return Text(c)

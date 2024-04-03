@@ -260,7 +260,7 @@ impl InterpParaState {
                     }
                 }
                 // Finish the text-in-progress and push to topmost scope
-                let node = InlineNodeToCreate::UnescapedText(text.clone()).to_py(py)?;
+                let node = InlineNodeToCreate::Text(text.clone()).to_py(py)?;
                 self.push_to_topmost_scope(py, node.as_ref(py))?;
             }
 
@@ -576,7 +576,7 @@ impl InterpParaState {
                             NeededRawBuilder(r, n_hashes) => {
                                 StartRawScope(Some(r), code_span, n_hashes)
                             }
-                            // This includes coerced objects - e.g. eval bracket returning a string gets wrapped in UnescapedText automatically
+                            // This includes coerced objects - e.g. eval bracket returning a string gets wrapped in Text automatically
                             Inline(i) => PushInlineContent(InlineNodeToCreate::PythonObject(i)),
                             PyNone => EmitNone,
                         };

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Set, Tuple
 
-from turnip_text import DocSegment, UnescapedText
+from turnip_text import DocSegment, Text
 from turnip_text.doc import DocSetup, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.helpers import MaybeUnset
@@ -288,7 +288,7 @@ class LatexRenderer(Renderer):
                     if reset_counter_fmt:
                         self.emit(
                             f"\\the{latex_counter_spec.reset_latex_counter}{{}}",
-                            UnescapedText(reset_counter_fmt.postfix_for_child),
+                            Text(reset_counter_fmt.postfix_for_child),
                         )
                     self.emit_macro(fmt.style.value)
                     self.emit_braced(latex_counter)
@@ -323,7 +323,7 @@ class LatexRenderer(Renderer):
 
     # TODO override emit_sentence to get sentence-break-whitespace at the end of each sentence?
 
-    def emit_unescapedtext(self, t: UnescapedText) -> None:
+    def emit_unescapedtext(self, t: Text) -> None:
         # TODO make sure whitespace we emit here *isn't* sentence break whitespace?
 
         # note - right now this assumes we're using a unicode-compatible setup and thus don't need to escape unicode characters.
@@ -402,7 +402,7 @@ class LatexRenderer(Renderer):
             )
         backref_method.emit_backref(backref, anchor, self, self.fmt)
 
-    def get_resolved_anchor_text(self, anchor: Anchor) -> UnescapedText:
+    def get_resolved_anchor_text(self, anchor: Anchor) -> Text:
         counter_to_resolve = [
             (
                 self.requirements.tt_counter_to_latex[kind].get_manual_fmt(),

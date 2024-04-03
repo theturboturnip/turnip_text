@@ -1,7 +1,7 @@
 from enum import IntEnum
 from typing import Dict
 
-from turnip_text import UnescapedText
+from turnip_text import Text
 from turnip_text.doc import FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.render.latex.renderer import (
@@ -88,9 +88,9 @@ class LatexCleveref(LatexBackrefMethodImpl):
             renderer.emit_macro("crefformat")
             renderer.emit_braced(spec.latex_counter)
             renderer.emit_braced(
-                UnescapedText(fmt.name),
+                Text(fmt.name),
                 "~#2#1",
-                UnescapedText(fmt.postfix_for_end),
+                Text(fmt.postfix_for_end),
                 "#3",
             )
             renderer.emit_break_sentence()
@@ -148,7 +148,7 @@ class LatexPageRef(LatexBackrefMethodImpl):
             renderer.emit_braced(backref.label_contents)
         else:
             renderer.emit(
-                UnescapedText("page ")
+                Text("page ")
             )  ## hooooo boy yeah this isn't great... capitalization is annoying
             renderer.emit_macro("pageref")
             renderer.emit_braced(backref.label_contents)

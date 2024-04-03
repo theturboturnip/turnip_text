@@ -5,8 +5,7 @@ use regex::Regex;
 
 use crate::interpreter::python::{
     interop::{
-        BlockScope, DocSegment, DocSegmentHeader, InlineScope, Paragraph, RawText, Sentence,
-        UnescapedText,
+        BlockScope, DocSegment, DocSegmentHeader, InlineScope, Paragraph, RawText, Sentence, Text,
     },
     prepare_freethreaded_turniptext_python,
 };
@@ -283,7 +282,7 @@ impl TestInterpError {
 const GLOBALS_CODE: &'static str = r#"
 # The Rust module name is _native, which is included under turnip_text, so Python IDEs don't try to import directly from it.
 # This means we use _native instead of turnip_text as the module name here.
-from _native import InlineScope, UnescapedText, BlockScope
+from _native import InlineScope, Text, BlockScope
 
 class FauxBlock:
     is_block = True
@@ -356,7 +355,7 @@ pub enum TestBlock {
 #[derive(Debug, PartialEq, Eq)]
 pub enum TestInline {
     InlineScope(Vec<TestInline>),
-    UnescapedText(String),
+    Text(String),
     RawText(String),
 
     /// Test-only - a Python object built from an inline scope with test_inline: List[Inline] = the contents of that scope
@@ -372,10 +371,10 @@ pub fn test_doc(contents: Vec<TestBlock>) -> TestDocSegment {
     }
 }
 pub fn test_sentence(s: impl Into<String>) -> Vec<TestInline> {
-    vec![TestInline::UnescapedText(s.into())]
+    vec![TestInline::Text(s.into())]
 }
 pub fn test_text(s: impl Into<String>) -> TestInline {
-    TestInline::UnescapedText(s.into())
+    TestInline::Text(s.into())
 }
 pub fn test_raw_text(s: impl Into<String>) -> TestInline {
     TestInline::RawText(s.into())
@@ -486,8 +485,8 @@ impl PyToTest<TestInline> for PyAny {
                     .map(|obj| PyToTest::as_test(obj, py))
                     .collect(),
             )
-        } else if let Ok(text) = self.extract::<UnescapedText>() {
-            TestInline::UnescapedText(text.0.as_ref(py).to_string())
+        } else if let Ok(text) = self.extract::<Text>() {
+            TestInline::Text(text.0.as_ref(py).to_string())
         } else if let Ok(text) = self.extract::<RawText>() {
             TestInline::RawText(text.0.as_ref(py).to_string())
         } else if let Ok(obj) = self.getattr("test_inline") {

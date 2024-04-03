@@ -34,7 +34,7 @@ from turnip_text import (
     InlineScope,
     Paragraph,
     Sentence,
-    UnescapedText,
+    Text,
 )
 from turnip_text.doc import DocAnchors, DocMutator, DocSetup, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
@@ -296,7 +296,7 @@ class Renderer(abc.ABC):
             InlineScope, lambda inls, r, fmt: r.emit_inlinescope(inls)
         )
         handlers.register_block_or_inline(
-            UnescapedText, lambda t, r, fmt: r.emit_unescapedtext(t)
+            Text, lambda t, r, fmt: r.emit_unescapedtext(t)
         )
         # handlers.register_block_or_inline(
         #     Anchor, lambda a, r, fmt: r.ref_handler.get_anchor_emitter(a)(r, fmt, a)
@@ -359,7 +359,7 @@ class Renderer(abc.ABC):
         self.emit_newline()
 
     @abc.abstractmethod
-    def emit_unescapedtext(self, t: UnescapedText) -> None:
+    def emit_unescapedtext(self, t: Text) -> None:
         """
         Given some text, emit a string that will look like that text exactly in the given backend.
         """

@@ -3,14 +3,7 @@ from contextlib import contextmanager
 from enum import Enum
 from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple, Type
 
-from turnip_text import (
-    Block,
-    DocSegment,
-    DocSegmentHeader,
-    Inline,
-    Paragraph,
-    UnescapedText,
-)
+from turnip_text import Block, DocSegment, DocSegmentHeader, Inline, Paragraph, Text
 from turnip_text.build_system import JobInputFile, JobOutputFile
 from turnip_text.doc import DocAnchors, DocSetup, DocState, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
@@ -89,7 +82,7 @@ class MarkdownRenderer(Renderer):
         # If they didn't, we start in Markdown mode.
         self.html_mode_stack = [html_mode]
 
-    def emit_unescapedtext(self, t: UnescapedText) -> None:
+    def emit_unescapedtext(self, t: Text) -> None:
         if self.in_html_mode:
             self.emit_raw(html.escape(t.text))
         else:
@@ -175,7 +168,7 @@ class MarkdownRenderer(Renderer):
             self.emit_raw(f'<a href="{url}">')
             if label is None:
                 # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal markdown
-                self.emit_unescapedtext(UnescapedText(url))
+                self.emit_unescapedtext(Text(url))
             else:
                 self.emit(label)
             self.emit_raw("</a>")
@@ -184,7 +177,7 @@ class MarkdownRenderer(Renderer):
             self.emit_raw("[")
             if label is None:
                 # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal markdown
-                self.emit_unescapedtext(UnescapedText(url))
+                self.emit_unescapedtext(Text(url))
             else:
                 self.emit(label)
             self.emit_raw(f"]({url})")
@@ -200,13 +193,13 @@ class MarkdownRenderer(Renderer):
         else:
             self.emit_url(url, self.anchor_to_ref_text(anchor))
 
-    def anchor_to_ref_text(self, anchor: Anchor) -> UnescapedText:
+    def anchor_to_ref_text(self, anchor: Anchor) -> Text:
         counters = self.counters.anchor_counters[anchor]
         return SimpleCounterFormat.resolve(
             [(self.counter_rendering[kind], i) for (kind, i) in counters]
         )
 
-    def anchor_to_number_text(self, anchor: Anchor) -> UnescapedText:
+    def anchor_to_number_text(self, anchor: Anchor) -> Text:
         counters = self.counters.anchor_counters[anchor]
         return SimpleCounterFormat.resolve(
             [(self.counter_rendering[kind], i) for (kind, i) in counters],

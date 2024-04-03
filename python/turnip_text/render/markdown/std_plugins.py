@@ -20,7 +20,7 @@ from turnip_text import (
     DocSegmentHeader,
     Inline,
     InlineScope,
-    UnescapedText,
+    Text,
 )
 from turnip_text.doc import DocState, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
@@ -186,11 +186,11 @@ class UncheckedBibMarkdownRenderPlugin(MarkdownPlugin):
         # TODO also maybe people wouldn't want those labels being exposed?
 
         if cite.contents:
-            renderer.emit(UnescapedText("("))
+            renderer.emit(Text("("))
         for citekey in cite.citekeys:
             renderer.emit(ctx.url(f"#{citekey}") @ f"[{citekey}]")
         if cite.contents:
-            renderer.emit(cite.contents, UnescapedText(", )"))
+            renderer.emit(cite.contents, Text(", )"))
 
     def _emit_citeauthor(
         self,
@@ -198,7 +198,7 @@ class UncheckedBibMarkdownRenderPlugin(MarkdownPlugin):
         renderer: MarkdownRenderer,
         ctx: FormatContext,
     ) -> None:
-        renderer.emit(UnescapedText("The authors of "))
+        renderer.emit(Text("The authors of "))
         renderer.emit(ctx.url(f"#{citeauthor.citekey}") @ f"[{citeauthor.citekey}]")
 
     def _emit_bibliography(
@@ -212,9 +212,7 @@ class UncheckedBibMarkdownRenderPlugin(MarkdownPlugin):
             for citekey in self._referenced_citations:
                 renderer.emit_empty_tag("a", f'id="{citekey}"')
                 renderer.emit(
-                    UnescapedText(
-                        f"[{citekey}]: TODO make citation text for {citekey}"
-                    ),
+                    Text(f"[{citekey}]: TODO make citation text for {citekey}"),
                 )
                 yield
 

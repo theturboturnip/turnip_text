@@ -25,7 +25,7 @@ pub fn turnip_text(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(coerce_to_block_scope, m)?)?;
 
     // Primitives
-    m.add_class::<UnescapedText>()?;
+    m.add_class::<Text>()?;
     m.add_class::<RawText>()?;
     m.add_class::<Sentence>()?;
     m.add_class::<Paragraph>()?;
@@ -78,16 +78,16 @@ pub fn coerce_to_inline_pytcref<'py>(
             return PyTcRef::of(inline_scope.as_ref(py));
         }
     }
-    // 3. if it's str, return UnescapedText(it)
+    // 3. if it's str, return Text(it)
     if let Ok(py_str) = obj.downcast::<PyString>() {
-        let unescaped_text = Py::new(py, UnescapedText::new(py_str))?;
+        let unescaped_text = Py::new(py, Text::new(py_str))?;
         return PyTcRef::of(unescaped_text.as_ref(py));
     }
-    // 4. if it's float, return UnescapedText(str(it))
-    // 5. if it's int, return UnescapedText(str(it))
+    // 4. if it's float, return Text(str(it))
+    // 5. if it's int, return Text(str(it))
     if obj.downcast::<PyFloat>().is_ok() || obj.downcast::<PyLong>().is_ok() {
         let str_of_obj = obj.str()?;
-        let unescaped_text = Py::new(py, UnescapedText::new(str_of_obj))?;
+        let unescaped_text = Py::new(py, Text::new(str_of_obj))?;
         return PyTcRef::of(unescaped_text.as_ref(py));
     }
     // 6. otherwise fail with TypeError
@@ -359,14 +359,14 @@ impl PyTypeclass for RawScopeBuilder {
 /// Typically created by Rust while parsing input files.
 #[pyclass]
 #[derive(Debug, Clone)]
-pub struct UnescapedText(pub Py<PyString>);
-impl UnescapedText {
+pub struct Text(pub Py<PyString>);
+impl Text {
     pub fn new_rs(py: Python, s: &str) -> Self {
         Self::new(PyString::new(py, s))
     }
 }
 #[pymethods]
-impl UnescapedText {
+impl Text {
     #[new]
     pub fn new(data: &PyString) -> Self {
         Self(data.into())
