@@ -44,13 +44,32 @@ enum BuildStatus {
     NewSource(TurnipTextSource),
 }
 
+#[derive(Debug, Clone, Copy)]
 struct BuilderContext {
     builder_name: &'static str,
     from_span: ParseSpan,
 }
 impl BuilderContext {
-    fn extend(&mut self, token: &TTToken) {
-        self.from_span = self.from_span.combine(&token.token_span())
+    fn new(builder_name: &'static str, from_span: ParseSpan) -> Self {
+        Self {
+            builder_name,
+            from_span,
+        }
+    }
+    fn try_extend(&mut self, tok: &TTToken) -> bool {
+        let span = tok.token_span();
+        if span.file_idx() == self.from_span.file_idx() {
+            self.from_span = self.from_span.combine(&span);
+            true
+        } else {
+            false
+        }
+    }
+    fn make(self, elem: DocElement) -> PushToNextLevel {
+        PushToNextLevel {
+            from_builder: self,
+            elem,
+        }
     }
 }
 
@@ -304,8 +323,8 @@ where
                 Ok(BuildStatus::StartInnerBuilder(InlineScopeFromTokens::new()))
             }
 
-            TTToken::RawScopeOpen(_, n_opening) => Ok(BuildStatus::StartInnerBuilder(
-                RawStringFromTokens::new(n_opening),
+            TTToken::RawScopeOpen(span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
+                RawStringFromTokens::new(span, n_opening),
             )),
 
             // TODO open paragraph
@@ -432,12 +451,14 @@ impl BuildFromTokens for CommentFromTokens {
 }
 
 struct RawStringFromTokens {
+    ctx: BuilderContext,
     n_closing: usize,
     raw_data: String,
 }
 impl RawStringFromTokens {
-    fn new(n_opening: usize) -> Box<Self> {
+    fn new(start_token_span: ParseSpan, n_opening: usize) -> Box<Self> {
         Box::new(Self {
+            ctx: BuilderContext::new("RawString", start_token_span),
             n_closing: n_opening,
             raw_data: String::new(),
         })
@@ -451,10 +472,13 @@ impl BuildFromTokens for RawStringFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
+        self.ctx.try_extend(&tok);
         match tok {
-            TTToken::RawScopeClose(_, given_closing) if given_closing == self.n_closing => Ok(
-                BuildStatus::Done(Some(DocElement::Raw(std::mem::take(&mut self.raw_data)))),
-            ),
+            TTToken::RawScopeClose(_, given_closing) if given_closing == self.n_closing => {
+                Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Raw(
+                    std::mem::take(&mut self.raw_data),
+                )))))
+            }
             _ => {
                 self.raw_data.push_str(tok.stringify_raw(data));
                 Ok(BuildStatus::Continue)
