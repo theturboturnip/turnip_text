@@ -32,7 +32,6 @@ pub fn turnip_text(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<BlockScope>()?;
     m.add_class::<InlineScope>()?;
     m.add_class::<DocSegment>()?;
-    // TODO python typehints for this
     m.add_class::<InsertedFile>()?;
 
     m.add("TurnipTextError", py.get_type::<error::TurnipTextError>())?;
