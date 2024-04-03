@@ -347,6 +347,7 @@ class BoundProperty:
 
 
 RESERVED_DOC_PLUGIN_EXPORTS = [
+    "build_sys",
     "doc",
     "fmt",
     "anchors",
