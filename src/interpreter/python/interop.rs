@@ -381,7 +381,7 @@ impl Text {
     }
 }
 
-/// Represents raw text that should not be escaped for rendering.
+/// Represents raw data that should not be escaped for rendering.
 ///
 /// Typically created by Rust while parsing input files.
 #[pyclass]
@@ -399,7 +399,7 @@ impl Raw {
         Self(data)
     }
     #[getter]
-    pub fn text(&self) -> PyResult<Py<PyString>> {
+    pub fn data(&self) -> PyResult<Py<PyString>> {
         Ok(self.0.clone())
     }
     #[getter]
