@@ -252,10 +252,10 @@ sources,
             ),
             InsertedFileMidPara { code_span } => snippet_from_spans(
 
-                "A `InsertedFile` was returned by inline code inside a paragraph",
+                "A `TurnipTextSource` file was returned by inline code inside a paragraph",
                 AnnotationType::Error,
 sources,
-&[(code_span, "InsertedFile returned by this", None)]
+&[(code_span, "TurnipTextSource returned by this", None)]
             ),
             BlockCodeFromRawScopeMidPara { code_span } => snippet_from_spans(
 

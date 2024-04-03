@@ -49,7 +49,7 @@ impl Interpreter {
             let transitions = self.mutate_and_find_transitions(py, py_env, tok, data)?;
             match self.handle_transition(py, py_env, transitions)? {
                 None => continue,
-                Some(InsertedFile { name, contents }) => {
+                Some(TurnipTextSource { name, contents }) => {
                     return Ok(InterpreterFileAction::FileInserted { name, contents })
                 }
             }
@@ -389,10 +389,10 @@ pub(crate) enum InterpBlockTransition {
     /// - [InterpBlockState::BuildingCode] -> [InterpBlockState::ReadyForNewBlock]
     PushDocSegmentHeader(ParseSpan, PyTcRef<DocSegmentHeader>),
 
-    /// If an eval-bracket emits an InsertedFile directly, jump out to the parser and start parsing it
+    /// If an eval-bracket emits an TurnipTextSource directly, jump out to the parser and start parsing it
     ///
     /// - [InterpBlockState::BuildingCode] -> (early out)
-    EmitNewFile(ParseSpan, InsertedFile),
+    EmitNewFile(ParseSpan, TurnipTextSource),
 
     /// On encountering a scope close, pop the current block from the scope.
     /// May trigger a BlockScopeBuilder, which may then emit a block or a DocSegment directly into the tree.
@@ -456,7 +456,7 @@ pub enum InterpError {
     BlockOwnerCodeMidPara { code_span: ParseSpan },
     #[error("A Python `Block` was returned by code inside a paragraph")]
     BlockCodeMidPara { code_span: ParseSpan },
-    #[error("A Python `InsertedFile` was returned by code inside a paragraph")]
+    #[error("A Python `TurnipTextSource` was returned by code inside a paragraph")]
     InsertedFileMidPara { code_span: ParseSpan },
     #[error("A Python `DocSegment` was returned by code inside a paragraph")]
     DocSegmentHeaderMidPara { code_span: ParseSpan },
@@ -683,7 +683,7 @@ impl Interpreter {
                                 InlineNodeToCreate::PythonObject(i),
                             )),
                             // TODO this allows `[something_emitting_insertedfile] and a directly following paragraph].`
-                            InsertedFile(file) => EmitNewFile(code_span, file),
+                            TurnipTextSource(file) => EmitNewFile(code_span, file),
                             PyNone => EmitNone,
                         };
                         (Some(block_transition), None)
@@ -737,7 +737,7 @@ impl Interpreter {
             Option<InterpBlockTransition>,
             Option<InterpSpecialTransition>,
         ),
-    ) -> TurnipTextContextlessResult<Option<InsertedFile>> {
+    ) -> TurnipTextContextlessResult<Option<TurnipTextSource>> {
         let (block_transition, special_transition) = transitions;
 
         let mut file_to_emit = None;

@@ -29,7 +29,7 @@ from typing import (
     TypeAlias,
 )
 
-from turnip_text import InsertedFile
+from turnip_text import TurnipTextSource
 
 # TODO right now this doesn't handle ../s. That's probably a good thing.
 ProjectRelativePath = str
@@ -90,7 +90,7 @@ class BuildSystem(abc.ABC):
     @abc.abstractmethod
     def resolve_turnip_text_source(
         self, project_relative_path: ProjectRelativePath
-    ) -> InsertedFile: ...
+    ) -> TurnipTextSource: ...
 
     @abc.abstractmethod
     def _resolve_input_file(
@@ -179,8 +179,8 @@ class SimpleBuildSystem(BuildSystem):
 
     def resolve_turnip_text_source(
         self, project_relative_path: ProjectRelativePath
-    ) -> InsertedFile:
-        return InsertedFile.from_path(
+    ) -> TurnipTextSource:
+        return TurnipTextSource.from_path(
             str(self._resolve_project_relpath(project_relative_path))
         )
 
@@ -246,11 +246,13 @@ class InMemoryBuildSystem(BuildSystem):
         self.input_files = input_files
         self.output_files = {}
 
-    def resolve_turnip_text_source(self, project_relative_path: str) -> InsertedFile:
+    def resolve_turnip_text_source(
+        self, project_relative_path: str
+    ) -> TurnipTextSource:
         data = self.input_files.get(project_relative_path)
         if data:
-            # TODO - make it possible to insert a custom "path" into InsertedFile
-            return InsertedFile.from_string(data.decode("utf-8"))
+            # TODO - make it possible to insert a custom "path" into TurnipTextSource
+            return TurnipTextSource.from_string(data.decode("utf-8"))
         raise ValueError(f"Input file '{project_relative_path}' doesn't exist")
 
     def _resolve_input_file(self, project_relative_path: str) -> JobInputFile:
@@ -348,7 +350,9 @@ class StackBuildSystem(BuildSystem):
         super().__init__()
         self._build_systems = build_systems
 
-    def resolve_turnip_text_source(self, project_relative_path: str) -> InsertedFile:
+    def resolve_turnip_text_source(
+        self, project_relative_path: str
+    ) -> TurnipTextSource:
         for b in self._build_systems:
             try:
                 return b.resolve_turnip_text_source(project_relative_path)
@@ -395,7 +399,9 @@ class SplitBuildSystem(BuildSystem):
         self._input_build_sys = input_build_sys
         self._output_build_sys = output_build_sys
 
-    def resolve_turnip_text_source(self, project_relative_path: str) -> InsertedFile:
+    def resolve_turnip_text_source(
+        self, project_relative_path: str
+    ) -> TurnipTextSource:
         return self._input_build_sys.resolve_turnip_text_source(project_relative_path)
 
     def _resolve_input_file(self, project_relative_path: str) -> JobInputFile:

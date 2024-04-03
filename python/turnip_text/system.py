@@ -3,7 +3,7 @@
 1. Parsing
    This requires creating a set of turnip_text.doc.DocPlugin, which define the interface used by inline code inside the document.
    The document may also have metadata which can be retrieved at this point.
-   Python creates a DocSetup instance with the relevant plugins and metadata, points it at TurnipTextSource (TODO currently named InsertedFile).
+   Python creates a DocSetup instance with the relevant plugins and metadata, points it at TurnipTextSource.
    This creates a DocSegment tree and a mapping of [Anchor, Block] called "floating space". Floating space includes
    e.g. footnotes or figures which may have their definitions "float" from their point-of-definition to different places in the text stream.
 2. Mutating
@@ -34,7 +34,7 @@ import io
 import os
 from typing import Any, List, Optional, Set, Tuple, Type, TypeVar, Union, overload
 
-from turnip_text import Block, DocSegmentHeader, Inline, InsertedFile
+from turnip_text import Block, DocSegmentHeader, Inline, TurnipTextSource
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc import DocMutator, DocSetup
 from turnip_text.render import (

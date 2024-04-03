@@ -8,7 +8,7 @@ use super::{
     python::{
         interop::{
             coerce_to_inline_pytcref, Block, BlockScopeBuilder, DocSegmentHeader, Inline,
-            InlineScopeBuilder, InsertedFile, RawScopeBuilder,
+            InlineScopeBuilder, RawScopeBuilder, TurnipTextSource,
         },
         typeclass::PyTcRef,
     },
@@ -34,8 +34,8 @@ pub enum EvalBracketResult {
     Block(PyTcRef<Block>),
     /// An object implementing Inline, or which was coerced to something implementing Inline
     Inline(PyTcRef<Inline>),
-    /// A InsertedFile object
-    InsertedFile(InsertedFile),
+    /// A TurnipTextSource object, which we should start parsing before returning to the previous file.
+    TurnipTextSource(TurnipTextSource),
     /// None - either because it was an exec statement (e.g. `[x = 5]`) or because it genuinely was none (e.g. `[None]`)
     PyNone,
 }
@@ -109,9 +109,9 @@ impl EvalBracketResult {
                     // If we always coerce to inline, then the wrapping in Paragraph and Sentence happens naturally in the interpreter.
                     // => We check if it's a block, and if it isn't we try to coerce to inline.
 
-                    // If they return an InsertedFile then just do that.
-                    if let Ok(inserted_file) = raw_res.extract::<InsertedFile>() {
-                        EvalBracketResult::InsertedFile(inserted_file)
+                    // If they return an TurnipTextSource then just do that.
+                    if let Ok(inserted_file) = raw_res.extract::<TurnipTextSource>() {
+                        EvalBracketResult::TurnipTextSource(inserted_file)
                     } else if let Ok(doc_seg) = PyTcRef::of(raw_res) {
                         EvalBracketResult::DocSegmentHeader(doc_seg)
                     } else if let Ok(blk) = PyTcRef::of(raw_res) {

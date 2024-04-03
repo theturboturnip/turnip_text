@@ -24,9 +24,9 @@ from turnip_text import (
     Inline,
     InlineScope,
     InlineScopeBuilder,
-    InsertedFile,
     Paragraph,
     Sentence,
+    TurnipTextSource,
     UnescapedText,
 )
 from turnip_text.doc import DocPlugin, DocState, FormatContext, stateful, stateless
@@ -427,5 +427,5 @@ class UrlDocPlugin(DocPlugin):
 
 class SubfileDocPlugin(DocPlugin):
     @stateful
-    def subfile(self, doc: DocState, project_relative_path: str) -> InsertedFile:
+    def subfile(self, doc: DocState, project_relative_path: str) -> TurnipTextSource:
         return doc.build_sys.resolve_turnip_text_source(project_relative_path)

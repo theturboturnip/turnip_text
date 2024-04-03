@@ -569,7 +569,7 @@ impl InterpParaState {
                             Block(_) => {
                                 return Err(InterpError::BlockCodeMidPara { code_span }.into())
                             }
-                            InsertedFile(_) => {
+                            TurnipTextSource(_) => {
                                 return Err(InterpError::InsertedFileMidPara { code_span }.into())
                             }
                             NeededInlineBuilder(i) => PushInlineScope(Some(i), code_span),

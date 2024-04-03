@@ -31,17 +31,17 @@ __all__ = [
     "CoercibleToBlock",
     "CoercibleToBlockScope",
     "parse_file_native",
-    "InsertedFile",
+    "TurnipTextSource",
 ]
 
 from ._native import (  # type: ignore
     BlockScope,
     DocSegment,
     InlineScope,
-    InsertedFile,
     Paragraph,
     RawText,
     Sentence,
+    TurnipTextSource,
     UnescapedText,
     coerce_to_block,
     coerce_to_block_scope,
@@ -69,8 +69,9 @@ class DocSegmentHeader(Protocol):
 
 class BlockScopeBuilder(abc.ABC):
     @abc.abstractmethod
-    def build_from_blocks(self, bs: BlockScope) -> Optional[Block | DocSegmentHeader]:
-        ...
+    def build_from_blocks(
+        self, bs: BlockScope
+    ) -> Optional[Block | DocSegmentHeader]: ...
 
     def __matmul__(
         self, maybe_b: "CoercibleToBlockScope"
@@ -81,8 +82,7 @@ class BlockScopeBuilder(abc.ABC):
 
 class InlineScopeBuilder(abc.ABC):
     @abc.abstractmethod
-    def build_from_inlines(self, inls: InlineScope) -> Inline | DocSegmentHeader:
-        ...
+    def build_from_inlines(self, inls: InlineScope) -> Inline | DocSegmentHeader: ...
 
     def __matmul__(
         self, maybe_inls: "CoercibleToInlineScope"
@@ -93,8 +93,7 @@ class InlineScopeBuilder(abc.ABC):
 
 @runtime_checkable
 class RawScopeBuilder(Protocol):
-    def build_from_raw(self, raw: str) -> Union[Inline, Block]:
-        ...
+    def build_from_raw(self, raw: str) -> Union[Inline, Block]: ...
 
 
 # The types that can be coerced into an Inline, in the order they are checked and attempted.

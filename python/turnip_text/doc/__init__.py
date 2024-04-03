@@ -32,7 +32,7 @@ from turnip_text import (
     DocSegment,
     DocSegmentHeader,
     Inline,
-    InsertedFile,
+    TurnipTextSource,
     parse_file_native,
 )
 from turnip_text.build_system import BuildSystem

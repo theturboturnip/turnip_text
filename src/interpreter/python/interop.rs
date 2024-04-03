@@ -32,7 +32,7 @@ pub fn turnip_text(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<BlockScope>()?;
     m.add_class::<InlineScope>()?;
     m.add_class::<DocSegment>()?;
-    m.add_class::<InsertedFile>()?;
+    m.add_class::<TurnipTextSource>()?;
 
     m.add("TurnipTextError", py.get_type::<error::TurnipTextError>())?;
 
@@ -49,7 +49,7 @@ impl TurnipTextError {
 #[pyfunction]
 fn parse_file<'py>(
     py: Python<'py>,
-    file: InsertedFile,
+    file: TurnipTextSource,
     py_env: &PyDict,
 ) -> PyResult<Py<DocSegment>> {
     let parser =
@@ -559,14 +559,16 @@ impl InlineScope {
     }
 }
 
-// TODO Rename to TurnipTextFile, make parse a method on it? Need some warning to say "SERIOUSLY DON'T CALL .parse WHILE PARSING", or some other much simpler way to emit one than "call InsertedFile.from_blah"? Default function on DocState?
+/// A source file for turnip_text parsing.
+/// Python must create an instance of this to initiate parsing.
+/// If block-level code emits a [TurnipTextSource] object the parser will parse the new source code before returning to the top-level file that emitted it.
 #[pyclass]
 #[derive(Clone)]
-pub struct InsertedFile {
+pub struct TurnipTextSource {
     pub name: String,
     pub contents: String,
 }
-impl InsertedFile {
+impl TurnipTextSource {
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -574,35 +576,35 @@ impl InsertedFile {
         &self.contents
     }
 }
-impl std::fmt::Debug for InsertedFile {
+impl std::fmt::Debug for TurnipTextSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("InsertedFile")
+        f.debug_struct("TurnipTextSource")
             .field("name", &self.name)
             .field("contents", &"<...>")
             .finish()
     }
 }
 #[pymethods]
-impl InsertedFile {
+impl TurnipTextSource {
     #[new]
-    pub fn new(name: String, contents: String) -> InsertedFile {
-        InsertedFile { name, contents }
+    pub fn new(name: String, contents: String) -> TurnipTextSource {
+        TurnipTextSource { name, contents }
     }
 
     #[staticmethod]
-    pub fn from_path(path: String) -> PyResult<InsertedFile> {
+    pub fn from_path(path: String) -> PyResult<TurnipTextSource> {
         let name = std::fs::canonicalize(&path)?;
         let contents = std::fs::read_to_string(&path)
             .map_err(|e| error::TurnipTextError::new_err(format!("{e}")))?;
-        Ok(InsertedFile {
+        Ok(TurnipTextSource {
             name: name.into_os_string().into_string().unwrap_or(path),
             contents,
         })
     }
 
     #[staticmethod]
-    pub fn from_string(contents: String) -> InsertedFile {
-        InsertedFile {
+    pub fn from_string(contents: String) -> TurnipTextSource {
+        TurnipTextSource {
             name: "<string>".into(),
             contents,
         }
