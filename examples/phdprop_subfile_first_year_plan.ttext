@@ -1,0 +1,19 @@
+[section()]{
+    First-Year Plan
+}
+
+The first year of the PhD will focus on reducing the broad idea of diverging CPU/GPU capabilities to a concrete set of potential approaches.
+This problem space is bounded by two restrictions: how current drivers and programming models use pointers, and how the CPU and GPU domains are separated in hardware.
+Indeed, integrated and external GPUs may require entirely different approaches.
+On top of this, CHERI's preestablished utility for compartmentalization[cite("watsonCHERIHybridCapabilitySystem2015")] may make GPU virtualization easier.
+Recently [citeauthor("markettosPositionPaperDefending2020")] investigated using CHERI capabilities to protect DMA accesses[cite("markettosPositionPaperDefending2020")], briefly considering shared memory but not allowing capabilities to flow/be dereferenced across domains.
+My work should build on this.
+
+With the above in mind, I have identified four goals to achieve before writing the first-year report.
+First, I will study the flow for accessing external memory across PCIe, including address translation for virtualized GPUs, then I will see how this changes with a more unified address space provided by CXL.
+Next, I will investigate open-source drivers for Arm Mali (e.g. integrated) and Nvidia/AMD (e.g. external) GPUs, to see how they use pointers and how they implement their semi-unified address spaces.
+Finally, based on this background I will define two preliminary split CPU/GPU capability domains.
+These will serve to expose any unforeseen issues with split domains and CHERI capabilities.
+After reporting on this progress, I will start experimenting with the split domains, potentially using a graphics API model as described above.
+
+# TODO plan

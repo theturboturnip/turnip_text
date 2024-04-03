@@ -28,20 +28,48 @@ impl From<LexPosn> for ParsePosn {
 /// Helper struct representing a span of characters between `start` (inclusive) and `end` (exclusive) in a file
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParseSpan {
-    pub start: ParsePosn,
-    pub end: ParsePosn,
+    file_idx: usize,
+    start: ParsePosn,
+    end: ParsePosn,
 }
 impl ParseSpan {
-    pub fn from_lex(start: LexPosn, end: LexPosn) -> Self {
+    pub fn single_char(file_idx: usize, start: LexPosn, c: char) -> Self {
         Self {
+            file_idx,
+            start: start.clone().into(),
+            end: start.advance_cols(c.len_utf8(), 1).into(),
+        }
+    }
+    pub fn from_lex(file_idx: usize, start: LexPosn, end: LexPosn) -> Self {
+        Self {
+            file_idx,
             start: start.into(),
             end: end.into(),
         }
     }
-    pub fn new(start: ParsePosn, end: ParsePosn) -> Self {
-        Self { start, end }
+    pub fn new(file_idx: usize, start: ParsePosn, end: ParsePosn) -> Self {
+        Self {
+            file_idx,
+            start,
+            end,
+        }
     }
     pub fn byte_range(&self) -> Range<usize> {
         self.start.byte_ofs..self.end.byte_ofs
+    }
+    pub fn combine(&self, other: &ParseSpan) -> ParseSpan {
+        assert_eq!(self.file_idx, other.file_idx);
+        assert!(self.start.byte_ofs < other.end.byte_ofs);
+        ParseSpan {
+            file_idx: self.file_idx,
+            start: self.start,
+            end: other.end,
+        }
+    }
+    pub fn annotate_snippets_range(&self) -> (usize, usize) {
+        (self.start.char_ofs, self.end.char_ofs)
+    }
+    pub fn file_idx(&self) -> usize {
+        self.file_idx
     }
 }

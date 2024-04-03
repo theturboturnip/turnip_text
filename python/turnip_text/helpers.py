@@ -1,17 +1,18 @@
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, List, Optional, TypeVar, Union
 
 from turnip_text import (
     Block,
     BlockScope,
     BlockScopeBuilder,
-    CoercibleToBlockScope,
-    CoercibleToInlineScope,
+    CoercibleToInline,
+    DocSegmentHeader,
     Inline,
     InlineScope,
     InlineScopeBuilder,
+    Paragraph,
     RawScopeBuilder,
-    coerce_to_block_scope,
-    coerce_to_inline_scope,
+    Sentence,
+    coerce_to_inline,
 )
 
 # TODO tests for the helpers
@@ -42,12 +43,14 @@ class block_scope_builder(BlockScopeBuilder):
     ```
     """
 
-    func: Callable[[BlockScope], Optional[Block]]
+    func: Callable[[BlockScope], Optional[Block | DocSegmentHeader]]
 
-    def __init__(self, func: Callable[[BlockScope], Optional[Block]]) -> None:
+    def __init__(
+        self, func: Callable[[BlockScope], Optional[Block | DocSegmentHeader]]
+    ) -> None:
         self.func = func
 
-    def build_from_blocks(self, b: BlockScope) -> Optional[Block]:
+    def build_from_blocks(self, b: BlockScope) -> Optional[Block | DocSegmentHeader]:
         return self.func(b)
 
 
@@ -118,3 +121,20 @@ class raw_scope_builder(RawScopeBuilder):
         raise TypeError(
             f"Invoked RawScopeBuilder on {maybe_str}, which wasn't a string"
         )
+
+
+def paragraph_of(i: CoercibleToInline) -> Paragraph:
+    return Paragraph([Sentence([coerce_to_inline(i)])])
+
+
+class Unset:
+    def __eq__(self, __value: object) -> bool:
+        if isinstance(__value, Unset):
+            return True
+        return False
+
+
+UNSET = Unset()
+
+T = TypeVar("T")
+MaybeUnset = Union[T, Unset]

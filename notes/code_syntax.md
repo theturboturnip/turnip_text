@@ -6,7 +6,13 @@
 - DONE Allow scopeless eval-brackets to return None and do no emitting
 - DONE Support assignment and recall `[x=5] \n\n [UnescapedText(x)]` -> "5"
 - DONE Better raw-scope-owning behaviour: maybe a raw-scope-owner is just something with a function that takes str? and can return either Block or Inline, and the parser adapts to this? (See above)
-- Add a context variable to all(?) plugin functions, so they can call out to other functions without knowing
+- DONE Add a context variable to all(?) plugin functions, so they can call out to other functions without knowing
+- Figure out how properties work!!! If you're going to invoke the dict directly, using properties requires `__get__`.
+  We originally thought it would be bad to evaluate properties because they might be impure, and @stateful properties are *very* impure.
+  That's because @stateful checks doc.frozen to see if it's allowed to run.
+  But we don't need it if you just delete the ability to call those functions when the document is frozen!
+  Throwing away the stateful side of the doc plugins is effectively equivalent: so maybe we can count all @stateful/@stateless properties as pure and evaluate them once for the document dict, even if @stateful would not be pure when the document is frozen, because those evaluations are thrown away once the document is parsed.
+  NOTE: This requires the DocState to actually be thrown away :))))) which we currently don't do because it has functions for pulling out floats.
 
 ## Current syntax
 

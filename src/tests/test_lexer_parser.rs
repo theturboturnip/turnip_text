@@ -1,7 +1,4 @@
-use crate::lexer::{units_to_tokens, Unit};
-
 use crate::lexer::Escapable;
-use lexer_rs::Lexer;
 
 use super::test_lexer::*;
 use super::test_parser::*;
@@ -10,25 +7,12 @@ use super::test_parser::*;
 fn expect_lex_parse<'a>(
     data: &str,
     expected_stok_types: Vec<TestTTToken<'a>>,
-    expected_parse: Result<TestBlock, TestInterpError>,
+    expected_parse: Result<TestDocSegment, TestTurnipError>,
 ) {
     println!("{:?}", data);
 
-    // First step: lex
-    let l = TextStream::new(data);
-    let units: Vec<Unit> = l
-        .iter(&[Box::new(Unit::parse_special), Box::new(Unit::parse_other)])
-        .scan((), |_, x| x.ok())
-        .collect();
-    let stoks = units_to_tokens(units);
-    let stok_types: Vec<TestTTToken> = stoks
-        .iter()
-        .map(|stok| TestTTToken::from_str_tok(data, *stok))
-        .collect();
-
-    assert_eq!(stok_types, expected_stok_types);
-
-    expect_parse_tokens(data, stoks, expected_parse)
+    expect_lex(data, expected_stok_types);
+    expect_parse(data, expected_parse)
 }
 
 use TestTTToken::*;
@@ -339,13 +323,10 @@ pub fn test_plain_hashes() {
 pub fn test_special_with_escaped_backslash() {
     expect_lex_parse(
         r#"\\#"#,
-        vec![
-            Escaped(Escapable::Backslash),
-            Hashes(1),
-        ],
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            test_text("\\"),
-        ]])])),
+        vec![Escaped(Escapable::Backslash), Hashes(1)],
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text(
+            "\\",
+        )]])])),
     )
 }
 

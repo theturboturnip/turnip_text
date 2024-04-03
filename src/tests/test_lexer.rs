@@ -1,9 +1,6 @@
-use crate::lexer::{units_to_tokens, Unit};
+use crate::lexer::lex;
 
-use crate::lexer::{Escapable, LexError, LexPosn, LexToken, TTToken};
-use lexer_rs::{Lexer, LexerOfStr};
-
-pub type TextStream<'stream> = LexerOfStr<'stream, LexPosn, LexToken, LexError>;
+use crate::lexer::{Escapable, TTToken};
 
 /// A type mimicking [TTToken] for test purposes
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -51,16 +48,11 @@ impl<'a> TestTTToken<'a> {
 }
 
 /// Run the lexer on a given piece of text, convert the lexed tokens to our test versions, and compare with the expected result.
-fn expect_lex<'a>(data: &str, expected_stok_types: Vec<TestTTToken<'a>>) {
+pub fn expect_lex<'a>(data: &str, expected_stok_types: Vec<TestTTToken<'a>>) {
     println!("{:?}", data);
 
     // First step: lex
-    let l = TextStream::new(data);
-    let units: Vec<Unit> = l
-        .iter(&[Box::new(Unit::parse_special), Box::new(Unit::parse_other)])
-        .scan((), |_, x| x.ok())
-        .collect();
-    let stoks = units_to_tokens(units);
+    let stoks: Vec<TTToken> = lex(0, data).scan((), |_, x| x.ok()).collect();
     let stok_types: Vec<TestTTToken> = stoks
         .iter()
         .map(|stok| TestTTToken::from_str_tok(data, *stok))

@@ -15,6 +15,7 @@ test:
 test:
 	#!/usr/bin/env bash
 	source {{VENV_LOCATION}}/bin/activate
+	export LD_LIBRARY_PATH="{{VENV_LOCATION}}/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 	just _test
 
 _test:
@@ -30,3 +31,19 @@ _test:
 	cargo testall
 	mypy ./python/turnip_text --strict
 	pytest tests
+
+[windows]
+example:
+	#!powershell.exe
+	{{VENV_LOCATION}}/Scripts/Activate.ps1
+	just _example
+
+[unix]
+example:
+	#!/usr/bin/env bash
+	source {{VENV_LOCATION}}/bin/activate
+	just _example
+
+_example:
+	maturin develop --extras=typing,test
+	python ./examples/phdprop.py
