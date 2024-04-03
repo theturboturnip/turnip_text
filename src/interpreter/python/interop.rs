@@ -26,7 +26,7 @@ pub fn turnip_text(py: Python<'_>, m: &PyModule) -> PyResult<()> {
 
     // Primitives
     m.add_class::<Text>()?;
-    m.add_class::<RawText>()?;
+    m.add_class::<Raw>()?;
     m.add_class::<Sentence>()?;
     m.add_class::<Paragraph>()?;
     m.add_class::<BlockScope>()?;
@@ -386,14 +386,14 @@ impl Text {
 /// Typically created by Rust while parsing input files.
 #[pyclass]
 #[derive(Debug, Clone)]
-pub struct RawText(pub Py<PyString>);
-impl RawText {
+pub struct Raw(pub Py<PyString>);
+impl Raw {
     pub fn new_rs(py: Python, s: &str) -> Self {
         Self::new(PyString::new(py, s).into_py(py))
     }
 }
 #[pymethods]
-impl RawText {
+impl Raw {
     #[new]
     pub fn new(data: Py<PyString>) -> Self {
         Self(data)

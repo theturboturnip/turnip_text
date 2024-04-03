@@ -612,7 +612,7 @@ impl InterpParaState {
                             }
                         }
                     }
-                    None => Some(PushInlineContent(InlineNodeToCreate::RawText(text.clone()))),
+                    None => Some(PushInlineContent(InlineNodeToCreate::Raw(text.clone()))),
                 },
 
                 _ => {

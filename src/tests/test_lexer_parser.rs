@@ -181,7 +181,7 @@ pub fn test_raw_scope() {
             RawScopeClose(1),
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::RawText("It's f&%#ing raw".into()),
+            TestInline::Raw("It's f&%#ing raw".into()),
         ]])])),
     )
 }

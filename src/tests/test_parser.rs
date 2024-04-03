@@ -5,7 +5,7 @@ use regex::Regex;
 
 use crate::interpreter::python::{
     interop::{
-        BlockScope, DocSegment, DocSegmentHeader, InlineScope, Paragraph, RawText, Sentence, Text,
+        BlockScope, DocSegment, DocSegmentHeader, InlineScope, Paragraph, Raw, Sentence, Text,
     },
     prepare_freethreaded_turniptext_python,
 };
@@ -356,7 +356,7 @@ pub enum TestBlock {
 pub enum TestInline {
     InlineScope(Vec<TestInline>),
     Text(String),
-    RawText(String),
+    Raw(String),
 
     /// Test-only - a Python object built from an inline scope with test_inline: List[Inline] = the contents of that scope
     TestOwnedInline(Vec<TestInline>),
@@ -377,7 +377,7 @@ pub fn test_text(s: impl Into<String>) -> TestInline {
     TestInline::Text(s.into())
 }
 pub fn test_raw_text(s: impl Into<String>) -> TestInline {
-    TestInline::RawText(s.into())
+    TestInline::Raw(s.into())
 }
 
 pub trait PyToTest<T> {
@@ -487,8 +487,8 @@ impl PyToTest<TestInline> for PyAny {
             )
         } else if let Ok(text) = self.extract::<Text>() {
             TestInline::Text(text.0.as_ref(py).to_string())
-        } else if let Ok(text) = self.extract::<RawText>() {
-            TestInline::RawText(text.0.as_ref(py).to_string())
+        } else if let Ok(text) = self.extract::<Raw>() {
+            TestInline::Raw(text.0.as_ref(py).to_string())
         } else if let Ok(obj) = self.getattr("test_inline") {
             TestInline::TestOwnedInline(
                 obj.extract::<InlineScope>()
