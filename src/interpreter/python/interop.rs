@@ -223,6 +223,8 @@ impl PyTypeclass for Inline {
     }
 }
 
+/// Typeclass representing the header for a document segment, which is rendered before any other element in the segment
+/// and defines how it interacts with other segments through the weight parameter. See [DocSegment].
 #[derive(Debug, Clone)]
 pub struct DocSegmentHeader {}
 impl DocSegmentHeader {
@@ -352,39 +354,6 @@ impl PyTypeclass for RawScopeBuilder {
         obj.hasattr(Self::marker_func_name(obj.py()))
     }
 }
-
-// /// Typeclass representing the "builder" of a document segment header.
-// ///
-// /// Requires a method
-// /// ```python
-// /// def build_doc_segment_header(self, contents: BlockScope) -> DocSegmentHeader: ...
-// /// ```
-// #[derive(Debug, Clone)]
-// pub struct DocSegmentBuilder {}
-// impl DocSegmentBuilder {
-//     fn marker_func_name(py: Python<'_>) -> &PyString {
-//         intern!(py, "build_doc_segment")
-//     }
-//     /// Calls builder.build_doc_segment_header(contents), should return DocSegmentHeader
-//     pub fn call_build_doc_segment<'py>(
-//         py: Python<'py>,
-//         builder: &PyTcRef<Self>,
-//         header: Py<BlockScope>,
-//     ) -> PyResult<(PyTcRef<DocSegmentHeader>, i64)> {
-//         let output = builder
-//             .as_ref(py)
-//             .getattr(Self::marker_func_name(py))?
-//             .call1((header,))?;
-//         Ok((PyTcRef::of(output)?, DocSegmentHeader::get_weight(py, output)?))
-//     }
-// }
-// impl PyTypeclass for DocSegmentBuilder {
-//     const NAME: &'static str = "DocSegmentBuilder";
-
-//     fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
-//         obj.hasattr(Self::marker_func_name(obj.py()))
-//     }
-// }
 
 /// Represents plain inline text that has not yet been "escaped" for rendering.
 ///
@@ -642,20 +611,20 @@ impl InsertedFile {
 }
 
 /// This is used for implicit structure.
-/// It's created by Python code just with the Header and Weight, and the Weight is used to implicitly open and close scopes
+/// It's created by Python code by emitting a DocSegmentHeader with some Weight, and the Weight is used to implicitly open and close scopes
 ///
 /// ```text
-/// [heading("Blah")] # -> DocSegmentBuilder(weight=0)
+/// [heading("Blah")] # -> DocSegmentHeader(weight=0)
 ///
 /// # This paragraph is implicitly included as a child of DocSegment().text
 /// some text
 ///
-/// [subheading("Sub-Blah")] # -> DocSegmentBuilder(weight=1)
+/// [subheading("Sub-Blah")] # -> DocSegmentHeader(weight=1)
 /// # the weight is greater than for the Section -> the subsection is implicitly included as a subsegment of section
 ///
 /// Some other text in a subsection
 ///
-/// [heading("Blah 2")] # -> DocSegmentBuilder(weight=0)
+/// [heading("Blah 2")] # -> DocSegmentHeader(weight=0)
 /// # the weight is <=subsection -> subsection 1.1 automatically ends, subheading.build_doc_segment() called
 /// # the weight is <=section -> section 1 automatically ends, heading.build_doc_segment() called
 ///
@@ -667,8 +636,6 @@ impl InsertedFile {
 /// having the Subsection not as a direct child of the Section.
 /// Thus we allow manual scopes to be opened and closed as usual, but we don't allow DocSegments *within* them.
 /// Effectively DocSegments must only exist at the "top level" - they may be enclosed by DocSegments directly, but nothing else.
-/// TODO this means subfiles need to emit lists of blocks directly into the enclosing BlockScope,
-/// as otherwise you couldn't have an DocSegments inside them at all - they'd all be implicitly contained by a BlockScope
 ///
 /// An example error from mixing explicit and implicit scoping:
 /// ```text
