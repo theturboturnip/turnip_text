@@ -19,6 +19,8 @@ use python::{
     typeclass::{PyInstanceList, PyTcRef, PyTcUnionRef},
 };
 
+pub mod next;
+
 pub struct Interpreter {
     /// FSM state
     block_state: InterpBlockState,

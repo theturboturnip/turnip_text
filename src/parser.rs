@@ -53,13 +53,13 @@ pub struct TurnipTextParser {
     // The stack of currently parsed file indices
     file_stack: Vec<usize>,
     files: Vec<ParsingFile>,
-    interp: Interpreter,
+    interp: crate::interpreter::next::Interpreter,
 }
 impl TurnipTextParser {
     pub fn new(py: Python, file_name: String, file_contents: String) -> TurnipTextResult<Self> {
         let file = ParsingFile::new(0, file_name, file_contents, None);
         let files = vec![file];
-        let mut interp = Interpreter::new(py)
+        let mut interp = crate::interpreter::next::Interpreter::new(py)
             .map_err(|pyerr| TurnipTextError::InternalPython(stringify_pyerr(py, &pyerr)))?;
         interp.push_subfile(); // We start out with one subfile - the file we're initially parsing
         Ok(Self {
