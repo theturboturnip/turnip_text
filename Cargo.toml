@@ -1,6 +1,6 @@
 [package]
 name = "turnip_text"
-version = "0.0.4"
+version = "0.0.5"
 description = "Document description language that allows embedded Python to describe document structure"
 license = "MIT OR Apache-2.0"
 authors = ["Samuel Stark"]
