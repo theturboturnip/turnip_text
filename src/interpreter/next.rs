@@ -346,19 +346,22 @@ trait BlockTokenProcessor {
                     RawStringFromTokens::new(start_span, n_opening),
                 )),
 
-                // TODO open paragraph
-                TTToken::Escaped(_, _) => todo!(),
-                TTToken::Backslash(_) => todo!(),
-                TTToken::OtherText(_) => todo!(),
+                TTToken::Escaped(text_span, _)
+                | TTToken::Backslash(text_span)
+                | TTToken::OtherText(text_span) => Ok(BuildStatus::StartInnerBuilder(
+                    ParagraphFromTokens::new_with_starting_text(
+                        py,
+                        tok.stringify_escaped(data),
+                        text_span,
+                    )?,
+                )),
 
-                // TODO error close code without open
-                TTToken::CodeClose(_, _) => todo!(),
-                TTToken::CodeCloseOwningInline(_, _) => todo!(),
-                TTToken::CodeCloseOwningRaw(_, _, _) => todo!(),
-                TTToken::CodeCloseOwningBlock(_, _) => todo!(),
+                TTToken::CodeClose(_, _)
+                | TTToken::CodeCloseOwningInline(_, _)
+                | TTToken::CodeCloseOwningRaw(_, _, _)
+                | TTToken::CodeCloseOwningBlock(_, _) => todo!("error close code without open"),
 
-                // TODO error close raw scope without open
-                TTToken::RawScopeClose(_, _) => todo!(),
+                TTToken::RawScopeClose(_, _) => todo!("error close raw scope without open"),
 
                 TTToken::ScopeClose(_) => self.on_close_scope(py, tok, data),
             }
@@ -440,17 +443,14 @@ trait InlineTokenProcessor {
                 RawStringFromTokens::new(start_span, n_opening),
             )),
 
-            // TODO error block scope open in inline context
-            TTToken::BlockScopeOpen(_) => todo!(),
+            TTToken::BlockScopeOpen(_) => todo!("error block scope open in inline context"),
 
-            // TODO error close code without open
-            TTToken::CodeClose(_, _) => todo!(),
-            TTToken::CodeCloseOwningInline(_, _) => todo!(),
-            TTToken::CodeCloseOwningRaw(_, _, _) => todo!(),
-            TTToken::CodeCloseOwningBlock(_, _) => todo!(),
+            TTToken::CodeClose(_, _)
+            | TTToken::CodeCloseOwningInline(_, _)
+            | TTToken::CodeCloseOwningRaw(_, _, _)
+            | TTToken::CodeCloseOwningBlock(_, _) => todo!("error close code without open"),
 
-            // TODO error close raw scope without open
-            TTToken::RawScopeClose(_, _) => todo!(),
+            TTToken::RawScopeClose(_, _) => todo!("error close raw scope without open"),
         }
     }
 }
@@ -765,7 +765,34 @@ impl ParagraphFromTokens {
         inline: &PyAny,
         inline_span: ParseSpan,
     ) -> TurnipTextContextlessResult<Box<Self>> {
-        todo!()
+        let current_sentence = py_internal_alloc(py, Sentence::new_empty(py))?;
+        current_sentence
+            .borrow_mut(py)
+            .push_inline(inline)
+            .err_as_internal(py)?;
+        Ok(Box::new(Self {
+            ctx: BuilderContext::new("Paragraph", inline_span),
+            para: py_internal_alloc(py, Paragraph::new_empty(py))?,
+            start_of_line: false,
+            current_building_text: None,
+            current_sentence,
+        }))
+    }
+    fn new_with_starting_text(
+        py: Python,
+        text: &str,
+        text_span: ParseSpan,
+    ) -> TurnipTextContextlessResult<Box<Self>> {
+        Ok(Box::new(Self {
+            ctx: BuilderContext::new("Paragraph", text_span),
+            para: py_internal_alloc(py, Paragraph::new_empty(py))?,
+            start_of_line: false,
+            current_building_text: Some(InlineTextState {
+                text: text.to_string(),
+                pending_whitespace: None,
+            }),
+            current_sentence: py_internal_alloc(py, Sentence::new_empty(py))?,
+        }))
     }
     /// Replace self.current_building_text with None. If it was Some() before, take the text component (not the pending whitespace) put it into a Text() inline object, and push that object into the inline scope.
     fn fold_current_text_into_sentence(
