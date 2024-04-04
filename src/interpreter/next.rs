@@ -15,7 +15,7 @@ use pyo3::{types::PyDict, Py, PyAny, PyClass, PyClassInitializer, PyResult, Pyth
 
 use crate::{
     error::{TurnipTextContextlessError, TurnipTextContextlessResult},
-    lexer::{LexError, TTToken},
+    lexer::{Escapable, LexError, TTToken},
     util::ParseSpan,
 };
 
@@ -23,7 +23,8 @@ use super::{
     eval_bracket::{eval_brackets, EvalBracketResult},
     python::typeclass::PyTcRef,
     Block, BlockScope, DocSegment, DocSegmentHeader, Inline, InlineScope, InterimDocumentStructure,
-    InterpreterFileAction, MapContextlessResult, Paragraph, Raw, Sentence, Text, TurnipTextSource,
+    InterpError, InterpreterFileAction, MapContextlessResult, Paragraph, Raw, Sentence, Text,
+    TurnipTextSource,
 };
 
 /// An enum encompassing all the things that can be directly emitted from one Builder to be bubbled up to the previous Builder.
@@ -325,6 +326,9 @@ trait BlockTokenProcessor {
             }
         } else {
             match tok {
+                TTToken::Escaped(span, Escapable::Newline) => {
+                    Err(InterpError::EscapedNewlineOutsideParagraph { newline: span }.into())
+                }
                 TTToken::Whitespace(_) | TTToken::Newline(_) => Ok(BuildStatus::Continue),
 
                 TTToken::Hashes(_, _) => {
@@ -419,6 +423,8 @@ trait InlineTokenProcessor {
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match tok {
+            // Escaped newline => "Continue sentence"
+            TTToken::Escaped(_, Escapable::Newline) => Ok(BuildStatus::Continue),
             TTToken::Escaped(_, _) | TTToken::Backslash(_) | TTToken::OtherText(_) => {
                 self.on_plain_text(py, tok, data)
             }
