@@ -14,7 +14,7 @@
 use pyo3::{types::PyDict, Py, PyAny, PyClass, PyClassInitializer, PyResult, Python};
 
 use crate::{
-    error::TurnipTextContextlessResult,
+    error::{TurnipTextContextlessError, TurnipTextContextlessResult},
     lexer::{LexError, TTToken},
     util::ParseSpan,
 };
@@ -292,65 +292,76 @@ impl BuilderStacks {
     }
 }
 
-fn process_block_level_token<F>(
-    py: Python,
-    py_env: &PyDict,
-    tok: TTToken,
-    data: &str,
-    expect_newline: &mut bool,
-    on_close_scope: F,
-) -> TurnipTextContextlessResult<BuildStatus>
-where
-    F: FnOnce(Python, &PyDict, TTToken, &str) -> TurnipTextContextlessResult<BuildStatus>,
-{
-    if *expect_newline {
-        match tok {
-            TTToken::Whitespace(_) => Ok(BuildStatus::Continue),
-            TTToken::Newline(_) => {
-                *expect_newline = false;
-                Ok(BuildStatus::Continue)
+trait BlockTokenProcessor {
+    /// It's common to expect a newline after emitting a block's worth of content
+    fn is_expecting_newline(&self) -> bool;
+    fn process_expected_newline(&mut self);
+    fn process_other_token_when_expecting_newline(&mut self) -> TurnipTextContextlessError;
+
+    fn on_close_scope(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus>;
+
+    fn process_block_level_token(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        if self.is_expecting_newline() {
+            match tok {
+                TTToken::Whitespace(_) => Ok(BuildStatus::Continue),
+                TTToken::Newline(_) => {
+                    self.process_expected_newline();
+                    Ok(BuildStatus::Continue)
+                }
+
+                _ => Err(self.process_other_token_when_expecting_newline()),
             }
+        } else {
+            match tok {
+                TTToken::Whitespace(_) | TTToken::Newline(_) => Ok(BuildStatus::Continue),
 
-            _ => todo!("Error"),
-        }
-    } else {
-        match tok {
-            TTToken::Whitespace(_) | TTToken::Newline(_) => Ok(BuildStatus::Continue),
+                TTToken::Hashes(_, _) => {
+                    Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new()))
+                }
 
-            TTToken::Hashes(_, _) => Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new())),
+                // Because this may return Inline we *always* have to be able to handle inlines at top scope.
+                TTToken::CodeOpen(start_span, n_brackets) => Ok(BuildStatus::StartInnerBuilder(
+                    CodeFromTokens::new(start_span, n_brackets),
+                )),
 
-            // Because this may return Inline we *always* have to be able to handle inlines at top scope.
-            TTToken::CodeOpen(start_span, n_brackets) => Ok(BuildStatus::StartInnerBuilder(
-                CodeFromTokens::new(start_span, n_brackets),
-            )),
+                TTToken::BlockScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
+                    BlockScopeFromTokens::new(py, start_span)?,
+                )),
 
-            TTToken::BlockScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-                BlockScopeFromTokens::new(py, start_span)?,
-            )),
+                TTToken::InlineScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
+                    InlineScopeFromTokens::new(py, start_span)?,
+                )),
 
-            TTToken::InlineScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-                InlineScopeFromTokens::new(py, start_span)?,
-            )),
+                TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
+                    RawStringFromTokens::new(start_span, n_opening),
+                )),
 
-            TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
-                RawStringFromTokens::new(start_span, n_opening),
-            )),
+                // TODO open paragraph
+                TTToken::Escaped(_, _) => todo!(),
+                TTToken::Backslash(_) => todo!(),
+                TTToken::OtherText(_) => todo!(),
 
-            // TODO open paragraph
-            TTToken::Escaped(_, _) => todo!(),
-            TTToken::Backslash(_) => todo!(),
-            TTToken::OtherText(_) => todo!(),
+                // TODO error close code without open
+                TTToken::CodeClose(_, _) => todo!(),
+                TTToken::CodeCloseOwningInline(_, _) => todo!(),
+                TTToken::CodeCloseOwningRaw(_, _, _) => todo!(),
+                TTToken::CodeCloseOwningBlock(_, _) => todo!(),
 
-            // TODO error close code without open
-            TTToken::CodeClose(_, _) => todo!(),
-            TTToken::CodeCloseOwningInline(_, _) => todo!(),
-            TTToken::CodeCloseOwningRaw(_, _, _) => todo!(),
-            TTToken::CodeCloseOwningBlock(_, _) => todo!(),
+                // TODO error close raw scope without open
+                TTToken::RawScopeClose(_, _) => todo!(),
 
-            // TODO error close raw scope without open
-            TTToken::RawScopeClose(_, _) => todo!(),
-
-            TTToken::ScopeClose(_) => on_close_scope(py, py_env, tok, data),
+                TTToken::ScopeClose(_) => self.on_close_scope(py, tok, data),
+            }
         }
     }
 }
@@ -462,6 +473,28 @@ impl TopLevelDocumentBuilder {
         self.structure.finalize(py).err_as_internal(py)
     }
 }
+impl BlockTokenProcessor for TopLevelDocumentBuilder {
+    fn is_expecting_newline(&self) -> bool {
+        self.expect_newline
+    }
+
+    fn process_expected_newline(&mut self) {
+        self.expect_newline = false;
+    }
+
+    fn process_other_token_when_expecting_newline(&mut self) -> TurnipTextContextlessError {
+        todo!("error on non-newline token when newline is expected")
+    }
+
+    fn on_close_scope(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        todo!("error close block scope without open")
+    }
+}
 impl BuildFromTokens for TopLevelDocumentBuilder {
     // This builder is responsible for spawning lower-level builders
     fn process_token(
@@ -471,14 +504,7 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        process_block_level_token(
-            py,
-            py_env,
-            tok,
-            data,
-            &mut self.expect_newline,
-            |_, _, _, _| todo!("error close block scope without open"),
-        )
+        self.process_block_level_token(py, tok, data)
     }
 
     // When EOF comes, we don't produce anything to bubble up - there's nothing above us!
@@ -617,7 +643,7 @@ impl BuildFromTokens for RawStringFromTokens {
         py: Python,
         py_env: &PyDict,
     ) -> TurnipTextContextlessResult<Option<PushToNextLevel>> {
-        todo!()
+        todo!("error EOF inside scope")
     }
 }
 
@@ -635,6 +661,33 @@ impl BlockScopeFromTokens {
         }))
     }
 }
+impl BlockTokenProcessor for BlockScopeFromTokens {
+    fn is_expecting_newline(&self) -> bool {
+        self.expect_newline
+    }
+
+    fn process_expected_newline(&mut self) {
+        self.expect_newline = false;
+    }
+
+    fn process_other_token_when_expecting_newline(&mut self) -> TurnipTextContextlessError {
+        todo!("Error when expecting newline")
+    }
+
+    fn on_close_scope(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        if !self.ctx.try_extend(&tok) {
+            todo!("create some error to say 'closing block scope from different file'");
+        }
+        Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
+            PyTcRef::of_unchecked(self.block_scope.as_ref(py)),
+        )))))
+    }
+}
 impl BuildFromTokens for BlockScopeFromTokens {
     fn process_token(
         &mut self,
@@ -643,21 +696,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        process_block_level_token(
-            py,
-            py_env,
-            tok,
-            data,
-            &mut self.expect_newline,
-            |_, _, tok, _| {
-                if !self.ctx.try_extend(&tok) {
-                    todo!("create some error to say 'closing block scope from different file'");
-                }
-                Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
-                    PyTcRef::of_unchecked(self.block_scope.as_ref(py)),
-                )))))
-            },
-        )
+        self.process_block_level_token(py, tok, data)
     }
 
     fn process_push_from_inner_builder(
