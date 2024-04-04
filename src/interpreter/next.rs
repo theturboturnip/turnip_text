@@ -355,66 +355,92 @@ where
     }
 }
 
-// TODO do some of this stuff using a trait. passing 4 functions in is weird.
-// also it would be nice to trigger a text flush when pushing a new builder, not when receiving the stuff from the builder.
-fn process_inline_level_token<F1, F2, F3, F4>(
-    py: Python,
-    py_env: &PyDict,
-    tok: TTToken,
-    data: &str,
-    start_of_line: bool,
-    on_plain_text: F1,
-    on_midline_whitespace: F2,
-    on_newline: F3,
-    on_close_scope: F4,
-) -> TurnipTextContextlessResult<BuildStatus>
-where
-    F1: FnOnce(Python, &PyDict, TTToken, &str) -> TurnipTextContextlessResult<BuildStatus>,
-    F2: FnOnce(Python, &PyDict, TTToken, &str) -> TurnipTextContextlessResult<BuildStatus>,
-    F3: FnOnce(Python, &PyDict, TTToken, &str) -> TurnipTextContextlessResult<BuildStatus>,
-    F4: FnOnce(Python, &PyDict, TTToken, &str) -> TurnipTextContextlessResult<BuildStatus>,
-{
-    match tok {
-        TTToken::Escaped(_, _) | TTToken::Backslash(_) | TTToken::OtherText(_) => {
-            on_plain_text(py, py_env, tok, data)
-        }
-        TTToken::Whitespace(_) => {
-            // Swallow whitespace at the start of the line
-            if start_of_line {
-                Ok(BuildStatus::Continue)
-            } else {
-                on_midline_whitespace(py, py_env, tok, data)
+struct InlineTextState {
+    text: String,
+    /// pending_whitespace is appended to `text` before new text is added, but can be ignored in certain scenarios.
+    ///
+    /// e.g. "the" + Whitespace(" ") => ("the", " ") - when the next token is "apple", becomes "the" + " " + "apple"
+    /// but for "the" + Whitespace(" ") + Newline, the pending_whitespace is dropped.
+    pending_whitespace: Option<String>,
+}
+
+trait InlineTokenProcessor {
+    fn at_start_of_line(&self) -> bool;
+
+    fn on_plain_text(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus>;
+    fn on_midline_whitespace(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus>;
+    fn on_newline(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus>;
+    fn on_close_scope(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus>;
+
+    // TODO it would be nice to trigger a text flush when pushing a new builder, not when receiving the stuff from the builder.
+    fn process_inline_level_token(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        match tok {
+            TTToken::Escaped(_, _) | TTToken::Backslash(_) | TTToken::OtherText(_) => {
+                self.on_plain_text(py, tok, data)
             }
+            TTToken::Whitespace(_) => {
+                // Swallow whitespace at the start of the line
+                if self.at_start_of_line() {
+                    Ok(BuildStatus::Continue)
+                } else {
+                    self.on_midline_whitespace(py, tok, data)
+                }
+            }
+            TTToken::Newline(_) => self.on_newline(py, tok, data),
+            TTToken::ScopeClose(_) => self.on_close_scope(py, tok, data),
+
+            TTToken::Hashes(_, _) => Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new())),
+
+            // Note this may return Block
+            TTToken::CodeOpen(start_span, n_brackets) => Ok(BuildStatus::StartInnerBuilder(
+                CodeFromTokens::new(start_span, n_brackets),
+            )),
+
+            TTToken::InlineScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
+                InlineScopeFromTokens::new(py, start_span)?,
+            )),
+
+            TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
+                RawStringFromTokens::new(start_span, n_opening),
+            )),
+
+            // TODO error block scope open in inline context
+            TTToken::BlockScopeOpen(_) => todo!(),
+
+            // TODO error close code without open
+            TTToken::CodeClose(_, _) => todo!(),
+            TTToken::CodeCloseOwningInline(_, _) => todo!(),
+            TTToken::CodeCloseOwningRaw(_, _, _) => todo!(),
+            TTToken::CodeCloseOwningBlock(_, _) => todo!(),
+
+            // TODO error close raw scope without open
+            TTToken::RawScopeClose(_, _) => todo!(),
         }
-        TTToken::Newline(_) => on_newline(py, py_env, tok, data),
-        TTToken::ScopeClose(_) => on_close_scope(py, py_env, tok, data),
-
-        TTToken::Hashes(_, _) => Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new())),
-
-        // Note this may return Block
-        TTToken::CodeOpen(start_span, n_brackets) => Ok(BuildStatus::StartInnerBuilder(
-            CodeFromTokens::new(start_span, n_brackets),
-        )),
-
-        TTToken::InlineScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-            InlineScopeFromTokens::new(py, start_span)?,
-        )),
-
-        TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
-            RawStringFromTokens::new(start_span, n_opening),
-        )),
-
-        // TODO error block scope open in inline context
-        TTToken::BlockScopeOpen(start_span) => todo!(),
-
-        // TODO error close code without open
-        TTToken::CodeClose(_, _) => todo!(),
-        TTToken::CodeCloseOwningInline(_, _) => todo!(),
-        TTToken::CodeCloseOwningRaw(_, _, _) => todo!(),
-        TTToken::CodeCloseOwningBlock(_, _) => todo!(),
-
-        // TODO error close raw scope without open
-        TTToken::RawScopeClose(_, _) => todo!(),
     }
 }
 
@@ -685,15 +711,6 @@ impl BuildFromTokens for BlockScopeFromTokens {
     }
 }
 
-struct InlineTextState {
-    text: String,
-    /// pending_whitespace is appended to `text` before new text is added, but can be ignored in certain scenarios.
-    ///
-    /// e.g. "the" + Whitespace(" ") => ("the", " ") - when the next token is "apple", becomes "the" + " " + "apple"
-    /// but for "the" + Whitespace(" ") + Newline, the pending_whitespace is dropped.
-    pending_whitespace: Option<String>,
-}
-
 // TODO this and InlineScopeFromTokens could share more w.r.t. text
 struct ParagraphFromTokens {
     ctx: BuilderContext,
@@ -734,6 +751,113 @@ impl ParagraphFromTokens {
         }
     }
 }
+impl InlineTokenProcessor for ParagraphFromTokens {
+    fn at_start_of_line(&self) -> bool {
+        self.start_of_line
+    }
+
+    fn on_plain_text(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        let text_content = tok.stringify_escaped(data);
+        self.start_of_line = false;
+        match &mut self.current_building_text {
+            Some(InlineTextState {
+                text,
+                pending_whitespace,
+            }) => {
+                if let Some(w) = std::mem::take(pending_whitespace) {
+                    text.push_str(&w)
+                }
+                text.push_str(text_content)
+            }
+            None => {
+                self.current_building_text = Some(InlineTextState {
+                    text: text_content.to_string(),
+                    pending_whitespace: None,
+                })
+            }
+        };
+        Ok(BuildStatus::Continue)
+    }
+
+    fn on_midline_whitespace(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        let whitespace_content = tok.stringify_escaped(data);
+        match &mut self.current_building_text {
+            Some(InlineTextState {
+                text,
+                pending_whitespace,
+            }) => {
+                // Push new whitespace into pending_whitespace
+                // TODO this means you can be text=" ", pending_whitespace=" " at the same time. weird.
+                match pending_whitespace {
+                    Some(w) => w.push_str(whitespace_content),
+                    None => *pending_whitespace = Some(whitespace_content.to_string()),
+                }
+            }
+            // Don't skip whitespace when we're mid-line - even if we aren't building text!
+            None => {
+                self.current_building_text = Some(InlineTextState {
+                    text: whitespace_content.to_string(),
+                    pending_whitespace: None,
+                })
+            }
+        };
+        Ok(BuildStatus::Continue)
+    }
+
+    fn on_newline(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        if self.start_of_line {
+            if !self.ctx.try_extend(&tok) {
+                // TODO should this really be an error??
+                todo!("create some error to say 'closing paragraph from different file'");
+            }
+            self.fold_current_text_into_sentence(py, false)?;
+            Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
+                PyTcRef::of_unchecked(self.para.as_ref(py)),
+            )))))
+        } else {
+            // Fold current text into the current sentence before we break it - don't include trailing whitespace
+            self.fold_current_text_into_sentence(py, false)?;
+            // Swap the current sentence out for a new one
+            let sentence = std::mem::replace(
+                &mut self.current_sentence,
+                py_internal_alloc(py, Sentence::new_empty(py))?,
+            );
+            // Push the old one into the paragraph
+            self.para
+                .borrow_mut(py)
+                .push_sentence(sentence.as_ref(py))
+                .err_as_internal(py)?;
+            // We're now at the start of the line
+            self.start_of_line = true;
+            Ok(BuildStatus::Continue)
+        }
+    }
+
+    fn on_close_scope(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        // TODO this will catch a closing brace on a line just under a paragraph, when the paragraph hasn't ended yet. Add a test case.
+        todo!("error: closing scope inside a paragraph when no inline scopes are open")
+    }
+}
 impl BuildFromTokens for ParagraphFromTokens {
     fn process_token(
         &mut self,
@@ -742,91 +866,7 @@ impl BuildFromTokens for ParagraphFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        process_inline_level_token(
-            py,
-            py_env,
-            tok,
-            data,
-            self.start_of_line,
-            // on_plain_text
-            |py, py_env, tok, data| {
-                self.start_of_line = false;
-                match &mut self.current_building_text {
-                    Some(InlineTextState {
-                        text,
-                        pending_whitespace,
-                    }) => {
-                        if let Some(w) = std::mem::take(pending_whitespace) {
-                            text.push_str(&w)
-                        }
-                        text.push_str(tok.stringify_escaped(data))
-                    }
-                    None => {
-                        self.current_building_text = Some(InlineTextState {
-                            text: tok.stringify_escaped(data).to_string(),
-                            pending_whitespace: None,
-                        })
-                    }
-                };
-                Ok(BuildStatus::Continue)
-            },
-            // on_midline_whitespace
-            |py, py_env, tok, data| {
-                match &mut self.current_building_text {
-                    Some(InlineTextState {
-                        text,
-                        pending_whitespace,
-                    }) => {
-                        if let Some(w) = std::mem::take(pending_whitespace) {
-                            text.push_str(&w)
-                        }
-                        text.push_str(tok.stringify_escaped(data))
-                    }
-                    // Don't skip whitespace when we're mid-line - even if we aren't building text!
-                    None => {
-                        self.current_building_text = Some(InlineTextState {
-                            text: tok.stringify_escaped(data).to_string(),
-                            pending_whitespace: None,
-                        })
-                    }
-                };
-                Ok(BuildStatus::Continue)
-            },
-            // on_newline
-            |py, py_env, tok, data| {
-                if self.start_of_line {
-                    if !self.ctx.try_extend(&tok) {
-                        // TODO should this really be an error??
-                        todo!("create some error to say 'closing paragraph from different file'");
-                    }
-                    self.fold_current_text_into_sentence(py, false)?;
-                    Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
-                        PyTcRef::of_unchecked(self.para.as_ref(py)),
-                    )))))
-                } else {
-                    // Fold current text into the current sentence before we break it - don't include trailing whitespace
-                    self.fold_current_text_into_sentence(py, false);
-                    // Swap the current sentence out for a new one
-                    let sentence = std::mem::replace(
-                        &mut self.current_sentence,
-                        py_internal_alloc(py, Sentence::new_empty(py))?,
-                    );
-                    // Push the old one into the paragraph
-                    self.para
-                        .borrow_mut(py)
-                        .push_sentence(sentence.as_ref(py))
-                        .err_as_internal(py)?;
-                    // We're now at the start of the line
-                    self.start_of_line = true;
-                    Ok(BuildStatus::Continue)
-                }
-            },
-            // on_close_scope
-            |py, py_env, tok, data| {
-                // TODO this will catch a closing brace on a line just under a paragraph, when the paragraph hasn't ended yet. Add a test case.
-                todo!("error: closing scope inside a paragraph when no inline scopes are open")
-            },
-        )
+        self.process_inline_level_token(py, tok, data)
     }
 
     fn process_push_from_inner_builder(
@@ -925,6 +965,90 @@ impl InlineScopeFromTokens {
         }
     }
 }
+impl InlineTokenProcessor for InlineScopeFromTokens {
+    fn at_start_of_line(&self) -> bool {
+        self.start_of_line
+    }
+
+    fn on_plain_text(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        self.start_of_line = false;
+        match &mut self.current_building_text {
+            Some(InlineTextState {
+                text,
+                pending_whitespace,
+            }) => {
+                if let Some(w) = std::mem::take(pending_whitespace) {
+                    text.push_str(&w)
+                }
+                text.push_str(tok.stringify_escaped(data))
+            }
+            None => {
+                self.current_building_text = Some(InlineTextState {
+                    text: tok.stringify_escaped(data).to_string(),
+                    pending_whitespace: None,
+                })
+            }
+        };
+        Ok(BuildStatus::Continue)
+    }
+
+    fn on_midline_whitespace(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        self.start_of_line = false;
+        match &mut self.current_building_text {
+            Some(InlineTextState {
+                text,
+                pending_whitespace,
+            }) => {
+                if let Some(w) = std::mem::take(pending_whitespace) {
+                    text.push_str(&w)
+                }
+                text.push_str(tok.stringify_escaped(data))
+            }
+            // Don't skip whitespace when we're mid-line - even if we aren't building text!
+            None => {
+                self.current_building_text = Some(InlineTextState {
+                    text: tok.stringify_escaped(data).to_string(),
+                    pending_whitespace: None,
+                })
+            }
+        };
+        Ok(BuildStatus::Continue)
+    }
+
+    fn on_newline(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        todo!("error newline inside inline scope")
+    }
+
+    fn on_close_scope(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        if !self.ctx.try_extend(&tok) {
+            todo!("create some error to say 'closing inline scope from different file'");
+        }
+        self.fold_current_text_into_scope(py, false)?;
+        Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Inline(
+            PyTcRef::of_unchecked(self.inline_scope.as_ref(py)),
+        )))))
+    }
+}
 impl BuildFromTokens for InlineScopeFromTokens {
     fn process_token(
         &mut self,
@@ -933,70 +1057,7 @@ impl BuildFromTokens for InlineScopeFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        process_inline_level_token(
-            py,
-            py_env,
-            tok,
-            data,
-            self.start_of_line,
-            // on_plain_text
-            |py, py_env, tok, data| {
-                self.start_of_line = false;
-                match &mut self.current_building_text {
-                    Some(InlineTextState {
-                        text,
-                        pending_whitespace,
-                    }) => {
-                        if let Some(w) = std::mem::take(pending_whitespace) {
-                            text.push_str(&w)
-                        }
-                        text.push_str(tok.stringify_escaped(data))
-                    }
-                    None => {
-                        self.current_building_text = Some(InlineTextState {
-                            text: tok.stringify_escaped(data).to_string(),
-                            pending_whitespace: None,
-                        })
-                    }
-                };
-                Ok(BuildStatus::Continue)
-            },
-            // on_midline_whitespace
-            |py, py_env, tok, data| {
-                self.start_of_line = false;
-                match &mut self.current_building_text {
-                    Some(InlineTextState {
-                        text,
-                        pending_whitespace,
-                    }) => {
-                        if let Some(w) = std::mem::take(pending_whitespace) {
-                            text.push_str(&w)
-                        }
-                        text.push_str(tok.stringify_escaped(data))
-                    }
-                    // Don't skip whitespace when we're mid-line - even if we aren't building text!
-                    None => {
-                        self.current_building_text = Some(InlineTextState {
-                            text: tok.stringify_escaped(data).to_string(),
-                            pending_whitespace: None,
-                        })
-                    }
-                };
-                Ok(BuildStatus::Continue)
-            },
-            // on_newline
-            |py, py_env, tok, data| todo!("error newline inside inline scope"),
-            // on_close_scope
-            |py, py_env, tok, data| {
-                if !self.ctx.try_extend(&tok) {
-                    todo!("create some error to say 'closing inline scope from different file'");
-                }
-                self.fold_current_text_into_scope(py, false)?;
-                Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Inline(
-                    PyTcRef::of_unchecked(self.inline_scope.as_ref(py)),
-                )))))
-            },
-        )
+        self.process_inline_level_token(py, tok, data)
     }
 
     fn process_push_from_inner_builder(
