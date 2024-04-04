@@ -380,6 +380,12 @@ struct InlineTextState {
 
 trait InlineTokenProcessor {
     fn at_start_of_line(&self) -> bool;
+    fn clear_pending_whitespace(&mut self);
+    fn flush_pending_text(
+        &mut self,
+        py: Python,
+        include_whitespace: bool,
+    ) -> TurnipTextContextlessResult<()>;
 
     fn on_plain_text(
         &mut self,
@@ -425,23 +431,43 @@ trait InlineTokenProcessor {
                     self.on_midline_whitespace(py, tok, data)
                 }
             }
-            TTToken::Newline(_) => self.on_newline(py, tok, data),
-            TTToken::ScopeClose(_) => self.on_close_scope(py, tok, data),
-
-            TTToken::Hashes(_, _) => Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new())),
+            TTToken::Newline(_) => {
+                self.clear_pending_whitespace();
+                self.flush_pending_text(py, true)?;
+                self.on_newline(py, tok, data)
+            }
+            TTToken::ScopeClose(_) => {
+                self.clear_pending_whitespace();
+                self.flush_pending_text(py, true)?;
+                self.on_close_scope(py, tok, data)
+            }
+            TTToken::Hashes(_, _) => {
+                self.clear_pending_whitespace();
+                self.flush_pending_text(py, true)?;
+                Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new()))
+            }
 
             // Note this may return Block
-            TTToken::CodeOpen(start_span, n_brackets) => Ok(BuildStatus::StartInnerBuilder(
-                CodeFromTokens::new(start_span, n_brackets),
-            )),
+            TTToken::CodeOpen(start_span, n_brackets) => {
+                self.flush_pending_text(py, true)?;
+                Ok(BuildStatus::StartInnerBuilder(CodeFromTokens::new(
+                    start_span, n_brackets,
+                )))
+            }
 
-            TTToken::InlineScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-                InlineScopeFromTokens::new(py, start_span)?,
-            )),
+            TTToken::InlineScopeOpen(start_span) => {
+                self.flush_pending_text(py, true);
+                Ok(BuildStatus::StartInnerBuilder(InlineScopeFromTokens::new(
+                    py, start_span,
+                )?))
+            }
 
-            TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
-                RawStringFromTokens::new(start_span, n_opening),
-            )),
+            TTToken::RawScopeOpen(start_span, n_opening) => {
+                self.flush_pending_text(py, true);
+                Ok(BuildStatus::StartInnerBuilder(RawStringFromTokens::new(
+                    start_span, n_opening,
+                )))
+            }
 
             TTToken::BlockScopeOpen(_) => todo!("error block scope open in inline context"),
 
@@ -825,6 +851,22 @@ impl InlineTokenProcessor for ParagraphFromTokens {
     fn at_start_of_line(&self) -> bool {
         self.start_of_line
     }
+    fn clear_pending_whitespace(&mut self) {
+        match &mut self.current_building_text {
+            Some(InlineTextState {
+                text: _,
+                pending_whitespace,
+            }) => *pending_whitespace = None,
+            None => {}
+        }
+    }
+    fn flush_pending_text(
+        &mut self,
+        py: Python,
+        include_whitespace: bool,
+    ) -> TurnipTextContextlessResult<()> {
+        self.fold_current_text_into_sentence(py, include_whitespace)
+    }
 
     fn on_plain_text(
         &mut self,
@@ -890,18 +932,16 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
+        // Text is already folded into the sentence
         if self.start_of_line {
             if !self.ctx.try_extend(&tok) {
                 // TODO should this really be an error??
                 todo!("error to say 'closing paragraph from different file'");
             }
-            self.fold_current_text_into_sentence(py, false)?;
             Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
                 PyTcRef::of_unchecked(self.para.as_ref(py)),
             )))))
         } else {
-            // Fold current text into the current sentence before we break it - don't include trailing whitespace
-            self.fold_current_text_into_sentence(py, false)?;
             // Swap the current sentence out for a new one
             let sentence = std::mem::replace(
                 &mut self.current_sentence,
@@ -1039,6 +1079,22 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
     fn at_start_of_line(&self) -> bool {
         self.start_of_line
     }
+    fn clear_pending_whitespace(&mut self) {
+        match &mut self.current_building_text {
+            Some(InlineTextState {
+                text: _,
+                pending_whitespace,
+            }) => *pending_whitespace = None,
+            None => {}
+        }
+    }
+    fn flush_pending_text(
+        &mut self,
+        py: Python,
+        include_whitespace: bool,
+    ) -> TurnipTextContextlessResult<()> {
+        self.fold_current_text_into_scope(py, include_whitespace)
+    }
 
     fn on_plain_text(
         &mut self,
@@ -1110,10 +1166,10 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
+        // pending text has already been folded in
         if !self.ctx.try_extend(&tok) {
             todo!("error to say 'closing inline scope from different file'");
         }
-        self.fold_current_text_into_scope(py, false)?;
         Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Inline(
             PyTcRef::of_unchecked(self.inline_scope.as_ref(py)),
         )))))
