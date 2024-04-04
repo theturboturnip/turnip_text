@@ -539,7 +539,7 @@ impl TTToken {
     }
 
     /// Convert a token to a [str] representation, usable for a raw-scope representation
-    /// i.e. with no escaping.
+    /// i.e. with no escaping - `TTToken::Escaped(_, Escapable::SqrOpen)` is converted to `'\['` with the escaping backslash.
     ///
     /// Newlines are converted to \n everywhere.
     pub fn stringify_raw<'a>(&self, data: &'a str) -> &'a str {
@@ -566,15 +566,15 @@ impl TTToken {
         }
     }
     /// Convert a token to a [str] representation, usable for normal representation
-    /// i.e. with escaping.
+    /// i.e. with escaping - `TTToken::Escaped(_, Escapable::SqrOpen)` is converted to just `'['` without the escaping backslash.
     ///
-    /// Newlines are converted to \n everywhere.
+    /// Panics on newlines and escaped newlines as they should always have semantic meaning
     pub fn stringify_escaped<'a>(&self, data: &'a str) -> &'a str {
         use TTToken::*;
         match self {
             Backslash(_) => "\\",
             // This is an odd case - Newline should have semantic meaning and not be embedded in text
-            Newline(_) => "Newline should not be stringified",
+            Newline(_) => panic!("Newline should not be stringified"),
             Escaped(_, escaped) => match escaped {
                 // This is an odd case - Escaped(Newline) should have semantic meaning
                 Escapable::Newline => {
