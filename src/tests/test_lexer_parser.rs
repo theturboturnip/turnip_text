@@ -28,6 +28,7 @@ pub fn test_inline_code() {
             CodeOpen(1),
             OtherText("len((1,2,3))"),
             CodeClose(1),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("3="),
@@ -45,6 +46,7 @@ pub fn test_inline_code_with_extra_delimiter() {
             CodeOpen(2),
             OtherText("len((1,2,3))"),
             CodeClose(2),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("3="),
@@ -62,6 +64,7 @@ pub fn test_inline_code_with_long_extra_delimiter() {
             CodeOpen(5),
             OtherText("len((1,2,3))"),
             CodeClose(5),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("3="),
@@ -81,6 +84,7 @@ pub fn test_inline_code_with_escaped_extra_delimiter() {
             OtherText("len((1,2,3))"),
             CodeClose(1),
             Escaped(Escapable::SqrClose),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("3=["),
@@ -103,6 +107,7 @@ pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
             Whitespace(" "),
             Escaped(Escapable::SqrClose),
             Escaped(Escapable::SqrClose),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
             r#"3=[[ len((1,2,3)) ]]"#,
@@ -123,6 +128,7 @@ pub fn test_inline_list_with_extra_delimiter() {
             CodeClose(1),
             OtherText(")"),
             CodeClose(2),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("3="),
@@ -154,6 +160,7 @@ inside 2
             OtherText("2"),
             Newline,
             ScopeClose,
+            EOF,
         ],
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![test_sentence("outside")]),
@@ -179,6 +186,7 @@ pub fn test_raw_scope() {
             Whitespace(" "),
             OtherText("raw"),
             RawScopeClose(1),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             TestInline::Raw("It's f&%#ing raw".into()),
@@ -196,6 +204,7 @@ pub fn test_inline_scope() {
             InlineScopeOpen,
             OtherText("inside"),
             ScopeClose,
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("outside "),
@@ -216,6 +225,7 @@ pub fn test_inline_escaped_scope() {
             Whitespace(" "),
             OtherText("inside"),
             Escaped(Escapable::SqgClose),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
             "outside {not inside}",
@@ -235,6 +245,7 @@ pub fn test_raw_scope_newlines() {
             OtherText("inside"),
             Newline,
             RawScopeClose(1),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("outside "),
@@ -256,6 +267,7 @@ pub fn test_raw_scope_crlf_newlines() {
             OtherText("inside"),
             Newline,
             RawScopeClose(1),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("outside "),
@@ -274,6 +286,7 @@ pub fn test_inline_raw_scope() {
             RawScopeOpen(1),
             OtherText("inside"),
             RawScopeClose(1),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("outside "),
@@ -295,6 +308,7 @@ pub fn test_inline_raw_escaped_scope() {
             Whitespace(" "),
             OtherText("inside"),
             Escaped(Escapable::SqgClose),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
             "outside #{not inside}",
@@ -312,6 +326,7 @@ pub fn test_plain_hashes() {
             Hashes(7),
             Whitespace(" "),
             OtherText("after"),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![
             test_sentence("before"), // The first hash in the chain starts a comment, and trailing whitespace is ignored
@@ -323,7 +338,7 @@ pub fn test_plain_hashes() {
 pub fn test_special_with_escaped_backslash() {
     expect_lex_parse(
         r#"\\#"#,
-        vec![Escaped(Escapable::Backslash), Hashes(1)],
+        vec![Escaped(Escapable::Backslash), Hashes(1), EOF],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text(
             "\\",
         )]])])),
@@ -340,6 +355,7 @@ pub fn test_escaped_special_with_escaped_backslash() {
             OtherText("not"),
             Whitespace(" "),
             OtherText("code"),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
             r#"\[not code"#,
@@ -351,7 +367,7 @@ pub fn test_escaped_special_with_escaped_backslash() {
 pub fn test_escaped_notspecial() {
     expect_lex_parse(
         r#"\a"#,
-        vec![Backslash, OtherText("a")],
+        vec![Backslash, OtherText("a"), EOF],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
             r#"\a"#,
         )])])),
@@ -368,6 +384,7 @@ newline"#,
             Whitespace(" "),
             Escaped(Escapable::Newline),
             OtherText("newline"),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
             "escaped newline",
@@ -385,6 +402,7 @@ pub fn test_newline_in_code() {
             Newline,
             OtherText("2))"),
             CodeClose(1),
+            EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
             "2",
@@ -406,6 +424,7 @@ block
             InlineScopeOpen,
             OtherText("inline"),
             ScopeClose,
+            EOF,
         ],
         Ok(test_doc(vec![
             TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence("block")])]),

@@ -100,7 +100,12 @@ impl TurnipTextParser {
                     self.interp.push_subfile();
                 }
                 InterpreterFileAction::FileEnded => {
-                    match self.interp.pop_subfile(py, py_env) {
+                    let file_idx = self
+                        .file_stack
+                        .last_mut()
+                        .expect("We just handled tokens from a file, there must be one");
+                    let file = &mut self.files[*file_idx];
+                    match self.interp.pop_subfile(py, py_env, &file.contents) {
                         Ok(()) => {}
                         Err(err) => return Err((self.files, err).into()),
                     };

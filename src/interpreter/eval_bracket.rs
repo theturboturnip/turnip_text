@@ -12,7 +12,7 @@ use super::{
         },
         typeclass::PyTcRef,
     },
-    MapContextlessResult,
+    InterpError, MapContextlessResult,
 };
 
 pub enum EvalBracketContext {
@@ -172,6 +172,12 @@ pub fn eval_brackets(
                 code_start.combine(&close_span),
                 EvalBracketContext::NeedRawBuilder { n_hashes },
             )
+        }
+        TTToken::EOF(_) => {
+            return Err(InterpError::EndedInsideCode {
+                code_start: *code_start,
+            }
+            .into())
         }
 
         _ => {

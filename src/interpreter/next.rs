@@ -90,14 +90,8 @@ trait BuildFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
+        closing_tok: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus>;
-    // Some builders may produce something on EOF e.g. a Paragraph builder will just return the Paragraph up to this point
-    fn process_eof(
-        &mut self,
-        py: Python,
-        py_env: &PyDict,
-    ) -> TurnipTextContextlessResult<Option<PushToNextLevel>>;
-
     // TODO some boolean property for "let someone open an inserted file in the middle of this"
 }
 
@@ -143,13 +137,14 @@ impl Interpreter {
             .builders
             .top_builder()
             .process_token(py, py_env, tok, data)?;
-        self.handle_build_status(py, py_env, status)
+        self.handle_build_status(py, py_env, tok, status)
     }
 
     fn handle_build_status(
         &mut self,
         py: Python,
         py_env: &PyDict,
+        tok: TTToken,
         status: BuildStatus,
     ) -> TurnipTextContextlessResult<Option<TurnipTextSource>> {
         match status {
@@ -158,8 +153,8 @@ impl Interpreter {
                 let next_status = self
                     .builders
                     .top_builder()
-                    .process_push_from_inner_builder(py, py_env, pushed)?;
-                return self.handle_build_status(py, py_env, next_status);
+                    .process_push_from_inner_builder(py, py_env, pushed, tok)?;
+                return self.handle_build_status(py, py_env, tok, next_status);
             }
             BuildStatus::StartInnerBuilder(new_builder) => {
                 self.builders.push_to_current_file(new_builder)
@@ -178,26 +173,29 @@ impl Interpreter {
         &mut self,
         py: Python,
         py_env: &'_ PyDict,
+        data: &str,
     ) -> TurnipTextContextlessResult<()> {
         let mut stack = self.builders.pop_subfile();
-        // If there are any builders within the stack, tell them about the EOF and bubble their production up to the next level.
-        match stack.pop() {
-            Some(mut builder) => {
-                let mut pushed = builder.process_eof(py, py_env)?;
-                while let Some(mut builder) = stack.pop() {
-                    pushed = {
-                        builder.process_push_from_inner_builder(py, py_env, pushed)?;
-                        builder.process_eof(py, py_env)?
-                    };
-                }
-                // If there were builders, then a new element (which may be None!) was produced and we need to bubble it up to the next file
-                self.builders
-                    .top_builder()
-                    .process_push_from_inner_builder(py, py_env, pushed)?;
-            }
-            // If there weren't any builders, we don't need to do anything
-            None => {}
-        };
+        // The EOF token from the end of the file should have bubbled everything out.
+        assert!(stack.is_empty());
+        // // If there are any builders within the stack, tell them about the EOF and bubble their production up to the next level.
+        // match stack.pop() {
+        //     Some(mut builder) => {
+        //         let mut pushed = builder.process_token(py, py_env)?;
+        //         while let Some(mut builder) = stack.pop() {
+        //             pushed = {
+        //                 builder.process_push_from_inner_builder(py, py_env, pushed)?;
+        //                 builder.process_eof(py, py_env)?
+        //             };
+        //         }
+        //         // If there were builders, then a new element (which may be None!) was produced and we need to bubble it up to the next file
+        //         self.builders
+        //             .top_builder()
+        //             .process_push_from_inner_builder(py, py_env, pushed)?;
+        //     }
+        //     // If there weren't any builders, we don't need to do anything
+        //     None => {}
+        // };
         Ok(())
     }
 
@@ -208,22 +206,25 @@ impl Interpreter {
     ) -> TurnipTextContextlessResult<Py<DocSegment>> {
         let (mut top, mut stack) = self.builders.finalize();
 
+        // The EOF token from the end of the toplevel file should have bubbled everything out.
+        assert!(stack.is_empty());
+
         // If there are any builders within the stack, tell them about the EOF and bubble their production up to the next level.
-        match stack.pop() {
-            Some(mut builder) => {
-                let mut pushed = builder.process_eof(py, py_env)?;
-                while let Some(mut builder) = stack.pop() {
-                    pushed = {
-                        builder.process_push_from_inner_builder(py, py_env, pushed)?;
-                        builder.process_eof(py, py_env)?
-                    };
-                }
-                // If there were builders, then a new_elem was produced and we need to bubble it up to the next file
-                top.process_push_from_inner_builder(py, py_env, pushed)?;
-            }
-            // If there weren't any builders, we don't need to do anything
-            None => {}
-        };
+        // match stack.pop() {
+        //     Some(mut builder) => {
+        //         let mut pushed = builder.process_eof(py, py_env)?;
+        //         while let Some(mut builder) = stack.pop() {
+        //             pushed = {
+        //                 builder.process_push_from_inner_builder(py, py_env, pushed)?;
+        //                 builder.process_eof(py, py_env)?
+        //             };
+        //         }
+        //         // If there were builders, then a new_elem was produced and we need to bubble it up to the next file
+        //         top.process_push_from_inner_builder(py, py_env, pushed)?;
+        //     }
+        //     // If there weren't any builders, we don't need to do anything
+        //     None => {}
+        // };
 
         top.finalize(py)
     }
@@ -304,6 +305,7 @@ trait BlockTokenProcessor {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus>;
+    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus>;
 
     fn process_block_level_token(
         &mut self,
@@ -364,6 +366,8 @@ trait BlockTokenProcessor {
                 TTToken::RawScopeClose(_, _) => todo!("error close raw scope without open"),
 
                 TTToken::ScopeClose(_) => self.on_close_scope(py, tok, data),
+
+                TTToken::EOF(_) => self.on_eof(py, tok),
             }
         }
     }
@@ -399,20 +403,15 @@ trait InlineTokenProcessor {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus>;
-    fn on_newline(
-        &mut self,
-        py: Python,
-        tok: TTToken,
-        data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus>;
+    fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus>;
     fn on_close_scope(
         &mut self,
         py: Python,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus>;
+    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus>;
 
-    // TODO it would be nice to trigger a text flush when pushing a new builder, not when receiving the stuff from the builder.
     fn process_inline_level_token(
         &mut self,
         py: Python,
@@ -434,7 +433,12 @@ trait InlineTokenProcessor {
             TTToken::Newline(_) => {
                 self.clear_pending_whitespace();
                 self.flush_pending_text(py, true)?;
-                self.on_newline(py, tok, data)
+                self.on_newline(py, tok)
+            }
+            TTToken::EOF(_) => {
+                self.clear_pending_whitespace();
+                self.flush_pending_text(py, true)?;
+                self.on_eof(py, tok)
             }
             TTToken::ScopeClose(_) => {
                 self.clear_pending_whitespace();
@@ -456,14 +460,14 @@ trait InlineTokenProcessor {
             }
 
             TTToken::InlineScopeOpen(start_span) => {
-                self.flush_pending_text(py, true);
+                self.flush_pending_text(py, true)?;
                 Ok(BuildStatus::StartInnerBuilder(InlineScopeFromTokens::new(
                     py, start_span,
                 )?))
             }
 
             TTToken::RawScopeOpen(start_span, n_opening) => {
-                self.flush_pending_text(py, true);
+                self.flush_pending_text(py, true)?;
                 Ok(BuildStatus::StartInnerBuilder(RawStringFromTokens::new(
                     start_span, n_opening,
                 )))
@@ -521,6 +525,11 @@ impl BlockTokenProcessor for TopLevelDocumentBuilder {
     ) -> TurnipTextContextlessResult<BuildStatus> {
         todo!("error close block scope without open")
     }
+
+    // When EOF comes, we don't produce anything to bubble up - there's nothing above us!
+    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
+        Ok(BuildStatus::Continue)
+    }
 }
 impl BuildFromTokens for TopLevelDocumentBuilder {
     // This builder is responsible for spawning lower-level builders
@@ -534,20 +543,12 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
         self.process_block_level_token(py, tok, data)
     }
 
-    // When EOF comes, we don't produce anything to bubble up - there's nothing above us!
-    fn process_eof(
-        &mut self,
-        py: Python,
-        py_env: &PyDict,
-    ) -> TurnipTextContextlessResult<Option<PushToNextLevel>> {
-        Ok(None)
-    }
-
     fn process_push_from_inner_builder(
         &mut self,
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
+        closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
@@ -600,17 +601,9 @@ impl BuildFromTokens for CommentFromTokens {
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match tok {
-            TTToken::Newline(_) => Ok(BuildStatus::Done(None)),
+            TTToken::Newline(_) | TTToken::EOF(_) => Ok(BuildStatus::Done(None)),
             _ => Ok(BuildStatus::Continue),
         }
-    }
-
-    fn process_eof(
-        &mut self,
-        py: Python,
-        py_env: &PyDict,
-    ) -> TurnipTextContextlessResult<Option<PushToNextLevel>> {
-        Ok(None)
     }
 
     fn process_push_from_inner_builder(
@@ -618,6 +611,7 @@ impl BuildFromTokens for CommentFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
+        closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         panic!("CommentFromTokens does not spawn inner builders")
     }
@@ -652,6 +646,7 @@ impl BuildFromTokens for RawStringFromTokens {
                     std::mem::take(&mut self.raw_data),
                 )))))
             }
+            TTToken::EOF(_) => todo!("error EOF inside scope"),
             _ => {
                 self.raw_data.push_str(tok.stringify_raw(data));
                 Ok(BuildStatus::Continue)
@@ -664,16 +659,9 @@ impl BuildFromTokens for RawStringFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
+        closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         panic!("RawStringFromTokens does not spawn inner builders")
-    }
-
-    fn process_eof(
-        &mut self,
-        py: Python,
-        py_env: &PyDict,
-    ) -> TurnipTextContextlessResult<Option<PushToNextLevel>> {
-        todo!("error EOF inside scope")
     }
 }
 
@@ -717,6 +705,10 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
             PyTcRef::of_unchecked(self.block_scope.as_ref(py)),
         )))))
     }
+
+    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
+        todo!("error eof in the middle of block scope")
+    }
 }
 impl BuildFromTokens for BlockScopeFromTokens {
     fn process_token(
@@ -734,6 +726,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
+        closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
@@ -745,6 +738,16 @@ impl BuildFromTokens for BlockScopeFromTokens {
                         .borrow_mut(py)
                         .push_block(block.as_ref(py))
                         .err_as_internal(py)?;
+                    // If the block in the previous scope ended with a newline (i.e. it was a paragraph)
+                    // then don't expect another newline afterwards.
+                    // Otherwise, do.
+                    // TODO Test this
+                    // TODO implement this in top-level
+                    if let TTToken::Newline(_) = closing_token {
+                        self.expect_newline = false;
+                    } else {
+                        self.expect_newline = true;
+                    }
                     Ok(BuildStatus::Continue)
                 }
                 // If we get an inline, start building a paragraph inside this block-scope with it
@@ -769,14 +772,6 @@ impl BuildFromTokens for BlockScopeFromTokens {
             },
             None => Ok(BuildStatus::Continue),
         }
-    }
-
-    fn process_eof(
-        &mut self,
-        py: Python,
-        py_env: &PyDict,
-    ) -> TurnipTextContextlessResult<Option<PushToNextLevel>> {
-        todo!("error eof in the middle of block scope")
     }
 }
 
@@ -926,12 +921,7 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         Ok(BuildStatus::Continue)
     }
 
-    fn on_newline(
-        &mut self,
-        py: Python,
-        tok: TTToken,
-        data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
+    fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
         // Text is already folded into the sentence
         if self.start_of_line {
             if !self.ctx.try_extend(&tok) {
@@ -956,6 +946,28 @@ impl InlineTokenProcessor for ParagraphFromTokens {
             self.start_of_line = true;
             Ok(BuildStatus::Continue)
         }
+    }
+
+    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
+        if !self.start_of_line {
+            // Swap the current sentence out for a new one
+            let sentence = std::mem::replace(
+                &mut self.current_sentence,
+                py_internal_alloc(py, Sentence::new_empty(py))?,
+            );
+            // Push the old one into the paragraph
+            self.para
+                .borrow_mut(py)
+                .push_sentence(sentence.as_ref(py))
+                .err_as_internal(py)?;
+        }
+        if !self.ctx.try_extend(&tok) {
+            // TODO should this really be an error??
+            todo!("error to say 'closing paragraph from different file'");
+        }
+        Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
+            PyTcRef::of_unchecked(self.para.as_ref(py)),
+        )))))
     }
 
     fn on_close_scope(
@@ -984,6 +996,7 @@ impl BuildFromTokens for ParagraphFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
+        closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         self.start_of_line = false;
         match pushed {
@@ -998,7 +1011,6 @@ impl BuildFromTokens for ParagraphFromTokens {
                         .borrow_mut(py)
                         .push_inline(inline.as_ref(py))
                         .err_as_internal(py)?;
-                    Ok(BuildStatus::Continue)
                 }
                 // If we get a raw, convert it to an inline Raw() object and shove it in
                 DocElement::Raw(data) => {
@@ -1007,32 +1019,16 @@ impl BuildFromTokens for ParagraphFromTokens {
                         .borrow_mut(py)
                         .push_inline(raw.as_ref(py))
                         .err_as_internal(py)?;
-                    Ok(BuildStatus::Continue)
+                    {}
                 }
             },
-            None => Ok(BuildStatus::Continue),
+            None => {}
         }
-    }
-
-    fn process_eof(
-        &mut self,
-        py: Python,
-        py_env: &PyDict,
-    ) -> TurnipTextContextlessResult<Option<PushToNextLevel>> {
-        self.fold_current_text_into_sentence(py, false)?;
-        // Swap the current sentence out for a new one
-        let sentence = std::mem::replace(
-            &mut self.current_sentence,
-            py_internal_alloc(py, Sentence::new_empty(py))?,
-        );
-        // Push the old one into the paragraph
-        self.para
-            .borrow_mut(py)
-            .push_sentence(sentence.as_ref(py))
-            .err_as_internal(py)?;
-        Ok(Some(self.ctx.make(DocElement::Block(
-            PyTcRef::of_unchecked(self.para.as_ref(py)),
-        ))))
+        match closing_token {
+            TTToken::Newline(_) => self.on_newline(py, closing_token),
+            TTToken::EOF(_) => self.on_eof(py, closing_token),
+            _ => Ok(BuildStatus::Continue),
+        }
     }
 }
 
@@ -1151,12 +1147,7 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         Ok(BuildStatus::Continue)
     }
 
-    fn on_newline(
-        &mut self,
-        py: Python,
-        tok: TTToken,
-        data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
+    fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
         todo!("error newline inside inline scope")
     }
 
@@ -1173,6 +1164,10 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Inline(
             PyTcRef::of_unchecked(self.inline_scope.as_ref(py)),
         )))))
+    }
+
+    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
+        todo!("error eof inside inline scope")
     }
 }
 impl BuildFromTokens for InlineScopeFromTokens {
@@ -1191,6 +1186,7 @@ impl BuildFromTokens for InlineScopeFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
+        closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         self.start_of_line = false;
         // Before we do anything else, push the current text into the scope including the whitespace between the text and the newly pushed item
@@ -1207,7 +1203,6 @@ impl BuildFromTokens for InlineScopeFromTokens {
                         .borrow_mut(py)
                         .push_inline(inline.as_ref(py))
                         .err_as_internal(py)?;
-                    Ok(BuildStatus::Continue)
                 }
                 // If we get a raw, convert it to an inline Raw() object and shove it in
                 DocElement::Raw(data) => {
@@ -1216,19 +1211,15 @@ impl BuildFromTokens for InlineScopeFromTokens {
                         .borrow_mut(py)
                         .push_inline(raw.as_ref(py))
                         .err_as_internal(py)?;
-                    Ok(BuildStatus::Continue)
                 }
             },
-            None => Ok(BuildStatus::Continue),
+            None => {}
+        };
+        match closing_token {
+            TTToken::Newline(_) => self.on_newline(py, closing_token),
+            TTToken::EOF(_) => self.on_eof(py, closing_token),
+            _ => Ok(BuildStatus::Continue),
         }
-    }
-
-    fn process_eof(
-        &mut self,
-        py: Python,
-        py_env: &PyDict,
-    ) -> TurnipTextContextlessResult<Option<PushToNextLevel>> {
-        todo!("error eof inside inline scope")
     }
 }
 
@@ -1291,16 +1282,9 @@ impl BuildFromTokens for CodeFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
+        closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         todo!()
-    }
-
-    fn process_eof(
-        &mut self,
-        py: Python,
-        py_env: &PyDict,
-    ) -> TurnipTextContextlessResult<Option<PushToNextLevel>> {
-        todo!("error EOF in the middle of code")
     }
 }
 

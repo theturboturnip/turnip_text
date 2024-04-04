@@ -21,6 +21,7 @@ pub enum TestTTToken<'a> {
     Hashes(usize),
     OtherText(&'a str),
     Whitespace(&'a str),
+    EOF,
 }
 impl<'a> TestTTToken<'a> {
     pub fn from_str_tok(data: &'a str, t: TTToken) -> Self {
@@ -43,6 +44,7 @@ impl<'a> TestTTToken<'a> {
             TTToken::Hashes(_, n) => Self::Hashes(n),
             TTToken::OtherText(span) => Self::OtherText(data[span.byte_range()].into()),
             TTToken::Whitespace(span) => Self::Whitespace(data[span.byte_range()].into()),
+            TTToken::EOF(_) => Self::EOF,
         }
     }
 }
@@ -162,6 +164,7 @@ The bee, of course, [code]###{flies} anyway because bees [[[emph]]]{don't} care 
             txt("."),
             Newline,
             ScopeClose,
+            EOF,
         ],
     )
 }
@@ -178,6 +181,7 @@ pub fn test_newline() {
             Newline,
             OtherText("c"),
             Newline,
+            EOF,
         ],
     )
 }
@@ -194,6 +198,7 @@ pub fn test_whitespace_newline_chain() {
             Whitespace("    "),
             Newline,
             Whitespace("    "),
+            EOF,
         ],
     )
 }
@@ -228,6 +233,7 @@ pub fn test_escaped() {
             Newline,
             Escaped(Escapable::Hash),
             Newline,
+            EOF,
         ],
     )
 }
@@ -246,6 +252,7 @@ pub fn test_backslash() {
             OtherText("b"),
             Backslash,
             OtherText("c"),
+            EOF,
         ],
     )
 }
@@ -269,6 +276,7 @@ pub fn test_code_open() {
             Newline,
             CodeOpen(7),
             Newline,
+            EOF,
         ],
     )
 }
@@ -292,6 +300,7 @@ pub fn test_code_close() {
             Newline,
             CodeClose(7),
             Newline,
+            EOF,
         ],
     )
 }
@@ -319,6 +328,7 @@ pub fn test_code_close_owning_inline() {
             CodeCloseOwningInline(7),
             ScopeClose,
             Newline,
+            EOF,
         ],
     )
 }
@@ -354,6 +364,7 @@ pub fn test_code_close_owning_raw() {
             Newline,
             CodeCloseOwningRaw(7, 4),
             Newline,
+            EOF,
         ],
     )
 }
@@ -381,6 +392,7 @@ pub fn test_code_close_owning_block() {
             Newline,
             CodeCloseOwningBlock(7),
             Newline,
+            EOF,
         ],
     )
 }
@@ -389,7 +401,7 @@ pub fn test_code_close_owning_block() {
 pub fn test_inline_scope_open() {
     expect_lex(
         r#" { "#,
-        vec![Whitespace(" "), InlineScopeOpen, Whitespace(" ")],
+        vec![Whitespace(" "), InlineScopeOpen, Whitespace(" "), EOF],
     )
 }
 
@@ -400,7 +412,7 @@ pub fn test_block_scope_open() {
 {
 
 "#,
-        vec![Newline, BlockScopeOpen, Newline],
+        vec![Newline, BlockScopeOpen, Newline, EOF],
     )
 }
 
@@ -410,7 +422,7 @@ pub fn test_scope_close() {
         r#"
 }
 "#,
-        vec![Newline, ScopeClose, Newline],
+        vec![Newline, ScopeClose, Newline, EOF],
     )
 }
 
@@ -433,6 +445,7 @@ pub fn test_raw_scope_open() {
             Newline,
             RawScopeOpen(7),
             Newline,
+            EOF,
         ],
     )
 }
@@ -456,6 +469,7 @@ pub fn test_raw_scope_close() {
             Newline,
             RawScopeClose(7),
             Newline,
+            EOF,
         ],
     )
 }
@@ -479,6 +493,7 @@ pub fn test_hashes() {
             Newline,
             Hashes(7),
             Newline,
+            EOF,
         ],
     )
 }
@@ -492,6 +507,7 @@ pub fn test_escaped_cr() {
             OtherText("before"),
             Escaped(Escapable::Newline),
             OtherText("after"),
+            EOF,
         ],
     )
 }
@@ -504,6 +520,7 @@ pub fn test_escaped_lf() {
             OtherText("before"),
             Escaped(Escapable::Newline),
             OtherText("after"),
+            EOF,
         ],
     )
 }
@@ -516,6 +533,7 @@ pub fn test_escaped_crlf() {
             OtherText("before"),
             Escaped(Escapable::Newline),
             OtherText("after"),
+            EOF,
         ],
     )
 }
@@ -523,17 +541,17 @@ pub fn test_escaped_crlf() {
 #[test]
 pub fn test_cr() {
     // '\r'
-    expect_lex("\rcontent", vec![Newline, OtherText("content")])
+    expect_lex("\rcontent", vec![Newline, OtherText("content"), EOF])
 }
 #[test]
 pub fn test_lf() {
     // '\n'
-    expect_lex("\ncontent", vec![Newline, OtherText("content")])
+    expect_lex("\ncontent", vec![Newline, OtherText("content"), EOF])
 }
 #[test]
 pub fn test_crlf() {
     // '\r' + '\n'
-    expect_lex("\r\ncontent", vec![Newline, OtherText("content")])
+    expect_lex("\r\ncontent", vec![Newline, OtherText("content"), EOF])
 }
 
 // TODO test error messages for multibyte?

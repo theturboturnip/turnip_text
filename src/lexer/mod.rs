@@ -6,6 +6,7 @@ use lexer_rs::{CharStream, Lexer, LexerParseResult};
 mod line_col_char_posn;
 use line_col_char_posn::LineColumnChar;
 
+use crate::util::ParsePosn;
 use crate::util::ParseSpan;
 
 #[derive(Debug)]
@@ -44,6 +45,24 @@ fn lex_units_only(file_idx: usize, data: &str) -> Result<Vec<Unit>, LexError> {
     ]) {
         units.push(u?);
     }
+
+    // Add an EOF unit to the end of the stream, with a zero-length ParseSpan at the end of the final character
+    let eof_span = match units.last() {
+        Some(last_unit) => {
+            let end_of_last_unit = last_unit.span().end();
+            ParseSpan::new(file_idx, end_of_last_unit, end_of_last_unit)
+        }
+        None => {
+            let zero_posn = ParsePosn {
+                byte_ofs: 0,
+                char_ofs: 0,
+                line: 0,
+                column: 0,
+            };
+            ParseSpan::new(file_idx, zero_posn, zero_posn)
+        }
+    };
+    units.push(Unit::EOF(eof_span));
 
     Ok(units)
 }
@@ -201,6 +220,7 @@ pub enum Unit {
     // TODO
     // /// `%` character not preceded by a backslash
     // Percent(P),
+    EOF(ParseSpan),
 }
 impl Unit {
     fn parse_n_chars<L>(
@@ -362,6 +382,22 @@ impl Unit {
             Ok(Some((end, Self::OtherText(span))))
         }
     }
+
+    pub fn span(&self) -> ParseSpan {
+        match *self {
+            Unit::Newline(span) => span,
+            Unit::Escaped(span, _) => span,
+            Unit::Backslash(span) => span,
+            Unit::CodeOpen(span, _) => span,
+            Unit::CodeClose(span, _) => span,
+            Unit::ScopeOpen(span) => span,
+            Unit::ScopeClose(span) => span,
+            Unit::Hashes(span, _) => span,
+            Unit::OtherText(span) => span,
+            Unit::Whitespace(span) => span,
+            Unit::EOF(span) => span,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -401,6 +437,7 @@ pub enum TTToken {
     // TODO
     // /// `%` character not preceded by a backslash
     // Percent(P),
+    EOF(ParseSpan),
 }
 pub fn units_to_tokens(units: Vec<Unit>) -> Vec<TTToken> {
     let mut toks = vec![];
@@ -514,6 +551,10 @@ impl TTToken {
 
             // Raw scope close
             (Unit::Hashes(s, n), _, _) => (TTToken::Hashes(*s, *n), 1),
+
+            // EOF handling
+            (Unit::EOF(s), None, None) => (TTToken::EOF(*s), 1),
+            (Unit::EOF(_), _, _) => unreachable!("EOF cannot be followed by any other units"),
         }
     }
 
@@ -535,6 +576,7 @@ impl TTToken {
             TTToken::Hashes(span, _) => span,
             TTToken::OtherText(span) => span,
             TTToken::Whitespace(span) => span,
+            TTToken::EOF(span) => span,
         }
     }
 
@@ -542,11 +584,13 @@ impl TTToken {
     /// i.e. with no escaping - `TTToken::Escaped(_, Escapable::SqrOpen)` is converted to `'\['` with the escaping backslash.
     ///
     /// Newlines are converted to \n everywhere.
+    /// EOFs are converted to "".
     pub fn stringify_raw<'a>(&self, data: &'a str) -> &'a str {
         use TTToken::*;
         match self {
             Backslash(_) => "\\",
             Newline(_) => "\n",
+            EOF(_) => "",
             // Escaped(Newline) = Backslash() + Newline(), which is always \n
             Escaped(_, Escapable::Newline) => "\\\n",
             Escaped(span, _)
@@ -568,11 +612,13 @@ impl TTToken {
     /// Convert a token to a [str] representation, usable for normal representation
     /// i.e. with escaping - `TTToken::Escaped(_, Escapable::SqrOpen)` is converted to just `'['` without the escaping backslash.
     ///
-    /// Panics on newlines and escaped newlines as they should always have semantic meaning
+    /// Panics on newlines and escaped newlines as they should always have semantic meaning.
+    /// EOFs are converted to "".
     pub fn stringify_escaped<'a>(&self, data: &'a str) -> &'a str {
         use TTToken::*;
         match self {
             Backslash(_) => "\\",
+            EOF(_) => "",
             // This is an odd case - Newline should have semantic meaning and not be embedded in text
             Newline(_) => panic!("Newline should not be stringified"),
             Escaped(_, escaped) => match escaped {

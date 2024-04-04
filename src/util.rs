@@ -72,4 +72,10 @@ impl ParseSpan {
     pub fn file_idx(&self) -> usize {
         self.file_idx
     }
+    pub fn start(&self) -> ParsePosn {
+        self.start
+    }
+    pub fn end(&self) -> ParsePosn {
+        self.end
+    }
 }
