@@ -457,6 +457,7 @@ trait InlineTokenProcessor {
 
 struct TopLevelDocumentBuilder {
     /// The current structure of the document, including toplevel content, segments, and the current block stacks (one block stack per included subfile)
+    /// TODO remove the block-stack-handling parts from this
     structure: InterimDocumentStructure,
     expect_newline: bool,
 }
@@ -525,10 +526,13 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
                 DocElement::Header(header) => {
-                    todo!("incorporate the new header into the InterimDocumentStructure")
+                    self.structure
+                        .push_segment_header(py, header, from_builder.from_span, None)?;
+                    Ok(BuildStatus::Continue)
                 }
                 DocElement::Block(block) => {
-                    todo!("push the new block into the InterimDocumentStructure")
+                    self.structure.push_to_topmost_block(py, block.as_ref(py))?;
+                    Ok(BuildStatus::Continue)
                 }
                 // If we get an inline, start building a paragraph with it
                 DocElement::Inline(inline) => Ok(BuildStatus::StartInnerBuilder(
