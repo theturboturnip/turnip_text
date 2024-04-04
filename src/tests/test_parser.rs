@@ -957,8 +957,26 @@ pub fn test_ended_inside_raw_scope() {
 pub fn test_ended_inside_scope() {
     expect_parse_err(
         "text {scope",
+        TestInterpError::EndedInsideScope {
+            scope_start: TestParserSpan("{"),
+        },
+    )
+}
+#[test]
+pub fn test_newline_inside_inline_scope() {
+    expect_parse_err(
+        "text {scope\n",
         TestInterpError::SentenceBreakInInlineScope {
             scope_start: TestParserSpan("{"),
+        },
+    )
+}
+#[test]
+pub fn test_block_scope_open_inline() {
+    expect_parse_err(
+        "text {\n",
+        TestInterpError::SentenceBreakInInlineScope {
+            scope_start: TestParserSpan("{\n"),
         },
     )
 }
