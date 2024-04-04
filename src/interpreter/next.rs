@@ -756,9 +756,12 @@ impl BuildFromTokens for BlockScopeFromTokens {
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
-                DocElement::Header(header) => {
-                    todo!("error can't emit a header inside a block scope")
+                DocElement::Header(_) => Err(InterpError::DocSegmentHeaderMidScope {
+                    code_span: from_builder.from_span,
+                    block_close_span: None,
+                    enclosing_scope_start: self.ctx.from_span,
                 }
+                .into()),
                 DocElement::Block(block) => {
                     self.block_scope
                         .borrow_mut(py)
@@ -1003,6 +1006,7 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         // TODO this will catch a closing brace on a line just under a paragraph, when the paragraph hasn't ended yet. Add a test case.
+        // This isn't an error in the old version.
         todo!("error: closing scope inside a paragraph when no inline scopes are open")
     }
 }
@@ -1028,8 +1032,17 @@ impl BuildFromTokens for ParagraphFromTokens {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
                 // Can't get a header or a block in an inline scope
-                DocElement::Header(_) | DocElement::Block(_) => {
-                    todo!("error: can't push header or block into an inline context")
+                DocElement::Header(_) => {
+                    return Err(InterpError::DocSegmentHeaderMidPara {
+                        code_span: from_builder.from_span,
+                    }
+                    .into())
+                }
+                DocElement::Block(_) => {
+                    return Err(InterpError::BlockCodeMidPara {
+                        code_span: from_builder.from_span,
+                    }
+                    .into())
                 }
                 // If we get an inline, shove it in
                 DocElement::Inline(inline) => {
@@ -1226,8 +1239,17 @@ impl BuildFromTokens for InlineScopeFromTokens {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
                 // Can't get a header or a block in an inline scope
-                DocElement::Header(_) | DocElement::Block(_) => {
-                    todo!("error: can't push header or block into an inline context")
+                DocElement::Header(_) => {
+                    return Err(InterpError::DocSegmentHeaderMidPara {
+                        code_span: from_builder.from_span,
+                    }
+                    .into())
+                }
+                DocElement::Block(_) => {
+                    return Err(InterpError::BlockCodeMidPara {
+                        code_span: from_builder.from_span,
+                    }
+                    .into())
                 }
                 // If we get an inline, shove it in
                 DocElement::Inline(inline) => {
