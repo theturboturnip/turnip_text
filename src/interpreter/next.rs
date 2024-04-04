@@ -362,12 +362,16 @@ trait BlockTokenProcessor {
                     )?,
                 )),
 
-                TTToken::CodeClose(_, _)
-                | TTToken::CodeCloseOwningInline(_, _)
-                | TTToken::CodeCloseOwningRaw(_, _, _)
-                | TTToken::CodeCloseOwningBlock(_, _) => todo!("error close code without open"),
+                TTToken::CodeClose(span, _)
+                | TTToken::CodeCloseOwningInline(span, _)
+                | TTToken::CodeCloseOwningRaw(span, _, _)
+                | TTToken::CodeCloseOwningBlock(span, _) => {
+                    Err(InterpError::CodeCloseOutsideCode(span).into())
+                }
 
-                TTToken::RawScopeClose(_, _) => todo!("error close raw scope without open"),
+                TTToken::RawScopeClose(span, _) => {
+                    Err(InterpError::RawScopeCloseOutsideRawScope(span).into())
+                }
 
                 TTToken::ScopeClose(_) => self.on_close_scope(py, tok, data),
 
@@ -479,14 +483,24 @@ trait InlineTokenProcessor {
                 )))
             }
 
-            TTToken::BlockScopeOpen(_) => todo!("error block scope open in inline context"),
+            // A BlockScopeOpen = (InlineScopeOpen + Newline)
+            // so this is a special case of sentence break inside inline scope
+            TTToken::BlockScopeOpen(scope_open_span) => {
+                Err(InterpError::SentenceBreakInInlineScope {
+                    scope_start: scope_open_span,
+                }
+                .into())
+            }
+            TTToken::CodeClose(span, _)
+            | TTToken::CodeCloseOwningInline(span, _)
+            | TTToken::CodeCloseOwningRaw(span, _, _)
+            | TTToken::CodeCloseOwningBlock(span, _) => {
+                Err(InterpError::CodeCloseOutsideCode(span).into())
+            }
 
-            TTToken::CodeClose(_, _)
-            | TTToken::CodeCloseOwningInline(_, _)
-            | TTToken::CodeCloseOwningRaw(_, _, _)
-            | TTToken::CodeCloseOwningBlock(_, _) => todo!("error close code without open"),
-
-            TTToken::RawScopeClose(_, _) => todo!("error close raw scope without open"),
+            TTToken::RawScopeClose(span, _) => {
+                Err(InterpError::RawScopeCloseOutsideRawScope(span).into())
+            }
         }
     }
 }
@@ -529,7 +543,7 @@ impl BlockTokenProcessor for TopLevelDocumentBuilder {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        todo!("error close block scope without open")
+        Err(InterpError::ScopeCloseOutsideScope(tok.token_span()).into())
     }
 
     // When EOF comes, we don't produce anything to bubble up - there's nothing above us!
@@ -652,7 +666,10 @@ impl BuildFromTokens for RawStringFromTokens {
                     std::mem::take(&mut self.raw_data),
                 )))))
             }
-            TTToken::EOF(_) => todo!("error EOF inside scope"),
+            TTToken::EOF(_) => Err(InterpError::EndedInsideRawScope {
+                raw_scope_start: self.ctx.from_span,
+            }
+            .into()),
             _ => {
                 self.raw_data.push_str(tok.stringify_raw(data));
                 Ok(BuildStatus::Continue)
@@ -713,7 +730,10 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
     }
 
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
-        todo!("error eof in the middle of block scope")
+        Err(InterpError::EndedInsideScope {
+            scope_start: self.ctx.from_span,
+        }
+        .into())
     }
 }
 impl BuildFromTokens for BlockScopeFromTokens {
@@ -1154,7 +1174,10 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
     }
 
     fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
-        todo!("error newline inside inline scope")
+        Err(InterpError::SentenceBreakInInlineScope {
+            scope_start: self.ctx.from_span,
+        }
+        .into())
     }
 
     fn on_close_scope(
@@ -1173,7 +1196,10 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
     }
 
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
-        todo!("error eof inside inline scope")
+        Err(InterpError::EndedInsideScope {
+            scope_start: self.ctx.from_span,
+        }
+        .into())
     }
 }
 impl BuildFromTokens for InlineScopeFromTokens {
