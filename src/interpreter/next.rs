@@ -8,8 +8,10 @@
 //!
 //! If a completed object is returned, the builder is popped and the object is passed into the next builder on the stack to be integrated into the contents.
 //! This method is convenient because it handles other alt-states for parsing such as comments and raw strings naturally by putting them on top of the stack!
+//!
+//! TODO this method currently doesn't split up BlockScopes by file - i.e. if you open a scope in one file, go into a subfile, then close it inside the subfile, that's allowed. Need to add a check inside BlockScopeBuilder(?) that the closing scope is in the same file as the opening scope
 
-use pyo3::{types::PyDict, Py, PyResult, Python};
+use pyo3::{types::PyDict, Py, PyAny, PyClass, PyClassInitializer, PyResult, Python};
 
 use crate::{
     error::TurnipTextContextlessResult,
@@ -18,8 +20,10 @@ use crate::{
 };
 
 use super::{
-    python::typeclass::PyTcRef, Block, DocSegment, DocSegmentHeader, Inline,
-    InterimDocumentStructure, InterpreterFileAction, MapContextlessResult, TurnipTextSource,
+    eval_bracket::{eval_brackets, EvalBracketResult},
+    python::typeclass::PyTcRef,
+    Block, BlockScope, DocSegment, DocSegmentHeader, Inline, InterimDocumentStructure,
+    InterpreterFileAction, MapContextlessResult, Raw, TurnipTextSource,
 };
 
 /// An enum encompassing all the things that can be directly emitted from one Builder to be bubbled up to the previous Builder.
@@ -50,10 +54,10 @@ struct BuilderContext {
     from_span: ParseSpan,
 }
 impl BuilderContext {
-    fn new(builder_name: &'static str, from_span: ParseSpan) -> Self {
+    fn new(builder_name: &'static str, start_span: ParseSpan) -> Self {
         Self {
             builder_name,
-            from_span,
+            from_span: start_span,
         }
     }
     fn try_extend(&mut self, tok: &TTToken) -> bool {
@@ -83,6 +87,8 @@ trait BuildFromTokens {
     ) -> TurnipTextContextlessResult<BuildStatus>;
     fn process_push_from_inner_builder(
         &mut self,
+        py: Python,
+        py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
     ) -> TurnipTextContextlessResult<BuildStatus>;
     // Some builders may produce something on EOF e.g. a Paragraph builder will just return the Paragraph up to this point
@@ -135,11 +141,13 @@ impl Interpreter {
             .builders
             .top_builder()
             .process_token(py, py_env, tok, data)?;
-        self.handle_build_status(status)
+        self.handle_build_status(py, py_env, status)
     }
 
     fn handle_build_status(
         &mut self,
+        py: Python,
+        py_env: &PyDict,
         status: BuildStatus,
     ) -> TurnipTextContextlessResult<Option<TurnipTextSource>> {
         match status {
@@ -148,8 +156,8 @@ impl Interpreter {
                 let next_status = self
                     .builders
                     .top_builder()
-                    .process_push_from_inner_builder(pushed)?;
-                return self.handle_build_status(status);
+                    .process_push_from_inner_builder(py, py_env, pushed)?;
+                return self.handle_build_status(py, py_env, status);
             }
             BuildStatus::StartInnerBuilder(new_builder) => {
                 self.builders.push_to_current_file(new_builder)
@@ -176,14 +184,14 @@ impl Interpreter {
                 let mut pushed = builder.process_eof(py, py_env)?;
                 while let Some(mut builder) = stack.pop() {
                     pushed = {
-                        builder.process_push_from_inner_builder(pushed)?;
+                        builder.process_push_from_inner_builder(py, py_env, pushed)?;
                         builder.process_eof(py, py_env)?
                     };
                 }
                 // If there were builders, then a new element (which may be None!) was produced and we need to bubble it up to the next file
                 self.builders
                     .top_builder()
-                    .process_push_from_inner_builder(pushed)?;
+                    .process_push_from_inner_builder(py, py_env, pushed)?;
             }
             // If there weren't any builders, we don't need to do anything
             None => {}
@@ -204,12 +212,12 @@ impl Interpreter {
                 let mut pushed = builder.process_eof(py, py_env)?;
                 while let Some(mut builder) = stack.pop() {
                     pushed = {
-                        builder.process_push_from_inner_builder(pushed)?;
+                        builder.process_push_from_inner_builder(py, py_env, pushed)?;
                         builder.process_eof(py, py_env)?
                     };
                 }
                 // If there were builders, then a new_elem was produced and we need to bubble it up to the next file
-                top.process_push_from_inner_builder(pushed)?;
+                top.process_push_from_inner_builder(py, py_env, pushed)?;
             }
             // If there weren't any builders, we don't need to do anything
             None => {}
@@ -310,21 +318,20 @@ where
             TTToken::Hashes(_, _) => Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new())),
 
             // Because this may return Inline we *always* have to be able to handle inlines at top scope.
-            // We take advantage of this to simplify
-            TTToken::CodeOpen(_, n_brackets) => Ok(BuildStatus::StartInnerBuilder(
-                CodeFromTokens::new(n_brackets),
+            TTToken::CodeOpen(start_span, n_brackets) => Ok(BuildStatus::StartInnerBuilder(
+                CodeFromTokens::new(start_span, n_brackets),
             )),
 
-            TTToken::BlockScopeOpen(_) => {
-                Ok(BuildStatus::StartInnerBuilder(BlockScopeFromTokens::new()))
-            }
+            TTToken::BlockScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
+                BlockScopeFromTokens::new(py, start_span)?,
+            )),
 
             TTToken::InlineScopeOpen(_) => {
                 Ok(BuildStatus::StartInnerBuilder(InlineScopeFromTokens::new()))
             }
 
-            TTToken::RawScopeOpen(span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
-                RawStringFromTokens::new(span, n_opening),
+            TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
+                RawStringFromTokens::new(start_span, n_opening),
             )),
 
             // TODO open paragraph
@@ -394,6 +401,8 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
 
     fn process_push_from_inner_builder(
         &mut self,
+        py: Python,
+        py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match pushed {
@@ -404,10 +413,25 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
                 DocElement::Block(block) => {
                     todo!("push the new block into the InterimDocumentStructure")
                 }
-                DocElement::Inline(inline) => {
-                    todo!("push into a new paragraph, opening a new builder")
+                // If we get an inline, start building a paragraph with it
+                DocElement::Inline(inline) => Ok(BuildStatus::StartInnerBuilder(
+                    ParagraphFromTokens::new_with_inline(
+                        py,
+                        inline.as_ref(py),
+                        from_builder.from_span,
+                    )?,
+                )),
+                // If we get a raw, convert it to an inline Raw() object and start building a paragraph with it
+                DocElement::Raw(data) => {
+                    let raw = py_internal_alloc(py, Raw::new_rs(py, data.as_str()))?;
+                    Ok(BuildStatus::StartInnerBuilder(
+                        ParagraphFromTokens::new_with_inline(
+                            py,
+                            raw.as_ref(py),
+                            from_builder.from_span,
+                        )?,
+                    ))
                 }
-                DocElement::Raw(data) => todo!("push into a new paragraph, opening a new builder"),
             },
             None => Ok(BuildStatus::Continue),
         }
@@ -444,6 +468,8 @@ impl BuildFromTokens for CommentFromTokens {
 
     fn process_push_from_inner_builder(
         &mut self,
+        py: Python,
+        py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         panic!("CommentFromTokens does not spawn inner builders")
@@ -456,9 +482,9 @@ struct RawStringFromTokens {
     raw_data: String,
 }
 impl RawStringFromTokens {
-    fn new(start_token_span: ParseSpan, n_opening: usize) -> Box<Self> {
+    fn new(start_span: ParseSpan, n_opening: usize) -> Box<Self> {
         Box::new(Self {
-            ctx: BuilderContext::new("RawString", start_token_span),
+            ctx: BuilderContext::new("RawString", start_span),
             n_closing: n_opening,
             raw_data: String::new(),
         })
@@ -472,9 +498,9 @@ impl BuildFromTokens for RawStringFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        self.ctx.try_extend(&tok);
         match tok {
             TTToken::RawScopeClose(_, given_closing) if given_closing == self.n_closing => {
+                self.ctx.try_extend(&tok);
                 Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Raw(
                     std::mem::take(&mut self.raw_data),
                 )))))
@@ -488,6 +514,8 @@ impl BuildFromTokens for RawStringFromTokens {
 
     fn process_push_from_inner_builder(
         &mut self,
+        py: Python,
+        py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         panic!("RawStringFromTokens does not spawn inner builders")
@@ -503,21 +531,110 @@ impl BuildFromTokens for RawStringFromTokens {
 }
 
 struct BlockScopeFromTokens {
+    ctx: BuilderContext,
     expect_newline: bool, // Set to true after pushing Blocks and Headers into the InterimDocumentStructure
+    block_scope: Py<BlockScope>,
 }
 impl BlockScopeFromTokens {
-    fn new() -> Box<Self> {
-        Box::new(Self {
+    fn new(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Box<Self>> {
+        Ok(Box::new(Self {
+            ctx: BuilderContext::new("BlockScope", start_span),
             expect_newline: false,
-        })
+            block_scope: py_internal_alloc(py, BlockScope::new_empty(py))?,
+        }))
     }
 }
-impl BuildFromTokens for BlockScopeFromTokens {}
+impl BuildFromTokens for BlockScopeFromTokens {
+    fn process_token(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        process_block_level_token(
+            py,
+            py_env,
+            tok,
+            data,
+            &mut self.expect_newline,
+            |_, _, tok, _| {
+                if !self.ctx.try_extend(&tok) {
+                    todo!("create some error to say 'closing block scope from different file'");
+                }
+                Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
+                    PyTcRef::of_unchecked(self.block_scope.as_ref(py)),
+                )))))
+            },
+        )
+    }
 
-struct ParagraphFromTokens {}
+    fn process_push_from_inner_builder(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+        pushed: Option<PushToNextLevel>,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        match pushed {
+            Some(PushToNextLevel { from_builder, elem }) => match elem {
+                DocElement::Header(header) => {
+                    todo!("reject with error")
+                }
+                DocElement::Block(block) => {
+                    self.block_scope
+                        .borrow_mut(py)
+                        .push_block(block.as_ref(py))
+                        .err_as_internal(py)?;
+                    Ok(BuildStatus::Continue)
+                }
+                // If we get an inline, start building a paragraph inside this block-scope with it
+                DocElement::Inline(inline) => Ok(BuildStatus::StartInnerBuilder(
+                    ParagraphFromTokens::new_with_inline(
+                        py,
+                        inline.as_ref(py),
+                        from_builder.from_span,
+                    )?,
+                )),
+                // If we get a raw, convert it to an inline Raw() object and start building a paragraph inside this block-scope with it
+                DocElement::Raw(data) => {
+                    let raw = py_internal_alloc(py, Raw::new_rs(py, data.as_str()))?;
+                    Ok(BuildStatus::StartInnerBuilder(
+                        ParagraphFromTokens::new_with_inline(
+                            py,
+                            raw.as_ref(py),
+                            from_builder.from_span,
+                        )?,
+                    ))
+                }
+            },
+            None => Ok(BuildStatus::Continue),
+        }
+    }
+
+    fn process_eof(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+    ) -> TurnipTextContextlessResult<Option<PushToNextLevel>> {
+        todo!("reject with eof in the middle of block scope")
+    }
+}
+
+struct ParagraphFromTokens {
+    ctx: BuilderContext,
+}
 impl ParagraphFromTokens {
-    fn new() -> Box<Self> {
-        Box::new(Self {})
+    fn new_empty(py: Python, opening_span: ParseSpan) -> TurnipTextContextlessResult<Box<Self>> {
+        Ok(Box::new(Self {
+            ctx: BuilderContext::new("Paragraph", opening_span),
+        }))
+    }
+    fn new_with_inline(
+        py: Python,
+        inline: &PyAny,
+        inline_span: ParseSpan,
+    ) -> TurnipTextContextlessResult<Box<Self>> {
+        todo!()
     }
 }
 impl BuildFromTokens for ParagraphFromTokens {}
@@ -531,13 +648,80 @@ impl InlineScopeFromTokens {
 impl BuildFromTokens for InlineScopeFromTokens {}
 
 struct CodeFromTokens {
+    start_span: ParseSpan,
     n_closing: usize,
+    code: String,
 }
 impl CodeFromTokens {
-    fn new(n_opening: usize) -> Box<Self> {
+    fn new(start_span: ParseSpan, n_opening: usize) -> Box<Self> {
         Box::new(Self {
+            start_span,
             n_closing: n_opening,
+            code: String::new(),
         })
     }
 }
-impl BuildFromTokens for CodeFromTokens {}
+impl BuildFromTokens for CodeFromTokens {
+    fn process_token(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        match eval_brackets(
+            data,
+            tok,
+            &mut self.code,
+            &self.start_span,
+            self.n_closing,
+            py,
+            py_env,
+        )? {
+            Some((evaled_obj, code_span)) => {
+                let ctx = BuilderContext::new("Code", code_span);
+                match evaled_obj {
+                    EvalBracketResult::NeededBlockBuilder(_) => todo!(),
+                    EvalBracketResult::NeededInlineBuilder(_) => todo!(),
+                    EvalBracketResult::NeededRawBuilder(_, _) => todo!(),
+                    EvalBracketResult::DocSegmentHeader(header) => Ok(BuildStatus::Done(Some(
+                        ctx.make(DocElement::Header(header)),
+                    ))),
+                    EvalBracketResult::Block(block) => {
+                        Ok(BuildStatus::Done(Some(ctx.make(DocElement::Block(block)))))
+                    }
+                    EvalBracketResult::Inline(inline) => Ok(BuildStatus::Done(Some(
+                        ctx.make(DocElement::Inline(inline)),
+                    ))),
+                    EvalBracketResult::TurnipTextSource(src) => Ok(BuildStatus::NewSource(src)),
+                    EvalBracketResult::PyNone => Ok(BuildStatus::Done(None)),
+                }
+            }
+            None => Ok(BuildStatus::Continue),
+        }
+    }
+
+    fn process_push_from_inner_builder(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+        pushed: Option<PushToNextLevel>,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        todo!()
+    }
+
+    fn process_eof(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+    ) -> TurnipTextContextlessResult<Option<PushToNextLevel>> {
+        todo!("error EOF in the middle of code")
+    }
+}
+
+fn py_internal_alloc<T: PyClass>(
+    py: Python<'_>,
+    value: impl Into<PyClassInitializer<T>>,
+) -> TurnipTextContextlessResult<Py<T>> {
+    Py::new(py, value).err_as_internal(py)
+}

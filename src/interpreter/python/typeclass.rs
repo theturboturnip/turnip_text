@@ -68,7 +68,7 @@ impl<T: PyTypeclass> PyTcRef<T> {
         }
     }
 
-    fn of_unchecked(val: &PyAny) -> Self {
+    pub fn of_unchecked(val: &PyAny) -> Self {
         Self(val.into(), PhantomData::default())
     }
 
