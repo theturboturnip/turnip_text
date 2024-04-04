@@ -681,7 +681,7 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         if !self.ctx.try_extend(&tok) {
-            todo!("create some error to say 'closing block scope from different file'");
+            todo!("error to say 'closing block scope from different file'");
         }
         Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
             PyTcRef::of_unchecked(self.block_scope.as_ref(py)),
@@ -708,7 +708,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
                 DocElement::Header(header) => {
-                    todo!("reject with error")
+                    todo!("error can't emit a header inside a block scope")
                 }
                 DocElement::Block(block) => {
                     self.block_scope
@@ -746,7 +746,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
         py: Python,
         py_env: &PyDict,
     ) -> TurnipTextContextlessResult<Option<PushToNextLevel>> {
-        todo!("reject with eof in the middle of block scope")
+        todo!("error eof in the middle of block scope")
     }
 }
 
@@ -889,7 +889,7 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         if self.start_of_line {
             if !self.ctx.try_extend(&tok) {
                 // TODO should this really be an error??
-                todo!("create some error to say 'closing paragraph from different file'");
+                todo!("error to say 'closing paragraph from different file'");
             }
             self.fold_current_text_into_sentence(py, false)?;
             Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
@@ -946,7 +946,7 @@ impl BuildFromTokens for ParagraphFromTokens {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
                 // Can't get a header or a block in an inline scope
                 DocElement::Header(_) | DocElement::Block(_) => {
-                    todo!("reject with error")
+                    todo!("error: can't push header or block into an inline context")
                 }
                 // If we get an inline, shove it in
                 DocElement::Inline(inline) => {
@@ -1107,7 +1107,7 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         if !self.ctx.try_extend(&tok) {
-            todo!("create some error to say 'closing inline scope from different file'");
+            todo!("error to say 'closing inline scope from different file'");
         }
         self.fold_current_text_into_scope(py, false)?;
         Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Inline(
@@ -1139,7 +1139,7 @@ impl BuildFromTokens for InlineScopeFromTokens {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
                 // Can't get a header or a block in an inline scope
                 DocElement::Header(_) | DocElement::Block(_) => {
-                    todo!("reject with error")
+                    todo!("error: can't push header or block into an inline context")
                 }
                 // If we get an inline, shove it in
                 DocElement::Inline(inline) => {
