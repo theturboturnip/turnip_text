@@ -987,6 +987,15 @@ pub fn test_block_scope_open_inline() {
         },
     )
 }
+#[test]
+pub fn test_eof_inside_para_inside_block_scope() {
+    expect_parse_err(
+        "{\n paragraph paragraph paragraph EOF",
+        TestInterpError::EndedInsideScope {
+            scope_start: TestParserSpan("{\n"),
+        },
+    )
+}
 
 #[test]
 pub fn test_block_scope_vs_inline_scope() {

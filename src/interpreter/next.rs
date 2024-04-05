@@ -50,12 +50,14 @@ enum BuildStatus {
     /// On rare occasions it is necessary to bubble the token up to the next builder as well as the finished item.
     /// This applies to
     /// - scope-closes at the start of the line when in paragraph-mode - these scope closes are clearly intended for an enclosing block scope, so the paragraph should finish and the containing builder should handle the scope-close
-    /// - EOFs in all non-error cases(?), because those should bubble up through the file
+    /// - EOFs in all non-error cases, because those should bubble up through the file
     /// - newlines at the end of comments, because those still signal the end of sentence in inline mode and count as a blank line in block mode
+    /// None of these are allowed to cross file boundaries. Scope-closes crossing file boundaries invoke a ScopeCloseOutsideScope error. EOFs and newlines are silently ignored.
+    /// TODO ensure the above :)
     DoneAndReprocessToken(Option<PushToNextLevel>),
     Continue,
     StartInnerBuilder(Box<dyn BuildFromTokens>),
-    NewSource(TurnipTextSource),
+    DoneAndNewSource(TurnipTextSource),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -87,6 +89,8 @@ impl BuilderContext {
 }
 
 trait BuildFromTokens {
+    /// This will only ever receive tokens from the same file it was created in.
+    /// TODO ensure this :)
     fn process_token(
         &mut self,
         py: Python,
@@ -101,7 +105,10 @@ trait BuildFromTokens {
         pushed: Option<PushToNextLevel>,
         // closing_tok: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus>;
-    // TODO some boolean property for "can someone open an inserted file in the middle of this"
+    // Make it opt-in to allow emitting new source files
+    fn allow_emitting_new_sources_inside(&self) -> bool {
+        false
+    }
 }
 
 pub struct Interpreter {
@@ -185,7 +192,15 @@ impl Interpreter {
             BuildStatus::StartInnerBuilder(new_builder) => {
                 self.builders.push_to_current_file(new_builder)
             }
-            BuildStatus::NewSource(src) => return Ok(Some(src)),
+            BuildStatus::DoneAndNewSource(src) => {
+                self.builders.pop_from_current_file().expect("We just parsed something using the top of self.builders, it must be able to pop");
+                let top = self.builders.top_builder();
+                if top.allow_emitting_new_sources_inside() {
+                    return Ok(Some(src));
+                } else {
+                    todo!("error can't emit new source inside X builder");
+                }
+            }
             BuildStatus::Continue => {}
         };
         Ok(None)
@@ -203,6 +218,8 @@ impl Interpreter {
     ) -> TurnipTextContextlessResult<()> {
         let mut stack = self.builders.pop_subfile();
         // The EOF token from the end of the file should have bubbled everything out.
+        // TODO it is possible to break this if Paragraph receives EOF inside BlockScope - Paragraph will not bubble EOF out to blockscope for error
+        // TODO if the Paragraph does bubble out the EOF then it can bubble it out through files
         assert!(stack.is_empty());
         // // If there are any builders within the stack, tell them about the EOF and bubble their production up to the next level.
         // match stack.pop() {
@@ -225,7 +242,7 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn finalize<'a>(
+    pub fn finalize(
         mut self,
         py: Python,
         py_env: &PyDict,
@@ -233,6 +250,7 @@ impl Interpreter {
         let (mut top, mut stack) = self.builders.finalize();
 
         // The EOF token from the end of the toplevel file should have bubbled everything out.
+        // TODO we can create this by leaving an EOF to not bubble up
         assert!(stack.is_empty());
 
         // If there are any builders within the stack, tell them about the EOF and bubble their production up to the next level.
@@ -577,6 +595,10 @@ impl BlockTokenProcessor for TopLevelDocumentBuilder {
     }
 }
 impl BuildFromTokens for TopLevelDocumentBuilder {
+    fn allow_emitting_new_sources_inside(&self) -> bool {
+        true
+    }
+
     // This builder is responsible for spawning lower-level builders
     fn process_token(
         &mut self,
@@ -762,6 +784,10 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
     }
 }
 impl BuildFromTokens for BlockScopeFromTokens {
+    fn allow_emitting_new_sources_inside(&self) -> bool {
+        true
+    }
+
     fn process_token(
         &mut self,
         py: Python,
@@ -1359,7 +1385,9 @@ impl BuildFromTokens for CodeFromTokens {
                     EvalBracketResult::Inline(inline) => Ok(BuildStatus::Done(Some(
                         ctx.make(DocElement::Inline(inline)),
                     ))),
-                    EvalBracketResult::TurnipTextSource(src) => Ok(BuildStatus::NewSource(src)),
+                    EvalBracketResult::TurnipTextSource(src) => {
+                        Ok(BuildStatus::DoneAndNewSource(src))
+                    }
                     EvalBracketResult::PyNone => Ok(BuildStatus::Done(None)),
                 }
             }
