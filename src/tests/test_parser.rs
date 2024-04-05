@@ -989,6 +989,7 @@ pub fn test_block_scope_open_inline() {
 }
 #[test]
 pub fn test_eof_inside_para_inside_block_scope() {
+    // Under some broken parsers the EOF would implicitly end the paragraph but would be stopped there - it wouldn't be picked up by the block scope.
     expect_parse_err(
         "{\n paragraph paragraph paragraph EOF",
         TestInterpError::EndedInsideScope {
