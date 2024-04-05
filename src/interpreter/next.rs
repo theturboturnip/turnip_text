@@ -8,8 +8,6 @@
 //!
 //! If a completed object is returned, the builder is popped and the object is passed into the next builder on the stack to be integrated into the contents.
 //! This method is convenient because it handles other alt-states for parsing such as comments and raw strings naturally by putting them on top of the stack!
-//!
-//! TODO this method currently doesn't split up BlockScopes by file - i.e. if you open a scope in one file, go into a subfile, then close it inside the subfile, that's allowed. Need to add a check inside BlockScopeBuilder(?) that the closing scope is in the same file as the opening scope, and need to block opening subfiles inside specific builders
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -117,6 +115,7 @@ trait BuildFromTokens {
         // closing_tok: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus>;
     // Make it opt-in to allow emitting new source files
+    // TODO add tests for this!!!
     fn allow_emitting_new_sources_inside(&self) -> bool {
         false
     }
@@ -168,8 +167,6 @@ impl Interpreter {
     ) -> TurnipTextContextlessResult<()> {
         let stack = self.builders.pop_subfile();
         // The EOF token from the end of the file should have bubbled everything out.
-        // TODO it is possible to break this if Paragraph receives EOF inside BlockScope - Paragraph will not bubble EOF out to blockscope for error
-        // TODO if the Paragraph does bubble out the EOF then it can bubble it out through files
         assert!(stack.stack.is_empty());
         Ok(())
     }
@@ -278,7 +275,11 @@ impl FileBuilderStack {
                         }
                         BuildStatus::DoneAndNewSource(src) => {
                             self.stack.pop().expect("self.curr_top() returned Done => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
-                            return Ok(Some(src));
+                            if self.curr_top().borrow().allow_emitting_new_sources_inside() {
+                                return Ok(Some(src));
+                            } else {
+                                todo!("error can't emit something here")
+                            }
                         }
                     }
                 }
@@ -1020,10 +1021,10 @@ impl InlineTokenProcessor for ParagraphFromTokens {
     fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
         // Text is already folded into the sentence
         if self.start_of_line {
-            if !self.ctx.try_extend(&tok.token_span()) {
-                // TODO should this really be an error??
-                todo!("error to say 'closing paragraph from different file'");
-            }
+            assert!(
+                self.ctx.try_extend(&tok.token_span()),
+                "ParagraphFromTokens got a token from a different file that it was opened in"
+            );
             Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
                 PyTcRef::of_unchecked(self.para.as_ref(py)),
             )))))
@@ -1057,14 +1058,13 @@ impl InlineTokenProcessor for ParagraphFromTokens {
                 .push_sentence(sentence.as_ref(py))
                 .err_as_internal(py)?;
         }
-        if !self.ctx.try_extend(&tok.token_span()) {
-            // TODO should this really be an error??
-            todo!("error to say 'closing paragraph from different file'");
-        }
-        // TODO should this bubble up the EOF? surely yes, but it should stop at the file boundary
-        Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
-            PyTcRef::of_unchecked(self.para.as_ref(py)),
-        )))))
+        assert!(
+            self.ctx.try_extend(&tok.token_span()),
+            "ParagraphFromTokens got a token from a different file that it was opened in"
+        );
+        Ok(BuildStatus::DoneAndReprocessToken(Some(self.ctx.make(
+            DocElement::Block(PyTcRef::of_unchecked(self.para.as_ref(py))),
+        ))))
     }
 
     fn on_close_scope(
@@ -1076,10 +1076,10 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         // If the closing brace is at the start of the line, it must be for block-scope and we can assume there won't be text afterwards.
         // End the paragraph, and tell the scope above us in the hierarchy to handle the scope close.
         if self.start_of_line {
-            if !self.ctx.try_extend(&tok.token_span()) {
-                // TODO should this really be an error??
-                todo!("error to say 'closing paragraph from different file'");
-            }
+            assert!(
+                self.ctx.try_extend(&tok.token_span()),
+                "ParagraphFromTokens got a token from a different file that it was opened in"
+            );
             Ok(BuildStatus::DoneAndReprocessToken(Some(self.ctx.make(
                 DocElement::Block(PyTcRef::of_unchecked(self.para.as_ref(py))),
             ))))
@@ -1274,9 +1274,10 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         // pending text has already been folded in
-        if !self.ctx.try_extend(&tok.token_span()) {
-            todo!("error to say 'closing inline scope from different file'");
-        }
+        assert!(
+            self.ctx.try_extend(&tok.token_span()),
+            "InlineScopeFromTokens got a token from a different file that it was opened in"
+        );
         Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Inline(
             PyTcRef::of_unchecked(self.inline_scope.as_ref(py)),
         )))))
