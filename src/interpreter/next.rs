@@ -15,6 +15,9 @@ use pyo3::{types::PyDict, Py, PyAny, PyClass, PyClassInitializer, PyResult, Pyth
 
 use crate::{
     error::{TurnipTextContextlessError, TurnipTextContextlessResult},
+    interpreter::{
+        python::typeclass::PyTcUnionRef, BlockScopeBuilder, InlineScopeBuilder, RawScopeBuilder,
+    },
     lexer::{Escapable, LexError, TTToken},
     util::ParseSpan,
 };
@@ -1281,6 +1284,7 @@ struct CodeFromTokens {
     start_span: ParseSpan,
     n_closing: usize,
     code: String,
+    builder: Option<EvalBracketResult>,
 }
 impl CodeFromTokens {
     fn new(start_span: ParseSpan, n_opening: usize) -> Box<Self> {
@@ -1288,6 +1292,7 @@ impl CodeFromTokens {
             start_span,
             n_closing: n_opening,
             code: String::new(),
+            builder: None,
         })
     }
 }
@@ -1299,6 +1304,7 @@ impl BuildFromTokens for CodeFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
+        assert!(self.builder.is_none(), "If the builder object is Some then we've already eval-d code and are waiting for the scope with the stuff-to-build to close. We shouldn't be processing tokens.");
         match eval_brackets(
             data,
             tok,
@@ -1311,9 +1317,24 @@ impl BuildFromTokens for CodeFromTokens {
             Some((evaled_obj, code_span)) => {
                 let ctx = BuilderContext::new("Code", code_span);
                 match evaled_obj {
-                    EvalBracketResult::NeededBlockBuilder(_) => todo!(),
-                    EvalBracketResult::NeededInlineBuilder(_) => todo!(),
-                    EvalBracketResult::NeededRawBuilder(_, _) => todo!(),
+                    EvalBracketResult::NeededBlockBuilder(_) => {
+                        self.builder = Some(evaled_obj);
+                        Ok(BuildStatus::StartInnerBuilder(BlockScopeFromTokens::new(
+                            py, code_span,
+                        )?))
+                    }
+                    EvalBracketResult::NeededInlineBuilder(_) => {
+                        self.builder = Some(evaled_obj);
+                        Ok(BuildStatus::StartInnerBuilder(InlineScopeFromTokens::new(
+                            py, code_span,
+                        )?))
+                    }
+                    EvalBracketResult::NeededRawBuilder(_, n_opening) => {
+                        self.builder = Some(evaled_obj);
+                        Ok(BuildStatus::StartInnerBuilder(RawStringFromTokens::new(
+                            code_span, n_opening,
+                        )))
+                    }
                     EvalBracketResult::DocSegmentHeader(header) => Ok(BuildStatus::Done(Some(
                         ctx.make(DocElement::Header(header)),
                     ))),
@@ -1338,7 +1359,51 @@ impl BuildFromTokens for CodeFromTokens {
         pushed: Option<PushToNextLevel>,
         closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        todo!()
+        let builder = std::mem::take(&mut self.builder)
+            .expect("Should only get a result from an inner builder if self.builder is populated");
+        let pushed = pushed.expect("Should never get a built None - CodeFromTokens only spawns BlockScopeFromTokens, InlineScopeFromTokens, RawScopeFromTokens none of which return None.");
+        let mut ctx = BuilderContext::new("Code", self.start_span);
+        ctx.try_extend(&closing_token);
+        match (builder, pushed.elem) {
+            (EvalBracketResult::NeededBlockBuilder(builder), DocElement::Block(blocks)) => {
+                let built =
+                    BlockScopeBuilder::call_build_from_blocks(py, builder, blocks.as_ref(py))
+                        .err_as_internal(py)?;
+                match built {
+                    Some(PyTcUnionRef::A(block)) => {
+                        Ok(BuildStatus::Done(Some(ctx.make(DocElement::Block(block)))))
+                    }
+                    Some(PyTcUnionRef::B(header)) => Ok(BuildStatus::Done(Some(
+                        ctx.make(DocElement::Header(header)),
+                    ))),
+                    None => Ok(BuildStatus::Done(None)),
+                }
+            }
+            (EvalBracketResult::NeededInlineBuilder(builder), DocElement::Inline(inlines)) => {
+                let built =
+                    InlineScopeBuilder::call_build_from_inlines(py, builder, inlines.as_ref(py))
+                        .err_as_internal(py)?;
+                // match built {
+                //     Some(PyTcUnionRef::A(block)) => todo!(),
+                //     Some(PyTcUnionRef::B(header)) => todo!(),
+                //     None => todo!(),
+                // }
+                Ok(BuildStatus::Done(Some(ctx.make(DocElement::Inline(built)))))
+            }
+            (EvalBracketResult::NeededRawBuilder(builder, _), DocElement::Raw(raw)) => {
+                let built =
+                    RawScopeBuilder::call_build_from_raw(py, &builder, &raw).err_as_internal(py)?;
+                match built {
+                    PyTcUnionRef::A(inline) => Ok(BuildStatus::Done(Some(
+                        ctx.make(DocElement::Inline(inline)),
+                    ))),
+                    PyTcUnionRef::B(block) => {
+                        Ok(BuildStatus::Done(Some(ctx.make(DocElement::Block(block)))))
+                    }
+                }
+            }
+            _ => unreachable!("Invalid combination of requested and actual built element types"),
+        }
     }
 }
 

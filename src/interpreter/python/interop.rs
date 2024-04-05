@@ -7,7 +7,9 @@ use pyo3::{
 
 use crate::{error::TurnipTextError, parser::TurnipTextParser};
 
-use super::typeclass::{PyInstanceList, PyTcRef, PyTcUnionRef, PyTypeclass, PyTypeclassList};
+use super::typeclass::{
+    PyCanBeInstanceOf, PyInstanceList, PyTcRef, PyTcUnionRef, PyTypeclass, PyTypeclassList,
+};
 
 mod error {
     use pyo3::create_exception;
@@ -264,15 +266,16 @@ impl BlockScopeBuilder {
     fn marker_func_name(py: Python<'_>) -> &PyString {
         intern!(py, "build_from_blocks")
     }
-    pub fn call_build_from_blocks<'py>(
+    pub fn call_build_from_blocks<'py, T: PyCanBeInstanceOf<BlockScope>>(
         py: Python<'py>,
         builder: PyTcRef<Self>,
-        blocks: Py<BlockScope>,
+        blocks: T,
     ) -> PyResult<Option<PyTcUnionRef<Block, DocSegmentHeader>>> {
+        assert!(blocks.check_is_instance());
         let output = builder
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
-            .call1((blocks,))?;
+            .call1((blocks.as_ref(py),))?;
         if output.is_none() {
             Ok(None)
         } else {
@@ -301,15 +304,16 @@ impl InlineScopeBuilder {
         intern!(py, "build_from_inlines")
     }
     // TODO: Make this return PyTcUnionRef<Inline | DocSegmentHeader>. Right now it can't because the parser can't handle it.
-    pub fn call_build_from_inlines<'py>(
+    pub fn call_build_from_inlines<'py, T: PyCanBeInstanceOf<InlineScope>>(
         py: Python<'py>,
         builder: PyTcRef<Self>,
-        inlines: Py<InlineScope>,
+        inlines: T,
     ) -> PyResult<PyTcRef<Inline>> {
+        assert!(inlines.check_is_instance());
         let output = builder
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
-            .call1((inlines,))?;
+            .call1((inlines.as_ref(py),))?;
         PyTcRef::of(output)
     }
 }
