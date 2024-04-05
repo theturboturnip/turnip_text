@@ -47,6 +47,12 @@ struct PushToNextLevel {
 
 enum BuildStatus {
     Done(Option<PushToNextLevel>),
+    /// On rare occasions it is necessary to bubble the token up to the next builder as well as the finished item.
+    /// This applies to
+    /// - scope-closes at the start of the line when in paragraph-mode - these scope closes are clearly intended for an enclosing block scope, so the paragraph should finish and the containing builder should handle the scope-close
+    /// - EOFs in all non-error cases(?), because those should bubble up through the file
+    /// - newlines at the end of comments, because those still signal the end of sentence in inline mode and count as a blank line in block mode
+    DoneAndReprocessToken(Option<PushToNextLevel>),
     Continue,
     StartInnerBuilder(Box<dyn BuildFromTokens>),
     NewSource(TurnipTextSource),
@@ -64,10 +70,9 @@ impl BuilderContext {
             from_span: start_span,
         }
     }
-    fn try_extend(&mut self, tok: &TTToken) -> bool {
-        let span = tok.token_span();
+    fn try_extend(&mut self, span: &ParseSpan) -> bool {
         if span.file_idx() == self.from_span.file_idx() {
-            self.from_span = self.from_span.combine(&span);
+            self.from_span = self.from_span.combine(span);
             true
         } else {
             false
@@ -94,9 +99,9 @@ trait BuildFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
-        closing_tok: TTToken,
+        // closing_tok: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus>;
-    // TODO some boolean property for "let someone open an inserted file in the middle of this"
+    // TODO some boolean property for "can someone open an inserted file in the middle of this"
 }
 
 pub struct Interpreter {
@@ -141,7 +146,7 @@ impl Interpreter {
             .builders
             .top_builder()
             .process_token(py, py_env, tok, data)?;
-        self.handle_build_status(py, py_env, tok, status)
+        self.handle_build_status(py, py_env, tok, data, status)
     }
 
     fn handle_build_status(
@@ -149,6 +154,7 @@ impl Interpreter {
         py: Python,
         py_env: &PyDict,
         tok: TTToken,
+        data: &str,
         status: BuildStatus,
     ) -> TurnipTextContextlessResult<Option<TurnipTextSource>> {
         match status {
@@ -157,8 +163,24 @@ impl Interpreter {
                 let next_status = self
                     .builders
                     .top_builder()
-                    .process_push_from_inner_builder(py, py_env, pushed, tok)?;
-                return self.handle_build_status(py, py_env, tok, next_status);
+                    .process_push_from_inner_builder(py, py_env, pushed)?;
+                return self.handle_build_status(py, py_env, tok, data, next_status);
+            }
+            BuildStatus::DoneAndReprocessToken(pushed) => {
+                self.builders.pop_from_current_file().expect("We just parsed something using the top of self.builders, it must be able to pop");
+                let next_status = self
+                    .builders
+                    .top_builder()
+                    .process_push_from_inner_builder(py, py_env, pushed)?;
+                let new_src = self.handle_build_status(py, py_env, tok, data, next_status)?;
+                assert!(
+                    new_src.is_none(),
+                    "Got a new source file {:?} in the middle of DoneAndReprocessToken()",
+                    new_src,
+                );
+                // TODO aaaaaaaaah shit tokens shouldn't bubble up across file boundaries!!!
+                // Reprocess the old token in the next builder up
+                return self.process_token(py, py_env, tok, data);
             }
             BuildStatus::StartInnerBuilder(new_builder) => {
                 self.builders.push_to_current_file(new_builder)
@@ -571,7 +593,7 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
-        closing_token: TTToken,
+        // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
@@ -624,7 +646,7 @@ impl BuildFromTokens for CommentFromTokens {
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match tok {
-            TTToken::Newline(_) | TTToken::EOF(_) => Ok(BuildStatus::Done(None)),
+            TTToken::Newline(_) | TTToken::EOF(_) => Ok(BuildStatus::DoneAndReprocessToken(None)),
             _ => Ok(BuildStatus::Continue),
         }
     }
@@ -634,7 +656,7 @@ impl BuildFromTokens for CommentFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
-        closing_token: TTToken,
+        // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         panic!("CommentFromTokens does not spawn inner builders")
     }
@@ -664,7 +686,7 @@ impl BuildFromTokens for RawStringFromTokens {
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match tok {
             TTToken::RawScopeClose(_, given_closing) if given_closing == self.n_closing => {
-                self.ctx.try_extend(&tok);
+                self.ctx.try_extend(&tok.token_span());
                 Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Raw(
                     std::mem::take(&mut self.raw_data),
                 )))))
@@ -685,7 +707,7 @@ impl BuildFromTokens for RawStringFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
-        closing_token: TTToken,
+        // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         panic!("RawStringFromTokens does not spawn inner builders")
     }
@@ -724,7 +746,7 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        if !self.ctx.try_extend(&tok) {
+        if !self.ctx.try_extend(&tok.token_span()) {
             todo!("error to say 'closing block scope from different file'");
         }
         Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
@@ -755,7 +777,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
-        closing_token: TTToken,
+        // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
@@ -770,16 +792,6 @@ impl BuildFromTokens for BlockScopeFromTokens {
                         .borrow_mut(py)
                         .push_block(block.as_ref(py))
                         .err_as_internal(py)?;
-                    // If the block in the previous scope ended with a newline (i.e. it was a paragraph)
-                    // then don't expect another newline afterwards.
-                    // Otherwise, do.
-                    // TODO Test this
-                    // TODO implement this in top-level
-                    if let TTToken::Newline(_) = closing_token {
-                        self.expect_newline = false;
-                    } else {
-                        self.expect_newline = true;
-                    }
                     Ok(BuildStatus::Continue)
                 }
                 // If we get an inline, start building a paragraph inside this block-scope with it
@@ -956,7 +968,7 @@ impl InlineTokenProcessor for ParagraphFromTokens {
     fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
         // Text is already folded into the sentence
         if self.start_of_line {
-            if !self.ctx.try_extend(&tok) {
+            if !self.ctx.try_extend(&tok.token_span()) {
                 // TODO should this really be an error??
                 todo!("error to say 'closing paragraph from different file'");
             }
@@ -993,10 +1005,11 @@ impl InlineTokenProcessor for ParagraphFromTokens {
                 .push_sentence(sentence.as_ref(py))
                 .err_as_internal(py)?;
         }
-        if !self.ctx.try_extend(&tok) {
+        if !self.ctx.try_extend(&tok.token_span()) {
             // TODO should this really be an error??
             todo!("error to say 'closing paragraph from different file'");
         }
+        // TODO should this bubble up the EOF? surely yes, but it should stop at the file boundary
         Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
             PyTcRef::of_unchecked(self.para.as_ref(py)),
         )))))
@@ -1008,9 +1021,19 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        // TODO this will catch a closing brace on a line just under a paragraph, when the paragraph hasn't ended yet. Add a test case.
-        // This isn't an error in the old version.
-        todo!("error: closing scope inside a paragraph when no inline scopes are open")
+        // If the closing brace is at the start of the line, it must be for block-scope and we can assume there won't be text afterwards.
+        // End the paragraph, and tell the scope above us in the hierarchy to handle the scope close.
+        if self.start_of_line {
+            if !self.ctx.try_extend(&tok.token_span()) {
+                // TODO should this really be an error??
+                todo!("error to say 'closing paragraph from different file'");
+            }
+            Ok(BuildStatus::DoneAndReprocessToken(Some(self.ctx.make(
+                DocElement::Block(PyTcRef::of_unchecked(self.para.as_ref(py))),
+            ))))
+        } else {
+            todo!("error: closing scope inside a paragraph when no inline scopes are open")
+        }
     }
 }
 impl BuildFromTokens for ParagraphFromTokens {
@@ -1029,7 +1052,7 @@ impl BuildFromTokens for ParagraphFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
-        closing_token: TTToken,
+        // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         self.start_of_line = false;
         match pushed {
@@ -1066,11 +1089,7 @@ impl BuildFromTokens for ParagraphFromTokens {
             },
             None => {}
         }
-        match closing_token {
-            TTToken::Newline(_) => self.on_newline(py, closing_token),
-            TTToken::EOF(_) => self.on_eof(py, closing_token),
-            _ => Ok(BuildStatus::Continue),
-        }
+        Ok(BuildStatus::Continue)
     }
 }
 
@@ -1203,7 +1222,7 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         // pending text has already been folded in
-        if !self.ctx.try_extend(&tok) {
+        if !self.ctx.try_extend(&tok.token_span()) {
             todo!("error to say 'closing inline scope from different file'");
         }
         Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Inline(
@@ -1234,7 +1253,7 @@ impl BuildFromTokens for InlineScopeFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
-        closing_token: TTToken,
+        // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         self.start_of_line = false;
         // Before we do anything else, push the current text into the scope including the whitespace between the text and the newly pushed item
@@ -1272,11 +1291,7 @@ impl BuildFromTokens for InlineScopeFromTokens {
             },
             None => {}
         };
-        match closing_token {
-            TTToken::Newline(_) => self.on_newline(py, closing_token),
-            TTToken::EOF(_) => self.on_eof(py, closing_token),
-            _ => Ok(BuildStatus::Continue),
-        }
+        Ok(BuildStatus::Continue)
     }
 }
 
@@ -1357,13 +1372,13 @@ impl BuildFromTokens for CodeFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
-        closing_token: TTToken,
+        // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         let builder = std::mem::take(&mut self.builder)
             .expect("Should only get a result from an inner builder if self.builder is populated");
         let pushed = pushed.expect("Should never get a built None - CodeFromTokens only spawns BlockScopeFromTokens, InlineScopeFromTokens, RawScopeFromTokens none of which return None.");
         let mut ctx = BuilderContext::new("Code", self.start_span);
-        ctx.try_extend(&closing_token);
+        ctx.try_extend(&pushed.from_builder.from_span);
         match (builder, pushed.elem) {
             (EvalBracketResult::NeededBlockBuilder(builder), DocElement::Block(blocks)) => {
                 let built =
