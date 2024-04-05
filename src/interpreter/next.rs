@@ -11,6 +11,8 @@
 //!
 //! TODO this method currently doesn't split up BlockScopes by file - i.e. if you open a scope in one file, go into a subfile, then close it inside the subfile, that's allowed. Need to add a check inside BlockScopeBuilder(?) that the closing scope is in the same file as the opening scope, and need to block opening subfiles inside specific builders
 
+use std::{cell::RefCell, rc::Rc};
+
 use pyo3::{types::PyDict, Py, PyAny, PyClass, PyClassInitializer, PyResult, Python};
 
 use crate::{
@@ -56,7 +58,7 @@ enum BuildStatus {
     /// TODO ensure the above :)
     DoneAndReprocessToken(Option<PushToNextLevel>),
     Continue,
-    StartInnerBuilder(Box<dyn BuildFromTokens>),
+    StartInnerBuilder(Rc<RefCell<dyn BuildFromTokens>>),
     DoneAndNewSource(TurnipTextSource),
 }
 
@@ -89,8 +91,16 @@ impl BuilderContext {
 }
 
 trait BuildFromTokens {
-    /// This will only ever receive tokens from the same file it was created in.
-    /// TODO ensure this :)
+    /// This will usually receive tokens from the same file it was created in, unless a source file is opened within it
+    /// in which case it will receive the top-level tokens from that file too except EOF.
+    ///
+    /// Note: this means if an impl doesn't override [allow_emitting_new_sources_inside] to true then it will always receive tokens from the same file.
+    ///
+    /// When receiving any token from an inner file, this function must return either an error, [BuildStatus::Continue], or [BuildStatus::StartInnerBuilder]. Other responses would result in modifying the outer file due to the contents of the inner file, and are not allowed.
+    ///
+    /// When receiving [TTToken::EOF] this function must return either an error or [BuildStatus::DoneAndReprocessToken]. Other responses are not allowed.
+    ///
+    /// TODO prove this contract in the comments on block-scope builders.
     fn process_token(
         &mut self,
         py: Python,
@@ -98,6 +108,7 @@ trait BuildFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus>;
+    /// May only return an error, [BuildStatus::Continue], [BuildStatus::StartInnerBuilder], or [BuildStatus::Done].
     fn process_push_from_inner_builder(
         &mut self,
         py: Python,
@@ -131,7 +142,11 @@ impl Interpreter {
     ) -> TurnipTextContextlessResult<InterpreterFileAction> {
         for tok in toks {
             let tok = tok.map_err(|lex_err| (file_idx, lex_err))?;
-            match self.process_token(py, py_env, tok, data)? {
+            match self
+                .builders
+                .top_stack()
+                .process_token(py, py_env, tok, data)?
+            {
                 None => continue,
                 Some(TurnipTextSource { name, contents }) => {
                     return Ok(InterpreterFileAction::FileInserted { name, contents })
@@ -139,71 +154,6 @@ impl Interpreter {
             }
         }
         Ok(InterpreterFileAction::FileEnded)
-    }
-
-    fn process_token(
-        &mut self,
-        py: Python,
-        py_env: &PyDict,
-        tok: TTToken,
-        data: &str,
-    ) -> TurnipTextContextlessResult<Option<TurnipTextSource>> {
-        // Shove the token into the topmost builder and see what comes out
-        let status = self
-            .builders
-            .top_builder()
-            .process_token(py, py_env, tok, data)?;
-        self.handle_build_status(py, py_env, tok, data, status)
-    }
-
-    fn handle_build_status(
-        &mut self,
-        py: Python,
-        py_env: &PyDict,
-        tok: TTToken,
-        data: &str,
-        status: BuildStatus,
-    ) -> TurnipTextContextlessResult<Option<TurnipTextSource>> {
-        match status {
-            BuildStatus::Done(pushed) => {
-                self.builders.pop_from_current_file().expect("We just parsed something using the top of self.builders, it must be able to pop");
-                let next_status = self
-                    .builders
-                    .top_builder()
-                    .process_push_from_inner_builder(py, py_env, pushed)?;
-                return self.handle_build_status(py, py_env, tok, data, next_status);
-            }
-            BuildStatus::DoneAndReprocessToken(pushed) => {
-                self.builders.pop_from_current_file().expect("We just parsed something using the top of self.builders, it must be able to pop");
-                let next_status = self
-                    .builders
-                    .top_builder()
-                    .process_push_from_inner_builder(py, py_env, pushed)?;
-                let new_src = self.handle_build_status(py, py_env, tok, data, next_status)?;
-                assert!(
-                    new_src.is_none(),
-                    "Got a new source file {:?} in the middle of DoneAndReprocessToken()",
-                    new_src,
-                );
-                // TODO aaaaaaaaah shit tokens shouldn't bubble up across file boundaries!!!
-                // Reprocess the old token in the next builder up
-                return self.process_token(py, py_env, tok, data);
-            }
-            BuildStatus::StartInnerBuilder(new_builder) => {
-                self.builders.push_to_current_file(new_builder)
-            }
-            BuildStatus::DoneAndNewSource(src) => {
-                self.builders.pop_from_current_file().expect("We just parsed something using the top of self.builders, it must be able to pop");
-                let top = self.builders.top_builder();
-                if top.allow_emitting_new_sources_inside() {
-                    return Ok(Some(src));
-                } else {
-                    todo!("error can't emit new source inside X builder");
-                }
-            }
-            BuildStatus::Continue => {}
-        };
-        Ok(None)
     }
 
     pub fn push_subfile(&mut self) {
@@ -216,124 +166,200 @@ impl Interpreter {
         py_env: &'_ PyDict,
         data: &str,
     ) -> TurnipTextContextlessResult<()> {
-        let mut stack = self.builders.pop_subfile();
+        let stack = self.builders.pop_subfile();
         // The EOF token from the end of the file should have bubbled everything out.
         // TODO it is possible to break this if Paragraph receives EOF inside BlockScope - Paragraph will not bubble EOF out to blockscope for error
         // TODO if the Paragraph does bubble out the EOF then it can bubble it out through files
-        assert!(stack.is_empty());
-        // // If there are any builders within the stack, tell them about the EOF and bubble their production up to the next level.
-        // match stack.pop() {
-        //     Some(mut builder) => {
-        //         let mut pushed = builder.process_token(py, py_env)?;
-        //         while let Some(mut builder) = stack.pop() {
-        //             pushed = {
-        //                 builder.process_push_from_inner_builder(py, py_env, pushed)?;
-        //                 builder.process_eof(py, py_env)?
-        //             };
-        //         }
-        //         // If there were builders, then a new element (which may be None!) was produced and we need to bubble it up to the next file
-        //         self.builders
-        //             .top_builder()
-        //             .process_push_from_inner_builder(py, py_env, pushed)?;
-        //     }
-        //     // If there weren't any builders, we don't need to do anything
-        //     None => {}
-        // };
+        assert!(stack.stack.is_empty());
         Ok(())
     }
 
     pub fn finalize(
-        mut self,
+        self,
         py: Python,
         py_env: &PyDict,
     ) -> TurnipTextContextlessResult<Py<DocSegment>> {
-        let (mut top, mut stack) = self.builders.finalize();
+        let rc_refcell_top = self.builders.finalize();
+        match Rc::try_unwrap(rc_refcell_top) {
+            Err(_) => panic!("Shouldn't have any other stacks holding references to this"),
+            Ok(refcell_top) => refcell_top.into_inner().finalize(py),
+        }
+    }
+}
 
-        // The EOF token from the end of the toplevel file should have bubbled everything out.
-        // TODO we can create this by leaving an EOF to not bubble up
-        assert!(stack.is_empty());
+struct FileBuilderStack {
+    top: Rc<RefCell<dyn BuildFromTokens>>,
+    /// The stack of builders created inside this file.
+    stack: Vec<Rc<RefCell<dyn BuildFromTokens>>>,
+}
+impl FileBuilderStack {
+    fn new(top: Rc<RefCell<dyn BuildFromTokens>>) -> Self {
+        Self { top, stack: vec![] }
+    }
 
-        // If there are any builders within the stack, tell them about the EOF and bubble their production up to the next level.
-        // match stack.pop() {
-        //     Some(mut builder) => {
-        //         let mut pushed = builder.process_eof(py, py_env)?;
-        //         while let Some(mut builder) = stack.pop() {
-        //             pushed = {
-        //                 builder.process_push_from_inner_builder(py, py_env, pushed)?;
-        //                 builder.process_eof(py, py_env)?
-        //             };
-        //         }
-        //         // If there were builders, then a new_elem was produced and we need to bubble it up to the next file
-        //         top.process_push_from_inner_builder(py, py_env, pushed)?;
-        //     }
-        //     // If there weren't any builders, we don't need to do anything
-        //     None => {}
-        // };
+    fn curr_top(&self) -> &Rc<RefCell<dyn BuildFromTokens>> {
+        match self.stack.last() {
+            None => &self.top,
+            Some(top) => top,
+        }
+    }
 
-        top.finalize(py)
+    fn process_token(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<Option<TurnipTextSource>> {
+        // If processing an EOF we need to flush all builders in the stack and not pass through tokens to self.top()
+        if let TTToken::EOF(_) = &tok {
+            loop {
+                let top = match self.stack.pop() {
+                    None => break,
+                    Some(top) => top,
+                };
+                let action = top.borrow_mut().process_token(py, py_env, tok, data)?;
+                match action {
+                    BuildStatus::DoneAndReprocessToken(pushed) => {
+                        self.push_to_top_builder(py, py_env, pushed)?
+                    }
+                    _ => unreachable!("builder returned a BuildStatus that wasn't DoneAndReprocessToken in response to an EOF")
+                }
+            }
+            Ok(None)
+        } else {
+            // The token is not EOF, so we are allowed to pass the token through to self.top.
+            // If there are no builders, we can pass the token to the top builder and see what it says.
+            if self.stack.is_empty() {
+                let action = self.top.borrow_mut().process_token(py, py_env, tok, data)?;
+                match action {
+                    BuildStatus::Done(_)
+                    | BuildStatus::DoneAndReprocessToken(_)
+                    | BuildStatus::DoneAndNewSource(_) => {
+                        unreachable!("builder for previous file returned a Done* when presented with a token for an inner file")
+                    }
+                    BuildStatus::StartInnerBuilder(builder) => self.stack.push(builder),
+                    BuildStatus::Continue => {}
+                };
+                Ok(None)
+            } else {
+                // If there are builders, pass the token to the topmost one.
+                // The token may bubble out if the builder returns DoneAndReprocessToken, so loop to support that case and break out with returns otherwise.
+                loop {
+                    let action = self
+                        .curr_top()
+                        .borrow_mut()
+                        .process_token(py, py_env, tok, data)?;
+                    match action {
+                        BuildStatus::Continue => return Ok(None),
+                        BuildStatus::StartInnerBuilder(builder) => {
+                            self.stack.push(builder);
+                            return Ok(None);
+                        }
+                        BuildStatus::Done(pushed) => {
+                            self.stack.pop().expect("self.curr_top() returned Done => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
+                            self.push_to_top_builder(py, py_env, pushed)?;
+                            return Ok(None);
+                        }
+                        BuildStatus::DoneAndReprocessToken(pushed) => {
+                            self.stack.pop().expect("self.curr_top() returned Done => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
+                            self.push_to_top_builder(py, py_env, pushed)?;
+                            if self.stack.is_empty() {
+                                // The token is bubbling up to the next file - stop that from happening!
+                                match tok {
+                                    // ScopeClose bubbling out => breaking out into a subfile
+                                    TTToken::ScopeClose(span) => return Err(InterpError::ScopeCloseOutsideScope(span).into()),
+                                    TTToken::Newline(_) => return Ok(None),
+                                    _ => unreachable!("The only cases where a token should bubble out are ScopeClose, Newline, and EOF"),
+                                }
+                            } else {
+                                // Don't return, keep going through the loop to bubble the token up to the next builder from this file
+                            }
+                        }
+                        BuildStatus::DoneAndNewSource(src) => {
+                            self.stack.pop().expect("self.curr_top() returned Done => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
+                            return Ok(Some(src));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn push_to_top_builder(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+        pushed: Option<PushToNextLevel>,
+    ) -> TurnipTextContextlessResult<()> {
+        let action = self
+            .curr_top()
+            .borrow_mut()
+            .process_push_from_inner_builder(py, py_env, pushed)?;
+        match action {
+            BuildStatus::Continue => Ok(()),
+            BuildStatus::Done(new_pushed) => {
+                self.stack.pop().expect("self.curr_top() returned Done => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
+                self.push_to_top_builder(py, py_env, new_pushed)
+            }
+            BuildStatus::StartInnerBuilder(builder) => {
+                self.stack.push(builder);
+                Ok(())
+            },
+            BuildStatus::DoneAndReprocessToken(_) | BuildStatus::DoneAndNewSource(_) => unreachable!("process_push_from_inner_builder may not return DoneAndReprocessToken or DoneAndNewSource."),
+        }
     }
 }
 
 /// Holds multiple stacks of builders including an always-present top level builder.
 /// Each stack of builders
 struct BuilderStacks {
-    top: TopLevelDocumentBuilder,
+    top: Rc<RefCell<TopLevelDocumentBuilder>>,
     /// The stacks of builders, one stack per file
-    builder_stacks: Vec<Vec<Box<dyn BuildFromTokens>>>,
+    builder_stacks: Vec<FileBuilderStack>,
 }
 impl BuilderStacks {
     fn new(py: Python) -> PyResult<Self> {
+        let top = TopLevelDocumentBuilder::new(py)?;
         Ok(Self {
-            top: TopLevelDocumentBuilder::new(py)?,
-            builder_stacks: vec![vec![]], // Constant condition: there is always at least one builder stack
+            builder_stacks: vec![FileBuilderStack::new(top.clone())], // Constant condition: there is always at least one builder stack
+            top,
         })
     }
 
-    fn top_builder(&mut self) -> &mut dyn BuildFromTokens {
-        // Loop through builder stacks from end to start, return topmost builder if any is present
-        for stack in self.builder_stacks.iter_mut().rev() {
-            match stack.last_mut() {
-                Some(builder) => return builder.as_mut(),
-                None => continue,
-            };
-        }
-        &mut self.top
-    }
-    fn push_to_current_file(&mut self, new_builder: Box<dyn BuildFromTokens>) {
+    fn top_stack(&mut self) -> &mut FileBuilderStack {
         self.builder_stacks
             .last_mut()
             .expect("Must always have at least one builder stack")
-            .push(new_builder);
     }
-    fn pop_from_current_file(&mut self) -> Option<()> {
-        self.builder_stacks
-            .last_mut()
-            .expect("Must always have at least one builder stack")
-            .pop()?;
-        Some(())
-    }
+
     fn push_subfile(&mut self) {
-        self.builder_stacks.push(vec![])
+        let topmost_builder_enclosing_new_file = self.top_stack().curr_top().clone();
+        self.builder_stacks
+            .push(FileBuilderStack::new(topmost_builder_enclosing_new_file))
     }
-    fn pop_subfile(&mut self) -> Vec<Box<dyn BuildFromTokens>> {
+    fn pop_subfile(&mut self) -> FileBuilderStack {
         let stack = self
             .builder_stacks
             .pop()
             .expect("Must always have at least one builder stack");
+        assert!(stack.stack.is_empty());
         if self.builder_stacks.len() == 0 {
             panic!("Popped the last builder stack inside pop_file! ParserStacks must always have at least one stack")
         }
         stack
     }
-    fn finalize(mut self) -> (TopLevelDocumentBuilder, Vec<Box<dyn BuildFromTokens>>) {
+
+    fn finalize(mut self) -> Rc<RefCell<TopLevelDocumentBuilder>> {
         let last_stack = self
             .builder_stacks
             .pop()
             .expect("Must always have at least one builder stack");
+        assert!(last_stack.stack.is_empty());
         if self.builder_stacks.len() > 0 {
             panic!("Called finalize() on BuilderStacks when more than one stack was left - forgot to pop_subfile()?");
         }
-        (self.top, last_stack)
+        self.top
     }
 }
 
@@ -555,11 +581,11 @@ struct TopLevelDocumentBuilder {
     expect_newline: bool,
 }
 impl TopLevelDocumentBuilder {
-    fn new(py: Python) -> PyResult<Self> {
-        Ok(Self {
+    fn new(py: Python) -> PyResult<Rc<RefCell<Self>>> {
+        Ok(rc_refcell(Self {
             structure: InterimDocumentStructure::new(py)?,
             expect_newline: false,
-        })
+        }))
     }
 
     fn finalize(mut self, py: Python) -> TurnipTextContextlessResult<Py<DocSegment>> {
@@ -655,8 +681,8 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
 
 struct CommentFromTokens {}
 impl CommentFromTokens {
-    fn new() -> Box<Self> {
-        Box::new(Self {})
+    fn new() -> Rc<RefCell<Self>> {
+        rc_refcell(Self {})
     }
 }
 impl BuildFromTokens for CommentFromTokens {
@@ -690,8 +716,8 @@ struct RawStringFromTokens {
     raw_data: String,
 }
 impl RawStringFromTokens {
-    fn new(start_span: ParseSpan, n_opening: usize) -> Box<Self> {
-        Box::new(Self {
+    fn new(start_span: ParseSpan, n_opening: usize) -> Rc<RefCell<Self>> {
+        rc_refcell(Self {
             ctx: BuilderContext::new("RawString", start_span),
             n_closing: n_opening,
             raw_data: String::new(),
@@ -741,8 +767,8 @@ struct BlockScopeFromTokens {
     block_scope: Py<BlockScope>,
 }
 impl BlockScopeFromTokens {
-    fn new(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Box<Self>> {
-        Ok(Box::new(Self {
+    fn new(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
+        Ok(rc_refcell(Self {
             ctx: BuilderContext::new("BlockScope", start_span),
             expect_newline: false,
             block_scope: py_internal_alloc(py, BlockScope::new_empty(py))?,
@@ -859,13 +885,13 @@ impl ParagraphFromTokens {
         py: Python,
         inline: &PyAny,
         inline_span: ParseSpan,
-    ) -> TurnipTextContextlessResult<Box<Self>> {
+    ) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
         let current_sentence = py_internal_alloc(py, Sentence::new_empty(py))?;
         current_sentence
             .borrow_mut(py)
             .push_inline(inline)
             .err_as_internal(py)?;
-        Ok(Box::new(Self {
+        Ok(rc_refcell(Self {
             ctx: BuilderContext::new("Paragraph", inline_span),
             para: py_internal_alloc(py, Paragraph::new_empty(py))?,
             start_of_line: false,
@@ -877,8 +903,8 @@ impl ParagraphFromTokens {
         py: Python,
         text: &str,
         text_span: ParseSpan,
-    ) -> TurnipTextContextlessResult<Box<Self>> {
-        Ok(Box::new(Self {
+    ) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
+        Ok(rc_refcell(Self {
             ctx: BuilderContext::new("Paragraph", text_span),
             para: py_internal_alloc(py, Paragraph::new_empty(py))?,
             start_of_line: false,
@@ -1127,8 +1153,8 @@ struct InlineScopeFromTokens {
     current_building_text: Option<InlineTextState>,
 }
 impl InlineScopeFromTokens {
-    fn new(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Box<Self>> {
-        Ok(Box::new(Self {
+    fn new(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
+        Ok(rc_refcell(Self {
             ctx: BuilderContext::new("BlockScope", start_span),
             start_of_line: true,
             inline_scope: py_internal_alloc(py, InlineScope::new_empty(py))?,
@@ -1328,8 +1354,8 @@ struct CodeFromTokens {
     builder: Option<EvalBracketResult>,
 }
 impl CodeFromTokens {
-    fn new(start_span: ParseSpan, n_opening: usize) -> Box<Self> {
-        Box::new(Self {
+    fn new(start_span: ParseSpan, n_opening: usize) -> Rc<RefCell<Self>> {
+        rc_refcell(Self {
             start_span,
             n_closing: n_opening,
             code: String::new(),
@@ -1455,4 +1481,8 @@ fn py_internal_alloc<T: PyClass>(
     value: impl Into<PyClassInitializer<T>>,
 ) -> TurnipTextContextlessResult<Py<T>> {
     Py::new(py, value).err_as_internal(py)
+}
+
+fn rc_refcell<T>(t: T) -> Rc<RefCell<T>> {
+    Rc::new(RefCell::new(t))
 }
