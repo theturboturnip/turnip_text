@@ -920,9 +920,16 @@ pub fn test_code_close_in_text() {
     )
 }
 #[test]
-pub fn test_scope_close_outside_scope() {
+pub fn test_inline_scope_close_outside_scope() {
     expect_parse_err(
         "not in a scope } but closed scope",
+        TestInterpError::ScopeCloseOutsideScope(TestParserSpan("}")),
+    )
+}
+#[test]
+pub fn test_block_scope_close_outside_scope() {
+    expect_parse_err(
+        "} # not in a scope",
         TestInterpError::ScopeCloseOutsideScope(TestParserSpan("}")),
     )
 }
@@ -1224,7 +1231,8 @@ stuff that gets swallowed
 pub fn test_block_scope_builder_return_none_with_end_inside_para() {
     expect_parse(
         "[TEST_BLOCK_SWALLOWER]{
-stuff that gets swallowed}",
+stuff that gets swallowed
+}",
         Ok(test_doc(vec![])),
     )
 }
