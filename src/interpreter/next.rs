@@ -929,11 +929,15 @@ impl ParagraphFromTokens {
                         current_text.text.push_str(&w)
                     }
                 }
-                let current_text = py_internal_alloc(py, Text::new_rs(py, &current_text.text))?;
-                self.current_sentence
-                    .borrow_mut(py)
-                    .push_inline(current_text.as_ref(py))
-                    .err_as_internal(py)
+                if !current_text.text.is_empty() {
+                    let current_text = py_internal_alloc(py, Text::new_rs(py, &current_text.text))?;
+                    self.current_sentence
+                        .borrow_mut(py)
+                        .push_inline(current_text.as_ref(py))
+                        .err_as_internal(py)
+                } else {
+                    Ok(())
+                }
             }
             None => Ok(()),
         }
@@ -997,21 +1001,19 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         let whitespace_content = tok.stringify_escaped(data);
         match &mut self.current_building_text {
             Some(InlineTextState {
-                text,
+                text: _,
                 pending_whitespace,
             }) => {
                 // Push new whitespace into pending_whitespace
-                // TODO this means you can be text=" ", pending_whitespace=" " at the same time. weird.
                 match pending_whitespace {
                     Some(w) => w.push_str(whitespace_content),
                     None => *pending_whitespace = Some(whitespace_content.to_string()),
                 }
             }
-            // Don't skip whitespace when we're mid-line - even if we aren't building text!
             None => {
                 self.current_building_text = Some(InlineTextState {
-                    text: whitespace_content.to_string(),
-                    pending_whitespace: None,
+                    text: String::new(),
+                    pending_whitespace: Some(whitespace_content.to_string()),
                 })
             }
         };
@@ -1148,7 +1150,6 @@ impl BuildFromTokens for ParagraphFromTokens {
 struct InlineScopeFromTokens {
     ctx: BuilderContext,
     inline_scope: Py<InlineScope>,
-    // TODO test whitespace after the start of an inline scope
     start_of_line: bool,
     current_building_text: Option<InlineTextState>,
 }
@@ -1174,11 +1175,15 @@ impl InlineScopeFromTokens {
                         current_text.text.push_str(&w)
                     }
                 }
-                let current_text = py_internal_alloc(py, Text::new_rs(py, &current_text.text))?;
-                self.inline_scope
-                    .borrow_mut(py)
-                    .push_inline(current_text.as_ref(py))
-                    .err_as_internal(py)
+                if !current_text.text.is_empty() {
+                    let current_text = py_internal_alloc(py, Text::new_rs(py, &current_text.text))?;
+                    self.inline_scope
+                        .borrow_mut(py)
+                        .push_inline(current_text.as_ref(py))
+                        .err_as_internal(py)
+                } else {
+                    Ok(())
+                }
             }
             None => Ok(()),
         }
@@ -1195,7 +1200,7 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
                 pending_whitespace,
             }) => *pending_whitespace = None,
             None => {}
-        }
+        };
     }
     fn flush_pending_text(
         &mut self,
@@ -1238,22 +1243,23 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
+        let whitespace_content = tok.stringify_escaped(data);
         self.start_of_line = false;
         match &mut self.current_building_text {
             Some(InlineTextState {
-                text,
+                text: _,
                 pending_whitespace,
             }) => {
-                if let Some(w) = std::mem::take(pending_whitespace) {
-                    text.push_str(&w)
+                // Push new whitespace into pending_whitespace
+                match pending_whitespace {
+                    Some(w) => w.push_str(whitespace_content),
+                    None => *pending_whitespace = Some(whitespace_content.to_string()),
                 }
-                text.push_str(tok.stringify_escaped(data))
             }
-            // Don't skip whitespace when we're mid-line - even if we aren't building text!
             None => {
                 self.current_building_text = Some(InlineTextState {
-                    text: tok.stringify_escaped(data).to_string(),
-                    pending_whitespace: None,
+                    text: String::new(),
+                    pending_whitespace: Some(whitespace_content.to_string()),
                 })
             }
         };
@@ -1306,7 +1312,6 @@ impl BuildFromTokens for InlineScopeFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
-        // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         self.start_of_line = false;
         // Before we do anything else, push the current text into the scope including the whitespace between the text and the newly pushed item
