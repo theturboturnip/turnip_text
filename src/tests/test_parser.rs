@@ -1349,5 +1349,212 @@ pub fn test_no_emit_doc_segment_header_in_para() {
     )
 }
 
+/*
+// These are tests for strict blank-line syntax checking - where the parser ensures that there is always a blank line between two blocks.
+// With the way the parser is currently structured, it's impossible to check this inside subfiles without having the newlines inside subfiles impact the correctness of the surrounding file.
+// Thus these tests are disabled and instead we allow some funky unintuitive syntax.
+
+// There should always be a blank line between a paragraph ending and a paragraph starting
+// (otherwise they'd be the same paragraph)
+#[test]
+pub fn test_block_sep_para_para() {
+    expect_parse(
+        "Paragraph one\n has some content\n\nThis is paragraph two",
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![
+                test_sentence("Paragraph one"),
+                test_sentence("has some content"),
+            ]),
+            TestBlock::Paragraph(vec![test_sentence("This is paragraph two")]),
+        ])),
+    );
+    expect_parse(
+        "Paragraph one\nhas some content\nThis isn't paragraph two!",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![
+            test_sentence("Paragraph one"),
+            test_sentence("has some content"),
+            test_sentence("This isn't paragraph two!"),
+        ])])),
+    )
+}
+
+// There should always be a blank line between a paragraph ending and a block scope starting
+#[test]
+pub fn test_block_sep_para_scope_open() {
+    expect_parse(
+        r#"Paragraph one
+
+        {
+            New Block
+        }"#,
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
+            TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence("New Block")])]),
+        ])),
+    );
+    expect_parse_err(
+        r#"Paragraph one
+        {
+            New Block
+        }"#,
+        TestInterpError::InsufficientBlockSeparation {
+            block_start: TestParserSpan("{\n"),
+        },
+    )
+}
+
+// There should always be a blank line between a paragraph ending and code-emitting-block
+// - this is picked up as trying to emit a block inside a paragraph
+#[test]
+pub fn test_block_sep_para_code() {
+    expect_parse(
+        r#"Paragraph one
+
+        [TEST_BLOCK]"#,
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
+            TestBlock::TestOwnedBlock(vec![]),
+        ])),
+    );
+    expect_parse_err(
+        r#"Paragraph one
+        [TEST_BLOCK]"#,
+        TestInterpError::BlockCodeMidPara {
+            code_span: TestParserSpan("[TEST_BLOCK]"),
+        },
+    )
+}
+
+// There should always be a blank line between a code-emitting-block and a paragraph starting
+#[test]
+pub fn test_block_sep_code_para() {
+    expect_parse(
+        r#"[TEST_BLOCK]
+
+        Paragraph one"#,
+        Ok(test_doc(vec![
+            TestBlock::TestOwnedBlock(vec![]),
+            TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
+        ])),
+    );
+    expect_parse_err(
+        r#"[TEST_BLOCK]
+        Paragraph one"#,
+        TestInterpError::InsufficientBlockSeparation {
+            block_start: TestParserSpan("P"),
+        },
+    )
+}
+
+// This should *not* trigger insufficient space - it's fine to close a block scope directly after a paragraph
+#[test]
+pub fn test_block_sep_para_scope_close() {
+    expect_parse(
+        r#"{
+            Paragraph one
+        }"#,
+        Ok(test_doc(vec![TestBlock::BlockScope(vec![
+            TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
+        ])])),
+    );
+}
+
+// There should always be a blank line between a scope closing and another scope starting
+#[test]
+pub fn test_block_sep_scope_scope() {
+    expect_parse(
+        r#"{
+        }
+
+        {
+        }"#,
+        Ok(test_doc(vec![
+            TestBlock::BlockScope(vec![]),
+            TestBlock::BlockScope(vec![]),
+        ])),
+    );
+    expect_parse_err(
+        r#"{
+        }
+        {
+        }"#,
+        TestInterpError::InsufficientBlockSeparation {
+            block_start: TestParserSpan("{\n"),
+        },
+    )
+}
+
+// There should always be a blank line between a scope closing and code-emitting-block
+#[test]
+pub fn test_block_sep_scope_code() {
+    expect_parse(
+        r#"{
+        }
+
+        [TEST_BLOCK]"#,
+        Ok(test_doc(vec![
+            TestBlock::BlockScope(vec![]),
+            TestBlock::TestOwnedBlock(vec![]),
+        ])),
+    );
+    expect_parse_err(
+        r#"{
+        }
+        [TEST_BLOCK]"#,
+        TestInterpError::InsufficientBlockSeparation {
+            block_start: TestParserSpan("["),
+        },
+    )
+}
+
+// There should always be a blank line between a code-emitting-block and a scope opening
+#[test]
+pub fn test_block_sep_code_scope() {
+    expect_parse(
+        r#"
+        [TEST_BLOCK]
+
+        {
+        }"#,
+        Ok(test_doc(vec![
+            TestBlock::TestOwnedBlock(vec![]),
+            TestBlock::BlockScope(vec![]),
+        ])),
+    );
+    expect_parse_err(
+        r#"
+        [TEST_BLOCK]
+        {
+        }"#,
+        TestInterpError::InsufficientBlockSeparation {
+            block_start: TestParserSpan("{\n"),
+        },
+    )
+}
+
+// There should always be a blank line between two code-emitting-blocks
+#[test]
+pub fn test_block_sep_code_code() {
+    expect_parse(
+        r#"
+        [TEST_BLOCK]
+
+        [TEST_BLOCK]"#,
+        Ok(test_doc(vec![
+            TestBlock::TestOwnedBlock(vec![]),
+            TestBlock::TestOwnedBlock(vec![]),
+        ])),
+    );
+    expect_parse_err(
+        r#"
+        [TEST_BLOCK]
+        [TEST_BLOCK]"#,
+        TestInterpError::InsufficientBlockSeparation {
+            block_start: TestParserSpan("["),
+        },
+    )
+}
+*/
+
 // TODO MORE TESTS FOR DOC STURCURE. OH FUCK I NEED TO CHANGE THE TEST HARNESS
 // TODO tests for inserted files. Are they exclusively on block boundaries?

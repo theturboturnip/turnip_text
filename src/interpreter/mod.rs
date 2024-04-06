@@ -490,6 +490,10 @@ pub enum InterpError {
     },
     #[error("Escaped newline (used for sentence continuation) found outside paragraph")]
     EscapedNewlineOutsideParagraph { newline: ParseSpan },
+    // This was planned but with the way the new parser is built we can't be anal about newlines inside subfiles without having subfile-newlines affect the correctness of the surrounding file.
+    // For now just let unintuitive block syntax through.
+    // #[error("Insufficient separation between blocks")]
+    // InsufficientBlockSeparation { block_start: ParseSpan },
 }
 
 trait MapContextlessResult<T> {

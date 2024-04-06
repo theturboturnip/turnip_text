@@ -8,6 +8,16 @@
 //!
 //! If a completed object is returned, the builder is popped and the object is passed into the next builder on the stack to be integrated into the contents.
 //! This method is convenient because it handles other alt-states for parsing such as comments and raw strings naturally by putting them on top of the stack!
+//!
+//! Each file has a separate [FileBuilderStack], which falls back to the topmost builder in the previous file or the topmost builder of the whole document if no containing files have builders.
+//! It's possible to have a tall stack of files where no file is using a builder - e.g. if you have file A include
+//! file B include file C include file D, and you just write paragraphs, files A through C will have empty builder stacks while file D is being processed and paragraphs from file D will bubble right up to the top-level document.
+//!
+//! Previously I hoped to introduce strict newline handling, as the current syntax allows separate blocks to be emitted on the same line (e.g. two eval-bracket-pairs can emit Block on the same line) or on directly adjacent lines (e.g. a block scope open directly under a paragraph, or a paragraph starting directly under an eval-bracket emitting Block).
+//! This logic would have to be implemented inside a Builder, and it would need to be checked at the top level of *each* file.
+//! This cannot be done with the above structure, unless you allow newlines to cross file borders and affect the builder for the enclosing file.
+//! That would mean the correctness of the *enclosing* file would be dependent on the *enclosed* file and vice versa - the enclosed file would inherit newline state from the enclosing file, and the enclosing file would inherit newline state from after the enclosed file finishes.
+//! I do not like this, and prefer to keep the correctness of files independent while keeping the wackier possible syntax.
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -49,7 +59,7 @@ enum BuildStatus {
     Done(Option<PushToNextLevel>),
     /// On rare occasions it is necessary to bubble the token up to the next builder as well as the finished item.
     /// This applies to
-    /// - scope-closes at the start of the line when in paragraph-mode - these scope closes are clearly intended for an enclosing block scope, so the paragraph should finish and the containing builder should handle the scope-close
+    /// - newlines and scope-closes at the start of the line when in paragraph-mode - these scope closes are clearly intended for an enclosing block scope, so the paragraph should finish and the containing builder should handle the scope-close
     /// - EOFs in all non-error cases, because those should bubble up through the file
     /// - newlines at the end of comments, because those still signal the end of sentence in inline mode and count as a blank line in block mode
     /// None of these are allowed to cross file boundaries. Scope-closes crossing file boundaries invoke a ScopeCloseOutsideScope error. EOFs and newlines are silently ignored.
@@ -264,8 +274,9 @@ impl FileBuilderStack {
                             if self.stack.is_empty() {
                                 // The token is bubbling up to the next file - stop that from happening!
                                 match tok {
-                                    // ScopeClose bubbling out => breaking out into a subfile
+                                    // ScopeClose bubbling out => breaking out into a subfile => not allowed
                                     TTToken::ScopeClose(span) => return Err(InterpError::ScopeCloseOutsideScope(span).into()),
+                                    // Don't let newlines inside a subfile affect outer files.
                                     TTToken::Newline(_) => return Ok(None),
                                     _ => unreachable!("The only cases where a token should bubble out are ScopeClose, Newline, and EOF"),
                                 }
@@ -365,11 +376,6 @@ impl BuilderStacks {
 }
 
 trait BlockTokenProcessor {
-    /// It's common to expect a newline after emitting a block's worth of content
-    fn is_expecting_newline(&self) -> bool;
-    fn process_expected_newline(&mut self);
-    fn process_other_token_when_expecting_newline(&mut self) -> TurnipTextContextlessError;
-
     fn on_close_scope(
         &mut self,
         py: Python,
@@ -384,69 +390,55 @@ trait BlockTokenProcessor {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        if self.is_expecting_newline() {
-            match tok {
-                TTToken::Whitespace(_) => Ok(BuildStatus::Continue),
-                TTToken::Newline(_) => {
-                    self.process_expected_newline();
-                    Ok(BuildStatus::Continue)
-                }
-
-                _ => Err(self.process_other_token_when_expecting_newline()),
+        match tok {
+            TTToken::Escaped(span, Escapable::Newline) => {
+                Err(InterpError::EscapedNewlineOutsideParagraph { newline: span }.into())
             }
-        } else {
-            match tok {
-                TTToken::Escaped(span, Escapable::Newline) => {
-                    Err(InterpError::EscapedNewlineOutsideParagraph { newline: span }.into())
-                }
-                TTToken::Whitespace(_) | TTToken::Newline(_) => Ok(BuildStatus::Continue),
+            TTToken::Whitespace(_) | TTToken::Newline(_) => Ok(BuildStatus::Continue),
 
-                TTToken::Hashes(_, _) => {
-                    Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new()))
-                }
+            TTToken::Hashes(_, _) => Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new())),
 
-                // Because this may return Inline we *always* have to be able to handle inlines at top scope.
-                TTToken::CodeOpen(start_span, n_brackets) => Ok(BuildStatus::StartInnerBuilder(
-                    CodeFromTokens::new(start_span, n_brackets),
-                )),
+            // Because this may return Inline we *always* have to be able to handle inlines at top scope.
+            TTToken::CodeOpen(start_span, n_brackets) => Ok(BuildStatus::StartInnerBuilder(
+                CodeFromTokens::new(start_span, n_brackets),
+            )),
 
-                TTToken::BlockScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-                    BlockScopeFromTokens::new(py, start_span)?,
-                )),
+            TTToken::BlockScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
+                BlockScopeFromTokens::new(py, start_span)?,
+            )),
 
-                TTToken::InlineScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-                    InlineScopeFromTokens::new(py, start_span)?,
-                )),
+            TTToken::InlineScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
+                InlineScopeFromTokens::new(py, start_span)?,
+            )),
 
-                TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
-                    RawStringFromTokens::new(start_span, n_opening),
-                )),
+            TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
+                RawStringFromTokens::new(start_span, n_opening),
+            )),
 
-                TTToken::Escaped(text_span, _)
-                | TTToken::Backslash(text_span)
-                | TTToken::OtherText(text_span) => Ok(BuildStatus::StartInnerBuilder(
-                    ParagraphFromTokens::new_with_starting_text(
-                        py,
-                        tok.stringify_escaped(data),
-                        text_span,
-                    )?,
-                )),
+            TTToken::Escaped(text_span, _)
+            | TTToken::Backslash(text_span)
+            | TTToken::OtherText(text_span) => Ok(BuildStatus::StartInnerBuilder(
+                ParagraphFromTokens::new_with_starting_text(
+                    py,
+                    tok.stringify_escaped(data),
+                    text_span,
+                )?,
+            )),
 
-                TTToken::CodeClose(span, _)
-                | TTToken::CodeCloseOwningInline(span, _)
-                | TTToken::CodeCloseOwningRaw(span, _, _)
-                | TTToken::CodeCloseOwningBlock(span, _) => {
-                    Err(InterpError::CodeCloseOutsideCode(span).into())
-                }
-
-                TTToken::RawScopeClose(span, _) => {
-                    Err(InterpError::RawScopeCloseOutsideRawScope(span).into())
-                }
-
-                TTToken::ScopeClose(_) => self.on_close_scope(py, tok, data),
-
-                TTToken::EOF(_) => self.on_eof(py, tok),
+            TTToken::CodeClose(span, _)
+            | TTToken::CodeCloseOwningInline(span, _)
+            | TTToken::CodeCloseOwningRaw(span, _, _)
+            | TTToken::CodeCloseOwningBlock(span, _) => {
+                Err(InterpError::CodeCloseOutsideCode(span).into())
             }
+
+            TTToken::RawScopeClose(span, _) => {
+                Err(InterpError::RawScopeCloseOutsideRawScope(span).into())
+            }
+
+            TTToken::ScopeClose(_) => self.on_close_scope(py, tok, data),
+
+            TTToken::EOF(_) => self.on_eof(py, tok),
         }
     }
 }
@@ -579,13 +571,11 @@ struct TopLevelDocumentBuilder {
     /// The current structure of the document, including toplevel content, segments, and the current block stacks (one block stack per included subfile)
     /// TODO remove the block-stack-handling parts from this
     structure: InterimDocumentStructure,
-    expect_newline: bool,
 }
 impl TopLevelDocumentBuilder {
     fn new(py: Python) -> PyResult<Rc<RefCell<Self>>> {
         Ok(rc_refcell(Self {
             structure: InterimDocumentStructure::new(py)?,
-            expect_newline: false,
         }))
     }
 
@@ -595,18 +585,6 @@ impl TopLevelDocumentBuilder {
     }
 }
 impl BlockTokenProcessor for TopLevelDocumentBuilder {
-    fn is_expecting_newline(&self) -> bool {
-        self.expect_newline
-    }
-
-    fn process_expected_newline(&mut self) {
-        self.expect_newline = false;
-    }
-
-    fn process_other_token_when_expecting_newline(&mut self) -> TurnipTextContextlessError {
-        todo!("error on non-newline token when newline is expected")
-    }
-
     fn on_close_scope(
         &mut self,
         py: Python,
@@ -764,31 +742,17 @@ impl BuildFromTokens for RawStringFromTokens {
 
 struct BlockScopeFromTokens {
     ctx: BuilderContext,
-    expect_newline: bool, // Set to true after pushing Blocks and Headers into the InterimDocumentStructure
     block_scope: Py<BlockScope>,
 }
 impl BlockScopeFromTokens {
     fn new(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
         Ok(rc_refcell(Self {
             ctx: BuilderContext::new("BlockScope", start_span),
-            expect_newline: false,
             block_scope: py_internal_alloc(py, BlockScope::new_empty(py))?,
         }))
     }
 }
 impl BlockTokenProcessor for BlockScopeFromTokens {
-    fn is_expecting_newline(&self) -> bool {
-        self.expect_newline
-    }
-
-    fn process_expected_newline(&mut self) {
-        self.expect_newline = false;
-    }
-
-    fn process_other_token_when_expecting_newline(&mut self) -> TurnipTextContextlessError {
-        todo!("Error when expecting newline")
-    }
-
     fn on_close_scope(
         &mut self,
         py: Python,
@@ -1027,9 +991,9 @@ impl InlineTokenProcessor for ParagraphFromTokens {
                 self.ctx.try_extend(&tok.token_span()),
                 "ParagraphFromTokens got a token from a different file that it was opened in"
             );
-            Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
-                PyTcRef::of_unchecked(self.para.as_ref(py)),
-            )))))
+            Ok(BuildStatus::DoneAndReprocessToken(Some(self.ctx.make(
+                DocElement::Block(PyTcRef::of_unchecked(self.para.as_ref(py))),
+            ))))
         } else {
             // Swap the current sentence out for a new one
             let sentence = std::mem::replace(
