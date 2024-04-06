@@ -1034,14 +1034,65 @@ pub fn test_strip_leading_whitespace() {
 pub fn test_strip_trailing_whitespace() {
     expect_parse(
         concat!(
-            r#"No whitespace allowed after this! 
-"#,
-            r#"I mean it!                        "#
+            "No whitespace allowed after this! \n",
+            "I mean it!                        "
         ),
         Ok(test_doc(vec![TestBlock::Paragraph(vec![
             test_sentence("No whitespace allowed after this!"),
             test_sentence("I mean it!"),
         ])])),
+    )
+}
+
+#[test]
+pub fn test_strip_leading_scope_whitespace() {
+    expect_parse(
+        "{ no leading whitespace}",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            TestInline::InlineScope(vec![test_text("no leading whitespace")]),
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_strip_trailing_scope_whitespace() {
+    expect_parse(
+        "{no trailing whitespace }",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            TestInline::InlineScope(vec![test_text("no trailing whitespace")]),
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_dont_strip_whitespace_between_scopes() {
+    expect_parse(
+        "{ stuff }     { other stuff }",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            TestInline::InlineScope(vec![test_text("stuff")]),
+            test_text("     "),
+            TestInline::InlineScope(vec![test_text("other stuff")]),
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_strip_whitespace_after_scope() {
+    expect_parse(
+        "{ stuff }     \n",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            TestInline::InlineScope(vec![test_text("stuff")]),
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_strip_whitespace_between_scope_end_and_comment() {
+    expect_parse(
+        "{ stuff }     # stuff in a comment!\n",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            TestInline::InlineScope(vec![test_text("stuff")]),
+        ]])])),
     )
 }
 
