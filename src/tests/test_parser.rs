@@ -293,7 +293,7 @@ impl TestInterpError {
 const GLOBALS_CODE: &'static str = r#"
 # The Rust module name is _native, which is included under turnip_text, so Python IDEs don't try to import directly from it.
 # This means we use _native instead of turnip_text as the module name here.
-from _native import InlineScope, Text, BlockScope, TurnipTextSource
+from _native import InlineScope, Text, BlockScope, TurnipTextSource, Paragraph, Sentence
 
 class FauxBlock:
     is_block = True
@@ -310,9 +310,11 @@ class FauxInlineRaw:
     def __init__(self, raw_str):
         self.test_raw_str = str(raw_str)
 
-class TestBuilder:
+class TestBlockBuilder:
     def build_from_blocks(self, contents):
         return FauxBlock(contents)
+    
+class TestInlineBuilder:
     def build_from_inlines(self, contents):
         return FauxInline(contents)
 
@@ -330,8 +332,8 @@ class TestBlockSwallower():
     def build_from_blocks(self, contents):
         return None
 
-TEST_BLOCK_BUILDER = TestBuilder()
-TEST_INLINE_BUILDER = TestBuilder()
+TEST_BLOCK_BUILDER = TestBlockBuilder()
+TEST_INLINE_BUILDER = TestInlineBuilder()
 TEST_RAW_INLINE_BUILDER = TestRawInlineBuilder()
 TEST_RAW_BLOCK_BUILDER = TestRawBlockBuilder()
 
@@ -351,6 +353,12 @@ class TestDocSegmentBuilder:
 
 def test_src(contents):
     return TurnipTextSource.from_string(contents)
+
+class TestBlockBuilderFromInline:
+    def build_from_inlines(self, contents: InlineScope):
+        return FauxBlock(Paragraph([Sentence([contents])]))
+
+TEST_BLOCK_BUILDER_FROM_INLINE = TestBlockBuilderFromInline()
 "#;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -784,7 +792,7 @@ It was the best of the times, it was the blurst of times
 }
 "#,
         TestInterpError::PythonErr {
-            pyerr: Regex::new(r"TypeError : Expected object fitting typeclass BlockScopeBuilder, didn't get it. Got None").unwrap(),
+            pyerr: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None.*").unwrap(),
             code_span: TestParserSpan("[None]{\n"),
         },
     )
@@ -805,9 +813,7 @@ pub fn test_owned_inline_scope_with_non_inline_builder() {
     expect_parse_err(
         r"[None]{special text}",
         TestInterpError::PythonErr {
-            pyerr:
-                Regex::new("TypeError : Expected object fitting typeclass InlineScopeBuilder, didn't get it. Got None"
-                    ).unwrap(),
+            pyerr: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got None.*").unwrap(),
             code_span: TestParserSpan("[None]{"),
         },
     )
@@ -837,8 +843,7 @@ pub fn test_owned_inline_raw_scope_with_non_raw_builder() {
 import os
 }#"#,
         TestInterpError::PythonErr {
-            pyerr: Regex::new("TypeError : Expected object fitting typeclass RawScopeBuilder, didn't get it. Got None"
-        ).unwrap(),
+            pyerr: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got None").unwrap(),
             code_span: TestParserSpan("[None]#{"),
         },
     )
@@ -1178,7 +1183,7 @@ pub fn test_raw_scope_emitting_inline_from_block_level() {
 pub fn test_raw_scope_cant_emit_block_inside_paragraph() {
     expect_parse_err(
         "Inside a paragraph, you can't [TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#",
-        TestInterpError::BlockCodeFromRawScopeMidPara { code_span: TestParserSpan("[TEST_RAW_BLOCK_BUILDER]#{") }
+        TestInterpError::BlockCodeMidPara { code_span: TestParserSpan("[TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#") }
     )
 }
 
@@ -1238,7 +1243,7 @@ pub fn test_cant_eval_none_for_block_builder() {
     That doesn't make any sense! The owner can't be None
 }",
         TestInterpError::PythonErr {
-            pyerr: Regex::new("TypeError : Expected object fitting typeclass BlockScopeBuilder, didn't get it. Got None").unwrap(),
+            pyerr: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None").unwrap(),
             code_span: TestParserSpan("[None]{\n"),
         },
     )
@@ -1251,7 +1256,7 @@ pub fn test_cant_assign_for_block_builder() {
     That doesn't make any sense! The owner can't be an abstract concept of x being something
 }",
         TestInterpError::PythonErr {
-            pyerr: Regex::new("TypeError : Expected object fitting typeclass BlockScopeBuilder, didn't get it. Got None").unwrap(),
+            pyerr: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None").unwrap(),
             code_span: TestParserSpan("[x = 5]{\n"),
         },
     )
@@ -1262,7 +1267,7 @@ pub fn test_cant_assign_for_raw_builder() {
     expect_parse_err(
         "[x = 5]#{That doesn't make any sense! The owner can't be an abstract concept of x being something}#",
         TestInterpError::PythonErr {
-            pyerr: Regex::new("TypeError : Expected object fitting typeclass RawScopeBuilder, didn't get it. Got None").unwrap(),
+            pyerr: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got None").unwrap(),
             code_span: TestParserSpan("[x = 5]#{"),
         },
     )
@@ -1273,7 +1278,7 @@ pub fn test_cant_assign_for_inline_builder() {
     expect_parse_err(
         "[x = 5]{That doesn't make any sense! The owner can't be an abstract concept of x being something}",
         TestInterpError::PythonErr {
-            pyerr: Regex::new("TypeError : Expected object fitting typeclass InlineScopeBuilder, didn't get it. Got None").unwrap(),
+            pyerr: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got None").unwrap(),
             code_span: TestParserSpan ("[x = 5]{"),
         },
     )
@@ -1286,7 +1291,7 @@ pub fn test_syntax_errs_passed_thru() {
     expect_parse_err(
         "[1invalid]",
         TestInterpError::PythonErr {
-            pyerr: Regex::new("^SyntaxError : invalid syntax").unwrap(),
+            pyerr: Regex::new(r"^SyntaxError\s*:\s*invalid syntax").unwrap(),
             code_span: TestParserSpan("[1invalid]"),
         },
     )
@@ -1750,3 +1755,210 @@ f4 = test_src("""
     }
 }
 
+mod flexibility {
+    // All kinds of builder should be able to build inlines, even if their arguments aren't inline
+
+    use super::{
+        expect_parse, expect_parse_err, test_doc, test_sentence, TestBlock, TestInline,
+        TestInterpError,
+    };
+
+    #[test]
+    fn test_inline_scope_builder_building_inline() {
+        expect_parse(
+            "building [TEST_INLINE_BUILDER]{something built} inline",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::Text("building ".to_string()),
+                TestInline::TestOwnedInline(vec![TestInline::Text("something built".to_string())]),
+                TestInline::Text(" inline".to_string()),
+            ]])])),
+        )
+    }
+
+    #[test]
+    fn test_block_scope_builder_building_inline() {
+        // We can enter Block mode when building something that consumes block, but if it returns None
+        // then we can continue in inline mode on the same line
+        expect_parse(
+            r#"
+        building [TEST_BLOCK_SWALLOWER]{
+            lots of blocks!
+
+            even more blocks!
+
+            [TEST_BLOCK_BUILDER]{
+                blocks inside blocks! [TEST_INLINE_BUILDER]{ with otehr stuff in them! }
+            }
+        } nothing # this is on the same line!
+        "#,
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::Text("building ".to_string()),
+                TestInline::Text(" nothing".to_string()),
+            ]])])),
+        )
+    }
+
+    #[test]
+    fn test_raw_scope_builder_building_inline() {
+        expect_parse(
+            "building [TEST_RAW_INLINE_BUILDER]#{some raw stuff}#",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::Text("building ".to_string()),
+                TestInline::TestOwnedRaw("some raw stuff".to_string()),
+            ]])])),
+        )
+    }
+
+    // All kinds of builder should be able to build blocks, even if their arguments aren't blocks
+
+    #[test]
+    fn test_inline_scope_builder_building_block() {
+        expect_parse(
+            "[TEST_BLOCK_BUILDER_FROM_INLINE]{only inlines :)}",
+            Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![
+                TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![TestInline::Text(
+                    "only inlines :)".to_string(),
+                )])]]),
+            ])])),
+        )
+    }
+
+    #[test]
+    fn test_block_scope_builder_building_block() {
+        expect_parse(
+            r#"
+            [TEST_BLOCK_BUILDER]{
+                Stuff
+            }
+        "#,
+            Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![
+                TestBlock::Paragraph(vec![test_sentence("Stuff")]),
+            ])])),
+        )
+    }
+
+    #[test]
+    fn test_raw_scope_builder_building_block() {
+        expect_parse(
+            "[TEST_RAW_BLOCK_BUILDER]#{ block! }#",
+            Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        )
+    }
+
+    // Even if each builder can build blocks, they shouldn't be able to emit a block in an inline context
+
+    #[test]
+    fn test_inline_scope_builder_building_block_in_inline() {
+        expect_parse_err(
+            "{wow i'm in an inline context [TEST_BLOCK_BUILDER_FROM_INLINE]{only inlines :)}}",
+            TestInterpError::BlockCodeMidPara {
+                code_span: super::TestParserSpan(
+                    "[TEST_BLOCK_BUILDER_FROM_INLINE]{only inlines :)}",
+                ),
+            },
+        )
+    }
+
+    #[test]
+    fn test_block_scope_builder_building_block_in_inline() {
+        expect_parse_err(
+            r#"
+            {wow i'm in an inline context [TEST_BLOCK_BUILDER]{
+                Stuff
+            } continuing the inline context}
+        "#,
+            TestInterpError::BlockCodeMidPara {
+                code_span: super::TestParserSpan(
+                    "[TEST_BLOCK_BUILDER]{\n                Stuff\n            }",
+                ),
+            },
+        )
+    }
+
+    #[test]
+    fn test_raw_scope_builder_building_block_in_inline() {
+        expect_parse_err(
+            "{wow i'm in an inline context [TEST_RAW_BLOCK_BUILDER]#{ block! }# continuing the inline context}",
+            TestInterpError::BlockCodeMidPara {
+                code_span: super::TestParserSpan("[TEST_RAW_BLOCK_BUILDER]#{ block! }#"),
+            },
+        )
+    }
+
+    // TODO complete these for headers
+
+    // All kinds of builder should be able to build headers, even if their arguments aren't blocks
+    #[test]
+    fn test_inline_scope_builder_building_header() {}
+
+    #[test]
+    fn test_block_scope_builder_building_header() {}
+
+    #[test]
+    fn test_raw_scope_builder_building_header() {}
+
+    // Even if each builder can build blocks, they shouldn't be able to emit a header in an inline context
+
+    #[test]
+    fn test_inline_scope_builder_building_header_in_inline() {}
+
+    #[test]
+    fn test_block_scope_builder_building_header_in_inline() {}
+
+    #[test]
+    fn test_raw_scope_builder_building_header_in_inline() {}
+}
+
+/// This contains tests for situations that are currently allowed but probably shouldn't be.
+mod overflexibility {
+    use regex::Regex;
+
+    use super::{
+        expect_parse, expect_parse_err, test_doc, test_sentence, TestBlock, TestInterpError,
+        TestParserSpan,
+    };
+
+    /// There are no requirements for newlines after emitting blocks, so a paragraph can be started on the same line after a block has been emitted and create two logically separated blocks.
+    /// This is bad because the look of the syntax doesn't match that the blocks are separated.
+    /// It should be enforced that a blank line is emitted after the block.
+    #[test]
+    fn para_following_block_code() {
+        expect_parse(
+            "[TEST_BLOCK] and some following data",
+            Ok(test_doc(vec![
+                TestBlock::TestOwnedBlock(vec![]),
+                TestBlock::Paragraph(vec![test_sentence("and some following data")]),
+            ])),
+        )
+    }
+
+    /// There are no requirements for newlines after emitting inserted files, so a paragraph can be started on the same line after an inserted file (made of blocks) has been emitted and create two logically separated blocks.
+    /// This is bad because the look of the syntax doesn't match that the blocks are separated.
+    /// It should be enforced that a blank line is emitted after the inserted file.
+    #[test]
+    fn para_following_inserted_file() {
+        expect_parse(
+            r#"[test_src("initial data")] and some following data"#,
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![test_sentence("initial data")]),
+                TestBlock::Paragraph(vec![test_sentence("and some following data")]),
+            ])),
+        )
+    }
+
+    /// The parser is whitespace-sensitive when it comes to scope opens - block-scope-open is scope open followed *directly* by a newline.
+    /// block-scope-open won't happen if there is whitespace or comments.
+    #[test]
+    fn hidden_block_scope() {
+        expect_parse_err(
+            "[TEST_BLOCK_BUILDER]{   # wow this will surely open a block scope  \n}",
+            TestInterpError::PythonErr {
+                pyerr: Regex::new(
+                    r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got <TestBlockBuilder.*",
+                )
+                .unwrap(),
+                code_span: TestParserSpan("[TEST_BLOCK_BUILDER]{"),
+            },
+        )
+    }
+}

@@ -77,15 +77,16 @@ impl EvalBracketResult {
             raw_res
         };
         let res = match ctx {
-            EvalBracketContext::NeedBlockBuilder => {
-                EvalBracketResult::NeededBlockBuilder(PyTcRef::of(raw_res)?)
-            }
-            EvalBracketContext::NeedInlineBuilder => {
-                EvalBracketResult::NeededInlineBuilder(PyTcRef::of(raw_res)?)
-            }
-            EvalBracketContext::NeedRawBuilder { n_hashes } => {
-                EvalBracketResult::NeededRawBuilder(PyTcRef::of(raw_res)?, n_hashes)
-            }
+            EvalBracketContext::NeedBlockBuilder => EvalBracketResult::NeededBlockBuilder(
+                PyTcRef::of_friendly(raw_res, "value returned by eval-bracket")?,
+            ),
+            EvalBracketContext::NeedInlineBuilder => EvalBracketResult::NeededInlineBuilder(
+                PyTcRef::of_friendly(raw_res, "value returned by eval-bracket")?,
+            ),
+            EvalBracketContext::NeedRawBuilder { n_hashes } => EvalBracketResult::NeededRawBuilder(
+                PyTcRef::of_friendly(raw_res, "value returned by eval-bracket")?,
+                n_hashes,
+            ),
             EvalBracketContext::WantNonBuilder => {
                 if raw_res.is_none() {
                     EvalBracketResult::PyNone

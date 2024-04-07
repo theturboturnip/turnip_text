@@ -77,20 +77,20 @@ pub fn coerce_to_inline_pytcref<'py>(
     if let Ok(py_list) = obj.downcast::<PyList>() {
         if let Ok(inline_scope) = InlineScope::new(py, Some(py_list)) {
             let inline_scope = Py::new(py, inline_scope)?;
-            return PyTcRef::of(inline_scope.as_ref(py));
+            return Ok(PyTcRef::of_unchecked(inline_scope.as_ref(py)));
         }
     }
     // 3. if it's str, return Text(it)
     if let Ok(py_str) = obj.downcast::<PyString>() {
         let unescaped_text = Py::new(py, Text::new(py_str))?;
-        return PyTcRef::of(unescaped_text.as_ref(py));
+        return Ok(PyTcRef::of_unchecked(unescaped_text.as_ref(py)));
     }
     // 4. if it's float, return Text(str(it))
     // 5. if it's int, return Text(str(it))
     if obj.downcast::<PyFloat>().is_ok() || obj.downcast::<PyLong>().is_ok() {
         let str_of_obj = obj.str()?;
         let unescaped_text = Py::new(py, Text::new(str_of_obj))?;
-        return PyTcRef::of(unescaped_text.as_ref(py));
+        return Ok(PyTcRef::of_unchecked(unescaped_text.as_ref(py)));
     }
     // 6. otherwise fail with TypeError
     Err(PyTypeError::new_err("Failed to coerce object to Inline: was not an Inline, list of Inline (coercible to InlineScope), str, float, or int."))
@@ -130,7 +130,7 @@ pub fn coerce_to_block_pytcref<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResul
     if let Ok(py_list) = obj.downcast::<PyList>() {
         if let Ok(block_scope) = BlockScope::new(py, Some(py_list)) {
             let block_scope = Py::new(py, block_scope)?;
-            return PyTcRef::of(block_scope.as_ref(py));
+            return Ok(PyTcRef::of_unchecked(block_scope.as_ref(py)));
         }
     }
     // 3. if it's a Sentence, wrap it in a list -> Paragraph
@@ -139,7 +139,7 @@ pub fn coerce_to_block_pytcref<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResul
             py,
             Paragraph::new(py, Some(PyList::new(py, [sentence]).into()))?,
         )?;
-        return PyTcRef::of(paragraph.as_ref(py));
+        return Ok(PyTcRef::of_unchecked(paragraph.as_ref(py)));
     }
     // 4. if it can be coerced to an Inline, wrap that in list -> Sentence -> list -> Paragraph and return it
     if let Ok(inl) = coerce_to_inline(py, obj) {
@@ -156,7 +156,7 @@ pub fn coerce_to_block_pytcref<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResul
                 )),
             )?,
         )?;
-        return PyTcRef::of(paragraph.as_ref(py));
+        return Ok(PyTcRef::of_unchecked(paragraph.as_ref(py)));
     }
     // 5. otherwise fail with TypeError
     Err(PyTypeError::new_err("Failed to coerce object to Block: was not a Block, list of Blocks (coercible to BlockScope), Paragraph, Sentence, or coercible to Inline."))
@@ -279,7 +279,10 @@ impl BlockScopeBuilder {
         if output.is_none() {
             Ok(None)
         } else {
-            Ok(Some(PyTcUnionRef::of(output)?))
+            Ok(Some(PyTcUnionRef::of_friendly(
+                output,
+                "output of .build_from_blocks()",
+            )?))
         }
     }
 }
@@ -314,7 +317,7 @@ impl InlineScopeBuilder {
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
             .call1((inlines.as_ref(py),))?;
-        PyTcRef::of(output)
+        PyTcRef::of_friendly(output, "output of .build_from_inlines()")
     }
 }
 impl PyTypeclass for InlineScopeBuilder {
@@ -347,7 +350,7 @@ impl RawScopeBuilder {
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
             .call1((raw,))?;
-        PyTcUnionRef::of(output)
+        PyTcUnionRef::of_friendly(output, "output of .build_from_raw()")
     }
 }
 impl PyTypeclass for RawScopeBuilder {
@@ -712,7 +715,10 @@ impl DocSegment {
     #[new]
     pub fn new(header: &PyAny, contents: Py<BlockScope>, subsegments: &PyList) -> PyResult<Self> {
         Ok(Self {
-            header: Some(PyTcRef::of(header)?),
+            header: Some(PyTcRef::of_friendly(
+                header,
+                "input to DocSegment __init__",
+            )?),
             contents,
             subsegments: PyInstanceList::from(subsegments)?,
         })

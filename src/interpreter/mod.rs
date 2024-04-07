@@ -326,7 +326,7 @@ impl InterpManualBlockScopeState {
             None => {
                 Ok((
                     Some(
-                        PyTcUnionRef::of(self.children.as_ref(py)).expect("Internal error: InterpBlockScopeState::children, a BlockScope, somehow doesn't fit the Block typeclass")
+                        PyTcUnionRef::of_friendly(self.children.as_ref(py), "internal").expect("Internal error: InterpBlockScopeState::children, a BlockScope, somehow doesn't fit the Block typeclass")
                     ),
                     None // Wasn't created with code
                 ))
@@ -423,11 +423,11 @@ impl InlineNodeToCreate {
         match self {
             InlineNodeToCreate::Text(s) => {
                 let unescaped_text = Py::new(py, Text::new_rs(py, s.as_str()))?;
-                PyTcRef::of(unescaped_text.as_ref(py))
+                Ok(PyTcRef::of_unchecked(unescaped_text.as_ref(py)))
             }
             InlineNodeToCreate::Raw(raw) => {
                 let raw_text = Py::new(py, Raw::new_rs(py, raw.as_str()))?;
-                PyTcRef::of(raw_text.as_ref(py))
+                Ok(PyTcRef::of_unchecked(raw_text.as_ref(py)))
             }
             InlineNodeToCreate::PythonObject(obj) => Ok(obj),
         }

@@ -22,24 +22,26 @@ pub enum PyTcUnionRef<TA: PyTypeclass, TB: PyTypeclass> {
     B(PyTcRef<TB>),
 }
 impl<TA: PyTypeclass, TB: PyTypeclass> PyTcUnionRef<TA, TB> {
-    pub fn of(val: &PyAny) -> PyResult<Self> {
+    pub fn of_friendly(val: &PyAny, context: &str) -> PyResult<Self> {
         let is_a = TA::fits_typeclass(val)?;
         let is_b = TB::fits_typeclass(val)?;
 
         if is_a && is_b {
             let obj_repr = val.repr()?;
             Err(PyTypeError::new_err(format!(
-                "Expected object fitting either typeclass {} or {}, got {} which fits both.",
+                "Expected object fitting either typeclass {} or {} while handling {}, got {} which fits both.",
                 TA::NAME,
                 TB::NAME,
+                context,
                 obj_repr.to_str()?
             )))
         } else if (!is_a) && (!is_b) {
             let obj_repr = val.repr()?;
             Err(PyTypeError::new_err(format!(
-                "Expected object fitting either typeclass {} or {}, got {} which fits neither.",
+                "Expected object fitting either typeclass {} or {} while handling {}, got {} which fits neither.",
                 TA::NAME,
                 TB::NAME,
+                context,
                 obj_repr.to_str()?
             )))
         } else {
@@ -55,14 +57,22 @@ impl<TA: PyTypeclass, TB: PyTypeclass> PyTcUnionRef<TA, TB> {
 #[derive(Debug, Clone)]
 pub struct PyTcRef<T: PyTypeclass>(PyObject, PhantomData<T>);
 impl<T: PyTypeclass> PyTcRef<T> {
-    pub fn of(val: &PyAny) -> PyResult<Self> {
-        if T::fits_typeclass(val)? {
-            Ok(Self(val.into(), PhantomData::default()))
+    pub fn of(obj: &PyAny) -> Result<Self, ()> {
+        match T::fits_typeclass(obj) {
+            Ok(true) => Ok(Self(obj.into(), PhantomData::default())),
+            Ok(false) | Err(_) => Err(()),
+        }
+    }
+
+    pub fn of_friendly(obj: &PyAny, context: &str) -> PyResult<Self> {
+        if T::fits_typeclass(obj)? {
+            Ok(Self(obj.into(), PhantomData::default()))
         } else {
-            let obj_repr = val.repr()?;
+            let obj_repr = obj.repr()?;
             Err(PyTypeError::new_err(format!(
-                "Expected object fitting typeclass {}, didn't get it. Got {}",
+                "Expected object fitting typeclass {} while handling {}, didn't get it. Got {}",
                 T::NAME,
+                context,
                 obj_repr.to_str()?
             )))
         }
