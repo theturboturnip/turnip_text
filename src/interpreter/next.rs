@@ -63,11 +63,10 @@ enum BuildStatus {
     /// - EOFs in all non-error cases, because those should bubble up through the file
     /// - newlines at the end of comments, because those still signal the end of sentence in inline mode and count as a blank line in block mode
     /// None of these are allowed to cross file boundaries. Scope-closes crossing file boundaries invoke a ScopeCloseOutsideScope error. EOFs and newlines are silently ignored.
-    /// TODO ensure the above :)
     DoneAndReprocessToken(Option<PushToNextLevel>),
     Continue,
     StartInnerBuilder(Rc<RefCell<dyn BuildFromTokens>>),
-    DoneAndNewSource(TurnipTextSource),
+    DoneAndNewSource(BuilderContext, TurnipTextSource),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -102,7 +101,7 @@ trait BuildFromTokens {
     /// This will usually receive tokens from the same file it was created in, unless a source file is opened within it
     /// in which case it will receive the top-level tokens from that file too except EOF.
     ///
-    /// Note: this means if an impl doesn't override [allow_emitting_new_sources_inside] to true then it will always receive tokens from the same file.
+    /// Note: this means if an impl doesn't override [BuildFromTokens::on_emitted_source_inside] to true then it will always receive tokens from the same file.
     ///
     /// When receiving any token from an inner file, this function must return either an error, [BuildStatus::Continue], or [BuildStatus::StartInnerBuilder]. Other responses would result in modifying the outer file due to the contents of the inner file, and are not allowed.
     ///
@@ -124,10 +123,15 @@ trait BuildFromTokens {
         pushed: Option<PushToNextLevel>,
         // closing_tok: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus>;
-    // Make it opt-in to allow emitting new source files
-    // TODO add tests for this!!!
-    fn allow_emitting_new_sources_inside(&self) -> bool {
-        false
+    // Make it opt-in to allow emitting new source files. By default, return an error. To opt-in, override to return Ok.
+    fn on_emitted_source_inside(
+        &self,
+        from_builder: BuilderContext,
+    ) -> TurnipTextContextlessResult<()> {
+        Err(InterpError::InsertedFileMidPara {
+            code_span: from_builder.from_span,
+        }
+        .into())
     }
 }
 
@@ -242,7 +246,7 @@ impl FileBuilderStack {
                 match action {
                     BuildStatus::Done(_)
                     | BuildStatus::DoneAndReprocessToken(_)
-                    | BuildStatus::DoneAndNewSource(_) => {
+                    | BuildStatus::DoneAndNewSource(..) => {
                         unreachable!("builder for previous file returned a Done* when presented with a token for an inner file")
                     }
                     BuildStatus::StartInnerBuilder(builder) => self.stack.push(builder),
@@ -284,13 +288,12 @@ impl FileBuilderStack {
                                 // Don't return, keep going through the loop to bubble the token up to the next builder from this file
                             }
                         }
-                        BuildStatus::DoneAndNewSource(src) => {
+                        BuildStatus::DoneAndNewSource(from_builder, src) => {
                             self.stack.pop().expect("self.curr_top() returned Done => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
-                            if self.curr_top().borrow().allow_emitting_new_sources_inside() {
-                                return Ok(Some(src));
-                            } else {
-                                todo!("error can't emit something here")
-                            }
+                            self.curr_top()
+                                .borrow()
+                                .on_emitted_source_inside(from_builder)?;
+                            return Ok(Some(src));
                         }
                     }
                 }
@@ -318,7 +321,7 @@ impl FileBuilderStack {
                 self.stack.push(builder);
                 Ok(())
             },
-            BuildStatus::DoneAndReprocessToken(_) | BuildStatus::DoneAndNewSource(_) => unreachable!("process_push_from_inner_builder may not return DoneAndReprocessToken or DoneAndNewSource."),
+            BuildStatus::DoneAndReprocessToken(_) | BuildStatus::DoneAndNewSource(..) => unreachable!("process_push_from_inner_builder may not return DoneAndReprocessToken or DoneAndNewSource."),
         }
     }
 }
@@ -600,8 +603,12 @@ impl BlockTokenProcessor for TopLevelDocumentBuilder {
     }
 }
 impl BuildFromTokens for TopLevelDocumentBuilder {
-    fn allow_emitting_new_sources_inside(&self) -> bool {
-        true
+    // Don't error when someone tries to include a new file at the top level of a document
+    fn on_emitted_source_inside(
+        &self,
+        from_builder: BuilderContext,
+    ) -> TurnipTextContextlessResult<()> {
+        Ok(())
     }
 
     // This builder is responsible for spawning lower-level builders
@@ -760,11 +767,13 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         if !self.ctx.try_extend(&tok.token_span()) {
-            todo!("error to say 'closing block scope from different file'");
+            // Closing block scope from different file
+            Err(InterpError::ScopeCloseOutsideScope(tok.token_span()).into())
+        } else {
+            Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
+                PyTcRef::of_unchecked(self.block_scope.as_ref(py)),
+            )))))
         }
-        Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
-            PyTcRef::of_unchecked(self.block_scope.as_ref(py)),
-        )))))
     }
 
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
@@ -775,8 +784,12 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
     }
 }
 impl BuildFromTokens for BlockScopeFromTokens {
-    fn allow_emitting_new_sources_inside(&self) -> bool {
-        true
+    // Don't error when someone tries to include a new file inside a block scope
+    fn on_emitted_source_inside(
+        &self,
+        from_builder: BuilderContext,
+    ) -> TurnipTextContextlessResult<()> {
+        Ok(())
     }
 
     fn process_token(
@@ -1382,7 +1395,7 @@ impl BuildFromTokens for CodeFromTokens {
                         ctx.make(DocElement::Inline(inline)),
                     ))),
                     EvalBracketResult::TurnipTextSource(src) => {
-                        Ok(BuildStatus::DoneAndNewSource(src))
+                        Ok(BuildStatus::DoneAndNewSource(ctx, src))
                     }
                     EvalBracketResult::PyNone => Ok(BuildStatus::Done(None)),
                 }

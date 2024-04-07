@@ -46,8 +46,9 @@ impl EvalBracketResult {
         code: &str,
         ctx: EvalBracketContext,
     ) -> PyResult<EvalBracketResult> {
-        // Python picks up leading whitespace as an incorrect indent
+        // Python picks up leading whitespace as an incorrect indent.
         let code = code.trim();
+        // TODO in multiline contexts it would be really nice to allow a toplevel indent (ignoring blank lines when calculating it)
         let raw_res = match py.eval(code, Some(py_env), None) {
             Ok(raw_res) => raw_res,
             Err(error) if error.is_instance_of::<PySyntaxError>(py) => {
