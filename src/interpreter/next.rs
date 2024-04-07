@@ -21,18 +21,22 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use pyo3::{types::PyDict, Py, PyAny, PyClass, PyClassInitializer, PyResult, Python};
+use pyo3::{
+    types::PyDict, IntoPy, Py, PyAny, PyClass, PyClassInitializer, PyObject, PyResult, Python,
+};
 
 use crate::{
     error::{TurnipTextContextlessError, TurnipTextContextlessResult},
     interpreter::{
-        python::typeclass::PyTcUnionRef, BlockScopeBuilder, InlineScopeBuilder, RawScopeBuilder,
+        eval_bracket::eval_or_exec, python::typeclass::PyTcUnionRef, BlockScopeBuilder,
+        InlineScopeBuilder, RawScopeBuilder,
     },
     lexer::{Escapable, LexError, TTToken},
     util::ParseSpan,
 };
 
 use super::{
+    coerce_to_inline_pytcref,
     eval_bracket::{eval_brackets, EvalBracketResult},
     python::typeclass::PyTcRef,
     Block, BlockScope, DocSegment, DocSegmentHeader, Inline, InlineScope, InterimDocumentStructure,
@@ -62,7 +66,8 @@ enum BuildStatus {
     /// - newlines and scope-closes at the start of the line when in paragraph-mode - these scope closes are clearly intended for an enclosing block scope, so the paragraph should finish and the containing builder should handle the scope-close
     /// - EOFs in all non-error cases, because those should bubble up through the file
     /// - newlines at the end of comments, because those still signal the end of sentence in inline mode and count as a blank line in block mode
-    /// None of these are allowed to cross file boundaries. Scope-closes crossing file boundaries invoke a ScopeCloseOutsideScope error. EOFs and newlines are silently ignored.
+    /// - any token directly following an eval-bracket close that does not open a scope for the evaled code to own
+    /// Scope-closes and raw-scope-closes crossing file boundaries invoke a (Raw)ScopeCloseOutsideScope error. EOFs and newlines are silently ignored.
     DoneAndReprocessToken(Option<PushToNextLevel>),
     Continue,
     StartInnerBuilder(Rc<RefCell<dyn BuildFromTokens>>),
@@ -276,13 +281,23 @@ impl FileBuilderStack {
                             self.stack.pop().expect("self.curr_top() returned Done => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
                             self.push_to_top_builder(py, py_env, pushed)?;
                             if self.stack.is_empty() {
-                                // The token is bubbling up to the next file - stop that from happening!
+                                // The token is bubbling up to the next file!
                                 match tok {
                                     // ScopeClose bubbling out => breaking out into a subfile => not allowed
-                                    TTToken::ScopeClose(span) => return Err(InterpError::ScopeCloseOutsideScope(span).into()),
+                                    TTToken::ScopeClose(span) => {
+                                        return Err(InterpError::ScopeCloseOutsideScope(span).into())
+                                    }
+                                    // Ditto for RawScopeClose
+                                    TTToken::RawScopeClose(span, _) => {
+                                        return Err(
+                                            InterpError::RawScopeCloseOutsideRawScope(span).into()
+                                        )
+                                    }
                                     // Don't let newlines inside a subfile affect outer files.
                                     TTToken::Newline(_) => return Ok(None),
-                                    _ => unreachable!("The only cases where a token should bubble out are ScopeClose, Newline, and EOF"),
+                                    // EOF is handled in a separate place.
+                                    // Other characters are passed through fine.
+                                    _ => {}
                                 }
                             } else {
                                 // Don't return, keep going through the loop to bubble the token up to the next builder from this file
@@ -428,12 +443,7 @@ trait BlockTokenProcessor {
                 )?,
             )),
 
-            TTToken::CodeClose(span, _)
-            | TTToken::CodeCloseOwningInline(span, _)
-            | TTToken::CodeCloseOwningRaw(span, _, _)
-            | TTToken::CodeCloseOwningBlock(span, _) => {
-                Err(InterpError::CodeCloseOutsideCode(span).into())
-            }
+            TTToken::CodeClose(span, _) => Err(InterpError::CodeCloseOutsideCode(span).into()),
 
             TTToken::RawScopeClose(span, _) => {
                 Err(InterpError::RawScopeCloseOutsideRawScope(span).into())
@@ -608,12 +618,7 @@ trait InlineTokenProcessor {
                 }
                 .into())
             }
-            TTToken::CodeClose(span, _)
-            | TTToken::CodeCloseOwningInline(span, _)
-            | TTToken::CodeCloseOwningRaw(span, _, _)
-            | TTToken::CodeCloseOwningBlock(span, _) => {
-                Err(InterpError::CodeCloseOutsideCode(span).into())
-            }
+            TTToken::CodeClose(span, _) => Err(InterpError::CodeCloseOutsideCode(span).into()),
 
             TTToken::RawScopeClose(span, _) => {
                 Err(InterpError::RawScopeCloseOutsideRawScope(span).into())
@@ -1133,7 +1138,7 @@ struct InlineScopeFromTokens {
 impl InlineScopeFromTokens {
     fn new(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
         Ok(rc_refcell(Self {
-            ctx: BuilderContext::new("BlockScope", start_span),
+            ctx: BuilderContext::new("InlineScope", start_span),
             start_of_line: true,
             inline_scope: py_internal_alloc(py, InlineScope::new_empty(py))?,
             current_building_text: InlineTextState::new(),
@@ -1284,18 +1289,18 @@ impl BuildFromTokens for InlineScopeFromTokens {
 }
 
 struct CodeFromTokens {
-    start_span: ParseSpan,
+    ctx: BuilderContext,
     n_closing: usize,
     code: String,
-    builder: Option<EvalBracketResult>,
+    evaled_code: Option<PyObject>,
 }
 impl CodeFromTokens {
     fn new(start_span: ParseSpan, n_opening: usize) -> Rc<RefCell<Self>> {
         rc_refcell(Self {
-            start_span,
+            ctx: BuilderContext::new("Code", start_span),
             n_closing: n_opening,
             code: String::new(),
-            builder: None,
+            evaled_code: None,
         })
     }
 }
@@ -1307,53 +1312,104 @@ impl BuildFromTokens for CodeFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        assert!(self.builder.is_none(), "If the builder object is Some then we've already eval-d code and are waiting for the scope with the stuff-to-build to close. We shouldn't be processing tokens.");
-        match eval_brackets(
-            data,
-            tok,
-            &mut self.code,
-            &self.start_span,
-            self.n_closing,
-            py,
-            py_env,
-        )? {
-            Some((evaled_obj, code_span)) => {
-                let ctx = BuilderContext::new("Code", code_span);
-                match evaled_obj {
-                    EvalBracketResult::NeededBlockBuilder(_) => {
-                        self.builder = Some(evaled_obj);
-                        Ok(BuildStatus::StartInnerBuilder(BlockScopeFromTokens::new(
-                            py, code_span,
-                        )?))
+        match &self.evaled_code {
+            // If None, we're still parsing the code itself.
+            None => {
+                assert!(
+                    self.ctx.try_extend(&tok.token_span()),
+                    "Code got a token from a different file that it was opened in"
+                );
+                match tok {
+                    TTToken::CodeClose(_, n_close_brackets)
+                        if n_close_brackets == self.n_closing =>
+                    {
+                        let res: &PyAny = eval_or_exec(py, py_env, &self.code).err_as_interp(
+                            py,
+                            "Error evaluating contents of eval-brackets",
+                            self.ctx.from_span,
+                        )?;
+
+                        // If we evaluated a TurnipTextSource, it may not be a builder of any kind thus we can finish immediately.
+                        if let Ok(inserted_file) = res.extract::<TurnipTextSource>() {
+                            Ok(BuildStatus::DoneAndNewSource(self.ctx, inserted_file))
+                        } else {
+                            self.evaled_code = Some(res.into_py(py));
+                            Ok(BuildStatus::Continue)
+                        }
                     }
-                    EvalBracketResult::NeededInlineBuilder(_) => {
-                        self.builder = Some(evaled_obj);
-                        Ok(BuildStatus::StartInnerBuilder(InlineScopeFromTokens::new(
-                            py, code_span,
-                        )?))
+                    TTToken::EOF(_) => Err(InterpError::EndedInsideCode {
+                        code_start: self.ctx.from_span,
                     }
-                    EvalBracketResult::NeededRawBuilder(_, n_opening) => {
-                        self.builder = Some(evaled_obj);
-                        Ok(BuildStatus::StartInnerBuilder(RawStringFromTokens::new(
-                            code_span, n_opening,
-                        )))
+                    .into()),
+                    _ => {
+                        // Code blocks use raw stringification to avoid confusion between text written and text entered
+                        self.code.push_str(tok.stringify_raw(data));
+                        Ok(BuildStatus::Continue)
                     }
-                    EvalBracketResult::DocSegmentHeader(header) => Ok(BuildStatus::Done(Some(
-                        ctx.make(DocElement::Header(header)),
-                    ))),
-                    EvalBracketResult::Block(block) => {
-                        Ok(BuildStatus::Done(Some(ctx.make(DocElement::Block(block)))))
-                    }
-                    EvalBracketResult::Inline(inline) => Ok(BuildStatus::Done(Some(
-                        ctx.make(DocElement::Inline(inline)),
-                    ))),
-                    EvalBracketResult::TurnipTextSource(src) => {
-                        Ok(BuildStatus::DoneAndNewSource(ctx, src))
-                    }
-                    EvalBracketResult::PyNone => Ok(BuildStatus::Done(None)),
                 }
             }
-            None => Ok(BuildStatus::Continue),
+            // Parse one token after the code ends to see what we should do.
+            Some(evaled_result) => match tok {
+                TTToken::BlockScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
+                    BlockScopeFromTokens::new(py, start_span)?,
+                )),
+                TTToken::InlineScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
+                    InlineScopeFromTokens::new(py, start_span)?,
+                )),
+                TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
+                    RawStringFromTokens::new(start_span, n_opening),
+                )),
+
+                _ => {
+                    // We didn't encounter any scope openers, so we know we don't need to build anything.
+                    // Emit the object directly, and reprocess the current token so it gets included.
+                    // TODO test tokens directly after code are all processed, including text, whitespace, comments, newlines...
+
+                    // Consider: we may have an object at the very start of the line.
+                    // If it's an Inline, e.g. "[virtio] is a thing..." then we want to return Inline so the rest of the line can be added.
+                    // If it's a Block, e.g. [image_figure(...)], then we want to return Block.
+                    // If it's neither, it needs to be *coerced*.
+                    // But what should coercion look like? What should we try to coerce the object *to*?
+                    // Well, what can be coerced?
+                    // Coercible to inline:
+                    // - Inline        -> `x`
+                    // - List[Inline]  -> `InlineScope(x)`
+                    // - str/float/int -> `Text(str(x))`
+                    // Coercible to block:
+                    // - Block             -> `x`
+                    // - List[Block]       -> `BlockScope(x)`
+                    // - Sentence          -> `Paragraph([x])
+                    // - CoercibleToInline -> `Paragraph([Sentence([coerce_to_inline(x)])])`
+                    // I do not see the need to allow eval-brackets to directly return List[Block] or Sentence at all.
+                    // Similar outcomes can be acheived by wrapping in BlockScope or Paragraph manually in the evaluated code, which better demonstrates intent.
+                    // If we always coerce to inline, then the wrapping in Paragraph and Sentence happens naturally in the interpreter.
+                    // => We check if it's a block, and if it isn't we try to coerce to inline.
+
+                    let evaled_result_ref = evaled_result.as_ref(py);
+
+                    if evaled_result_ref.is_none() {
+                        Ok(BuildStatus::DoneAndReprocessToken(None))
+                    } else if let Ok(header) = PyTcRef::of(evaled_result_ref) {
+                        Ok(BuildStatus::DoneAndReprocessToken(Some(
+                            self.ctx.make(DocElement::Header(header)),
+                        )))
+                    } else if let Ok(block) = PyTcRef::of(evaled_result_ref) {
+                        Ok(BuildStatus::DoneAndReprocessToken(Some(
+                            self.ctx.make(DocElement::Block(block)),
+                        )))
+                    } else {
+                        let inline = coerce_to_inline_pytcref(py, evaled_result_ref)
+                            .err_as_interp(
+                                py,
+                                "Error while evaluating initial python code",
+                                self.ctx.from_span,
+                            )?;
+                        Ok(BuildStatus::DoneAndReprocessToken(Some(
+                            self.ctx.make(DocElement::Inline(inline)),
+                        )))
+                    }
+                }
+            },
         }
     }
 
@@ -1362,29 +1418,53 @@ impl BuildFromTokens for CodeFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
-        // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        let builder = std::mem::take(&mut self.builder)
-            .expect("Should only get a result from an inner builder if self.builder is populated");
+        let evaled_result_ref = self.evaled_code.take().unwrap().into_ref(py);
+
         let pushed = pushed.expect("Should never get a built None - CodeFromTokens only spawns BlockScopeFromTokens, InlineScopeFromTokens, RawScopeFromTokens none of which return None.");
-        let mut ctx = BuilderContext::new("Code", self.start_span);
-        ctx.try_extend(&pushed.from_builder.from_span);
-        match (builder, pushed.elem) {
-            (EvalBracketResult::NeededBlockBuilder(builder), DocElement::Block(blocks)) => {
+        match pushed.elem {
+            DocElement::Block(blocks) => {
+                let builder: PyTcRef<BlockScopeBuilder> =
+                    PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
+                    .err_as_interp(
+                        py,
+                        "Expected a BlockScopeBuilder because the eval-brackets were followed by a block scope", self.ctx.from_span
+                    )?;
+
+                // Now that we know coersion is a success, update the code span
+                assert!(
+                    self.ctx.try_extend(&pushed.from_builder.from_span),
+                    "Code got a built object from a different file that it was opened in"
+                );
+
                 let built =
                     BlockScopeBuilder::call_build_from_blocks(py, builder, blocks.as_ref(py))
                         .err_as_internal(py)?;
                 match built {
-                    Some(PyTcUnionRef::A(block)) => {
-                        Ok(BuildStatus::Done(Some(ctx.make(DocElement::Block(block)))))
-                    }
+                    Some(PyTcUnionRef::A(block)) => Ok(BuildStatus::Done(Some(
+                        self.ctx.make(DocElement::Block(block)),
+                    ))),
                     Some(PyTcUnionRef::B(header)) => Ok(BuildStatus::Done(Some(
-                        ctx.make(DocElement::Header(header)),
+                        self.ctx.make(DocElement::Header(header)),
                     ))),
                     None => Ok(BuildStatus::Done(None)),
                 }
             }
-            (EvalBracketResult::NeededInlineBuilder(builder), DocElement::Inline(inlines)) => {
+            DocElement::Inline(inlines) => {
+                let builder: PyTcRef<InlineScopeBuilder> =
+                    PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
+                    .err_as_interp(
+                        py,
+                        "Expected an InlineScopeBuilder because the eval-brackets were followed by an inline scope",
+                        self.ctx.from_span
+                    )?;
+
+                // Now that we know coersion is a success, update the code span
+                assert!(
+                    self.ctx.try_extend(&pushed.from_builder.from_span),
+                    "Code got a built object from a different file that it was opened in"
+                );
+
                 let built =
                     InlineScopeBuilder::call_build_from_inlines(py, builder, inlines.as_ref(py))
                         .err_as_internal(py)?;
@@ -1393,18 +1473,34 @@ impl BuildFromTokens for CodeFromTokens {
                 //     Some(PyTcUnionRef::B(header)) => todo!(),
                 //     None => todo!(),
                 // }
-                Ok(BuildStatus::Done(Some(ctx.make(DocElement::Inline(built)))))
+                Ok(BuildStatus::Done(Some(
+                    self.ctx.make(DocElement::Inline(built)),
+                )))
             }
-            (EvalBracketResult::NeededRawBuilder(builder, _), DocElement::Raw(raw)) => {
+            DocElement::Raw(raw) => {
+                let builder: PyTcRef<RawScopeBuilder> =
+                    PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
+                    .err_as_interp(
+                        py,
+                        "Expected a RawScopeBuilder because the eval-brackets were followed by a raw scope",
+                    self.ctx.from_span
+                    )?;
+
+                // Now that we know coersion is a success, update the code span
+                assert!(
+                    self.ctx.try_extend(&pushed.from_builder.from_span),
+                    "Code got a built object from a different file that it was opened in"
+                );
+
                 let built =
                     RawScopeBuilder::call_build_from_raw(py, &builder, &raw).err_as_internal(py)?;
                 match built {
                     PyTcUnionRef::A(inline) => Ok(BuildStatus::Done(Some(
-                        ctx.make(DocElement::Inline(inline)),
+                        self.ctx.make(DocElement::Inline(inline)),
                     ))),
-                    PyTcUnionRef::B(block) => {
-                        Ok(BuildStatus::Done(Some(ctx.make(DocElement::Block(block)))))
-                    }
+                    PyTcUnionRef::B(block) => Ok(BuildStatus::Done(Some(
+                        self.ctx.make(DocElement::Block(block)),
+                    ))),
                 }
             }
             _ => unreachable!("Invalid combination of requested and actual built element types"),

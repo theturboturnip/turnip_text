@@ -412,12 +412,6 @@ pub enum TTToken {
     CodeOpen(ParseSpan, usize),
     /// N `]` characters not preceded by a backslash, not followed by a scope open
     CodeClose(ParseSpan, usize),
-    /// N `]` characters followed by inline scope open (`{` not followed by newline)
-    CodeCloseOwningInline(ParseSpan, usize),
-    /// N `]` characters followed by raw scope open (N' hashes followed by `{`)
-    CodeCloseOwningRaw(ParseSpan, usize, usize),
-    /// N `]` characters followed by block scope open (`{` followed by newline)
-    CodeCloseOwningBlock(ParseSpan, usize),
     /// `{` character not preceded by a backslash or code, not followed by newline
     InlineScopeOpen(ParseSpan),
     /// `{` character not preceded by a backslash or code, followed by newline
@@ -513,21 +507,6 @@ impl TTToken {
 
             // Code open and close
             (Unit::CodeOpen(s, n), _, _) => (TTToken::CodeOpen(*s, *n), 1),
-            (Unit::CodeClose(s_start, n), Some(Unit::ScopeOpen(_)), Some(Unit::Newline(s_end))) => {
-                (TTToken::CodeCloseOwningBlock(s_start.combine(s_end), *n), 3)
-            }
-            (
-                Unit::CodeClose(s_start, n),
-                Some(Unit::Hashes(_, n_hashes)),
-                Some(Unit::ScopeOpen(s_end)),
-            ) => (
-                TTToken::CodeCloseOwningRaw(s_start.combine(s_end), *n, *n_hashes),
-                3,
-            ),
-            (Unit::CodeClose(s_start, n), Some(Unit::ScopeOpen(s_end)), _) => (
-                TTToken::CodeCloseOwningInline(s_start.combine(s_end), *n),
-                2,
-            ),
             (Unit::CodeClose(span, n), _, _) => (TTToken::CodeClose(*span, *n), 1),
 
             // Block Scope Open
@@ -565,9 +544,6 @@ impl TTToken {
             TTToken::Backslash(span) => span,
             TTToken::CodeOpen(span, _) => span,
             TTToken::CodeClose(span, _) => span,
-            TTToken::CodeCloseOwningInline(span, _) => span,
-            TTToken::CodeCloseOwningRaw(span, _, _) => span,
-            TTToken::CodeCloseOwningBlock(span, _) => span,
             TTToken::InlineScopeOpen(span) => span,
             TTToken::BlockScopeOpen(span) => span,
             TTToken::ScopeClose(span) => span,
@@ -598,9 +574,6 @@ impl TTToken {
             | RawScopeClose(span, _)
             | CodeOpen(span, _)
             | CodeClose(span, _)
-            | CodeCloseOwningBlock(span, _)
-            | CodeCloseOwningInline(span, _)
-            | CodeCloseOwningRaw(span, _, _)
             | BlockScopeOpen(span)
             | InlineScopeOpen(span)
             | ScopeClose(span)
@@ -638,9 +611,6 @@ impl TTToken {
             | RawScopeClose(span, _)
             | CodeOpen(span, _)
             | CodeClose(span, _)
-            | CodeCloseOwningBlock(span, _)
-            | CodeCloseOwningInline(span, _)
-            | CodeCloseOwningRaw(span, _, _)
             | BlockScopeOpen(span)
             | InlineScopeOpen(span)
             | ScopeClose(span)

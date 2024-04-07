@@ -15,6 +15,43 @@ use super::{
     InterpError, MapContextlessResult,
 };
 
+pub fn eval_or_exec<'py, 'code>(
+    py: Python<'py>,
+    py_env: &'py PyDict,
+    code: &'code str,
+) -> PyResult<&'py PyAny> {
+    // Python picks up leading whitespace as an incorrect indent.
+    let code = code.trim();
+    // TODO in multiline contexts it would be really nice to allow a toplevel indent (ignoring blank lines when calculating it)
+    let raw_res = match py.eval(code, Some(py_env), None) {
+        Ok(raw_res) => raw_res,
+        Err(error) if error.is_instance_of::<PySyntaxError>(py) => {
+            // Try to exec() it as a statement instead of eval() it as an expression
+            py.run(code, Some(py_env), None)?;
+            // Acquire a Py<PyAny> to Python None, then use into_ref() to convert it into a &PyAny.
+            // This should optimize down to `*Py_None()` because Py<T> and PyAny both boil down to *ffi::Py_Object;
+            // This is so that places that *require* non-None (e.g. NeedBlockBuilder) will always raise an error in the following match statement.
+            // This is safe because Py_None() returns a pointer-to-static.
+            unsafe { Py::<PyAny>::from_borrowed_ptr(py, Py_None()).into_ref(py) }
+        }
+        Err(error) => return Err(error),
+    };
+    // If it has __get__, call it.
+    // `property` objects and other data descriptors use this.
+    let getter = intern!(py, "__get__");
+    if raw_res.hasattr(getter)? {
+        // https://docs.python.org/3.8/howto/descriptor.html
+        // "For objects, the machinery is in object.__getattribute__() which transforms b.x into type(b).__dict__['x'].__get__(b, type(b))."
+        //
+        // We're transforming `[x]` into (effectively) `py_env.x`
+        // which should transform into (type(py_env).__dict__['x']).__get__(py_env, type(py_env))
+        // = raw_res.__get__(py_env, type(py_env))
+        raw_res.call_method1(getter, (py_env, py_env.get_type()))
+    } else {
+        Ok(raw_res)
+    }
+}
+
 pub enum EvalBracketContext {
     NeedBlockBuilder,
     NeedInlineBuilder,
@@ -46,36 +83,7 @@ impl EvalBracketResult {
         code: &str,
         ctx: EvalBracketContext,
     ) -> PyResult<EvalBracketResult> {
-        // Python picks up leading whitespace as an incorrect indent.
-        let code = code.trim();
-        // TODO in multiline contexts it would be really nice to allow a toplevel indent (ignoring blank lines when calculating it)
-        let raw_res = match py.eval(code, Some(py_env), None) {
-            Ok(raw_res) => raw_res,
-            Err(error) if error.is_instance_of::<PySyntaxError>(py) => {
-                // Try to exec() it as a statement instead of eval() it as an expression
-                py.run(code, Some(py_env), None)?;
-                // Acquire a Py<PyAny> to Python None, then use into_ref() to convert it into a &PyAny.
-                // This should optimize down to `*Py_None()` because Py<T> and PyAny both boil down to *ffi::Py_Object;
-                // This is so that places that *require* non-None (e.g. NeedBlockBuilder) will always raise an error in the following match statement.
-                // This is safe because Py_None() returns a pointer-to-static.
-                unsafe { Py::<PyAny>::from_borrowed_ptr(py, Py_None()).into_ref(py) }
-            }
-            Err(error) => return Err(error),
-        };
-        // If it has __get__, call it.
-        // `property` objects and other data descriptors use this.
-        let getter = intern!(py, "__get__");
-        let raw_res = if raw_res.hasattr(getter)? {
-            // https://docs.python.org/3.8/howto/descriptor.html
-            // "For objects, the machinery is in object.__getattribute__() which transforms b.x into type(b).__dict__['x'].__get__(b, type(b))."
-            //
-            // We're transforming `[x]` into (effectively) `py_env.x`
-            // which should transform into (type(py_env).__dict__['x']).__get__(py_env, type(py_env))
-            // = raw_res.__get__(py_env, type(py_env))
-            raw_res.call_method1(getter, (py_env, py_env.get_type()))?
-        } else {
-            raw_res
-        };
+        let raw_res = eval_or_exec(py, py_env, code)?;
         let res = match ctx {
             EvalBracketContext::NeedBlockBuilder => EvalBracketResult::NeededBlockBuilder(
                 PyTcRef::of_friendly(raw_res, "value returned by eval-bracket")?,
@@ -142,57 +150,5 @@ pub fn eval_brackets(
     py: Python,
     py_env: &PyDict,
 ) -> TurnipTextContextlessResult<Option<(EvalBracketResult, ParseSpan)>> {
-    let (code_span, eval_ctx) = match tok {
-        TTToken::CodeClose(close_span, n_close_brackets)
-            if n_close_brackets == expected_close_len =>
-        {
-            (
-                code_start.combine(&close_span),
-                EvalBracketContext::WantNonBuilder,
-            )
-        }
-        TTToken::CodeCloseOwningBlock(close_span, n_close_brackets)
-            if n_close_brackets == expected_close_len =>
-        {
-            (
-                code_start.combine(&close_span),
-                EvalBracketContext::NeedBlockBuilder,
-            )
-        }
-        TTToken::CodeCloseOwningInline(close_span, n_close_brackets)
-            if n_close_brackets == expected_close_len =>
-        {
-            (
-                code_start.combine(&close_span),
-                EvalBracketContext::NeedInlineBuilder,
-            )
-        }
-        TTToken::CodeCloseOwningRaw(close_span, n_close_brackets, n_hashes)
-            if n_close_brackets == expected_close_len =>
-        {
-            (
-                code_start.combine(&close_span),
-                EvalBracketContext::NeedRawBuilder { n_hashes },
-            )
-        }
-        TTToken::EOF(_) => {
-            return Err(InterpError::EndedInsideCode {
-                code_start: *code_start,
-            }
-            .into())
-        }
-
-        _ => {
-            // Code blocks use raw stringification to avoid confusion between text written and text entered
-            code.push_str(tok.stringify_raw(data));
-            return Ok(None);
-        }
-    };
-
-    let res = EvalBracketResult::eval_in_ctx(py, py_env, code, eval_ctx).err_as_interp(
-        py,
-        "Error while evaluating initial python code",
-        code_span,
-    )?;
-    Ok(Some((res, code_span)))
+    unimplemented!("moving to new code parsing scheme");
 }

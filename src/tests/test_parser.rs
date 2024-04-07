@@ -793,7 +793,7 @@ It was the best of the times, it was the blurst of times
 "#,
         TestInterpError::PythonErr {
             pyerr: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None.*").unwrap(),
-            code_span: TestParserSpan("[None]{\n"),
+            code_span: TestParserSpan("[None]"),
         },
     )
 }
@@ -814,7 +814,7 @@ pub fn test_owned_inline_scope_with_non_inline_builder() {
         r"[None]{special text}",
         TestInterpError::PythonErr {
             pyerr: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got None.*").unwrap(),
-            code_span: TestParserSpan("[None]{"),
+            code_span: TestParserSpan("[None]"),
         },
     )
 }
@@ -844,7 +844,7 @@ import os
 }#"#,
         TestInterpError::PythonErr {
             pyerr: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got None").unwrap(),
-            code_span: TestParserSpan("[None]#{"),
+            code_span: TestParserSpan("[None]"),
         },
     )
 }
@@ -966,7 +966,7 @@ pub fn test_ended_inside_code() {
     expect_parse_err(
         "text [code",
         TestInterpError::EndedInsideCode {
-            code_start: TestParserSpan("["),
+            code_start: TestParserSpan("[code"),
         },
     )
 }
@@ -1244,7 +1244,7 @@ pub fn test_cant_eval_none_for_block_builder() {
 }",
         TestInterpError::PythonErr {
             pyerr: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None").unwrap(),
-            code_span: TestParserSpan("[None]{\n"),
+            code_span: TestParserSpan("[None]"),
         },
     )
 }
@@ -1257,7 +1257,7 @@ pub fn test_cant_assign_for_block_builder() {
 }",
         TestInterpError::PythonErr {
             pyerr: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None").unwrap(),
-            code_span: TestParserSpan("[x = 5]{\n"),
+            code_span: TestParserSpan("[x = 5]"),
         },
     )
 }
@@ -1268,7 +1268,7 @@ pub fn test_cant_assign_for_raw_builder() {
         "[x = 5]#{That doesn't make any sense! The owner can't be an abstract concept of x being something}#",
         TestInterpError::PythonErr {
             pyerr: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got None").unwrap(),
-            code_span: TestParserSpan("[x = 5]#{"),
+            code_span: TestParserSpan("[x = 5]"),
         },
     )
 }
@@ -1279,7 +1279,7 @@ pub fn test_cant_assign_for_inline_builder() {
         "[x = 5]{That doesn't make any sense! The owner can't be an abstract concept of x being something}",
         TestInterpError::PythonErr {
             pyerr: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got None").unwrap(),
-            code_span: TestParserSpan ("[x = 5]{"),
+            code_span: TestParserSpan ("[x = 5]"),
         },
     )
 }
@@ -1952,12 +1952,8 @@ mod overflexibility {
     fn hidden_block_scope() {
         expect_parse_err(
             "[TEST_BLOCK_BUILDER]{   # wow this will surely open a block scope  \n}",
-            TestInterpError::PythonErr {
-                pyerr: Regex::new(
-                    r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got <TestBlockBuilder.*",
-                )
-                .unwrap(),
-                code_span: TestParserSpan("[TEST_BLOCK_BUILDER]{"),
+            TestInterpError::SentenceBreakInInlineScope {
+                scope_start: TestParserSpan("{"),
             },
         )
     }
