@@ -468,6 +468,43 @@ impl InlineTextState {
             pending_whitespace: None,
         }
     }
+
+    fn clear_pending_whitespace(&mut self) {
+        self.pending_whitespace = None;
+    }
+
+    fn encounter_text(&mut self, text_content: &str) {
+        if let Some(w) = std::mem::take(&mut self.pending_whitespace) {
+            self.text.push_str(&w)
+        }
+        self.text.push_str(text_content);
+    }
+
+    fn encounter_whitespace(&mut self, whitespace_content: &str) {
+        match &mut self.pending_whitespace {
+            Some(w) => w.push_str(whitespace_content),
+            None => self.pending_whitespace = Some(whitespace_content.to_string()),
+        };
+    }
+
+    /// Take the text component (optionally including the pending whitespace), and put it into a Text() inline object if non-empty.
+    fn consume(
+        &mut self,
+        py: Python,
+        include_whitespace: bool,
+    ) -> TurnipTextContextlessResult<Option<Py<Text>>> {
+        if let Some(w) = std::mem::take(&mut self.pending_whitespace) {
+            if include_whitespace {
+                self.text.push_str(&w)
+            }
+        }
+        if !self.text.is_empty() {
+            let old_text = std::mem::replace(&mut self.text, String::new());
+            Ok(Some(py_internal_alloc(py, Text::new_rs(py, &old_text))?))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 trait InlineTokenProcessor {
@@ -868,7 +905,6 @@ impl BuildFromTokens for BlockScopeFromTokens {
 struct ParagraphFromTokens {
     ctx: BuilderContext,
     para: Py<Paragraph>,
-    // TODO test whitespace after the start of an inline scope
     start_of_line: bool,
     current_building_text: InlineTextState,
     current_sentence: Py<Sentence>,
@@ -905,24 +941,16 @@ impl ParagraphFromTokens {
             current_sentence: py_internal_alloc(py, Sentence::new_empty(py))?,
         }))
     }
-    /// Take the text component (optionally including the pending whitespace), put it into a Text() inline object if non-empty, and push that object into the inline scope.
     fn fold_current_text_into_sentence(
         &mut self,
         py: Python,
         include_whitespace: bool,
     ) -> TurnipTextContextlessResult<()> {
-        let mut current_text =
-            std::mem::replace(&mut self.current_building_text, InlineTextState::new());
-        if include_whitespace {
-            if let Some(w) = current_text.pending_whitespace {
-                current_text.text.push_str(&w)
-            }
-        }
-        if !current_text.text.is_empty() {
-            let current_text = py_internal_alloc(py, Text::new_rs(py, &current_text.text))?;
+        let py_text = self.current_building_text.consume(py, include_whitespace)?;
+        if let Some(py_text) = py_text {
             self.current_sentence
                 .borrow_mut(py)
-                .push_inline(current_text.as_ref(py))
+                .push_inline(py_text.as_ref(py))
                 .err_as_internal(py)
         } else {
             Ok(())
@@ -934,7 +962,7 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         self.start_of_line
     }
     fn clear_pending_whitespace(&mut self) {
-        self.current_building_text.pending_whitespace = None;
+        self.current_building_text.clear_pending_whitespace()
     }
     fn flush_pending_text(
         &mut self,
@@ -950,16 +978,9 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        let text_content = tok.stringify_escaped(data);
         self.start_of_line = false;
-        let InlineTextState {
-            text,
-            pending_whitespace,
-        } = &mut self.current_building_text;
-        if let Some(w) = std::mem::take(pending_whitespace) {
-            text.push_str(&w)
-        }
-        text.push_str(text_content);
+        self.current_building_text
+            .encounter_text(tok.stringify_escaped(data));
 
         Ok(BuildStatus::Continue)
     }
@@ -970,15 +991,8 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        let whitespace_content = tok.stringify_escaped(data);
-        let InlineTextState {
-            text: _,
-            pending_whitespace,
-        } = &mut self.current_building_text;
-        match pending_whitespace {
-            Some(w) => w.push_str(whitespace_content),
-            None => *pending_whitespace = Some(whitespace_content.to_string()),
-        };
+        self.current_building_text
+            .encounter_whitespace(tok.stringify_escaped(data));
 
         Ok(BuildStatus::Continue)
     }
@@ -1131,18 +1145,11 @@ impl InlineScopeFromTokens {
         py: Python,
         include_whitespace: bool,
     ) -> TurnipTextContextlessResult<()> {
-        let mut current_text =
-            std::mem::replace(&mut self.current_building_text, InlineTextState::new());
-        if include_whitespace {
-            if let Some(w) = current_text.pending_whitespace {
-                current_text.text.push_str(&w)
-            }
-        }
-        if !current_text.text.is_empty() {
-            let current_text = py_internal_alloc(py, Text::new_rs(py, &current_text.text))?;
+        let py_text = self.current_building_text.consume(py, include_whitespace)?;
+        if let Some(py_text) = py_text {
             self.inline_scope
                 .borrow_mut(py)
-                .push_inline(current_text.as_ref(py))
+                .push_inline(py_text.as_ref(py))
                 .err_as_internal(py)
         } else {
             Ok(())
@@ -1154,7 +1161,7 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         self.start_of_line
     }
     fn clear_pending_whitespace(&mut self) {
-        self.current_building_text.pending_whitespace = None;
+        self.current_building_text.clear_pending_whitespace();
     }
     fn flush_pending_text(
         &mut self,
@@ -1171,15 +1178,9 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         self.start_of_line = false;
-        let text_content = tok.stringify_escaped(data);
-        let InlineTextState {
-            text,
-            pending_whitespace,
-        } = &mut self.current_building_text;
-        if let Some(w) = std::mem::take(pending_whitespace) {
-            text.push_str(&w)
-        }
-        text.push_str(text_content);
+        self.current_building_text
+            .encounter_text(tok.stringify_escaped(data));
+
         Ok(BuildStatus::Continue)
     }
 
@@ -1189,16 +1190,9 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        let whitespace_content = tok.stringify_escaped(data);
-        self.start_of_line = false;
-        let InlineTextState {
-            text: _,
-            pending_whitespace,
-        } = &mut self.current_building_text;
-        match pending_whitespace {
-            Some(w) => w.push_str(whitespace_content),
-            None => *pending_whitespace = Some(whitespace_content.to_string()),
-        };
+        self.current_building_text
+            .encounter_whitespace(tok.stringify_escaped(data));
+
         Ok(BuildStatus::Continue)
     }
 
