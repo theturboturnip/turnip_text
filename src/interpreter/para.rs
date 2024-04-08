@@ -1,3 +1,4 @@
+/*
 use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
@@ -666,3 +667,5 @@ impl InterpParaState {
         .err_as_internal(py)
     }
 }
+
+*/

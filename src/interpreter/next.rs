@@ -421,12 +421,8 @@ trait BlockTokenProcessor {
                 CodeFromTokens::new(start_span, n_brackets),
             )),
 
-            TTToken::BlockScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-                BlockScopeFromTokens::new(py, start_span)?,
-            )),
-
-            TTToken::InlineScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-                InlineScopeFromTokens::new(py, start_span)?,
+            TTToken::ScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
+                BlockOrInlineScopeFromTokens::new(start_span),
             )),
 
             TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
@@ -596,7 +592,7 @@ trait InlineTokenProcessor {
                 )))
             }
 
-            TTToken::InlineScopeOpen(start_span) => {
+            TTToken::ScopeOpen(start_span) => {
                 self.flush_pending_text(py, true)?;
                 Ok(BuildStatus::StartInnerBuilder(InlineScopeFromTokens::new(
                     py, start_span,
@@ -610,14 +606,6 @@ trait InlineTokenProcessor {
                 )))
             }
 
-            // A BlockScopeOpen = (InlineScopeOpen + Newline)
-            // so this is a special case of sentence break inside inline scope
-            TTToken::BlockScopeOpen(scope_open_span) => {
-                Err(InterpError::SentenceBreakInInlineScope {
-                    scope_start: scope_open_span,
-                }
-                .into())
-            }
             TTToken::CodeClose(span, _) => Err(InterpError::CodeCloseOutsideCode(span).into()),
 
             TTToken::RawScopeClose(span, _) => {
@@ -804,16 +792,115 @@ impl BuildFromTokens for RawStringFromTokens {
     }
 }
 
+/// This builder is initially started with a ScopeOpen token that may be a block scope open (followed by "\s*\n") or an inline scope open (followed by \s*[^\n]).
+/// It starts out [BlockOrInlineScopeFromTokens::Undecided], then based on the following tokens either decides on [BlockOrInlineScopeFromTokens::Block] or [BlockOrInlineScopeFromTokens::Inline] and from then on acts as exactly [BlockScopeFromTokens] or [InlineScopeFromTokens] respectfully.
+enum BlockOrInlineScopeFromTokens {
+    Undecided { start_span: ParseSpan },
+    Block(BlockScopeFromTokens),
+    Inline(InlineScopeFromTokens),
+}
+impl BlockOrInlineScopeFromTokens {
+    fn new(start_span: ParseSpan) -> Rc<RefCell<Self>> {
+        rc_refcell(Self::Undecided { start_span })
+    }
+}
+impl BuildFromTokens for BlockOrInlineScopeFromTokens {
+    fn process_token(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        match self {
+            BlockOrInlineScopeFromTokens::Undecided { start_span } => match tok {
+                TTToken::Whitespace(_) => Ok(BuildStatus::Continue),
+                TTToken::EOF(_) => Err(InterpError::EndedInsideScope {
+                    scope_start: *start_span,
+                }
+                .into()),
+                TTToken::Newline(_) => {
+                    // Transition to a block builder
+                    let block_builder = BlockScopeFromTokens::new_unowned(py, *start_span)?;
+                    // Block builder doesn't need to process the newline token specifically
+                    // Swap ourselves out with the new state "i am a block builder"
+                    let _ =
+                        std::mem::replace(self, BlockOrInlineScopeFromTokens::Block(block_builder));
+                    Ok(BuildStatus::Continue)
+                }
+                TTToken::Hashes(_, _) => {
+                    Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new()))
+                }
+                _ => {
+                    // Transition to an inline builder
+                    let mut inline_builder = InlineScopeFromTokens::new_unowned(py, *start_span)?;
+                    // Make sure it knows about the new token
+                    let res = inline_builder.process_token(py, py_env, tok, data)?;
+                    // Swap ourselves out with the new state "i am an inline builder"
+                    let _ = std::mem::replace(
+                        self,
+                        BlockOrInlineScopeFromTokens::Inline(inline_builder),
+                    );
+                    Ok(res)
+                }
+            },
+            BlockOrInlineScopeFromTokens::Block(block) => {
+                block.process_token(py, py_env, tok, data)
+            }
+            BlockOrInlineScopeFromTokens::Inline(inline) => {
+                inline.process_token(py, py_env, tok, data)
+            }
+        }
+    }
+
+    fn process_push_from_inner_builder(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+        pushed: Option<PushToNextLevel>,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        match self {
+            BlockOrInlineScopeFromTokens::Undecided { start_span: _ } => {
+                assert!(pushed.is_none(), "BlockOrInlineScopeFromTokens::Undecided does not push any builders except comments thus cannot receive non-None pushed items");
+                Ok(BuildStatus::Continue)
+            }
+            BlockOrInlineScopeFromTokens::Block(block) => {
+                block.process_push_from_inner_builder(py, py_env, pushed)
+            }
+            BlockOrInlineScopeFromTokens::Inline(inline) => {
+                inline.process_push_from_inner_builder(py, py_env, pushed)
+            }
+        }
+    }
+
+    fn on_emitted_source_inside(
+        &self,
+        from_builder: BuilderContext,
+    ) -> TurnipTextContextlessResult<()> {
+        match self {
+            BlockOrInlineScopeFromTokens::Undecided { start_span: _ } => {
+                unreachable!("BlockOrInlineScopeFromTokens::Undecided does not push any builders except comments and thus cannot have source code emitted inside it")
+            }
+            BlockOrInlineScopeFromTokens::Block(block) => {
+                block.on_emitted_source_inside(from_builder)
+            }
+            BlockOrInlineScopeFromTokens::Inline(inline) => {
+                inline.on_emitted_source_inside(from_builder)
+            }
+        }
+    }
+}
+
 struct BlockScopeFromTokens {
     ctx: BuilderContext,
     block_scope: Py<BlockScope>,
 }
 impl BlockScopeFromTokens {
-    fn new(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
-        Ok(rc_refcell(Self {
+    fn new_unowned(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Self> {
+        Ok(Self {
             ctx: BuilderContext::new("BlockScope", start_span),
             block_scope: py_internal_alloc(py, BlockScope::new_empty(py))?,
-        }))
+        })
     }
 }
 impl BlockTokenProcessor for BlockScopeFromTokens {
@@ -906,7 +993,6 @@ impl BuildFromTokens for BlockScopeFromTokens {
     }
 }
 
-// TODO this and InlineScopeFromTokens could share more w.r.t. text
 struct ParagraphFromTokens {
     ctx: BuilderContext,
     para: Py<Paragraph>,
@@ -1137,13 +1223,18 @@ struct InlineScopeFromTokens {
 }
 impl InlineScopeFromTokens {
     fn new(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
-        Ok(rc_refcell(Self {
+        Ok(rc_refcell(Self::new_unowned(py, start_span)?))
+    }
+
+    fn new_unowned(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Self> {
+        Ok(Self {
             ctx: BuilderContext::new("InlineScope", start_span),
             start_of_line: true,
             inline_scope: py_internal_alloc(py, InlineScope::new_empty(py))?,
             current_building_text: InlineTextState::new(),
-        }))
+        })
     }
+
     /// Replace self.current_building_text with None. If it was Some() before, take the text component (not the pending whitespace) put it into a Text() inline object, and push that object into the inline scope.
     fn fold_current_text_into_scope(
         &mut self,
@@ -1350,11 +1441,8 @@ impl BuildFromTokens for CodeFromTokens {
             }
             // Parse one token after the code ends to see what we should do.
             Some(evaled_result) => match tok {
-                TTToken::BlockScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-                    BlockScopeFromTokens::new(py, start_span)?,
-                )),
-                TTToken::InlineScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-                    InlineScopeFromTokens::new(py, start_span)?,
+                TTToken::ScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
+                    BlockOrInlineScopeFromTokens::new(start_span),
                 )),
                 TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
                     RawStringFromTokens::new(start_span, n_opening),

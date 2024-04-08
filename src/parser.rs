@@ -4,7 +4,7 @@ use pyo3::{types::PyDict, Py, Python};
 
 use crate::{
     error::{stringify_pyerr, TurnipTextError, TurnipTextResult},
-    interpreter::{python::interop::DocSegment, Interpreter, InterpreterFileAction},
+    interpreter::{python::interop::DocSegment, InterpreterFileAction},
     lexer::{lex, LexedStrIterator},
     util::ParseSpan,
 };

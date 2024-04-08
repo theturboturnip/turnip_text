@@ -151,7 +151,8 @@ inside 2
             OtherText("outside"),
             Newline,
             Newline,
-            BlockScopeOpen,
+            ScopeOpen,
+            Newline,
             OtherText("inside"),
             Newline,
             Newline,
@@ -201,7 +202,7 @@ pub fn test_inline_scope() {
         vec![
             OtherText("outside"),
             Whitespace(" "),
-            InlineScopeOpen,
+            ScopeOpen,
             OtherText("inside"),
             ScopeClose,
             EOF,
@@ -417,11 +418,12 @@ pub fn test_block_scope_vs_inline_scope() {
 block
 }{inline}"#,
         vec![
-            BlockScopeOpen,
+            ScopeOpen,
+            Newline,
             OtherText("block"),
             Newline,
             ScopeClose,
-            InlineScopeOpen,
+            ScopeOpen,
             OtherText("inline"),
             ScopeClose,
             EOF,

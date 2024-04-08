@@ -8,7 +8,6 @@ use crate::{
 };
 
 mod para;
-use self::para::{InterpParaState, InterpParaTransition};
 
 mod eval_bracket;
 use eval_bracket::{eval_brackets, EvalBracketResult};
@@ -21,6 +20,7 @@ use python::{
 
 pub mod next;
 
+/*
 pub struct Interpreter {
     /// FSM state
     block_state: InterpBlockState,
@@ -59,6 +59,7 @@ impl Interpreter {
         Ok(InterpreterFileAction::FileEnded)
     }
 }
+*/
 
 pub struct InterimDocumentStructure {
     /// Top level content of the document
@@ -241,6 +242,7 @@ impl InterimDocumentStructure {
     }
 }
 
+/*
 /// Block-level state for the interpreter
 #[derive(Debug)]
 enum InterpBlockState {
@@ -271,6 +273,7 @@ enum InterpBlockState {
 struct InterpCommentState {
     comment_start: ParseSpan,
 }
+*/
 
 #[derive(Debug)]
 struct InterpDocSegmentState {
@@ -334,6 +337,8 @@ impl InterpManualBlockScopeState {
         }
     }
 }
+
+/*
 
 #[derive(Debug)]
 pub(crate) enum InterpBlockTransition {
@@ -437,6 +442,8 @@ impl InlineNodeToCreate {
     }
 }
 
+*/
+
 /// Enumeration of all possible interpreter errors
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum InterpError {
@@ -532,6 +539,8 @@ pub enum InterpreterFileAction {
     FileInserted { name: String, contents: String },
     FileEnded,
 }
+
+/*
 
 impl Interpreter {
     pub fn push_subfile(&mut self) {
@@ -920,3 +929,4 @@ impl Interpreter {
         Ok(file_to_emit)
     }
 }
+*/

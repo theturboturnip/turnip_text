@@ -412,10 +412,8 @@ pub enum TTToken {
     CodeOpen(ParseSpan, usize),
     /// N `]` characters not preceded by a backslash, not followed by a scope open
     CodeClose(ParseSpan, usize),
-    /// `{` character not preceded by a backslash or code, not followed by newline
-    InlineScopeOpen(ParseSpan),
-    /// `{` character not preceded by a backslash or code, followed by newline
-    BlockScopeOpen(ParseSpan),
+    /// `{` character not preceded by a backslash or code
+    ScopeOpen(ParseSpan),
     /// `}` character not preceded by a backslash
     ScopeClose(ParseSpan),
     /// N hashes followed by `{` not preceded by a backslash
@@ -509,13 +507,8 @@ impl TTToken {
             (Unit::CodeOpen(s, n), _, _) => (TTToken::CodeOpen(*s, *n), 1),
             (Unit::CodeClose(span, n), _, _) => (TTToken::CodeClose(*span, *n), 1),
 
-            // Block Scope Open
-            (Unit::ScopeOpen(s_start), Some(Unit::Newline(s_end)), _) => {
-                (TTToken::BlockScopeOpen(s_start.combine(s_end)), 2)
-            }
-
-            // Inline scope open
-            (Unit::ScopeOpen(s), _, _) => (TTToken::InlineScopeOpen(*s), 1),
+            // Scope open
+            (Unit::ScopeOpen(s), _, _) => (TTToken::ScopeOpen(*s), 1),
 
             // Raw scope open
             (Unit::Hashes(s_start, n), Some(Unit::ScopeOpen(s_end)), _) => {
@@ -544,8 +537,7 @@ impl TTToken {
             TTToken::Backslash(span) => span,
             TTToken::CodeOpen(span, _) => span,
             TTToken::CodeClose(span, _) => span,
-            TTToken::InlineScopeOpen(span) => span,
-            TTToken::BlockScopeOpen(span) => span,
+            TTToken::ScopeOpen(span) => span,
             TTToken::ScopeClose(span) => span,
             TTToken::RawScopeOpen(span, _) => span,
             TTToken::RawScopeClose(span, _) => span,
@@ -574,8 +566,7 @@ impl TTToken {
             | RawScopeClose(span, _)
             | CodeOpen(span, _)
             | CodeClose(span, _)
-            | BlockScopeOpen(span)
-            | InlineScopeOpen(span)
+            | ScopeOpen(span)
             | ScopeClose(span)
             | Hashes(span, _)
             | Whitespace(span)
@@ -611,8 +602,7 @@ impl TTToken {
             | RawScopeClose(span, _)
             | CodeOpen(span, _)
             | CodeClose(span, _)
-            | BlockScopeOpen(span)
-            | InlineScopeOpen(span)
+            | ScopeOpen(span)
             | ScopeClose(span)
             | Hashes(span, _)
             | Whitespace(span)

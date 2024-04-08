@@ -323,6 +323,8 @@ class TestRawInlineBuilder:
         return FauxInlineRaw(raw_str)
 
 TEST_BLOCK = FauxBlock(BlockScope([]))
+TEST_INLINE = FauxInline(InlineScope([]))
+TEST_INLINE_RAW = FauxInlineRaw("")
 
 class TestRawBlockBuilder:
     def build_from_raw(self, raw_str):
@@ -1002,7 +1004,7 @@ pub fn test_block_scope_open_inline() {
     expect_parse_err(
         "text {\n",
         TestInterpError::SentenceBreakInInlineScope {
-            scope_start: TestParserSpan("{\n"),
+            scope_start: TestParserSpan("{"),
         },
     )
 }
@@ -1012,7 +1014,7 @@ pub fn test_eof_inside_para_inside_block_scope() {
     expect_parse_err(
         "{\n paragraph paragraph paragraph EOF",
         TestInterpError::EndedInsideScope {
-            scope_start: TestParserSpan("{\n"),
+            scope_start: TestParserSpan("{"),
         },
     )
 }
@@ -1336,7 +1338,7 @@ pub fn test_no_emit_doc_segment_header_in_block_scope() {
         TestInterpError::DocSegmentHeaderMidScope {
             code_span: TestParserSpan("[TestDocSegmentHeader()]"),
             block_close_span: None,
-            enclosing_scope_start: TestParserSpan("{\n"),
+            enclosing_scope_start: TestParserSpan("{"),
         },
     )
 }
@@ -1353,7 +1355,7 @@ pub fn test_no_build_doc_segment_header_in_block_scope() {
         TestInterpError::DocSegmentHeaderMidScope {
             code_span: TestParserSpan("[TestDocSegmentBuilder()]{\n"),
             block_close_span: Some(TestParserSpan("}")),
-            enclosing_scope_start: TestParserSpan("{\n"),
+            enclosing_scope_start: TestParserSpan("{"),
         },
     )
 }
@@ -1417,7 +1419,7 @@ pub fn test_block_sep_para_scope_open() {
             New Block
         }"#,
         TestInterpError::InsufficientBlockSeparation {
-            block_start: TestParserSpan("{\n"),
+            block_start: TestParserSpan("{"),
         },
     )
 }
@@ -1498,7 +1500,7 @@ pub fn test_block_sep_scope_scope() {
         {
         }"#,
         TestInterpError::InsufficientBlockSeparation {
-            block_start: TestParserSpan("{\n"),
+            block_start: TestParserSpan("{"),
         },
     )
 }
@@ -1546,7 +1548,7 @@ pub fn test_block_sep_code_scope() {
         {
         }"#,
         TestInterpError::InsufficientBlockSeparation {
-            block_start: TestParserSpan("{\n"),
+            block_start: TestParserSpan("{"),
         },
     )
 }
@@ -1909,6 +1911,348 @@ mod flexibility {
     fn test_raw_scope_builder_building_header_in_inline() {}
 }
 
+/// This contains tests for the code parser where it is initially ambiguous whether code is meant to be an owner or not.
+mod code_ambiguity {
+    use super::*;
+
+    #[test]
+    fn test_code_followed_by_newline_doesnt_build() {
+        // Create a class which is a block scope + inline scope + raw scope builder all in one, and also a block in its own right! See what happens when we create it with no owning responsibilities
+        expect_parse(
+            r#"
+[[
+class Super:
+    is_block = True
+    test_block = BlockScope([])
+
+    def build_from_blocks(self, blocks):
+        raise RuntimeError("argh shouldn't run this")
+    def build_from_inlines(self, inlines):
+        raise RuntimeError("argh shouldn't run this")
+    def build_from_raw(self, raw):
+        raise RuntimeError("argh shouldn't run this")
+]]
+
+[Super()]
+
+"#,
+            Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        )
+    }
+
+    #[test]
+    fn test_code_followed_by_content_doesnt_build() {
+        // Create a class which is a block scope + inline scope + raw scope builder all in one, and also a block in its own right! See what happens when we create it with no owning responsibilities
+        expect_parse(
+            r#"
+[[
+class Super:
+    is_inline = True
+    test_inline = InlineScope([])
+
+    def build_from_blocks(self, blocks):
+        raise RuntimeError("argh shouldn't run this")
+    def build_from_inlines(self, inlines):
+        raise RuntimeError("argh shouldn't run this")
+    def build_from_raw(self, raw):
+        raise RuntimeError("argh shouldn't run this")
+]]
+
+[Super()] and stuff
+
+"#,
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::TestOwnedInline(vec![]),
+                test_text(" and stuff"),
+            ]])])),
+        )
+    }
+
+    #[test]
+    fn test_code_followed_by_block_scope_must_build() {
+        // Test that things that can build do in fact build.
+        // In this case make a big thing that would give a block of text if it was used directly, and None if it's used as a builder.
+        // Assert it returns None.
+        expect_parse(
+            r#"
+[[
+class Super:
+    is_block = True
+    test_block = BlockScope([Paragraph([Sentence([Text("shouldnt see this")])])])
+
+    def build_from_blocks(self, blocks):
+        return None
+    def build_from_inlines(self, inlines):
+        raise RuntimeError("argh shouldn't run this")
+    def build_from_raw(self, raw):
+        raise RuntimeError("argh shouldn't run this")
+]]
+
+[Super()]{
+    stuff
+}
+
+"#,
+            Ok(test_doc(vec![])),
+        );
+        // Test that things that can't build throw errors
+        expect_parse_err(
+            "[TEST_BLOCK]{
+        }",
+            TestInterpError::PythonErr {
+                pyerr: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got <FauxBlock.*")
+                    .unwrap(),
+                code_span: TestParserSpan("[TEST_BLOCK]"),
+            },
+        )
+    }
+
+    #[test]
+    fn test_code_followed_by_inline_scope_must_build() {
+        // Test that things that can build do in fact build.
+        // In this case make a big thing that would give inlines if it was used directly, and a sentinel if it's used as a builder.
+        // Assert it returns the sentinel.
+        expect_parse(
+            r#"
+[[
+class Super:
+    is_block = True
+    test_block = BlockScope([Paragraph([Sentence([Text("shouldnt see this")])])])
+
+    def build_from_blocks(self, blocks):
+        raise RuntimeError("argh shouldn't run this")
+    def build_from_inlines(self, inlines):
+        return TEST_INLINE
+    def build_from_raw(self, raw):
+        raise RuntimeError("argh shouldn't run this")
+]]
+
+[Super()]{ stuff }
+
+"#,
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::TestOwnedInline(vec![]),
+            ]])])),
+        );
+        // Test that things that can't build throw errors
+        expect_parse_err(
+            "[TEST_INLINE]{}",
+            TestInterpError::PythonErr {
+                pyerr: Regex::new(
+                    r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got <FauxInline.*",
+                )
+                .unwrap(),
+                code_span: TestParserSpan("[TEST_INLINE]"),
+            },
+        )
+    }
+
+    #[test]
+    fn test_code_followed_by_raw_scope_must_build() {
+        // Test that things that can build do in fact build.
+        // In this case make a big thing that would give inlines if it was used directly, and a sentinel if it's used as a builder.
+        // Assert it returns the sentinel.
+        expect_parse(
+            r#"
+[[
+class Super:
+    is_block = True
+    test_block = BlockScope([Paragraph([Sentence([Text("shouldnt see this")])])])
+
+    def build_from_blocks(self, blocks):
+        raise RuntimeError("argh shouldn't run this")
+    def build_from_inlines(self, inlines):
+        raise RuntimeError("argh shouldn't run this")
+    def build_from_raw(self, raw):
+        return TEST_INLINE_RAW
+]]
+
+[Super()]#{ stuff }#
+
+"#,
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::TestOwnedRaw("".to_string()),
+            ]])])),
+        );
+        // Test that things that can't build throw errors
+        expect_parse_err(
+            "[TEST_INLINE]#{}#",
+            TestInterpError::PythonErr {
+                pyerr: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got <FauxInline.*")
+                    .unwrap(),
+                code_span: TestParserSpan("[TEST_INLINE]"),
+            },
+        )
+    }
+}
+
+/// This contains tests for the scope parser where it is initially ambiguous whether a scope is inline or block.
+mod scope_ambiguity {
+    use super::*;
+
+    // Test that block scopes can be opened with various whitespace elements between them and the newline
+
+    #[test]
+    fn block_scope_opened_with_direct_newline() {
+        expect_parse("{\n}", Ok(test_doc(vec![TestBlock::BlockScope(vec![])])))
+    }
+
+    #[test]
+    fn block_scope_opened_with_whitespaces_then_newline() {
+        expect_parse(
+            "{       \n}",
+            Ok(test_doc(vec![TestBlock::BlockScope(vec![])])),
+        )
+    }
+
+    #[test]
+    fn block_scope_opened_with_whitespaces_then_comment_then_newline() {
+        expect_parse(
+            "{       # wowie a comment!\n}",
+            Ok(test_doc(vec![TestBlock::BlockScope(vec![])])),
+        )
+    }
+
+    #[test]
+    fn block_scope_opened_with_comment() {
+        expect_parse(
+            "{# wowie a comment\n}",
+            Ok(test_doc(vec![TestBlock::BlockScope(vec![])])),
+        )
+    }
+
+    // Test the same thing but with code owners on the front
+
+    #[test]
+    fn code_block_scope_opened_with_direct_newline() {
+        expect_parse(
+            "[TEST_BLOCK_BUILDER]{\n}",
+            Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        )
+    }
+
+    #[test]
+    fn code_block_scope_opened_with_whitespaces_then_newline() {
+        expect_parse(
+            "[TEST_BLOCK_BUILDER]{       \n}",
+            Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        )
+    }
+
+    #[test]
+    fn code_block_scope_opened_with_whitespaces_then_comment_then_newline() {
+        expect_parse(
+            "[TEST_BLOCK_BUILDER]{       # wowie a comment!\n}",
+            Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        )
+    }
+
+    #[test]
+    fn code_block_scope_opened_with_comment() {
+        expect_parse(
+            "[TEST_BLOCK_BUILDER]{# wowie a comment\n}",
+            Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        )
+    }
+
+    // Test that inline scopes can be opened with and without whitespace between them and their first contents
+    #[test]
+    fn inline_scope_opened_with_direct_content() {
+        expect_parse(
+            "{inline}",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::InlineScope(vec![test_text("inline")]),
+            ]])])),
+        )
+    }
+
+    #[test]
+    fn inline_scope_opened_with_whitespaces_then_content() {
+        expect_parse(
+            "{       inline      }",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::InlineScope(vec![test_text("inline")]),
+            ]])])),
+        )
+    }
+
+    // Test the same thing but with code owners on the front
+    #[test]
+    fn code_inline_scope_opened_with_direct_content() {
+        expect_parse(
+            "[TEST_INLINE_BUILDER]{inline}",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::TestOwnedInline(vec![test_text("inline")]),
+            ]])])),
+        )
+    }
+
+    #[test]
+    fn code_inline_scope_opened_with_whitespaces_then_content() {
+        expect_parse(
+            "[TEST_INLINE_BUILDER]{       inline      }",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::TestOwnedInline(vec![test_text("inline")]),
+            ]])])),
+        )
+    }
+
+    // Empty scopes should count as inline because there are no newlines inside
+    #[test]
+    fn empty_scopes_are_inline() {
+        expect_parse(
+            "{}",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::InlineScope(vec![]),
+            ]])])),
+        )
+    }
+
+    #[test]
+    fn scopes_with_escaped_newlines_are_inline() {
+        expect_parse(
+            r#"{\
+\
+}"#,
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::InlineScope(vec![]),
+            ]])])),
+        )
+    }
+
+    #[test]
+    fn code_empty_scopes_are_inline() {
+        expect_parse(
+            "[TEST_INLINE_BUILDER]{}",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::TestOwnedInline(vec![]),
+            ]])])),
+        )
+    }
+
+    // EOFs inside block and inline scopes should both fail equally
+
+    #[test]
+    fn eof_in_inline_scope() {
+        expect_parse_err(
+            "{ wow some data and then EOF",
+            TestInterpError::EndedInsideScope {
+                scope_start: TestParserSpan("{"),
+            },
+        )
+    }
+
+    #[test]
+    fn eof_in_block_scope() {
+        expect_parse_err(
+            "{   \n wow some data and then EOF",
+            TestInterpError::EndedInsideScope {
+                scope_start: TestParserSpan("{"),
+            },
+        )
+    }
+}
+
 /// This contains tests for situations that are currently allowed but probably shouldn't be.
 mod overflexibility {
     use regex::Regex;
@@ -1943,18 +2287,6 @@ mod overflexibility {
                 TestBlock::Paragraph(vec![test_sentence("initial data")]),
                 TestBlock::Paragraph(vec![test_sentence("and some following data")]),
             ])),
-        )
-    }
-
-    /// The parser is whitespace-sensitive when it comes to scope opens - block-scope-open is scope open followed *directly* by a newline.
-    /// block-scope-open won't happen if there is whitespace or comments.
-    #[test]
-    fn hidden_block_scope() {
-        expect_parse_err(
-            "[TEST_BLOCK_BUILDER]{   # wow this will surely open a block scope  \n}",
-            TestInterpError::SentenceBreakInInlineScope {
-                scope_start: TestParserSpan("{"),
-            },
         )
     }
 }
