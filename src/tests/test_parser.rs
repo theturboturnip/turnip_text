@@ -127,6 +127,11 @@ pub enum TestInterpError {
         block_close_span: Option<TestParserSpan>,
         enclosing_scope_start: TestParserSpan,
     },
+
+    InsufficientBlockSeparation {
+        last_block: TestParserSpan,
+        next_block_start: TestParserSpan,
+    },
 }
 impl TestInterpError {
     fn effectively_eq(&self, other: &InterpError, data: &Vec<ParsingFile>) -> bool {
@@ -284,6 +289,19 @@ impl TestInterpError {
                         _ => false,
                     })
                     && (l_enclosing_scope_start.same_text(r_enclosing_scope_start, data))
+            }
+            (
+                Self::InsufficientBlockSeparation {
+                    last_block: l_last_block,
+                    next_block_start: l_next_block_start,
+                },
+                InterpError::InsufficientBlockSeparation {
+                    last_block: r_last_block,
+                    next_block_start: r_next_block_start,
+                },
+            ) => {
+                l_last_block.same_text(r_last_block, data)
+                    && l_next_block_start.same_text(r_next_block_start, data)
             }
             _ => false,
         }
@@ -2190,9 +2208,9 @@ mod flexibility {
         expect_parse(
             "building [TEST_INLINE_BUILDER]{something built} inline",
             Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-                TestInline::Text("building ".to_string()),
-                TestInline::TestOwnedInline(vec![TestInline::Text("something built".to_string())]),
-                TestInline::Text(" inline".to_string()),
+                test_text("building "),
+                TestInline::TestOwnedInline(vec![test_text("something built")]),
+                test_text(" inline"),
             ]])])),
         )
     }
@@ -2214,9 +2232,9 @@ mod flexibility {
         } stuff # this is on the same line!
         "#,
             Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-                TestInline::Text("building ".to_string()),
-                TestInline::Text("dummy".to_string()),
-                TestInline::Text(" stuff".to_string()),
+                test_text("building "),
+                test_text("dummy"),
+                test_text(" stuff"),
             ]])])),
         )
     }
@@ -2226,7 +2244,7 @@ mod flexibility {
         expect_parse(
             "building [TEST_RAW_INLINE_BUILDER]#{some raw stuff}#",
             Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-                TestInline::Text("building ".to_string()),
+                test_text("building "),
                 TestInline::TestOwnedRaw("some raw stuff".to_string()),
             ]])])),
         )
@@ -2239,8 +2257,8 @@ mod flexibility {
         expect_parse(
             "[TEST_INLINE_BUILDER]{something built} inline",
             Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-                TestInline::TestOwnedInline(vec![TestInline::Text("something built".to_string())]),
-                TestInline::Text(" inline".to_string()),
+                TestInline::TestOwnedInline(vec![test_text("something built")]),
+                test_text(" inline"),
             ]])])),
         )
     }
@@ -2262,8 +2280,8 @@ mod flexibility {
         } stuff # this is on the same line!
         "#,
             Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-                TestInline::Text("dummy".to_string()),
-                TestInline::Text(" stuff".to_string()),
+                test_text("dummy"),
+                test_text(" stuff"),
             ]])])),
         )
     }
@@ -2274,7 +2292,7 @@ mod flexibility {
             "[TEST_RAW_INLINE_BUILDER]#{some raw stuff}# and this continues",
             Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
                 TestInline::TestOwnedRaw("some raw stuff".to_string()),
-                TestInline::Text(" and this continues".to_string()),
+                test_text(" and this continues"),
             ]])])),
         )
     }
