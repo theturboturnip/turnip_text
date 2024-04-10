@@ -293,7 +293,7 @@ impl TestInterpError {
 const GLOBALS_CODE: &'static str = r#"
 # The Rust module name is _native, which is included under turnip_text, so Python IDEs don't try to import directly from it.
 # This means we use _native instead of turnip_text as the module name here.
-from _native import InlineScope, Text, BlockScope, TurnipTextSource, Paragraph, Sentence
+from _native import InlineScope, Text, BlockScope, TurnipTextSource, Paragraph, Sentence, Raw
 
 class FauxBlock:
     is_block = True
@@ -333,6 +333,12 @@ class TestRawBlockBuilder:
 class TestBlockSwallower():
     def build_from_blocks(self, contents):
         return None
+class TestInlineSwallower():
+    def build_from_inlines(self, contents):
+        return None
+class TestRawSwallower():
+    def build_from_raw(self, raw):
+        return None
 
 TEST_BLOCK_BUILDER = TestBlockBuilder()
 TEST_INLINE_BUILDER = TestInlineBuilder()
@@ -340,32 +346,48 @@ TEST_RAW_INLINE_BUILDER = TestRawInlineBuilder()
 TEST_RAW_BLOCK_BUILDER = TestRawBlockBuilder()
 
 TEST_BLOCK_SWALLOWER = TestBlockSwallower()
+TEST_INLINE_SWALLOWER = TestInlineSwallower()
+TEST_RAW_SWALLOWER = TestRawSwallower()
 
 TEST_PROPERTY = property(lambda x: 5)
 
 class TestDocSegmentHeader:
     is_segment_header = True
     weight = 0
-    def __init__(self, test_block=None):
+    def __init__(self, weight=0, test_block=None, test_inline=None):
+        self.weight = weight
         self.test_block = test_block
+        self.test_inline = test_inline
 
 class TestDocSegmentBuilder:
+    def __init__(self, weight=0):
+        self.weight=weight
     def build_from_blocks(self, contents):
-        return TestDocSegmentHeader(contents)
+        return TestDocSegmentHeader(weight=self.weight, test_block=contents)
+    def build_from_inlines(self, contents):
+        return TestDocSegmentHeader(weight=self.weight, test_inline=contents)
+    def build_from_raw(self, raw):
+        return TestDocSegmentHeader(weight=self.weight, test_inline=InlineScope([Raw(raw)]))
 
 def test_src(contents):
     return TurnipTextSource.from_string(contents)
 
 class TestBlockBuilderFromInline:
     def build_from_inlines(self, contents: InlineScope):
-        return FauxBlock(Paragraph([Sentence([contents])]))
+        return FauxBlock(BlockScope([Paragraph([Sentence([contents])])]))
 
 TEST_BLOCK_BUILDER_FROM_INLINE = TestBlockBuilderFromInline()
+
+class TestDummyInlineBuilderFromBlock:
+    def __init__(self, dummy_text: str):
+        self.dummy_text = dummy_text
+    def build_from_blocks(self, contents):
+        return Text(self.dummy_text)
 "#;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct TestDocSegment {
-    header: Option<(i64, Option<TestBlock>)>,
+    header: Option<(i64, Option<TestBlock>, Option<TestInline>)>,
     contents: TestBlock,
     subsegments: Vec<TestDocSegment>,
 }
@@ -414,7 +436,7 @@ impl PyToTest<TestDocSegment> for PyAny {
                 header: doc_segment.header.map(|header| {
                     let weight = DocSegmentHeader::get_weight(py, header.as_ref(py))
                         .expect("Couldn't get_weight of header");
-                    let contents = match header.as_ref(py).getattr("test_block") {
+                    let block_contents = match header.as_ref(py).getattr("test_block") {
                         Ok(test_block) => {
                             if test_block.is_none() {
                                 None
@@ -424,7 +446,17 @@ impl PyToTest<TestDocSegment> for PyAny {
                         }
                         Err(_) => None,
                     };
-                    (weight, contents)
+                    let inline_contents = match header.as_ref(py).getattr("test_inline") {
+                        Ok(test_inline) => {
+                            if test_inline.is_none() {
+                                None
+                            } else {
+                                Some(test_inline.as_test(py))
+                            }
+                        }
+                        Err(_) => None,
+                    };
+                    (weight, block_contents, inline_contents)
                 }),
                 contents: doc_segment.contents.as_ref(py).as_test(py),
                 subsegments: doc_segment
@@ -1329,47 +1361,6 @@ pub fn test_property_calls_get() {
     )
 }
 
-#[test]
-pub fn test_no_emit_doc_segment_header_in_block_scope() {
-    expect_parse_err(
-        "{
-[TestDocSegmentHeader()]
-}",
-        TestInterpError::DocSegmentHeaderMidScope {
-            code_span: TestParserSpan("[TestDocSegmentHeader()]"),
-            block_close_span: None,
-            enclosing_scope_start: TestParserSpan("{"),
-        },
-    )
-}
-
-#[test]
-pub fn test_no_build_doc_segment_header_in_block_scope() {
-    expect_parse_err(
-        "{
-[TestDocSegmentBuilder()]{
-    Sometimes docsegmentheaders can be built, too!
-    But if they're in a block scope it shouldn't be allowed :(
-}
-}",
-        TestInterpError::DocSegmentHeaderMidScope {
-            code_span: TestParserSpan("[TestDocSegmentBuilder()]{\n"),
-            block_close_span: Some(TestParserSpan("}")),
-            enclosing_scope_start: TestParserSpan("{"),
-        },
-    )
-}
-
-#[test]
-pub fn test_no_emit_doc_segment_header_in_para() {
-    expect_parse_err(
-        "And as I was saying [TestDocSegmentHeader()]",
-        TestInterpError::DocSegmentHeaderMidPara {
-            code_span: TestParserSpan("[TestDocSegmentHeader()]"),
-        },
-    )
-}
-
 /*
 // These are tests for strict blank-line syntax checking - where the parser ensures that there is always a blank line between two blocks.
 // With the way the parser is currently structured, it's impossible to check this inside subfiles without having the newlines inside subfiles impact the correctness of the surrounding file.
@@ -1577,7 +1568,439 @@ pub fn test_block_sep_code_code() {
 }
 */
 
-// TODO MORE TESTS FOR DOC STURCURE. OH FUCK I NEED TO CHANGE THE TEST HARNESS
+/// Tests that the implicit structure mechanism is working correctly
+mod doc_structure {
+    use super::*;
+
+    #[test]
+    fn test_many_inner_levels() {
+        expect_parse(
+            "
+        outside
+
+        [TestDocSegmentHeader(weight=1)]
+
+        light!
+
+        [TestDocSegmentHeader(weight=2)]
+        
+        [TestDocSegmentHeader(weight=30)]
+
+        [TestDocSegmentHeader(weight=54)]
+        
+        middling
+
+        [TestDocSegmentHeader(weight=67)]
+
+        [TestDocSegmentHeader(weight=100)]
+
+        heAVEY
+
+        ",
+            Ok(TestDocSegment {
+                header: None,
+                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+                    "outside",
+                )])]),
+                subsegments: vec![TestDocSegment {
+                    header: Some((1, None, None)),
+                    contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                        test_sentence("light!"),
+                    ])]),
+                    subsegments: vec![TestDocSegment {
+                        header: Some((2, None, None)),
+                        contents: TestBlock::BlockScope(vec![]),
+                        subsegments: vec![TestDocSegment {
+                            header: Some((30, None, None)),
+                            contents: TestBlock::BlockScope(vec![]),
+                            subsegments: vec![TestDocSegment {
+                                header: Some((54, None, None)),
+                                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                                    test_sentence("middling"),
+                                ])]),
+                                subsegments: vec![TestDocSegment {
+                                    header: Some((67, None, None)),
+                                    contents: TestBlock::BlockScope(vec![]),
+                                    subsegments: vec![TestDocSegment {
+                                        header: Some((100, None, None)),
+                                        contents: TestBlock::BlockScope(vec![
+                                            TestBlock::Paragraph(vec![test_sentence("heAVEY")]),
+                                        ]),
+                                        subsegments: vec![],
+                                    }],
+                                }],
+                            }],
+                        }],
+                    }],
+                }],
+            }),
+        )
+    }
+
+    #[test]
+    fn test_bouncing_in_and_out() {
+        expect_parse(
+            "
+        outside
+
+        [TestDocSegmentHeader(weight=1)]
+
+        light!
+
+        [TestDocSegmentHeader(weight=2)]
+        
+        [TestDocSegmentHeader(weight=30)]
+
+        [TestDocSegmentHeader(weight=54)]
+        
+        middling
+
+        [TestDocSegmentHeader(weight=2)]
+
+        [TestDocSegmentHeader(weight=20)]
+
+        middling again!
+
+        ",
+            Ok(TestDocSegment {
+                header: None,
+                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+                    "outside",
+                )])]),
+                subsegments: vec![TestDocSegment {
+                    header: Some((1, None, None)),
+                    contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                        test_sentence("light!"),
+                    ])]),
+                    subsegments: vec![
+                        TestDocSegment {
+                            header: Some((2, None, None)),
+                            contents: TestBlock::BlockScope(vec![]),
+                            subsegments: vec![TestDocSegment {
+                                header: Some((30, None, None)),
+                                contents: TestBlock::BlockScope(vec![]),
+                                subsegments: vec![TestDocSegment {
+                                    header: Some((54, None, None)),
+                                    contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(
+                                        vec![test_sentence("middling")],
+                                    )]),
+                                    subsegments: vec![],
+                                }],
+                            }],
+                        },
+                        TestDocSegment {
+                            header: Some((2, None, None)),
+                            contents: TestBlock::BlockScope(vec![]),
+                            subsegments: vec![TestDocSegment {
+                                header: Some((20, None, None)),
+                                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                                    test_sentence("middling again!"),
+                                ])]),
+                                subsegments: vec![],
+                            }],
+                        },
+                    ],
+                }],
+            }),
+        )
+    }
+
+    #[test]
+    fn test_bouncing_out_from_under() {
+        expect_parse(
+            "
+        outside
+
+        [TestDocSegmentHeader(weight=10)]
+
+        1st level
+
+        [TestDocSegmentHeader(weight=0)]
+        
+        1st level
+
+        [TestDocSegmentHeader(weight=10)]
+
+        2nd level
+
+        ",
+            Ok(TestDocSegment {
+                header: None,
+                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+                    "outside",
+                )])]),
+                subsegments: vec![
+                    TestDocSegment {
+                        header: Some((10, None, None)),
+                        contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                            test_sentence("1st level"),
+                        ])]),
+                        subsegments: vec![],
+                    },
+                    TestDocSegment {
+                        header: Some((0, None, None)),
+                        contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                            test_sentence("1st level"),
+                        ])]),
+                        subsegments: vec![TestDocSegment {
+                            header: Some((10, None, None)),
+                            contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                                test_sentence("2nd level"),
+                            ])]),
+                            subsegments: vec![],
+                        }],
+                    },
+                ],
+            }),
+        )
+    }
+
+    #[test]
+    fn test_negative_weight() {
+        expect_parse(
+            "
+        outside
+
+        [TestDocSegmentHeader(weight=1)]
+
+        light!
+
+        [TestDocSegmentHeader(weight=2)]
+        
+        [TestDocSegmentHeader(weight=-10)]
+
+        [TestDocSegmentHeader(weight=54)]
+        
+        middling
+
+        [TestDocSegmentHeader(weight=67)]
+
+        [TestDocSegmentHeader(weight=100)]
+
+        heAVEY
+
+        ",
+            Ok(TestDocSegment {
+                header: None,
+                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+                    "outside",
+                )])]),
+                subsegments: vec![
+                    TestDocSegment {
+                        header: Some((1, None, None)),
+                        contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                            test_sentence("light!"),
+                        ])]),
+                        subsegments: vec![TestDocSegment {
+                            header: Some((2, None, None)),
+                            contents: TestBlock::BlockScope(vec![]),
+                            subsegments: vec![],
+                        }],
+                    },
+                    TestDocSegment {
+                        header: Some((-10, None, None)),
+                        contents: TestBlock::BlockScope(vec![]),
+                        subsegments: vec![TestDocSegment {
+                            header: Some((54, None, None)),
+                            contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                                test_sentence("middling"),
+                            ])]),
+                            subsegments: vec![TestDocSegment {
+                                header: Some((67, None, None)),
+                                contents: TestBlock::BlockScope(vec![]),
+                                subsegments: vec![TestDocSegment {
+                                    header: Some((100, None, None)),
+                                    contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(
+                                        vec![test_sentence("heAVEY")],
+                                    )]),
+                                    subsegments: vec![],
+                                }],
+                            }],
+                        }],
+                    },
+                ],
+            }),
+        )
+    }
+
+    #[test]
+    fn test_cant_create_header_block_scope() {
+        expect_parse_err(
+            "{
+    [TestDocSegmentHeader()]
+    }",
+            TestInterpError::DocSegmentHeaderMidScope {
+                code_span: TestParserSpan("[TestDocSegmentHeader()]"),
+                block_close_span: None,
+                enclosing_scope_start: TestParserSpan("{"),
+            },
+        )
+    }
+
+    #[test]
+    fn test_cant_build_header_block_scope() {
+        expect_parse_err(
+            "{
+    [TestDocSegmentBuilder()]{
+        Sometimes docsegmentheaders can be built, too!
+        But if they're in a block scope it shouldn't be allowed :(
+    }
+    }",
+            TestInterpError::DocSegmentHeaderMidScope {
+                code_span: TestParserSpan(
+                    "[TestDocSegmentBuilder()]{
+        Sometimes docsegmentheaders can be built, too!
+        But if they're in a block scope it shouldn't be allowed :(
+    }",
+                ),
+                block_close_span: None,
+                enclosing_scope_start: TestParserSpan("{"),
+            },
+        )
+    }
+
+    #[test]
+    fn test_cant_create_header_block_scope_argument() {
+        expect_parse_err(
+            "[TEST_BLOCK_BUILDER]{
+    [TestDocSegmentHeader()]
+    }",
+            TestInterpError::DocSegmentHeaderMidScope {
+                code_span: TestParserSpan("[TestDocSegmentHeader()]"),
+                block_close_span: None,
+                enclosing_scope_start: TestParserSpan("{"),
+            },
+        )
+    }
+
+    #[test]
+    fn test_can_create_header_toplevel_file() {
+        expect_parse(
+            "
+        Toplevel content!
+
+        [TestDocSegmentHeader(weight=123)]
+        
+        More content!",
+            Ok(TestDocSegment {
+                header: None,
+                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+                    "Toplevel content!",
+                )])]),
+                subsegments: vec![TestDocSegment {
+                    header: Some((123, None, None)),
+                    contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                        test_sentence("More content!"),
+                    ])]),
+                    subsegments: vec![],
+                }],
+            }),
+        )
+    }
+
+    #[test]
+    fn test_can_create_header_inner_file() {
+        expect_parse(
+            r#"
+[[
+header_in_file = test_src("""[TestDocSegmentHeader(weight=123)]
+
+Content in file!
+""")
+]]
+        Toplevel content!
+
+        [header_in_file]
+        
+        Content outside file!"#,
+            Ok(TestDocSegment {
+                header: None,
+                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+                    "Toplevel content!",
+                )])]),
+                subsegments: vec![TestDocSegment {
+                    header: Some((123, None, None)),
+                    contents: TestBlock::BlockScope(vec![
+                        TestBlock::Paragraph(vec![test_sentence("Content in file!")]),
+                        TestBlock::Paragraph(vec![test_sentence("Content outside file!")]),
+                    ]),
+                    subsegments: vec![],
+                }],
+            }),
+        )
+    }
+
+    #[test]
+    fn test_cant_create_header_block_scope_in_inner_file() {
+        expect_parse_err(
+            r#"
+[[
+header_in_file = test_src("""
+{
+    [TestDocSegmentHeader(weight=123)]
+
+    Content in file!
+}""")
+]]
+        Toplevel content!
+
+        [header_in_file]
+        
+        Content outside file!"#,
+            TestInterpError::DocSegmentHeaderMidScope {
+                code_span: TestParserSpan("[TestDocSegmentHeader(weight=123)]"),
+                block_close_span: None,
+                enclosing_scope_start: TestParserSpan("{"),
+            },
+        )
+    }
+
+    #[test]
+    fn test_cant_create_header_inner_file_in_block_scope() {
+        expect_parse_err(
+            r#"
+[[
+header_in_file = test_src("""
+[TestDocSegmentHeader(weight=123)]
+
+Content in file!
+""")
+]]
+        Toplevel content!
+
+        {
+            [header_in_file]
+            
+            Content outside file!
+        }"#,
+            TestInterpError::DocSegmentHeaderMidScope {
+                code_span: TestParserSpan("[TestDocSegmentHeader(weight=123)]"),
+                block_close_span: None,
+                enclosing_scope_start: TestParserSpan("{"),
+            },
+        )
+    }
+
+    #[test]
+    fn test_cant_create_header_in_paragraph() {
+        expect_parse_err(
+            "And as I was saying [TestDocSegmentHeader()]",
+            TestInterpError::DocSegmentHeaderMidPara {
+                code_span: TestParserSpan("[TestDocSegmentHeader()]"),
+            },
+        )
+    }
+
+    #[test]
+    fn test_cant_create_header_inline() {
+        expect_parse_err(
+            "[TEST_BLOCK_BUILDER_FROM_INLINE]{ [TestDocSegmentHeader()] }",
+            TestInterpError::DocSegmentHeaderMidPara {
+                code_span: TestParserSpan("[TestDocSegmentHeader()]"),
+            },
+        )
+    }
+}
 
 mod inserted_files {
     use super::*;
@@ -1760,10 +2183,7 @@ f4 = test_src("""
 mod flexibility {
     // All kinds of builder should be able to build inlines, even if their arguments aren't inline
 
-    use super::{
-        expect_parse, expect_parse_err, test_doc, test_sentence, TestBlock, TestInline,
-        TestInterpError,
-    };
+    use super::*;
 
     #[test]
     fn test_inline_scope_builder_building_inline() {
@@ -1779,11 +2199,11 @@ mod flexibility {
 
     #[test]
     fn test_block_scope_builder_building_inline() {
-        // We can enter Block mode when building something that consumes block, but if it returns None
+        // We can enter Block mode when building something that consumes block, but if it returns inline
         // then we can continue in inline mode on the same line
         expect_parse(
             r#"
-        building [TEST_BLOCK_SWALLOWER]{
+        building [TestDummyInlineBuilderFromBlock("dummy")]{
             lots of blocks!
 
             even more blocks!
@@ -1791,11 +2211,12 @@ mod flexibility {
             [TEST_BLOCK_BUILDER]{
                 blocks inside blocks! [TEST_INLINE_BUILDER]{ with otehr stuff in them! }
             }
-        } nothing # this is on the same line!
+        } stuff # this is on the same line!
         "#,
             Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
                 TestInline::Text("building ".to_string()),
-                TestInline::Text(" nothing".to_string()),
+                TestInline::Text("dummy".to_string()),
+                TestInline::Text(" stuff".to_string()),
             ]])])),
         )
     }
@@ -1807,6 +2228,53 @@ mod flexibility {
             Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
                 TestInline::Text("building ".to_string()),
                 TestInline::TestOwnedRaw("some raw stuff".to_string()),
+            ]])])),
+        )
+    }
+
+    // Make sure all the kinds of builder that emit inlines start an inline, and don't just create and close a paragraph
+
+    #[test]
+    fn test_inline_scope_builder_building_inline_creates_paragraph() {
+        expect_parse(
+            "[TEST_INLINE_BUILDER]{something built} inline",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::TestOwnedInline(vec![TestInline::Text("something built".to_string())]),
+                TestInline::Text(" inline".to_string()),
+            ]])])),
+        )
+    }
+
+    #[test]
+    fn test_block_scope_builder_building_inline_creates_paragraph() {
+        // We can enter Block mode when building something that consumes block, but if it returns None
+        // then we can continue in inline mode on the same line
+        expect_parse(
+            r#"
+        [TestDummyInlineBuilderFromBlock("dummy")]{
+            lots of blocks!
+
+            even more blocks!
+
+            [TEST_BLOCK_BUILDER]{
+                blocks inside blocks! [TEST_INLINE_BUILDER]{ with otehr stuff in them! }
+            }
+        } stuff # this is on the same line!
+        "#,
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::Text("dummy".to_string()),
+                TestInline::Text(" stuff".to_string()),
+            ]])])),
+        )
+    }
+
+    #[test]
+    fn test_raw_scope_builder_building_inline_creates_paragraph() {
+        expect_parse(
+            "[TEST_RAW_INLINE_BUILDER]#{some raw stuff}# and this continues",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                TestInline::TestOwnedRaw("some raw stuff".to_string()),
+                TestInline::Text(" and this continues".to_string()),
             ]])])),
         )
     }
@@ -1887,28 +2355,183 @@ mod flexibility {
         )
     }
 
-    // TODO complete these for headers
-
     // All kinds of builder should be able to build headers, even if their arguments aren't blocks
     #[test]
-    fn test_inline_scope_builder_building_header() {}
+    fn test_inline_scope_builder_building_header() {
+        expect_parse(
+            "[TestDocSegmentBuilder()]{ Wowee i wish I had inline content }",
+            Ok(TestDocSegment {
+                header: None,
+                contents: TestBlock::BlockScope(vec![]),
+                subsegments: vec![TestDocSegment {
+                    header: Some((
+                        0,
+                        None,
+                        Some(TestInline::InlineScope(vec![test_text(
+                            "Wowee i wish I had inline content",
+                        )])),
+                    )),
+                    contents: TestBlock::BlockScope(vec![]),
+                    subsegments: vec![],
+                }],
+            }),
+        )
+    }
 
     #[test]
-    fn test_block_scope_builder_building_header() {}
+    fn test_block_scope_builder_building_header() {
+        expect_parse(
+            "[TestDocSegmentBuilder()]{
+            Wowee i wish I had block content
+        }",
+            Ok(TestDocSegment {
+                header: None,
+                contents: TestBlock::BlockScope(vec![]),
+                subsegments: vec![TestDocSegment {
+                    header: Some((
+                        0,
+                        Some(TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                            test_sentence("Wowee i wish I had block content"),
+                        ])])),
+                        None,
+                    )),
+                    contents: TestBlock::BlockScope(vec![]),
+                    subsegments: vec![],
+                }],
+            }),
+        )
+    }
 
     #[test]
-    fn test_raw_scope_builder_building_header() {}
+    fn test_raw_scope_builder_building_header() {
+        expect_parse(
+            "[TestDocSegmentBuilder()]#{ Wowee i wish I had inline content }#",
+            Ok(TestDocSegment {
+                header: None,
+                contents: TestBlock::BlockScope(vec![]),
+                subsegments: vec![TestDocSegment {
+                    header: Some((
+                        0,
+                        None,
+                        Some(TestInline::InlineScope(vec![test_raw_text(
+                            " Wowee i wish I had inline content ",
+                        )])),
+                    )),
+                    contents: TestBlock::BlockScope(vec![]),
+                    subsegments: vec![],
+                }],
+            }),
+        )
+    }
 
     // Even if each builder can build blocks, they shouldn't be able to emit a header in an inline context
 
     #[test]
-    fn test_inline_scope_builder_building_header_in_inline() {}
+    fn test_inline_scope_builder_building_header_in_inline() {
+        expect_parse_err(
+            "And as I was saying [TestDocSegmentBuilder()]{ Wowee i wish I had inline content }",
+            TestInterpError::DocSegmentHeaderMidPara {
+                code_span: TestParserSpan(
+                    "[TestDocSegmentBuilder()]{ Wowee i wish I had inline content }",
+                ),
+            },
+        )
+    }
 
     #[test]
-    fn test_block_scope_builder_building_header_in_inline() {}
+    fn test_block_scope_builder_building_header_in_inline() {
+        expect_parse_err(
+            "And as I was saying [TestDocSegmentBuilder()]{
+                Wowee i wish I had block content
+            }",
+            TestInterpError::DocSegmentHeaderMidPara {
+                code_span: TestParserSpan(
+                    "[TestDocSegmentBuilder()]{
+                Wowee i wish I had block content
+            }",
+                ),
+            },
+        )
+    }
 
     #[test]
-    fn test_raw_scope_builder_building_header_in_inline() {}
+    fn test_raw_scope_builder_building_header_in_inline() {
+        expect_parse_err(
+            "And as I was saying [TestDocSegmentBuilder()]#{ Wowee i wish 
+                I had inline 
+                and raw
+                content }#",
+            TestInterpError::DocSegmentHeaderMidPara {
+                code_span: TestParserSpan(
+                    "[TestDocSegmentBuilder()]#{ Wowee i wish 
+                I had inline 
+                and raw
+                content }#",
+                ),
+            },
+        )
+    }
+
+    // All kinds of builder should be able to build None
+
+    // if an inline emits None inside a sentence with other content
+    #[test]
+    fn test_inline_scope_builder_building_none_inside_sentence() {
+        expect_parse(
+            "stuff at the start of a sentence [TEST_INLINE_SWALLOWER]{ this is gonna be swallowed }
+            [TEST_INLINE_SWALLOWER]{ this is gonna be swallowed } stuff at the end of a sentence",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![
+                test_sentence("stuff at the start of a sentence "), // Note that this has the ending space - whitespace content is flushed to the text when the eval-brackets start
+                test_sentence(" stuff at the end of a sentence"), // Note that this has the leading space - whitespace is counted after inline scopes and code, but not inside inline scopes
+            ])])),
+        )
+    }
+
+    // if an inline emits None and that's the whole sentence, it isn't added as a sentence inside the paragraph
+    #[test]
+    fn test_inline_scope_builder_building_none_sentence_inside_para() {
+        expect_parse(
+            "
+            Wow what a lovely paragraph.
+            [TEST_INLINE_SWALLOWER]{ this is gonna be swallowed }
+            Yes, isn't it?",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![
+                test_sentence("Wow what a lovely paragraph."),
+                test_sentence("Yes, isn't it?"),
+            ])])),
+        )
+    }
+
+    // if all a paragraph has is None sentences i.e. nothing, it isn't emitted at all.
+    // Actually, at this level emitting None emits it at the block level - you'd need at least enough content for a sentence to start a paragraph - so this happens even if the paragraph code doesn't handle it
+    #[test]
+    fn test_inline_scope_builder_building_none_para() {
+        expect_parse(
+            "[TEST_INLINE_SWALLOWER]{ this is gonna be swallowed }
+            [TEST_INLINE_SWALLOWER]{ so is this }",
+            Ok(test_doc(vec![])),
+        )
+    }
+
+    #[test]
+    fn test_block_scope_builder_building_none() {
+        expect_parse(
+            "[TEST_BLOCK_SWALLOWER]{
+                this is gonna be swallowed
+            
+                so is this!
+            }",
+            Ok(test_doc(vec![])),
+        )
+    }
+
+    #[test]
+    fn test_raw_scope_builder_building_none() {
+        expect_parse(
+            "[TEST_RAW_SWALLOWER]#{ this is gonna be swallowed }#",
+            Ok(test_doc(vec![])),
+        )
+    }
 }
 
 /// This contains tests for the code parser where it is initially ambiguous whether code is meant to be an owner or not.

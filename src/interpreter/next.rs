@@ -18,6 +18,14 @@
 //! This cannot be done with the above structure, unless you allow newlines to cross file borders and affect the builder for the enclosing file.
 //! That would mean the correctness of the *enclosing* file would be dependent on the *enclosed* file and vice versa - the enclosed file would inherit newline state from the enclosing file, and the enclosing file would inherit newline state from after the enclosed file finishes.
 //! I do not like this, and prefer to keep the correctness of files independent while keeping the wackier possible syntax.
+//!
+//! TODO the newline syntax I want can be established as
+//! - after eval-bracket-emitting-block-or-header-or-none, a newline must be seen before any content
+//! - after closing a block-level block scope (i.e. ignoring block scopes used as arguments to code producing inline), a newline must be seen before any content
+//! There's no need to worry about this with paragraphs (double newline required to end the paragraph) and block scope opens/closes (extra newlines between opening new block scopes seems superfluous, opening a block scope requires a newline, block scopes can't be closed mid paragraph)
+//!
+//! TODO rename the MidPara errors because they could be used in an inline scope as argument to code at block scope context
+//!
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -26,22 +34,18 @@ use pyo3::{
 };
 
 use crate::{
-    error::{TurnipTextContextlessError, TurnipTextContextlessResult},
+    error::TurnipTextContextlessResult,
     interpreter::{
-        eval_bracket::eval_or_exec, python::typeclass::PyTcUnionRef, BlockScopeBuilder,
-        InlineScopeBuilder, RawScopeBuilder,
+        eval_bracket::eval_or_exec, BlockScopeBuilder, InlineScopeBuilder, RawScopeBuilder,
     },
     lexer::{Escapable, LexError, TTToken},
     util::ParseSpan,
 };
 
 use super::{
-    coerce_to_inline_pytcref,
-    eval_bracket::{eval_brackets, EvalBracketResult},
-    python::typeclass::PyTcRef,
-    Block, BlockScope, DocSegment, DocSegmentHeader, Inline, InlineScope, InterimDocumentStructure,
-    InterpError, InterpreterFileAction, MapContextlessResult, Paragraph, Raw, Sentence, Text,
-    TurnipTextSource,
+    coerce_to_inline_pytcref, python::typeclass::PyTcRef, Block, BlockScope, BuilderOutcome,
+    DocSegment, DocSegmentHeader, Inline, InlineScope, InterimDocumentStructure, InterpError,
+    InterpreterFileAction, MapContextlessResult, Paragraph, Raw, Sentence, Text, TurnipTextSource,
 };
 
 /// An enum encompassing all the things that can be directly emitted from one Builder to be bubbled up to the previous Builder.
@@ -1047,6 +1051,25 @@ impl ParagraphFromTokens {
             Ok(())
         }
     }
+    fn fold_current_sentence_into_paragraph(
+        &mut self,
+        py: Python,
+    ) -> TurnipTextContextlessResult<()> {
+        // If the sentence is empty, don't bother pushing
+        if self.current_sentence.borrow(py).__len__(py) > 0 {
+            // Swap the current sentence out for a new one
+            let sentence = std::mem::replace(
+                &mut self.current_sentence,
+                py_internal_alloc(py, Sentence::new_empty(py))?,
+            );
+            // Push the old one into the paragraph
+            self.para
+                .borrow_mut(py)
+                .push_sentence(sentence.as_ref(py))
+                .err_as_internal(py)?;
+        }
+        Ok(())
+    }
 }
 impl InlineTokenProcessor for ParagraphFromTokens {
     fn at_start_of_line(&self) -> bool {
@@ -1099,16 +1122,7 @@ impl InlineTokenProcessor for ParagraphFromTokens {
                 DocElement::Block(PyTcRef::of_unchecked(self.para.as_ref(py))),
             ))))
         } else {
-            // Swap the current sentence out for a new one
-            let sentence = std::mem::replace(
-                &mut self.current_sentence,
-                py_internal_alloc(py, Sentence::new_empty(py))?,
-            );
-            // Push the old one into the paragraph
-            self.para
-                .borrow_mut(py)
-                .push_sentence(sentence.as_ref(py))
-                .err_as_internal(py)?;
+            self.fold_current_sentence_into_paragraph(py)?;
             // We're now at the start of the line
             self.start_of_line = true;
             Ok(BuildStatus::Continue)
@@ -1117,16 +1131,7 @@ impl InlineTokenProcessor for ParagraphFromTokens {
 
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
         if !self.start_of_line {
-            // Swap the current sentence out for a new one
-            let sentence = std::mem::replace(
-                &mut self.current_sentence,
-                py_internal_alloc(py, Sentence::new_empty(py))?,
-            );
-            // Push the old one into the paragraph
-            self.para
-                .borrow_mut(py)
-                .push_sentence(sentence.as_ref(py))
-                .err_as_internal(py)?;
+            self.fold_current_sentence_into_paragraph(py)?;
         }
         assert!(
             self.ctx.try_extend(&tok.token_span()),
@@ -1451,7 +1456,6 @@ impl BuildFromTokens for CodeFromTokens {
                 _ => {
                     // We didn't encounter any scope openers, so we know we don't need to build anything.
                     // Emit the object directly, and reprocess the current token so it gets included.
-                    // TODO test tokens directly after code are all processed, including text, whitespace, comments, newlines...
 
                     // Consider: we may have an object at the very start of the line.
                     // If it's an Inline, e.g. "[virtio] is a thing..." then we want to return Inline so the rest of the line can be added.
@@ -1510,7 +1514,7 @@ impl BuildFromTokens for CodeFromTokens {
         let evaled_result_ref = self.evaled_code.take().unwrap().into_ref(py);
 
         let pushed = pushed.expect("Should never get a built None - CodeFromTokens only spawns BlockScopeFromTokens, InlineScopeFromTokens, RawScopeFromTokens none of which return None.");
-        match pushed.elem {
+        let built = match pushed.elem {
             DocElement::Block(blocks) => {
                 let builder: PyTcRef<BlockScopeBuilder> =
                     PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
@@ -1525,18 +1529,8 @@ impl BuildFromTokens for CodeFromTokens {
                     "Code got a built object from a different file that it was opened in"
                 );
 
-                let built =
-                    BlockScopeBuilder::call_build_from_blocks(py, builder, blocks.as_ref(py))
-                        .err_as_internal(py)?;
-                match built {
-                    Some(PyTcUnionRef::A(block)) => Ok(BuildStatus::Done(Some(
-                        self.ctx.make(DocElement::Block(block)),
-                    ))),
-                    Some(PyTcUnionRef::B(header)) => Ok(BuildStatus::Done(Some(
-                        self.ctx.make(DocElement::Header(header)),
-                    ))),
-                    None => Ok(BuildStatus::Done(None)),
-                }
+                BlockScopeBuilder::call_build_from_blocks(py, builder, blocks.as_ref(py))
+                    .err_as_internal(py)?
             }
             DocElement::Inline(inlines) => {
                 let builder: PyTcRef<InlineScopeBuilder> =
@@ -1553,17 +1547,8 @@ impl BuildFromTokens for CodeFromTokens {
                     "Code got a built object from a different file that it was opened in"
                 );
 
-                let built =
-                    InlineScopeBuilder::call_build_from_inlines(py, builder, inlines.as_ref(py))
-                        .err_as_internal(py)?;
-                // match built {
-                //     Some(PyTcUnionRef::A(block)) => todo!(),
-                //     Some(PyTcUnionRef::B(header)) => todo!(),
-                //     None => todo!(),
-                // }
-                Ok(BuildStatus::Done(Some(
-                    self.ctx.make(DocElement::Inline(built)),
-                )))
+                InlineScopeBuilder::call_build_from_inlines(py, builder, inlines.as_ref(py))
+                    .err_as_internal(py)?
             }
             DocElement::Raw(raw) => {
                 let builder: PyTcRef<RawScopeBuilder> =
@@ -1580,18 +1565,21 @@ impl BuildFromTokens for CodeFromTokens {
                     "Code got a built object from a different file that it was opened in"
                 );
 
-                let built =
-                    RawScopeBuilder::call_build_from_raw(py, &builder, &raw).err_as_internal(py)?;
-                match built {
-                    PyTcUnionRef::A(inline) => Ok(BuildStatus::Done(Some(
-                        self.ctx.make(DocElement::Inline(inline)),
-                    ))),
-                    PyTcUnionRef::B(block) => Ok(BuildStatus::Done(Some(
-                        self.ctx.make(DocElement::Block(block)),
-                    ))),
-                }
+                RawScopeBuilder::call_build_from_raw(py, &builder, &raw).err_as_internal(py)?
             }
             _ => unreachable!("Invalid combination of requested and actual built element types"),
+        };
+        match built {
+            BuilderOutcome::Block(block) => Ok(BuildStatus::Done(Some(
+                self.ctx.make(DocElement::Block(block)),
+            ))),
+            BuilderOutcome::Inline(inline) => Ok(BuildStatus::Done(Some(
+                self.ctx.make(DocElement::Inline(inline)),
+            ))),
+            BuilderOutcome::Header(header) => Ok(BuildStatus::Done(Some(
+                self.ctx.make(DocElement::Header(header)),
+            ))),
+            BuilderOutcome::None => Ok(BuildStatus::Done(None)),
         }
     }
 }

@@ -15,7 +15,7 @@ use eval_bracket::{eval_brackets, EvalBracketResult};
 pub mod python;
 use python::{
     interop::*,
-    typeclass::{PyInstanceList, PyTcRef, PyTcUnionRef},
+    typeclass::{PyInstanceList, PyTcRef},
 };
 
 pub mod next;
@@ -306,7 +306,7 @@ struct InterpManualBlockScopeState {
     scope_start: ParseSpan,
 }
 impl InterpManualBlockScopeState {
-    fn build_to_block(
+    /*fn build_to_block(
         self,
         py: Python,
         scope_end: ParseSpan,
@@ -335,7 +335,7 @@ impl InterpManualBlockScopeState {
                 ))
             }
         }
-    }
+    }*/
 }
 
 /*

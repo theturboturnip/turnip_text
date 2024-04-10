@@ -43,14 +43,16 @@ class block_scope_builder(BlockScopeBuilder):
     ```
     """
 
-    func: Callable[[BlockScope], Optional[Block | DocSegmentHeader]]
+    func: Callable[[BlockScope], Union[Block, Inline, DocSegmentHeader, None]]
 
     def __init__(
-        self, func: Callable[[BlockScope], Optional[Block | DocSegmentHeader]]
+        self, func: Callable[[BlockScope], Union[Block, Inline, DocSegmentHeader, None]]
     ) -> None:
         self.func = func
 
-    def build_from_blocks(self, b: BlockScope) -> Optional[Block | DocSegmentHeader]:
+    def build_from_blocks(
+        self, b: BlockScope
+    ) -> Union[Block, Inline, DocSegmentHeader, None]:
         return self.func(b)
 
 
@@ -77,12 +79,17 @@ class inline_scope_builder(InlineScopeBuilder):
     ```
     """
 
-    func: Callable[[InlineScope], Inline]
+    func: Callable[[InlineScope], Union[Block, Inline, DocSegmentHeader, None]]
 
-    def __init__(self, func: Callable[[InlineScope], Inline]) -> None:
+    def __init__(
+        self,
+        func: Callable[[InlineScope], Union[Block, Inline, DocSegmentHeader, None]],
+    ) -> None:
         self.func = func
 
-    def build_from_inlines(self, inls: InlineScope) -> Inline:
+    def build_from_inlines(
+        self, inls: InlineScope
+    ) -> Union[Block, Inline, DocSegmentHeader, None]:
         return self.func(inls)
 
 
@@ -107,15 +114,19 @@ class raw_scope_builder(RawScopeBuilder):
     ```
     """
 
-    func: Callable[[str], Union[Block, Inline]]
+    func: Callable[[str], Union[Block, Inline, DocSegmentHeader, None]]
 
-    def __init__(self, func: Callable[[str], Union[Block, Inline]]) -> None:
+    def __init__(
+        self, func: Callable[[str], Union[Block, Inline, DocSegmentHeader, None]]
+    ) -> None:
         self.func = func
 
-    def build_from_raw(self, raw: str) -> Union[Block, Inline]:
+    def build_from_raw(self, raw: str) -> Union[Block, Inline, DocSegmentHeader, None]:
         return self.func(raw)
 
-    def __matmul__(self, maybe_str: Any) -> Union[Block, Inline]:
+    def __matmul__(
+        self, maybe_str: Any
+    ) -> Union[Block, Inline, DocSegmentHeader, None]:
         if isinstance(maybe_str, str):
             return self.func(maybe_str)
         raise TypeError(

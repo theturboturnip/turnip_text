@@ -17,43 +17,6 @@ impl<T: PyClass> PyTypeclass for PyInstanceTypeclass<T> {
     }
 }
 
-pub enum PyTcUnionRef<TA: PyTypeclass, TB: PyTypeclass> {
-    A(PyTcRef<TA>),
-    B(PyTcRef<TB>),
-}
-impl<TA: PyTypeclass, TB: PyTypeclass> PyTcUnionRef<TA, TB> {
-    pub fn of_friendly(val: &PyAny, context: &str) -> PyResult<Self> {
-        let is_a = TA::fits_typeclass(val)?;
-        let is_b = TB::fits_typeclass(val)?;
-
-        if is_a && is_b {
-            let obj_repr = val.repr()?;
-            Err(PyTypeError::new_err(format!(
-                "Expected object fitting either typeclass {} or {} while handling {}, got {} which fits both.",
-                TA::NAME,
-                TB::NAME,
-                context,
-                obj_repr.to_str()?
-            )))
-        } else if (!is_a) && (!is_b) {
-            let obj_repr = val.repr()?;
-            Err(PyTypeError::new_err(format!(
-                "Expected object fitting either typeclass {} or {} while handling {}, got {} which fits neither.",
-                TA::NAME,
-                TB::NAME,
-                context,
-                obj_repr.to_str()?
-            )))
-        } else {
-            if is_a {
-                Ok(Self::A(PyTcRef::of_unchecked(val)))
-            } else {
-                Ok(Self::B(PyTcRef::of_unchecked(val)))
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct PyTcRef<T: PyTypeclass>(PyObject, PhantomData<T>);
 impl<T: PyTypeclass> PyTcRef<T> {
@@ -151,7 +114,7 @@ impl<T: PyClass> PyCanBeInstanceOf<T> for Py<T> {
     }
 }
 impl<T: PyClass> PyCanBeInstanceOf<T> for &PyAny {
-    fn as_ref<'py>(&'py self, py: Python<'py>) -> &'py PyAny {
+    fn as_ref<'py>(&'py self, _py: Python<'py>) -> &'py PyAny {
         self
     }
 

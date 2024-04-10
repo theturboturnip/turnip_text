@@ -7,9 +7,7 @@ use pyo3::{
 
 use crate::{error::TurnipTextError, parser::TurnipTextParser};
 
-use super::typeclass::{
-    PyCanBeInstanceOf, PyInstanceList, PyTcRef, PyTcUnionRef, PyTypeclass, PyTypeclassList,
-};
+use super::typeclass::{PyCanBeInstanceOf, PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
 
 mod error {
     use pyo3::create_exception;
@@ -254,6 +252,51 @@ impl PyTypeclass for DocSegmentHeader {
     }
 }
 
+/// The possible options that can be returned by a builder.
+pub enum BuilderOutcome {
+    Block(PyTcRef<Block>),
+    Inline(PyTcRef<Inline>),
+    Header(PyTcRef<DocSegmentHeader>),
+    None,
+}
+impl BuilderOutcome {
+    fn of_friendly(val: &PyAny, context: &str) -> PyResult<BuilderOutcome> {
+        if val.is_none() {
+            Ok(BuilderOutcome::None)
+        } else {
+            let is_block = Block::fits_typeclass(val)?;
+            let is_inline = Inline::fits_typeclass(val)?;
+            let is_header = DocSegmentHeader::fits_typeclass(val)?;
+
+            match (is_block, is_inline, is_header) {
+                (true, false, false) => Ok(BuilderOutcome::Block(PyTcRef::of_unchecked(val))),
+                (false, true, false) => Ok(BuilderOutcome::Inline(PyTcRef::of_unchecked(val))),
+                (false, false, true) => Ok(BuilderOutcome::Header(PyTcRef::of_unchecked(val))),
+
+                (false, false, false) => {
+                    let obj_repr = val.repr()?;
+                    Err(PyTypeError::new_err(format!(
+                        "Expected None or an object fitting Block, Inline, or Header while handling {}, got {} which fits none of them.",
+                        context,
+                        obj_repr.to_str()?
+                    )))
+                }
+                _ => {
+                    let obj_repr = val.repr()?;
+                    Err(PyTypeError::new_err(format!(
+                        "Expected None or an object fitting Block, Inline, or Header while handling {}, got {} which fits (block? {}) (inline? {}) (header? {}).",
+                        context,
+                        obj_repr.to_str()?,
+                        is_block,
+                        is_inline,
+                        is_header
+                    )))
+                }
+            }
+        }
+    }
+}
+
 /// Typeclass representing the "builder" of a block scope, which may modify how that scope is rendered.
 ///
 /// Requires a method
@@ -270,20 +313,13 @@ impl BlockScopeBuilder {
         py: Python<'py>,
         builder: PyTcRef<Self>,
         blocks: T,
-    ) -> PyResult<Option<PyTcUnionRef<Block, DocSegmentHeader>>> {
+    ) -> PyResult<BuilderOutcome> {
         assert!(blocks.check_is_instance());
         let output = builder
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
             .call1((blocks.as_ref(py),))?;
-        if output.is_none() {
-            Ok(None)
-        } else {
-            Ok(Some(PyTcUnionRef::of_friendly(
-                output,
-                "output of .build_from_blocks()",
-            )?))
-        }
+        BuilderOutcome::of_friendly(output, "output of .build_from_blocks()")
     }
 }
 impl PyTypeclass for BlockScopeBuilder {
@@ -306,18 +342,17 @@ impl InlineScopeBuilder {
     fn marker_func_name(py: Python<'_>) -> &PyString {
         intern!(py, "build_from_inlines")
     }
-    // TODO: Make this return PyTcUnionRef<Inline | DocSegmentHeader>. Right now it can't because the parser can't handle it.
     pub fn call_build_from_inlines<'py, T: PyCanBeInstanceOf<InlineScope>>(
         py: Python<'py>,
         builder: PyTcRef<Self>,
         inlines: T,
-    ) -> PyResult<PyTcRef<Inline>> {
+    ) -> PyResult<BuilderOutcome> {
         assert!(inlines.check_is_instance());
         let output = builder
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
             .call1((inlines.as_ref(py),))?;
-        PyTcRef::of_friendly(output, "output of .build_from_inlines()")
+        BuilderOutcome::of_friendly(output, "output of .build_from_inlines()")
     }
 }
 impl PyTypeclass for InlineScopeBuilder {
@@ -345,12 +380,12 @@ impl RawScopeBuilder {
         py: Python<'py>,
         builder: &PyTcRef<Self>,
         raw: &String,
-    ) -> PyResult<PyTcUnionRef<Inline, Block>> {
+    ) -> PyResult<BuilderOutcome> {
         let output = builder
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
             .call1((raw,))?;
-        PyTcUnionRef::of_friendly(output, "output of .build_from_raw()")
+        BuilderOutcome::of_friendly(output, "output of .build_from_raw()")
     }
 }
 impl PyTypeclass for RawScopeBuilder {
