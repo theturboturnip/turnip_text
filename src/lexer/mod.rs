@@ -199,8 +199,6 @@ pub enum Unit {
     /// TODO include `%` when [SimpleToken::Percent] is uncommented
     Escaped(ParseSpan, Escapable),
     /// '\' that does not participate in a [Self::Escaped]
-    ///
-    /// TODO - A LaTeX-output backend could choose to disallow plain backslashes, as they would interact with LaTeX in potentially unexpected ways.
     Backslash(ParseSpan),
     /// N `[` characters not preceded by a backslash
     CodeOpen(ParseSpan, usize),
