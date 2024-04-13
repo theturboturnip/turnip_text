@@ -13,7 +13,6 @@ pub struct ParsingFile {
     name: String,
     contents: String,
     token_stream: LexedStrIterator,
-    included_from: Option<ParseSpan>,
 }
 impl Debug for ParsingFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -21,22 +20,15 @@ impl Debug for ParsingFile {
             .field("name", &self.name)
             .field("contents", &self.contents)
             .field("token_stream", &"...".to_string())
-            .field("included_from", &self.included_from)
             .finish()
     }
 }
 impl ParsingFile {
-    pub fn new(
-        file_idx: usize,
-        name: String,
-        contents: String,
-        included_from: Option<ParseSpan>,
-    ) -> Self {
+    pub fn new(file_idx: usize, name: String, contents: String) -> Self {
         Self {
             name,
             token_stream: lex(file_idx, &contents),
             contents,
-            included_from,
         }
     }
 
@@ -50,20 +42,19 @@ impl ParsingFile {
 }
 
 pub struct TurnipTextParser {
-    // The stack of currently parsed file indices
-    file_stack: Vec<usize>,
+    // The stack of currently parsed file (spawned from, indices). `spawned from` is None for the first file, Some for all others
+    file_stack: Vec<(Option<ParseSpan>, usize)>,
     files: Vec<ParsingFile>,
     interp: crate::interpreter::next::Interpreter,
 }
 impl TurnipTextParser {
     pub fn new(py: Python, file_name: String, file_contents: String) -> TurnipTextResult<Self> {
-        let file = ParsingFile::new(0, file_name, file_contents, None);
+        let file = ParsingFile::new(0, file_name, file_contents);
         let files = vec![file];
         let mut interp = crate::interpreter::next::Interpreter::new(py)
             .map_err(|pyerr| TurnipTextError::InternalPython(stringify_pyerr(py, &pyerr)))?;
-        interp.push_subfile(); // We start out with one subfile - the file we're initially parsing
         Ok(Self {
-            file_stack: vec![0],
+            file_stack: vec![(None, 0)],
             files,
             interp,
         })
@@ -76,7 +67,7 @@ impl TurnipTextParser {
             let action = {
                 let file_idx = match self.file_stack.last_mut() {
                     None => break,
-                    Some(file_idx) => file_idx,
+                    Some((_, file_idx)) => file_idx,
                 };
                 let file = &mut self.files[*file_idx];
                 self.interp.handle_tokens(
@@ -92,24 +83,25 @@ impl TurnipTextParser {
                 Err(err) => return Err((self.files, err).into()),
             };
             match action {
-                InterpreterFileAction::FileInserted { name, contents } => {
+                InterpreterFileAction::FileInserted {
+                    emitted_by,
+                    name,
+                    contents,
+                } => {
                     let file_idx = self.files.len();
-                    self.files
-                        .push(ParsingFile::new(file_idx, name, contents, None));
-                    self.file_stack.push(file_idx);
+                    self.files.push(ParsingFile::new(file_idx, name, contents));
+                    self.file_stack.push((Some(emitted_by), file_idx));
                     self.interp.push_subfile();
                 }
                 InterpreterFileAction::FileEnded => {
-                    let file_idx = self
+                    let (emitted_by, _) = self
                         .file_stack
-                        .last_mut()
+                        .pop()
                         .expect("We just handled tokens from a file, there must be one");
-                    let file = &mut self.files[*file_idx];
-                    match self.interp.pop_subfile(py, py_env, &file.contents) {
+                    match self.interp.pop_subfile(py, py_env, emitted_by) {
                         Ok(()) => {}
                         Err(err) => return Err((self.files, err).into()),
                     };
-                    self.file_stack.pop().expect("There must be a file!");
                 }
             };
         }

@@ -13,16 +13,14 @@
 //! It's possible to have a tall stack of files where no file is using a builder - e.g. if you have file A include
 //! file B include file C include file D, and you just write paragraphs, files A through C will have empty builder stacks while file D is being processed and paragraphs from file D will bubble right up to the top-level document.
 //!
-//! Previously I hoped to introduce strict newline handling, as the current syntax allows separate blocks to be emitted on the same line (e.g. two eval-bracket-pairs can emit Block on the same line) or on directly adjacent lines (e.g. a block scope open directly under a paragraph, or a paragraph starting directly under an eval-bracket emitting Block).
-//! This logic would have to be implemented inside a Builder, and it would need to be checked at the top level of *each* file.
-//! This cannot be done with the above structure, unless you allow newlines to cross file borders and affect the builder for the enclosing file.
-//! That would mean the correctness of the *enclosing* file would be dependent on the *enclosed* file and vice versa - the enclosed file would inherit newline state from the enclosing file, and the enclosing file would inherit newline state from after the enclosed file finishes.
-//! I do not like this, and prefer to keep the correctness of files independent while keeping the wackier possible syntax.
-//!
-//! TODO the newline syntax I want can be established as
-//! - after eval-bracket-emitting-block-or-header-or-none, a newline must be seen before any content
+//! This builder structure introduces strict newline separation for blocks:
+//! - after eval-bracket-emitting-block-or-header-or-inserted-file-or-none, a newline must be seen before any content
 //! - after closing a block-level block scope (i.e. ignoring block scopes used as arguments to code producing inline), a newline must be seen before any content
 //! There's no need to worry about this with paragraphs (double newline required to end the paragraph) and block scope opens/closes (extra newlines between opening new block scopes seems superfluous, opening a block scope requires a newline, block scopes can't be closed mid paragraph)
+//! This means newlines must bubble up through files (blocks inside an inner file are governed by either the top-level document token builder or an enclosing block scope builder, both of which are "the next file up"), and I previously worried that this would mean newlines in an inner file would affect an outer file.
+//! Not so!
+//! Note that the first condition requires that after eval-bracket-emitting-inserted-file, a newline must be seen before any content.
+//! The newline-consuming state of the outer builder is always reset when an inserted file is opened and after an inserted file is closed, so inserted files can't have an inconsistent impact on enclosing files and vice versa.
 //!
 //! TODO rename the MidPara errors because they could be used in an inline scope as argument to code at block scope context
 //!
@@ -34,7 +32,7 @@ use pyo3::{
 };
 
 use crate::{
-    error::TurnipTextContextlessResult,
+    error::{TurnipTextContextlessError, TurnipTextContextlessResult},
     interpreter::{
         eval_bracket::eval_or_exec, BlockScopeBuilder, InlineScopeBuilder, RawScopeBuilder,
     },
@@ -71,7 +69,7 @@ enum BuildStatus {
     /// - EOFs in all non-error cases, because those should bubble up through the file
     /// - newlines at the end of comments, because those still signal the end of sentence in inline mode and count as a blank line in block mode
     /// - any token directly following an eval-bracket close that does not open a scope for the evaled code to own
-    /// Scope-closes and raw-scope-closes crossing file boundaries invoke a (Raw)ScopeCloseOutsideScope error. EOFs and newlines are silently ignored.
+    /// Scope-closes and raw-scope-closes crossing file boundaries invoke a (Raw)ScopeCloseOutsideScope error. Newlines are passed through. EOFs are silently ignored.
     DoneAndReprocessToken(Option<PushToNextLevel>),
     Continue,
     StartInnerBuilder(Rc<RefCell<dyn BuildFromTokens>>),
@@ -134,7 +132,7 @@ trait BuildFromTokens {
     ) -> TurnipTextContextlessResult<BuildStatus>;
     // Make it opt-in to allow emitting new source files. By default, return an error. To opt-in, override to return Ok.
     fn on_emitted_source_inside(
-        &self,
+        &mut self,
         from_builder: BuilderContext,
     ) -> TurnipTextContextlessResult<()> {
         Err(InterpError::InsertedFileMidPara {
@@ -142,6 +140,8 @@ trait BuildFromTokens {
         }
         .into())
     }
+    // Called when an inner file is closed. Will only be called if on_emitted_source_inside() is overridden to sometimes return Ok().
+    fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan) {}
 }
 
 pub struct Interpreter {
@@ -170,8 +170,12 @@ impl Interpreter {
                 .process_token(py, py_env, tok, data)?
             {
                 None => continue,
-                Some(TurnipTextSource { name, contents }) => {
-                    return Ok(InterpreterFileAction::FileInserted { name, contents })
+                Some((emitted_by, TurnipTextSource { name, contents })) => {
+                    return Ok(InterpreterFileAction::FileInserted {
+                        emitted_by,
+                        name,
+                        contents,
+                    })
                 }
             }
         }
@@ -186,11 +190,20 @@ impl Interpreter {
         &mut self,
         py: Python,
         py_env: &'_ PyDict,
-        data: &str,
+        emitted_by: Option<ParseSpan>,
     ) -> TurnipTextContextlessResult<()> {
         let stack = self.builders.pop_subfile();
         // The EOF token from the end of the file should have bubbled everything out.
         assert!(stack.stack.is_empty());
+        // emitted_by will be Some if the file was a subfile
+        if let Some(emitted_by) = emitted_by {
+            // Notify the next builder up that we've re-entered it after the inner file closed
+            self.builders
+                .top_stack()
+                .curr_top()
+                .borrow_mut()
+                .on_emitted_source_closed(emitted_by);
+        }
         Ok(())
     }
 
@@ -230,7 +243,7 @@ impl FileBuilderStack {
         py_env: &PyDict,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<Option<TurnipTextSource>> {
+    ) -> TurnipTextContextlessResult<Option<(ParseSpan, TurnipTextSource)>> {
         // If processing an EOF we need to flush all builders in the stack and not pass through tokens to self.top()
         if let TTToken::EOF(_) = &tok {
             loop {
@@ -297,8 +310,8 @@ impl FileBuilderStack {
                                             InterpError::RawScopeCloseOutsideRawScope(span).into()
                                         )
                                     }
-                                    // Don't let newlines inside a subfile affect outer files.
-                                    TTToken::Newline(_) => return Ok(None),
+                                    // Let newlines inside a subfile affect outer files, and trust that those outer builders will reset their state correctly when this file ends.
+                                    TTToken::Newline(_) => {}
                                     // EOF is handled in a separate place.
                                     // Other characters are passed through fine.
                                     _ => {}
@@ -310,9 +323,9 @@ impl FileBuilderStack {
                         BuildStatus::DoneAndNewSource(from_builder, src) => {
                             self.stack.pop().expect("self.curr_top() returned Done => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
                             self.curr_top()
-                                .borrow()
+                                .borrow_mut()
                                 .on_emitted_source_inside(from_builder)?;
-                            return Ok(Some(src));
+                            return Ok(Some((from_builder.from_span, src)));
                         }
                     }
                 }
@@ -349,7 +362,8 @@ impl FileBuilderStack {
 /// Each stack of builders
 struct BuilderStacks {
     top: Rc<RefCell<TopLevelDocumentBuilder>>,
-    /// The stacks of builders, one stack per file
+    /// The stacks of builders, one stack per file.
+    /// If empty, the file is about to be finalized and functions for getting/popping a stack must not be called.
     builder_stacks: Vec<FileBuilderStack>,
 }
 impl BuilderStacks {
@@ -378,18 +392,10 @@ impl BuilderStacks {
             .pop()
             .expect("Must always have at least one builder stack");
         assert!(stack.stack.is_empty());
-        if self.builder_stacks.len() == 0 {
-            panic!("Popped the last builder stack inside pop_file! ParserStacks must always have at least one stack")
-        }
         stack
     }
 
-    fn finalize(mut self) -> Rc<RefCell<TopLevelDocumentBuilder>> {
-        let last_stack = self
-            .builder_stacks
-            .pop()
-            .expect("Must always have at least one builder stack");
-        assert!(last_stack.stack.is_empty());
+    fn finalize(self) -> Rc<RefCell<TopLevelDocumentBuilder>> {
         if self.builder_stacks.len() > 0 {
             panic!("Called finalize() on BuilderStacks when more than one stack was left - forgot to pop_subfile()?");
         }
@@ -398,6 +404,13 @@ impl BuilderStacks {
 }
 
 trait BlockTokenProcessor {
+    fn expects_new_line(&self) -> bool;
+    fn on_new_line_finish(&mut self);
+    fn on_unexpected_token_while_expecting_new_line(
+        &mut self,
+        tok: TTToken,
+    ) -> TurnipTextContextlessError;
+
     fn on_close_scope(
         &mut self,
         py: Python,
@@ -412,46 +425,72 @@ trait BlockTokenProcessor {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        match tok {
-            TTToken::Escaped(span, Escapable::Newline) => {
-                Err(InterpError::EscapedNewlineOutsideParagraph { newline: span }.into())
+        if self.expects_new_line() {
+            match tok {
+                TTToken::Escaped(span, Escapable::Newline) => {
+                    Err(InterpError::EscapedNewlineOutsideParagraph { newline: span }.into())
+                }
+                TTToken::Whitespace(_) => Ok(BuildStatus::Continue),
+                TTToken::Newline(_) => {
+                    self.on_new_line_finish();
+                    Ok(BuildStatus::Continue)
+                }
+
+                TTToken::Hashes(_, _) => {
+                    Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new()))
+                }
+
+                // A scope close is not counted as "content" for our sake.
+                TTToken::ScopeClose(_) => self.on_close_scope(py, tok, data),
+
+                TTToken::EOF(_) => self.on_eof(py, tok),
+
+                _ => Err(self.on_unexpected_token_while_expecting_new_line(tok)),
             }
-            TTToken::Whitespace(_) | TTToken::Newline(_) => Ok(BuildStatus::Continue),
+        } else {
+            match tok {
+                TTToken::Escaped(span, Escapable::Newline) => {
+                    Err(InterpError::EscapedNewlineOutsideParagraph { newline: span }.into())
+                }
+                TTToken::Whitespace(_) | TTToken::Newline(_) => Ok(BuildStatus::Continue),
 
-            TTToken::Hashes(_, _) => Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new())),
+                TTToken::Hashes(_, _) => {
+                    Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new()))
+                }
 
-            // Because this may return Inline we *always* have to be able to handle inlines at top scope.
-            TTToken::CodeOpen(start_span, n_brackets) => Ok(BuildStatus::StartInnerBuilder(
-                CodeFromTokens::new(start_span, n_brackets),
-            )),
+                // Because this may return Inline we *always* have to be able to handle inlines at top scope.
+                TTToken::CodeOpen(start_span, n_brackets) => Ok(BuildStatus::StartInnerBuilder(
+                    CodeFromTokens::new(start_span, n_brackets),
+                )),
 
-            TTToken::ScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-                BlockOrInlineScopeFromTokens::new(start_span),
-            )),
+                TTToken::ScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
+                    BlockOrInlineScopeFromTokens::new(start_span),
+                )),
 
-            TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
-                RawStringFromTokens::new(start_span, n_opening),
-            )),
+                TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
+                    RawStringFromTokens::new(start_span, n_opening),
+                )),
 
-            TTToken::Escaped(text_span, _)
-            | TTToken::Backslash(text_span)
-            | TTToken::OtherText(text_span) => Ok(BuildStatus::StartInnerBuilder(
-                ParagraphFromTokens::new_with_starting_text(
-                    py,
-                    tok.stringify_escaped(data),
-                    text_span,
-                )?,
-            )),
+                TTToken::Escaped(text_span, _)
+                | TTToken::Backslash(text_span)
+                | TTToken::OtherText(text_span) => Ok(BuildStatus::StartInnerBuilder(
+                    ParagraphFromTokens::new_with_starting_text(
+                        py,
+                        tok.stringify_escaped(data),
+                        text_span,
+                    )?,
+                )),
 
-            TTToken::CodeClose(span, _) => Err(InterpError::CodeCloseOutsideCode(span).into()),
+                TTToken::CodeClose(span, _) => Err(InterpError::CodeCloseOutsideCode(span).into()),
 
-            TTToken::RawScopeClose(span, _) => {
-                Err(InterpError::RawScopeCloseOutsideRawScope(span).into())
+                TTToken::RawScopeClose(span, _) => {
+                    Err(InterpError::RawScopeCloseOutsideRawScope(span).into())
+                }
+
+                TTToken::ScopeClose(_) => self.on_close_scope(py, tok, data),
+
+                TTToken::EOF(_) => self.on_eof(py, tok),
             }
-
-            TTToken::ScopeClose(_) => self.on_close_scope(py, tok, data),
-
-            TTToken::EOF(_) => self.on_eof(py, tok),
         }
     }
 }
@@ -623,11 +662,13 @@ struct TopLevelDocumentBuilder {
     /// The current structure of the document, including toplevel content, segments, and the current block stacks (one block stack per included subfile)
     /// TODO remove the block-stack-handling parts from this
     structure: InterimDocumentStructure,
+    expects_blank_line_after: Option<ParseSpan>,
 }
 impl TopLevelDocumentBuilder {
     fn new(py: Python) -> PyResult<Rc<RefCell<Self>>> {
         Ok(rc_refcell(Self {
             structure: InterimDocumentStructure::new(py)?,
+            expects_blank_line_after: None,
         }))
     }
 
@@ -637,6 +678,25 @@ impl TopLevelDocumentBuilder {
     }
 }
 impl BlockTokenProcessor for TopLevelDocumentBuilder {
+    fn expects_new_line(&self) -> bool {
+        self.expects_blank_line_after.is_some()
+    }
+    fn on_new_line_finish(&mut self) {
+        self.expects_blank_line_after = None
+    }
+    fn on_unexpected_token_while_expecting_new_line(
+        &mut self,
+        tok: TTToken,
+    ) -> TurnipTextContextlessError {
+        InterpError::InsufficientBlockSeparation {
+            last_block: self.expects_blank_line_after.expect(
+                "This function is only called when self.expects_blank_line_after.is_some()",
+            ),
+            next_block_start: tok.token_span(),
+        }
+        .into()
+    }
+
     fn on_close_scope(
         &mut self,
         py: Python,
@@ -652,12 +712,20 @@ impl BlockTokenProcessor for TopLevelDocumentBuilder {
     }
 }
 impl BuildFromTokens for TopLevelDocumentBuilder {
-    // Don't error when someone tries to include a new file at the top level of a document
+    // Don't error when someone tries to include a new file inside a block scope
     fn on_emitted_source_inside(
-        &self,
+        &mut self,
         from_builder: BuilderContext,
     ) -> TurnipTextContextlessResult<()> {
+        // The tokens from this file will be passed through directly to us until we open new builders in its stack.
+        // Allow the new file to start directly with content if it chooses.
+        self.expects_blank_line_after = None;
         Ok(())
+    }
+
+    fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan) {
+        // An inner file must have come from emitted code - a blank line must be seen before any new content after code emitting a file
+        self.expects_blank_line_after = Some(inner_source_emitted_by);
     }
 
     // This builder is responsible for spawning lower-level builders
@@ -681,11 +749,28 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
                 DocElement::Header(header) => {
+                    // This must have been received from either
+                    // 1. eval-brackets that directly emitted a header
+                    // 2. eval-brackets that took some argument (a block scope, an inline scope, or a raw scope) and emitted a header
+                    // We don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
+                    // Thus, set expects_blank_line.
+                    // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
+                    self.expects_blank_line_after = Some(from_builder.from_span);
                     self.structure
                         .push_segment_header(py, header, from_builder.from_span, None)?;
                     Ok(BuildStatus::Continue)
                 }
                 DocElement::Block(block) => {
+                    // This must have been received from either
+                    // 1. a paragraph, which has seen a blank line and ended itself
+                    // 2. eval-brackets that directly emitted a block
+                    // 3. eval-brackets that took some argument (a block scope, an inline scope, or a raw scope) and emitted a block
+                    // 4. a manually opened block scope that was just closed
+                    // In the case of 1, the paragraph will push the token for reprocessing so we can set expects_blank_line and it will immediately get unset.
+                    // In the cases of 2, 3, and 4 we don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
+                    // Thus, set expects_blank_line.
+                    // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
+                    self.expects_blank_line_after = Some(from_builder.from_span);
                     self.structure.push_to_topmost_block(py, block.as_ref(py))?;
                     Ok(BuildStatus::Continue)
                 }
@@ -878,7 +963,7 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
     }
 
     fn on_emitted_source_inside(
-        &self,
+        &mut self,
         from_builder: BuilderContext,
     ) -> TurnipTextContextlessResult<()> {
         match self {
@@ -898,16 +983,37 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
 struct BlockScopeFromTokens {
     ctx: BuilderContext,
     block_scope: Py<BlockScope>,
+    expects_blank_line_after: Option<ParseSpan>,
 }
 impl BlockScopeFromTokens {
     fn new_unowned(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Self> {
         Ok(Self {
             ctx: BuilderContext::new("BlockScope", start_span),
             block_scope: py_internal_alloc(py, BlockScope::new_empty(py))?,
+            expects_blank_line_after: None,
         })
     }
 }
 impl BlockTokenProcessor for BlockScopeFromTokens {
+    fn expects_new_line(&self) -> bool {
+        self.expects_blank_line_after.is_some()
+    }
+    fn on_new_line_finish(&mut self) {
+        self.expects_blank_line_after = None
+    }
+    fn on_unexpected_token_while_expecting_new_line(
+        &mut self,
+        tok: TTToken,
+    ) -> TurnipTextContextlessError {
+        InterpError::InsufficientBlockSeparation {
+            last_block: self.expects_blank_line_after.expect(
+                "This function is only called when self.expects_blank_line_after.is_some()",
+            ),
+            next_block_start: tok.token_span(),
+        }
+        .into()
+    }
+
     fn on_close_scope(
         &mut self,
         py: Python,
@@ -934,10 +1040,18 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
 impl BuildFromTokens for BlockScopeFromTokens {
     // Don't error when someone tries to include a new file inside a block scope
     fn on_emitted_source_inside(
-        &self,
+        &mut self,
         from_builder: BuilderContext,
     ) -> TurnipTextContextlessResult<()> {
+        // The tokens from this file will be passed through directly to us until we open new builders in its stack.
+        // Allow the new file to start directly with content if it chooses.
+        self.expects_blank_line_after = None;
         Ok(())
+    }
+
+    fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan) {
+        // An inner file must have come from emitted code - a blank line must be seen before any new content after code emitting a file
+        self.expects_blank_line_after = Some(inner_source_emitted_by);
     }
 
     fn process_token(
@@ -966,6 +1080,16 @@ impl BuildFromTokens for BlockScopeFromTokens {
                 }
                 .into()),
                 DocElement::Block(block) => {
+                    // This must have been received from either
+                    // 1. a paragraph, which has seen a blank line and ended itself
+                    // 2. eval-brackets that directly emitted a block
+                    // 3. eval-brackets that took some argument (a block scope, an inline scope, or a raw scope) and emitted a block
+                    // 4. a manually opened block scope that was just closed
+                    // In the case of 1, the paragraph will push the token for reprocessing so we can set expects_blank_line and it will immediately get unset.
+                    // In the cases of 2, 3, and 4 we don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
+                    // Thus, set expects_blank_line.
+                    // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
+                    self.expects_blank_line_after = Some(from_builder.from_span);
                     self.block_scope
                         .borrow_mut(py)
                         .push_block(block.as_ref(py))

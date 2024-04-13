@@ -478,6 +478,7 @@ pub enum InterpError {
     },
     #[error("A Python `Block` was returned by a RawScopeBuilder inside a paragraph")]
     BlockCodeFromRawScopeMidPara { code_span: ParseSpan },
+    // TODO make a note that if you want to open a new block scope, you need to separate it from a paragraph
     #[error("Inline scope contained sentence break")]
     SentenceBreakInInlineScope { scope_start: ParseSpan },
     #[error("Inline scope contained paragraph break")]
@@ -497,10 +498,11 @@ pub enum InterpError {
     },
     #[error("Escaped newline (used for sentence continuation) found outside paragraph")]
     EscapedNewlineOutsideParagraph { newline: ParseSpan },
-    // This was planned but with the way the new parser is built we can't be anal about newlines inside subfiles without having subfile-newlines affect the correctness of the surrounding file.
-    // For now just let unintuitive block syntax through.
-    // #[error("Insufficient separation between blocks")]
-    // InsufficientBlockSeparation { block_start: ParseSpan },
+    #[error("Insufficient separation between blocks")]
+    InsufficientBlockSeparation {
+        last_block: ParseSpan,
+        next_block_start: ParseSpan,
+    },
 }
 
 trait MapContextlessResult<T> {
@@ -536,7 +538,11 @@ impl<T> MapContextlessResult<T> for PyResult<T> {
 }
 
 pub enum InterpreterFileAction {
-    FileInserted { name: String, contents: String },
+    FileInserted {
+        emitted_by: ParseSpan,
+        name: String,
+        contents: String,
+    },
     FileEnded,
 }
 

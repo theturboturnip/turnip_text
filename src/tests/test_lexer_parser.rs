@@ -416,13 +416,15 @@ pub fn test_block_scope_vs_inline_scope() {
     expect_lex_parse(
         r#"{
 block
-}{inline}"#,
+}
+{inline}"#,
         vec![
             ScopeOpen,
             Newline,
             OtherText("block"),
             Newline,
             ScopeClose,
+            Newline,
             ScopeOpen,
             OtherText("inline"),
             ScopeClose,

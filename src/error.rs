@@ -382,6 +382,25 @@ sources,
                         }
                     }
                 }
+            },
+            InsufficientBlockSeparation { last_block, next_block_start } => {
+                Snippet {
+                    title: Some(Annotation {
+                        label: Some("Insufficient separation between the end of a block and the start of a new one."),
+                        id: None,
+                        annotation_type: AnnotationType::Error
+                    }),
+                    footer: vec![Annotation{
+                        label: Some("Blocks must be visually separated in turnip-text code."),
+                        id: None,
+                        annotation_type: AnnotationType::Note
+                    }],
+                    slices: slices_from_spans(AnnotationType::Note, sources, &[
+                        (last_block, "A Block was created and concluded...", None),
+                        (next_block_start, "...then on the same line a new block was started.", None),
+                    ]),
+                    opt: Default::default()
+                }
             }
         }
     }

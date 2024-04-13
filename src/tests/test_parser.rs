@@ -1074,7 +1074,8 @@ pub fn test_block_scope_vs_inline_scope() {
     expect_parse(
         r#"{
 block scope
-}{inline scope}"#,
+}
+{inline scope}"#,
         Ok(test_doc(vec![
             TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
                 "block scope",
@@ -1379,212 +1380,455 @@ pub fn test_property_calls_get() {
     )
 }
 
-/*
-// These are tests for strict blank-line syntax checking - where the parser ensures that there is always a blank line between two blocks.
-// With the way the parser is currently structured, it's impossible to check this inside subfiles without having the newlines inside subfiles impact the correctness of the surrounding file.
-// Thus these tests are disabled and instead we allow some funky unintuitive syntax.
+mod block_spacing {
+    use super::*;
 
-// There should always be a blank line between a paragraph ending and a paragraph starting
-// (otherwise they'd be the same paragraph)
-#[test]
-pub fn test_block_sep_para_para() {
-    expect_parse(
-        "Paragraph one\n has some content\n\nThis is paragraph two",
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
+    // These are tests for strict blank-line syntax checking - where the parser ensures that there is always a blank line between two blocks.
+    // With the way the parser is currently structured, it's impossible to check this inside subfiles without having the newlines inside subfiles impact the correctness of the surrounding file.
+    // Thus these tests are disabled and instead we allow some funky unintuitive syntax.
+
+    // There should always be a blank line between a paragraph ending and a paragraph starting
+    // (otherwise they'd be the same paragraph)
+    #[test]
+    pub fn test_block_sep_para_para() {
+        expect_parse(
+            "Paragraph one\n has some content\n\nThis is paragraph two",
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![
+                    test_sentence("Paragraph one"),
+                    test_sentence("has some content"),
+                ]),
+                TestBlock::Paragraph(vec![test_sentence("This is paragraph two")]),
+            ])),
+        );
+        expect_parse(
+            "Paragraph one\nhas some content\nThis isn't paragraph two!",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![
                 test_sentence("Paragraph one"),
                 test_sentence("has some content"),
-            ]),
-            TestBlock::Paragraph(vec![test_sentence("This is paragraph two")]),
-        ])),
-    );
-    expect_parse(
-        "Paragraph one\nhas some content\nThis isn't paragraph two!",
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![
-            test_sentence("Paragraph one"),
-            test_sentence("has some content"),
-            test_sentence("This isn't paragraph two!"),
-        ])])),
-    )
+                test_sentence("This isn't paragraph two!"),
+            ])])),
+        )
+    }
+
+    // There needs to be a blank line between a paragraph ending and a block scope starting - the scope open will be counted as an inline scope
+    #[test]
+    pub fn test_block_sep_para_scope_open() {
+        expect_parse(
+            r#"Paragraph one
+
+            {
+                New Block
+            }"#,
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
+                TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence("New Block")])]),
+            ])),
+        );
+        expect_parse_err(
+            r#"Paragraph one
+            {
+                New Block
+            }"#,
+            TestInterpError::SentenceBreakInInlineScope {
+                scope_start: TestParserSpan("{"),
+            },
+        );
+    }
+
+    // There should always be a blank line between a paragraph ending and code-emitting-block
+    // - this is picked up as trying to emit a block inside a paragraph
+    #[test]
+    pub fn test_block_sep_para_code() {
+        expect_parse(
+            r#"Paragraph one
+
+            [TEST_BLOCK]"#,
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
+                TestBlock::TestOwnedBlock(vec![]),
+            ])),
+        );
+        expect_parse_err(
+            r#"Paragraph one
+            [TEST_BLOCK]"#,
+            TestInterpError::BlockCodeMidPara {
+                code_span: TestParserSpan("[TEST_BLOCK]"),
+            },
+        )
+    }
+
+    // There should always be a new line between a code-emitting-block and a paragraph starting
+    #[test]
+    pub fn test_block_sep_code_para() {
+        expect_parse(
+            r#"[TEST_BLOCK]
+            Paragraph one"#,
+            Ok(test_doc(vec![
+                TestBlock::TestOwnedBlock(vec![]),
+                TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
+            ])),
+        );
+        expect_parse_err(
+            r#"[TEST_BLOCK] Paragraph one"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestParserSpan("[TEST_BLOCK]"),
+                next_block_start: TestParserSpan("Paragraph"),
+            },
+        )
+    }
+
+    // This should *not* trigger insufficient space - it's fine to close a block scope directly after a paragraph
+    #[test]
+    pub fn test_block_sep_para_scope_close() {
+        expect_parse(
+            r#"{
+                Paragraph one
+            }"#,
+            Ok(test_doc(vec![TestBlock::BlockScope(vec![
+                TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
+            ])])),
+        );
+    }
+
+    // There should need to be a new line between a scope closing and another scope starting
+    #[test]
+    pub fn test_block_sep_scope_scope() {
+        expect_parse(
+            r#"{
+            }
+            {
+            }"#,
+            Ok(test_doc(vec![
+                TestBlock::BlockScope(vec![]),
+                TestBlock::BlockScope(vec![]),
+            ])),
+        );
+        expect_parse_err(
+            r#"{
+            } {
+            }"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestParserSpan(
+                    "{
+            }",
+                ),
+                next_block_start: TestParserSpan("{"),
+            },
+        );
+        expect_parse_err(
+            r#"[TEST_BLOCK_BUILDER]{
+            } {
+            }"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestParserSpan(
+                    "[TEST_BLOCK_BUILDER]{
+            }",
+                ),
+                next_block_start: TestParserSpan("{"),
+            },
+        )
+    }
+
+    // There should not need to be a blank line between a scope closing and code-emitting-block
+    #[test]
+    pub fn test_block_sep_scope_code() {
+        expect_parse(
+            r#"{
+            }
+            [TEST_BLOCK]"#,
+            Ok(test_doc(vec![
+                TestBlock::BlockScope(vec![]),
+                TestBlock::TestOwnedBlock(vec![]),
+            ])),
+        );
+    }
+
+    // There should always be a new line between a code-emitting-block and a scope opening
+    #[test]
+    pub fn test_block_sep_code_scope() {
+        expect_parse(
+            r#"
+            [TEST_BLOCK]
+            {
+            }"#,
+            Ok(test_doc(vec![
+                TestBlock::TestOwnedBlock(vec![]),
+                TestBlock::BlockScope(vec![]),
+            ])),
+        );
+        expect_parse_err(
+            r#"
+            [TEST_BLOCK]      {
+            }"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestParserSpan("[TEST_BLOCK]"),
+                next_block_start: TestParserSpan("{"),
+            },
+        )
+    }
+
+    // There should always be a new line between two code-emitting-blocks
+    #[test]
+    pub fn test_block_sep_code_code() {
+        expect_parse(
+            r#"
+            [TEST_BLOCK]
+            [TEST_BLOCK]"#,
+            Ok(test_doc(vec![
+                TestBlock::TestOwnedBlock(vec![]),
+                TestBlock::TestOwnedBlock(vec![]),
+            ])),
+        );
+        expect_parse_err(
+            r#"[TEST_BLOCK] [TEST_BLOCK_2]"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestParserSpan("[TEST_BLOCK]"),
+                next_block_start: TestParserSpan("["),
+            },
+        )
+    }
+
+    #[test]
+    pub fn test_inserted_file_newlines_dont_leak_out() {
+        expect_parse_err(
+            r#"
+[[
+f = test_src("""
+Look a test paragraph
+
+# These newlines should not count outside of this document
+# i.e. if we follow this insertion with content on the same line, it should still be picked up as an error
+
+
+
+
+
+
+""")
+]]
+
+[f] and some more content
+        "#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestParserSpan("[f]"),
+                next_block_start: TestParserSpan("and"),
+            },
+        )
+    }
+
+    #[test]
+    pub fn test_block_sep_para_inserted_file() {
+        // We should be able to insert a paragraph and then line break and then insert a file
+        expect_parse(
+            r#"
+[[
+f = test_src("""some more content""")
+]]
+
+content
+
+[f]
+"#,
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![test_sentence("content")]),
+                TestBlock::Paragraph(vec![test_sentence("some more content")]),
+            ])),
+        );
+        // We shouldn't be able to do that on adjacent lines - the paragraph "captures" any content on the line underneath
+        expect_parse_err(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+content
+[f]
+        "#,
+            TestInterpError::InsertedFileMidPara {
+                code_span: TestParserSpan("[f]"),
+            },
+        )
+    }
+    #[test]
+    pub fn test_block_sep_inserted_file_para() {
+        // We should be able to put a file in and then insert a paragraph on adjacent lines
+        expect_parse(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f]
+another paragraph of content
+"#,
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![test_sentence("some content")]),
+                TestBlock::Paragraph(vec![test_sentence("another paragraph of content")]),
+            ])),
+        );
+        // We shouldn't be able to both on the same line
+        expect_parse_err(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f] and some more content
+        "#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestParserSpan("[f]"),
+                next_block_start: TestParserSpan("and"),
+            },
+        )
+    }
+    #[test]
+    pub fn test_block_sep_inserted_file_inserted_file() {
+        // We should be able to put files in on adjacent lines (TODO as syntax goes this is kinda sad - implies they're in the same paragraph)
+        expect_parse(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f]
+[f]
+"#,
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![test_sentence("some content")]),
+                TestBlock::Paragraph(vec![test_sentence("some content")]),
+            ])),
+        );
+        // We shouldn't be able to two on the same line
+        expect_parse_err(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f] [f]
+        "#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestParserSpan("[f]"),
+                next_block_start: TestParserSpan("["),
+            },
+        )
+    }
+    #[test]
+    pub fn test_block_sep_inserted_file_block_code() {
+        // We should be able to put files in on adjacent lines (TODO as syntax goes this is kinda sad - implies they're in the same paragraph)
+        expect_parse(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f]
+[TEST_BLOCK_BUILDER]{
+    some other content
 }
+"#,
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![test_sentence("some content")]),
+                TestBlock::TestOwnedBlock(vec![TestBlock::Paragraph(vec![test_sentence(
+                    "some other content",
+                )])]),
+            ])),
+        );
+        // We shouldn't be able to two on the same line
+        expect_parse_err(
+            r#"
+[[
+f = test_src("""some content""")
+]]
 
-// There should always be a blank line between a paragraph ending and a block scope starting
-#[test]
-pub fn test_block_sep_para_scope_open() {
-    expect_parse(
-        r#"Paragraph one
-
-        {
-            New Block
-        }"#,
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
-            TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence("New Block")])]),
-        ])),
-    );
-    expect_parse_err(
-        r#"Paragraph one
-        {
-            New Block
-        }"#,
-        TestInterpError::InsufficientBlockSeparation {
-            block_start: TestParserSpan("{"),
-        },
-    )
+[f] [TEST_BLOCK_BUILDER]{
+    some other content
 }
+        "#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestParserSpan("[f]"),
+                next_block_start: TestParserSpan("["),
+            },
+        )
+    }
 
-// There should always be a blank line between a paragraph ending and code-emitting-block
-// - this is picked up as trying to emit a block inside a paragraph
-#[test]
-pub fn test_block_sep_para_code() {
-    expect_parse(
-        r#"Paragraph one
+    #[test]
+    pub fn test_block_sep_inserted_file_inline_code() {
+        // We should be able to put files in on adjacent lines (TODO as syntax goes this is kinda sad - implies they're in the same paragraph)
+        expect_parse(
+            r#"
+[[
+f = test_src("""some content""")
+]]
 
-        [TEST_BLOCK]"#,
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
-            TestBlock::TestOwnedBlock(vec![]),
-        ])),
-    );
-    expect_parse_err(
-        r#"Paragraph one
-        [TEST_BLOCK]"#,
-        TestInterpError::BlockCodeMidPara {
-            code_span: TestParserSpan("[TEST_BLOCK]"),
-        },
-    )
+[f]
+[TEST_INLINE_BUILDER]{some other content}
+"#,
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![test_sentence("some content")]),
+                TestBlock::Paragraph(vec![vec![TestInline::TestOwnedInline(vec![test_text(
+                    "some other content",
+                )])]]),
+            ])),
+        );
+        // We shouldn't be able to two on the same line
+        expect_parse_err(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f] [TEST_INLINE_BUILDER]{some other content}
+        "#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestParserSpan("[f]"),
+                next_block_start: TestParserSpan("["),
+            },
+        )
+    }
+
+    #[test]
+    pub fn test_block_sep_inserted_file_block_scope() {}
+    #[test]
+    pub fn test_block_sep_inserted_file_inline_scope() {
+        // We should be able to put files in on adjacent lines (TODO as syntax goes this is kinda sad - implies they're in the same paragraph)
+        expect_parse(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f]
+{
+    some other content
 }
+"#,
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![test_sentence("some content")]),
+                TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+                    "some other content",
+                )])]),
+            ])),
+        );
+        // We shouldn't be able to two on the same line
+        expect_parse_err(
+            r#"
+[[
+f = test_src("""some content""")
+]]
 
-// There should always be a blank line between a code-emitting-block and a paragraph starting
-#[test]
-pub fn test_block_sep_code_para() {
-    expect_parse(
-        r#"[TEST_BLOCK]
-
-        Paragraph one"#,
-        Ok(test_doc(vec![
-            TestBlock::TestOwnedBlock(vec![]),
-            TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
-        ])),
-    );
-    expect_parse_err(
-        r#"[TEST_BLOCK]
-        Paragraph one"#,
-        TestInterpError::InsufficientBlockSeparation {
-            block_start: TestParserSpan("P"),
-        },
-    )
+[f]    {
+    some other content
 }
-
-// This should *not* trigger insufficient space - it's fine to close a block scope directly after a paragraph
-#[test]
-pub fn test_block_sep_para_scope_close() {
-    expect_parse(
-        r#"{
-            Paragraph one
-        }"#,
-        Ok(test_doc(vec![TestBlock::BlockScope(vec![
-            TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
-        ])])),
-    );
+        "#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestParserSpan("[f]"),
+                next_block_start: TestParserSpan("{"),
+            },
+        )
+    }
 }
-
-// There should always be a blank line between a scope closing and another scope starting
-#[test]
-pub fn test_block_sep_scope_scope() {
-    expect_parse(
-        r#"{
-        }
-
-        {
-        }"#,
-        Ok(test_doc(vec![
-            TestBlock::BlockScope(vec![]),
-            TestBlock::BlockScope(vec![]),
-        ])),
-    );
-    expect_parse_err(
-        r#"{
-        }
-        {
-        }"#,
-        TestInterpError::InsufficientBlockSeparation {
-            block_start: TestParserSpan("{"),
-        },
-    )
-}
-
-// There should always be a blank line between a scope closing and code-emitting-block
-#[test]
-pub fn test_block_sep_scope_code() {
-    expect_parse(
-        r#"{
-        }
-
-        [TEST_BLOCK]"#,
-        Ok(test_doc(vec![
-            TestBlock::BlockScope(vec![]),
-            TestBlock::TestOwnedBlock(vec![]),
-        ])),
-    );
-    expect_parse_err(
-        r#"{
-        }
-        [TEST_BLOCK]"#,
-        TestInterpError::InsufficientBlockSeparation {
-            block_start: TestParserSpan("["),
-        },
-    )
-}
-
-// There should always be a blank line between a code-emitting-block and a scope opening
-#[test]
-pub fn test_block_sep_code_scope() {
-    expect_parse(
-        r#"
-        [TEST_BLOCK]
-
-        {
-        }"#,
-        Ok(test_doc(vec![
-            TestBlock::TestOwnedBlock(vec![]),
-            TestBlock::BlockScope(vec![]),
-        ])),
-    );
-    expect_parse_err(
-        r#"
-        [TEST_BLOCK]
-        {
-        }"#,
-        TestInterpError::InsufficientBlockSeparation {
-            block_start: TestParserSpan("{"),
-        },
-    )
-}
-
-// There should always be a blank line between two code-emitting-blocks
-#[test]
-pub fn test_block_sep_code_code() {
-    expect_parse(
-        r#"
-        [TEST_BLOCK]
-
-        [TEST_BLOCK]"#,
-        Ok(test_doc(vec![
-            TestBlock::TestOwnedBlock(vec![]),
-            TestBlock::TestOwnedBlock(vec![]),
-        ])),
-    );
-    expect_parse_err(
-        r#"
-        [TEST_BLOCK]
-        [TEST_BLOCK]"#,
-        TestInterpError::InsufficientBlockSeparation {
-            block_start: TestParserSpan("["),
-        },
-    )
-}
-*/
 
 /// Tests that the implicit structure mechanism is working correctly
 mod doc_structure {
@@ -2896,38 +3140,24 @@ mod scope_ambiguity {
 
 /// This contains tests for situations that are currently allowed but probably shouldn't be.
 mod overflexibility {
-    use regex::Regex;
+    use super::*;
 
-    use super::{
-        expect_parse, expect_parse_err, test_doc, test_sentence, TestBlock, TestInterpError,
-        TestParserSpan,
-    };
-
-    /// There are no requirements for newlines after emitting blocks, so a paragraph can be started on the same line after a block has been emitted and create two logically separated blocks.
-    /// This is bad because the look of the syntax doesn't match that the blocks are separated.
-    /// It should be enforced that a blank line is emitted after the block.
     #[test]
-    fn para_following_block_code() {
+    fn inserted_files_adj_lines() {
+        // We should be able to put files in on adjacent lines (TODO as syntax goes this is kinda sad - implies they're in the same paragraph)
         expect_parse(
-            "[TEST_BLOCK] and some following data",
-            Ok(test_doc(vec![
-                TestBlock::TestOwnedBlock(vec![]),
-                TestBlock::Paragraph(vec![test_sentence("and some following data")]),
-            ])),
-        )
-    }
+            r#"
+[[
+f = test_src("""some content""")
+]]
 
-    /// There are no requirements for newlines after emitting inserted files, so a paragraph can be started on the same line after an inserted file (made of blocks) has been emitted and create two logically separated blocks.
-    /// This is bad because the look of the syntax doesn't match that the blocks are separated.
-    /// It should be enforced that a blank line is emitted after the inserted file.
-    #[test]
-    fn para_following_inserted_file() {
-        expect_parse(
-            r#"[test_src("initial data")] and some following data"#,
+[f]
+[f]
+"#,
             Ok(test_doc(vec![
-                TestBlock::Paragraph(vec![test_sentence("initial data")]),
-                TestBlock::Paragraph(vec![test_sentence("and some following data")]),
+                TestBlock::Paragraph(vec![test_sentence("some content")]),
+                TestBlock::Paragraph(vec![test_sentence("some content")]),
             ])),
-        )
+        );
     }
 }
