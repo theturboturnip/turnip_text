@@ -147,8 +147,6 @@ pub enum Escapable {
     SqgClose,
     /// `#`
     Hash,
-    /// Some non-[Self::Newline] whitespace character. When escaped, always resolves to " ".
-    Whitespace(char),
 }
 impl Escapable {
     pub fn try_extract<L, P>(stream: &L, state_of_escapee: L::State) -> Option<(Self, usize)>
@@ -170,7 +168,6 @@ impl Escapable {
             '{' => Some((SqgOpen, 1)),
             '}' => Some((SqgClose, 1)),
             '#' => Some((Hash, 1)),
-            x if x.is_whitespace() => Some((Whitespace(x), 1)),
             _ => None,
         }
     }
@@ -265,6 +262,7 @@ impl Unit {
                             Ok(Some((end, Self::Escaped(span, escapable))))
                         }
                         None => {
+                            // TODO bare backslash can be abiguous with something you indended to escape. Should it be allowed?
                             let end = stream.consumed(state, 1);
                             Ok(Some((
                                 state_after_seq,
@@ -594,7 +592,6 @@ impl TTToken {
                 Escapable::SqgOpen => "{",
                 Escapable::SqgClose => "}",
                 Escapable::Hash => "#",
-                Escapable::Whitespace(_) => " ",
             },
             RawScopeOpen(span, _)
             | RawScopeClose(span, _)
