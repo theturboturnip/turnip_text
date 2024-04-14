@@ -133,6 +133,11 @@ pub enum TestInterpError {
         last_block: TestParserSpan,
         next_block_start: TestParserSpan,
     },
+    InsufficientParaNewBlockOrFileSeparation {
+        para: TestParserSpan,
+        next_block_start: TestParserSpan,
+        was_block_not_file: bool,
+    },
 }
 impl TestInterpError {
     fn effectively_eq(&self, other: &InterpError, data: &Vec<ParsingFile>) -> bool {
@@ -307,6 +312,21 @@ impl TestInterpError {
                 },
             ) => {
                 l_last_block.same_text(r_last_block, data)
+                    && l_next_block_start.same_text(r_next_block_start, data)
+            }
+            (
+                Self::InsufficientParaNewBlockOrFileSeparation {
+                    para: l_para,
+                    next_block_start: l_next_block_start,
+                    was_block_not_file: l_was_block_not_file,
+                },
+                InterpError::InsufficientParaNewBlockOrFileSeparation {
+                    para: r_para,
+                    next_block_start: r_next_block_start,
+                    was_block_not_file: r_was_block_not_file,
+                },
+            ) => {
+                l_para.same_text(r_para, data)
                     && l_next_block_start.same_text(r_next_block_start, data)
             }
             _ => false,
@@ -1076,14 +1096,23 @@ pub fn test_newline_inside_inline_scope() {
 pub fn test_block_scope_open_inline() {
     expect_parse_err(
         "text {\n",
-        TestInterpError::SentenceBreakInInlineScope {
+        TestInterpError::BlockScopeOpenedMidPara {
+            scope_start: TestParserSpan("{"),
+        },
+    )
+}
+#[test]
+pub fn test_eof_inside_block_scope() {
+    expect_parse_err(
+        "{\n",
+        TestInterpError::EndedInsideScope {
             scope_start: TestParserSpan("{"),
         },
     )
 }
 #[test]
 pub fn test_eof_inside_para_inside_block_scope() {
-    // Under some broken parsers the EOF would implicitly end the paragraph but would be stopped there - it wouldn't be picked up by the block scope.
+    // Under some broken parsers the EOF would implicitly end the paragraph but would be stopped there - it wouldn't be picked up by the block scope to emit an error.
     expect_parse_err(
         "{\n paragraph paragraph paragraph EOF",
         TestInterpError::EndedInsideScope {
@@ -1434,7 +1463,10 @@ mod block_spacing {
         )
     }
 
-    // There needs to be a blank line between a paragraph ending and a block scope starting - the scope open will be counted as an inline scope
+    /// There needs to be a blank line between a paragraph ending and a block scope starting.
+    /// This seems inconsistent with block-scope-closing - see [test_block_sep_para_scope_close] - but it *is* consistent with code generating a block - see [test_block_sep_para_code] - and that's more important
+    /// because in both the scope-open and code cases you're generating a new block.
+    /// We want to avoid creating new blocks on adjacent lines to creating other blocks, because that implies they're "together" in some way.
     #[test]
     pub fn test_block_sep_para_scope_open() {
         expect_parse(
@@ -1448,14 +1480,16 @@ mod block_spacing {
                 TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence("New Block")])]),
             ])),
         );
-        todo!("specific error for opening a block scope inside an inline context - inlinescopebuilder can pick this case up if it encountered a newline when the scope was otherwise empty")
-        // expect_parse_err(
-        //     r#"Paragraph one
-        //     {
-        //         New Block
-        //     }"#,
-
-        // );
+        // TODO this should ideally be  InsufficientParaNewBlockSeparation - if it were on the same line as Paragraph one then it's MidPara.
+        expect_parse_err(
+            r#"Paragraph one
+            {
+                New Block
+            }"#,
+            TestInterpError::BlockScopeOpenedMidPara {
+                scope_start: TestParserSpan("{"),
+            },
+        );
     }
 
     // There should always be a blank line between a paragraph ending and code-emitting-block
@@ -1667,8 +1701,10 @@ f = test_src("""some content""")
 content
 [f]
         "#,
-            TestInterpError::InsertedFileMidPara {
-                code_span: TestParserSpan("[f]"),
+            TestInterpError::InsufficientParaNewBlockOrFileSeparation {
+                para: TestParserSpan("content\n"),
+                next_block_start: TestParserSpan("[f]"),
+                was_block_not_file: false,
             },
         )
     }
@@ -1811,9 +1847,7 @@ f = test_src("""some content""")
     }
 
     #[test]
-    pub fn test_block_sep_inserted_file_block_scope() {}
-    #[test]
-    pub fn test_block_sep_inserted_file_inline_scope() {
+    pub fn test_block_sep_inserted_file_block_scope() {
         // We should be able to put files in on adjacent lines (TODO as syntax goes this is kinda sad - implies they're in the same paragraph)
         expect_parse(
             r#"
@@ -1843,6 +1877,40 @@ f = test_src("""some content""")
 [f]    {
     some other content
 }
+        "#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestParserSpan("[f]"),
+                next_block_start: TestParserSpan("{"),
+            },
+        )
+    }
+    #[test]
+    pub fn test_block_sep_inserted_file_inline_scope() {
+        // We should be able to put files in on adjacent lines (TODO as syntax goes this is kinda sad - implies they're in the same paragraph)
+        expect_parse(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f]
+{ some other content }
+"#,
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![test_sentence("some content")]),
+                TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![test_text(
+                    "some other content",
+                )])]]),
+            ])),
+        );
+        // We shouldn't be able to two on the same line
+        expect_parse_err(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f]    { some other content }
         "#,
             TestInterpError::InsufficientBlockSeparation {
                 last_block: TestParserSpan("[f]"),

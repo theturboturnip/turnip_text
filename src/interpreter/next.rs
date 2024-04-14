@@ -22,8 +22,7 @@
 //! Note that the first condition requires that after eval-bracket-emitting-inserted-file, a newline must be seen before any content.
 //! The newline-consuming state of the outer builder is always reset when an inserted file is opened and after an inserted file is closed, so inserted files can't have an inconsistent impact on enclosing files and vice versa.
 //!
-//! TODO rename the MidPara errors because they could be used in an inline scope as argument to code at block scope context
-//!
+//! TODO add "in-paragraph" flags to MidPara errors to tell if they're in a paragraph or in a code-owning-inline context
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -638,6 +637,10 @@ trait InlineTokenProcessor {
                 )))
             }
 
+            // TODO in theory if this were a block scope open and the current sentence were empty it should return InsufficientParaNewBlockSeparation not BlockScopeOpenedMidPara
+            // This could be allowed by opening a BlockScopeOrInlineScope and waiting for it to tell you what it was...
+            // although that could make the scope big lol.
+            // TODO make BuilderContext separate opening_tok span from full_span so error messages can use it.
             TTToken::ScopeOpen(start_span) => {
                 self.flush_pending_text(py, true)?;
                 Ok(BuildStatus::StartInnerBuilder(InlineScopeFromTokens::new(
@@ -1240,12 +1243,13 @@ impl InlineTokenProcessor for ParagraphFromTokens {
     }
 
     fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
+        // Always extend our token span so error messages using it have the full context
+        assert!(
+            self.ctx.try_extend(&tok.token_span()),
+            "ParagraphFromTokens got a token from a different file that it was opened in"
+        );
         // Text is already folded into the sentence
         if self.start_of_line {
-            assert!(
-                self.ctx.try_extend(&tok.token_span()),
-                "ParagraphFromTokens got a token from a different file that it was opened in"
-            );
             Ok(BuildStatus::DoneAndReprocessToken(Some(self.ctx.make(
                 DocElement::Block(PyTcRef::of_unchecked(self.para.as_ref(py))),
             ))))
@@ -1258,13 +1262,13 @@ impl InlineTokenProcessor for ParagraphFromTokens {
     }
 
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
-        if !self.start_of_line {
-            self.fold_current_sentence_into_paragraph(py)?;
-        }
         assert!(
             self.ctx.try_extend(&tok.token_span()),
             "ParagraphFromTokens got a token from a different file that it was opened in"
         );
+        if !self.start_of_line {
+            self.fold_current_sentence_into_paragraph(py)?;
+        }
         Ok(BuildStatus::DoneAndReprocessToken(Some(self.ctx.make(
             DocElement::Block(PyTcRef::of_unchecked(self.para.as_ref(py))),
         ))))
@@ -1320,10 +1324,21 @@ impl BuildFromTokens for ParagraphFromTokens {
                     .into())
                 }
                 DocElement::Block(_) => {
+                    if self.at_start_of_line() {
+                        // Someone is trying to open a new, separate block and not a block "inside" the paragraph.
+                        // Give them a more relevant error message.
+                        return Err(InterpError::InsufficientParaNewBlockOrFileSeparation {
+                            para: self.ctx.from_span,
+                            next_block_start: from_builder.from_span,
+                            was_block_not_file: true,
+                        }
+                        .into());
+                    }
+                    // We're deep inside a paragraph here.
                     return Err(InterpError::BlockCodeMidPara {
                         code_span: from_builder.from_span,
                     }
-                    .into())
+                    .into());
                 }
                 // If we get an inline, shove it in
                 DocElement::Inline(inline) => {
@@ -1345,6 +1360,27 @@ impl BuildFromTokens for ParagraphFromTokens {
             None => {}
         }
         Ok(BuildStatus::Continue)
+    }
+
+    fn on_emitted_source_inside(
+        &mut self,
+        from_builder: BuilderContext,
+    ) -> TurnipTextContextlessResult<()> {
+        if self.at_start_of_line() {
+            // Someone is trying to open a new file separately from the paragraph and not "inside" the paragraph.
+            // Give them a more relevant error message.
+            Err(InterpError::InsufficientParaNewBlockOrFileSeparation {
+                para: self.ctx.from_span,
+                next_block_start: from_builder.from_span,
+                was_block_not_file: false,
+            }
+            .into())
+        } else {
+            Err(InterpError::InsertedFileMidPara {
+                code_span: from_builder.from_span,
+            }
+            .into())
+        }
     }
 }
 
@@ -1426,10 +1462,31 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
     }
 
     fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
-        Err(InterpError::SentenceBreakInInlineScope {
-            scope_start: self.ctx.from_span,
+        // If there is only whitespace between us and the newline, this is actually a block scope open.
+        // Clearly we're supposed to be in inline mode - InlineScopeFromTokens is only created inside
+        // - BlockOrInlineScopeFromTokens
+        // - anything implementing InlineTokenProcessor i.e.
+        //   - ParagraphFromTokens
+        //   - another instance of InlineScopeFromTokens
+        //
+        // in the BlockOrInlineScopeFromTokens case, the newline would have been used to resolve ambiguity and it would be building a block scope - this function wouldn't have been called.
+        // => if we encounter just whitespace and a newline, we must in inside ParagraphFromTokens or InlineScopeFromTokens
+        // => i.e. we must be in inline mode
+        // => and the user has just tried to open a block scope i.e. r"{\s*\n"
+        // => Error: Block Scope Opened In Inline Mode
+        // (InlineTokenProcessor automatically flushes our content before calling on_newline(), so we don't need to check self.current_building_text).
+        if self.inline_scope.borrow_mut(py).__len__(py) == 0 {
+            Err(InterpError::BlockScopeOpenedMidPara {
+                scope_start: self.ctx.from_span,
+            }
+            .into())
+        } else {
+            // If there was content then we were definitely interrupted in the middle of a sentence
+            Err(InterpError::SentenceBreakInInlineScope {
+                scope_start: self.ctx.from_span,
+            }
+            .into())
         }
-        .into())
     }
 
     fn on_close_scope(

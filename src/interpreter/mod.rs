@@ -445,6 +445,9 @@ impl InlineNodeToCreate {
 */
 
 /// Enumeration of all possible interpreter errors
+///
+/// TODO in all cases except XCloseOutsideY and EndedInsideX each of these should have two ParseSpans - the offending item, and the context for why it's offending.
+/// e.g. SentenceBreakInInlineScope should point to both the start of the inline scope *and* the sentence break! and probably any escaped newlines inbetween as well!
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum InterpError {
     #[error("Code close encountered outside of code mode")]
@@ -461,7 +464,7 @@ pub enum InterpError {
     EndedInsideRawScope { raw_scope_start: ParseSpan },
     #[error("File ended inside scope")]
     EndedInsideScope { scope_start: ParseSpan },
-    #[error("Block scope encountered mid-line")]
+    #[error("Block scope open encountered in inline mode")]
     BlockScopeOpenedMidPara { scope_start: ParseSpan },
     #[error("A Python `BlockScopeOwner` was returned by code inside a paragraph")]
     BlockOwnerCodeMidPara { code_span: ParseSpan },
@@ -479,7 +482,6 @@ pub enum InterpError {
     },
     #[error("A Python `Block` was returned by a RawScopeBuilder inside a paragraph")]
     BlockCodeFromRawScopeMidPara { code_span: ParseSpan },
-    // TODO make a note that if you want to open a new block scope, you need to separate it from a paragraph
     #[error("Inline scope contained sentence break")]
     SentenceBreakInInlineScope { scope_start: ParseSpan },
     #[error("Inline scope contained paragraph break")]
@@ -503,6 +505,14 @@ pub enum InterpError {
     InsufficientBlockSeparation {
         last_block: ParseSpan,
         next_block_start: ParseSpan,
+    },
+    #[error(
+        "Insufficient separation between the end of a paragraph and the start of a new block/file"
+    )]
+    InsufficientParaNewBlockOrFileSeparation {
+        para: ParseSpan,
+        next_block_start: ParseSpan,
+        was_block_not_file: bool,
     },
 }
 
