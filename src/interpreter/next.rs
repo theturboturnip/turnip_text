@@ -300,9 +300,12 @@ impl FileBuilderStack {
                             if self.stack.is_empty() {
                                 // The token is bubbling up to the next file!
                                 match tok {
-                                    // ScopeClose bubbling out => breaking out into a subfile => not allowed
+                                    // ScopeClose bubbling out => breaking out into a subfile => not allowed.
+                                    // This must be a block-level scope close, because if an unbalanced scope close appeared in inline mode it would already have errored and not bubbled out.
                                     TTToken::ScopeClose(span) => {
-                                        return Err(InterpError::ScopeCloseOutsideScope(span).into())
+                                        return Err(
+                                            InterpError::BlockScopeCloseOutsideScope(span).into()
+                                        )
                                     }
                                     // Ditto for RawScopeClose
                                     TTToken::RawScopeClose(span, _) => {
@@ -703,7 +706,7 @@ impl BlockTokenProcessor for TopLevelDocumentBuilder {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        Err(InterpError::ScopeCloseOutsideScope(tok.token_span()).into())
+        Err(InterpError::BlockScopeCloseOutsideScope(tok.token_span()).into())
     }
 
     // When EOF comes, we don't produce anything to bubble up - there's nothing above us!
@@ -1022,7 +1025,8 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
     ) -> TurnipTextContextlessResult<BuildStatus> {
         if !self.ctx.try_extend(&tok.token_span()) {
             // Closing block scope from different file
-            Err(InterpError::ScopeCloseOutsideScope(tok.token_span()).into())
+            // This must be a block-level scope close, because if an unbalanced scope close appeared in inline mode it would already have errored and not bubbled out.
+            Err(InterpError::BlockScopeCloseOutsideScope(tok.token_span()).into())
         } else {
             Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
                 PyTcRef::of_unchecked(self.block_scope.as_ref(py)),
@@ -1283,7 +1287,7 @@ impl InlineTokenProcessor for ParagraphFromTokens {
                 DocElement::Block(PyTcRef::of_unchecked(self.para.as_ref(py))),
             ))))
         } else {
-            todo!("error: closing scope inside a paragraph when no inline scopes are open")
+            Err(InterpError::InlineScopeCloseOutsideScope(tok.token_span()).into())
         }
     }
 }

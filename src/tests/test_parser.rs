@@ -68,7 +68,8 @@ impl PartialEq<TurnipTextError> for TestTurnipError {
 #[derive(Debug, Clone)]
 pub enum TestInterpError {
     CodeCloseOutsideCode(TestParserSpan),
-    ScopeCloseOutsideScope(TestParserSpan),
+    BlockScopeCloseOutsideScope(TestParserSpan),
+    InlineScopeCloseOutsideScope(TestParserSpan),
     RawScopeCloseOutsideRawScope(TestParserSpan),
     EndedInsideCode {
         code_start: TestParserSpan,
@@ -139,9 +140,14 @@ impl TestInterpError {
             (Self::CodeCloseOutsideCode(l0), InterpError::CodeCloseOutsideCode(r0)) => {
                 l0.same_text(r0, data)
             }
-            (Self::ScopeCloseOutsideScope(l0), InterpError::ScopeCloseOutsideScope(r0)) => {
-                l0.same_text(r0, data)
-            }
+            (
+                Self::BlockScopeCloseOutsideScope(l0),
+                InterpError::BlockScopeCloseOutsideScope(r0),
+            ) => l0.same_text(r0, data),
+            (
+                Self::InlineScopeCloseOutsideScope(l0),
+                InterpError::InlineScopeCloseOutsideScope(r0),
+            ) => l0.same_text(r0, data),
             (
                 Self::RawScopeCloseOutsideRawScope(l0),
                 InterpError::RawScopeCloseOutsideRawScope(r0),
@@ -994,14 +1000,31 @@ pub fn test_code_close_in_text() {
 pub fn test_inline_scope_close_outside_scope() {
     expect_parse_err(
         "not in a scope } but closed scope",
-        TestInterpError::ScopeCloseOutsideScope(TestParserSpan("}")),
+        TestInterpError::InlineScopeCloseOutsideScope(TestParserSpan("}")),
     )
 }
 #[test]
 pub fn test_block_scope_close_outside_scope() {
     expect_parse_err(
         "} # not in a scope",
-        TestInterpError::ScopeCloseOutsideScope(TestParserSpan("}")),
+        TestInterpError::BlockScopeCloseOutsideScope(TestParserSpan("}")),
+    )
+}
+// Scope closes at the start of a line directly after a paragraph are treated differently
+// We assume you couldn't possibly be closing an inline scope! There can't be any to close!
+// So you must be trying to close a block-level scope...
+#[test]
+pub fn test_block_scope_close_outside_scope_after_para() {
+    expect_parse_err(
+        "wow some content\nthat could imply the next scope close is in a paragraph i.e. inline mode\n} # not in a scope",
+        TestInterpError::BlockScopeCloseOutsideScope(TestParserSpan("}")),
+    )
+}
+#[test]
+pub fn test_raw_scope_close_outside_scope() {
+    expect_parse_err(
+        "text in a scope with a mismatched }### # comment",
+        TestInterpError::RawScopeCloseOutsideRawScope(TestParserSpan("}###")),
     )
 }
 #[test]
@@ -2436,7 +2459,7 @@ f4 = test_src("""
             {
                 [test_src("}")]
             "#,
-            TestInterpError::ScopeCloseOutsideScope(TestParserSpan("}")),
+            TestInterpError::BlockScopeCloseOutsideScope(TestParserSpan("}")),
         )
     }
 }

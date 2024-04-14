@@ -449,9 +449,10 @@ impl InlineNodeToCreate {
 pub enum InterpError {
     #[error("Code close encountered outside of code mode")]
     CodeCloseOutsideCode(ParseSpan),
-    // TODO clarify the message that there is no matching scope open *within the current file*
-    #[error("Scope close encountered with no matching scope open")]
-    ScopeCloseOutsideScope(ParseSpan),
+    #[error("Scope close encountered in block mode when this file had no open block scopes")]
+    BlockScopeCloseOutsideScope(ParseSpan),
+    #[error("Scope close encountered in inline mode when there were no open inline scopes")]
+    InlineScopeCloseOutsideScope(ParseSpan),
     #[error("Raw scope close when not in a raw scope")]
     RawScopeCloseOutsideRawScope(ParseSpan),
     #[error("File ended inside code block")]

@@ -194,11 +194,16 @@ impl TurnipTextError {
                 sources,
 &[(span, "", None)]
             ),
-            ScopeCloseOutsideScope(span) => snippet_from_spans(
-                "Scope close token when outside scope",
+            BlockScopeCloseOutsideScope(span) => snippet_from_spans(
+                "Encountered a scope close token at the block level when this file didn't have any open block scopes",
                 AnnotationType::Error,
                 sources,
                 &[(span, "", None)],
+            ),
+            InlineScopeCloseOutsideScope(span) => snippet_from_spans(
+                "Encountered a scope close token in inline mode when there weren't any open inline scopes", AnnotationType::Error,
+                sources,
+                 &[(span, "", None)],
             ),
             RawScopeCloseOutsideRawScope(span) => snippet_from_spans(
 
