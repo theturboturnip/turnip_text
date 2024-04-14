@@ -1425,15 +1425,14 @@ mod block_spacing {
                 TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence("New Block")])]),
             ])),
         );
-        expect_parse_err(
-            r#"Paragraph one
-            {
-                New Block
-            }"#,
-            TestInterpError::SentenceBreakInInlineScope {
-                scope_start: TestParserSpan("{"),
-            },
-        );
+        todo!("specific error for opening a block scope inside an inline context - inlinescopebuilder can pick this case up if it encountered a newline when the scope was otherwise empty")
+        // expect_parse_err(
+        //     r#"Paragraph one
+        //     {
+        //         New Block
+        //     }"#,
+
+        // );
     }
 
     // There should always be a blank line between a paragraph ending and code-emitting-block
