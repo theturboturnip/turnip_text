@@ -76,21 +76,36 @@ enum BuildStatus {
 }
 
 #[derive(Debug, Clone, Copy)]
-// TODO make BuilderContext separate opening_tok span from full_span so error messages can use it.
 struct BuilderContext {
     builder_name: &'static str,
-    from_span: ParseSpan,
+    first_tok: ParseSpan,
+    last_tok: ParseSpan,
 }
 impl BuilderContext {
-    fn new(builder_name: &'static str, start_span: ParseSpan) -> Self {
+    fn new(builder_name: &'static str, first_tok: ParseSpan, last_tok: ParseSpan) -> Self {
+        assert!(
+            first_tok.file_idx() == last_tok.file_idx(),
+            "Can't have a BuilderContext span two files"
+        );
         Self {
             builder_name,
-            from_span: start_span,
+            first_tok,
+            last_tok,
         }
     }
-    fn try_extend(&mut self, span: &ParseSpan) -> bool {
-        if span.file_idx() == self.from_span.file_idx() {
-            self.from_span = self.from_span.combine(span);
+    fn try_extend(&mut self, new_tok: &ParseSpan) -> bool {
+        if new_tok.file_idx() == self.last_tok.file_idx() {
+            assert!(self.first_tok.start().byte_ofs <= new_tok.start().byte_ofs);
+            self.last_tok = *new_tok;
+            true
+        } else {
+            false
+        }
+    }
+    fn try_combine(&mut self, new_builder: BuilderContext) -> bool {
+        if new_builder.first_tok.file_idx() == self.first_tok.file_idx() {
+            assert!(self.first_tok.start().byte_ofs <= new_builder.first_tok.start().byte_ofs);
+            self.last_tok = new_builder.last_tok;
             true
         } else {
             false
@@ -101,6 +116,9 @@ impl BuilderContext {
             from_builder: self,
             elem,
         }
+    }
+    fn full_span(&self) -> ParseSpan {
+        self.first_tok.combine(&self.last_tok)
     }
 }
 
@@ -136,7 +154,7 @@ trait BuildFromTokens {
         from_builder: BuilderContext,
     ) -> TurnipTextContextlessResult<()> {
         Err(InterpError::InsertedFileMidPara {
-            code_span: from_builder.from_span,
+            code_span: from_builder.full_span(),
         }
         .into())
     }
@@ -172,10 +190,10 @@ impl Interpreter {
                 None => continue,
                 Some((emitted_by, TurnipTextSource { name, contents })) => {
                     return Ok(InterpreterFileAction::FileInserted {
-                        emitted_by,
+                        emitted_by: emitted_by.full_span(), // TODO make this take BuilderContext
                         name,
                         contents,
-                    })
+                    });
                 }
             }
         }
@@ -243,7 +261,7 @@ impl FileBuilderStack {
         py_env: &PyDict,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<Option<(ParseSpan, TurnipTextSource)>> {
+    ) -> TurnipTextContextlessResult<Option<(BuilderContext, TurnipTextSource)>> {
         // If processing an EOF we need to flush all builders in the stack and not pass through tokens to self.top()
         if let TTToken::EOF(_) = &tok {
             loop {
@@ -328,7 +346,7 @@ impl FileBuilderStack {
                             self.curr_top()
                                 .borrow_mut()
                                 .on_emitted_source_inside(from_builder)?;
-                            return Ok(Some((from_builder.from_span, src)));
+                            return Ok(Some((from_builder, src)));
                         }
                     }
                 }
@@ -759,7 +777,7 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
                     // We don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
                     // Thus, set expects_blank_line.
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
-                    self.expects_blank_line_after = Some(from_builder.from_span);
+                    self.expects_blank_line_after = Some(from_builder.full_span());
                     self.structure.push_segment_header(py, header)?;
                     Ok(BuildStatus::Continue)
                 }
@@ -773,27 +791,19 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
                     // In the cases of 2, 3, and 4 we don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
                     // Thus, set expects_blank_line.
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
-                    self.expects_blank_line_after = Some(from_builder.from_span);
+                    self.expects_blank_line_after = Some(from_builder.full_span());
                     self.structure.push_to_topmost_block(py, block.as_ref(py))?;
                     Ok(BuildStatus::Continue)
                 }
                 // If we get an inline, start building a paragraph with it
                 DocElement::Inline(inline) => Ok(BuildStatus::StartInnerBuilder(
-                    ParagraphFromTokens::new_with_inline(
-                        py,
-                        inline.as_ref(py),
-                        from_builder.from_span,
-                    )?,
+                    ParagraphFromTokens::new_with_inline(py, inline.as_ref(py), from_builder)?,
                 )),
                 // If we get a raw, convert it to an inline Raw() object and start building a paragraph with it
                 DocElement::Raw(data) => {
                     let raw = py_internal_alloc(py, Raw::new_rs(py, data.as_str()))?;
                     Ok(BuildStatus::StartInnerBuilder(
-                        ParagraphFromTokens::new_with_inline(
-                            py,
-                            raw.as_ref(py),
-                            from_builder.from_span,
-                        )?,
+                        ParagraphFromTokens::new_with_inline(py, raw.as_ref(py), from_builder)?,
                     ))
                 }
             },
@@ -841,7 +851,7 @@ struct RawStringFromTokens {
 impl RawStringFromTokens {
     fn new(start_span: ParseSpan, n_opening: usize) -> Rc<RefCell<Self>> {
         rc_refcell(Self {
-            ctx: BuilderContext::new("RawString", start_span),
+            ctx: BuilderContext::new("RawString", start_span, start_span),
             n_closing: n_opening,
             raw_data: String::new(),
         })
@@ -863,7 +873,7 @@ impl BuildFromTokens for RawStringFromTokens {
                 )))))
             }
             TTToken::EOF(_) => Err(InterpError::EndedInsideRawScope {
-                raw_scope_start: self.ctx.from_span,
+                raw_scope_start: self.ctx.first_tok,
             }
             .into()),
             _ => {
@@ -887,13 +897,13 @@ impl BuildFromTokens for RawStringFromTokens {
 /// This builder is initially started with a ScopeOpen token that may be a block scope open (followed by "\s*\n") or an inline scope open (followed by \s*[^\n]).
 /// It starts out [BlockOrInlineScopeFromTokens::Undecided], then based on the following tokens either decides on [BlockOrInlineScopeFromTokens::Block] or [BlockOrInlineScopeFromTokens::Inline] and from then on acts as exactly [BlockScopeFromTokens] or [InlineScopeFromTokens] respectfully.
 enum BlockOrInlineScopeFromTokens {
-    Undecided { start_span: ParseSpan },
+    Undecided { first_tok: ParseSpan },
     Block(BlockScopeFromTokens),
     Inline(InlineScopeFromTokens),
 }
 impl BlockOrInlineScopeFromTokens {
-    fn new(start_span: ParseSpan) -> Rc<RefCell<Self>> {
-        rc_refcell(Self::Undecided { start_span })
+    fn new(first_tok: ParseSpan) -> Rc<RefCell<Self>> {
+        rc_refcell(Self::Undecided { first_tok })
     }
 }
 impl BuildFromTokens for BlockOrInlineScopeFromTokens {
@@ -905,15 +915,16 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match self {
-            BlockOrInlineScopeFromTokens::Undecided { start_span } => match tok {
+            BlockOrInlineScopeFromTokens::Undecided { first_tok } => match tok {
                 TTToken::Whitespace(_) => Ok(BuildStatus::Continue),
                 TTToken::EOF(_) => Err(InterpError::EndedInsideScope {
-                    scope_start: *start_span,
+                    scope_start: *first_tok,
                 }
                 .into()),
-                TTToken::Newline(_) => {
+                TTToken::Newline(last_tok) => {
                     // Transition to a block builder
-                    let block_builder = BlockScopeFromTokens::new_unowned(py, *start_span)?;
+                    let block_builder =
+                        BlockScopeFromTokens::new_unowned(py, *first_tok, last_tok)?;
                     // Block builder doesn't need to process the newline token specifically
                     // Swap ourselves out with the new state "i am a block builder"
                     let _ =
@@ -927,7 +938,7 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
                     // Transition to an inline builder
                     let mut inline_builder = InlineScopeFromTokens::new_unowned(
                         py,
-                        *start_span,
+                        *first_tok,
                         AmbiguousInlineContext::UnambiguouslyInline,
                     )?;
                     // Make sure it knows about the new token
@@ -956,7 +967,7 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
         pushed: Option<PushToNextLevel>,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match self {
-            BlockOrInlineScopeFromTokens::Undecided { start_span: _ } => {
+            BlockOrInlineScopeFromTokens::Undecided { .. } => {
                 assert!(pushed.is_none(), "BlockOrInlineScopeFromTokens::Undecided does not push any builders except comments thus cannot receive non-None pushed items");
                 Ok(BuildStatus::Continue)
             }
@@ -974,7 +985,7 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
         from_builder: BuilderContext,
     ) -> TurnipTextContextlessResult<()> {
         match self {
-            BlockOrInlineScopeFromTokens::Undecided { start_span: _ } => {
+            BlockOrInlineScopeFromTokens::Undecided { .. } => {
                 unreachable!("BlockOrInlineScopeFromTokens::Undecided does not push any builders except comments and thus cannot have source code emitted inside it")
             }
             BlockOrInlineScopeFromTokens::Block(block) => {
@@ -990,12 +1001,18 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
 struct BlockScopeFromTokens {
     ctx: BuilderContext,
     block_scope: Py<BlockScope>,
+    /// If Some(), contains the span of a previously encountered token on this line that finished a block.
+    /// New content is not allowed on the same line after finishing a block.
     expects_blank_line_after: Option<ParseSpan>,
 }
 impl BlockScopeFromTokens {
-    fn new_unowned(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Self> {
+    fn new_unowned(
+        py: Python,
+        first_tok: ParseSpan,
+        last_tok: ParseSpan,
+    ) -> TurnipTextContextlessResult<Self> {
         Ok(Self {
-            ctx: BuilderContext::new("BlockScope", start_span),
+            ctx: BuilderContext::new("BlockScope", first_tok, last_tok),
             block_scope: py_internal_alloc(py, BlockScope::new_empty(py))?,
             expects_blank_line_after: None,
         })
@@ -1040,7 +1057,7 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
 
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
         Err(InterpError::EndedInsideScope {
-            scope_start: self.ctx.from_span,
+            scope_start: self.ctx.first_tok,
         }
         .into())
     }
@@ -1082,9 +1099,9 @@ impl BuildFromTokens for BlockScopeFromTokens {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
                 DocElement::Header(_) => Err(InterpError::DocSegmentHeaderMidScope {
-                    code_span: from_builder.from_span,
+                    code_span: from_builder.full_span(),
                     block_close_span: None,
-                    enclosing_scope_start: self.ctx.from_span,
+                    enclosing_scope_start: self.ctx.first_tok,
                 }
                 .into()),
                 DocElement::Block(block) => {
@@ -1097,7 +1114,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
                     // In the cases of 2, 3, and 4 we don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
                     // Thus, set expects_blank_line.
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
-                    self.expects_blank_line_after = Some(from_builder.from_span);
+                    self.expects_blank_line_after = Some(from_builder.full_span());
                     self.block_scope
                         .borrow_mut(py)
                         .push_block(block.as_ref(py))
@@ -1106,21 +1123,13 @@ impl BuildFromTokens for BlockScopeFromTokens {
                 }
                 // If we get an inline, start building a paragraph inside this block-scope with it
                 DocElement::Inline(inline) => Ok(BuildStatus::StartInnerBuilder(
-                    ParagraphFromTokens::new_with_inline(
-                        py,
-                        inline.as_ref(py),
-                        from_builder.from_span,
-                    )?,
+                    ParagraphFromTokens::new_with_inline(py, inline.as_ref(py), from_builder)?,
                 )),
                 // If we get a raw, convert it to an inline Raw() object and start building a paragraph inside this block-scope with it
                 DocElement::Raw(data) => {
                     let raw = py_internal_alloc(py, Raw::new_rs(py, data.as_str()))?;
                     Ok(BuildStatus::StartInnerBuilder(
-                        ParagraphFromTokens::new_with_inline(
-                            py,
-                            raw.as_ref(py),
-                            from_builder.from_span,
-                        )?,
+                        ParagraphFromTokens::new_with_inline(py, raw.as_ref(py), from_builder)?,
                     ))
                 }
             },
@@ -1140,7 +1149,7 @@ impl ParagraphFromTokens {
     fn new_with_inline(
         py: Python,
         inline: &PyAny,
-        inline_span: ParseSpan,
+        inline_ctx: BuilderContext,
     ) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
         let current_sentence = py_internal_alloc(py, Sentence::new_empty(py))?;
         current_sentence
@@ -1148,7 +1157,7 @@ impl ParagraphFromTokens {
             .push_inline(inline)
             .err_as_internal(py)?;
         Ok(rc_refcell(Self {
-            ctx: BuilderContext::new("Paragraph", inline_span),
+            ctx: BuilderContext::new("Paragraph", inline_ctx.first_tok, inline_ctx.last_tok),
             para: py_internal_alloc(py, Paragraph::new_empty(py))?,
             start_of_line: false,
             current_building_text: InlineTextState::new(),
@@ -1161,7 +1170,7 @@ impl ParagraphFromTokens {
         text_span: ParseSpan,
     ) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
         Ok(rc_refcell(Self {
-            ctx: BuilderContext::new("Paragraph", text_span),
+            ctx: BuilderContext::new("Paragraph", text_span, text_span),
             para: py_internal_alloc(py, Paragraph::new_empty(py))?,
             start_of_line: false,
             current_building_text: InlineTextState::new_with_text(text),
@@ -1287,7 +1296,7 @@ impl InlineTokenProcessor for ParagraphFromTokens {
             tok.token_span(),
             if self.start_of_line {
                 AmbiguousInlineContext::StartOfLineMidPara {
-                    para_in_progress: self.ctx.from_span,
+                    para_in_progress: self.ctx,
                 }
             } else {
                 AmbiguousInlineContext::UnambiguouslyInline
@@ -1340,24 +1349,25 @@ impl BuildFromTokens for ParagraphFromTokens {
                 // Can't get a header or a block in an inline scope
                 DocElement::Header(_) => {
                     return Err(InterpError::DocSegmentHeaderMidPara {
-                        code_span: from_builder.from_span,
+                        code_span: from_builder.full_span(),
                     }
                     .into())
                 }
                 DocElement::Block(_) => {
+                    // This must have come from code.
                     if self.start_of_line {
                         // Someone is trying to open a new, separate block and not a block "inside" the paragraph.
                         // Give them a more relevant error message.
                         return Err(InterpError::InsufficientParaNewBlockOrFileSeparation {
-                            para: self.ctx.from_span,
-                            next_block_start: from_builder.from_span,
+                            para: self.ctx.full_span(), // TODO should prob give the first and last token separately "paragraph started here...", "paragraph was still in progress here..."
+                            next_block_start: from_builder.full_span(),
                             was_block_not_file: true,
                         }
                         .into());
                     }
                     // We're deep inside a paragraph here.
                     return Err(InterpError::BlockCodeMidPara {
-                        code_span: from_builder.from_span,
+                        code_span: from_builder.full_span(),
                     }
                     .into());
                 }
@@ -1391,14 +1401,14 @@ impl BuildFromTokens for ParagraphFromTokens {
             // Someone is trying to open a new file separately from the paragraph and not "inside" the paragraph.
             // Give them a more relevant error message.
             Err(InterpError::InsufficientParaNewBlockOrFileSeparation {
-                para: self.ctx.from_span,
-                next_block_start: from_builder.from_span,
+                para: self.ctx.full_span(),
+                next_block_start: from_builder.full_span(),
                 was_block_not_file: false,
             }
             .into())
         } else {
             Err(InterpError::InsertedFileMidPara {
-                code_span: from_builder.from_span,
+                code_span: from_builder.full_span(),
             }
             .into())
         }
@@ -1406,7 +1416,7 @@ impl BuildFromTokens for ParagraphFromTokens {
 }
 
 enum AmbiguousInlineContext {
-    StartOfLineMidPara { para_in_progress: ParseSpan },
+    StartOfLineMidPara { para_in_progress: BuilderContext },
     UnambiguouslyInline,
 }
 
@@ -1442,7 +1452,7 @@ impl InlineScopeFromTokens {
         ambiguous_inline_context: AmbiguousInlineContext,
     ) -> TurnipTextContextlessResult<Self> {
         Ok(Self {
-            ctx: BuilderContext::new("InlineScope", start_span),
+            ctx: BuilderContext::new("InlineScope", start_span, start_span),
             start_of_scope: true,
             inline_scope: py_internal_alloc(py, InlineScope::new_empty(py))?,
             current_building_text: InlineTextState::new(),
@@ -1526,15 +1536,15 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
             match self.ambiguous_inline_context {
                 AmbiguousInlineContext::StartOfLineMidPara { para_in_progress } => {
                     Err(InterpError::InsufficientParaNewBlockOrFileSeparation {
-                        para: para_in_progress,
-                        next_block_start: self.ctx.from_span,
+                        para: para_in_progress.full_span(),
+                        next_block_start: self.ctx.full_span(),
                         was_block_not_file: true,
                     }
                     .into())
                 }
                 AmbiguousInlineContext::UnambiguouslyInline => {
                     Err(InterpError::BlockScopeOpenedMidPara {
-                        scope_start: self.ctx.from_span,
+                        scope_start: self.ctx.first_tok,
                     }
                     .into())
                 }
@@ -1542,7 +1552,7 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         } else {
             // If there was content then we were definitely interrupted in the middle of a sentence
             Err(InterpError::SentenceBreakInInlineScope {
-                scope_start: self.ctx.from_span,
+                scope_start: self.ctx.first_tok,
             }
             .into())
         }
@@ -1578,7 +1588,7 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
 
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
         Err(InterpError::EndedInsideScope {
-            scope_start: self.ctx.from_span,
+            scope_start: self.ctx.first_tok,
         }
         .into())
     }
@@ -1608,13 +1618,13 @@ impl BuildFromTokens for InlineScopeFromTokens {
                 // Can't get a header or a block in an inline scope
                 DocElement::Header(_) => {
                     return Err(InterpError::DocSegmentHeaderMidPara {
-                        code_span: from_builder.from_span,
+                        code_span: from_builder.full_span(),
                     }
                     .into())
                 }
                 DocElement::Block(_) => {
                     return Err(InterpError::BlockCodeMidPara {
-                        code_span: from_builder.from_span,
+                        code_span: from_builder.full_span(),
                     }
                     .into())
                 }
@@ -1649,7 +1659,7 @@ struct CodeFromTokens {
 impl CodeFromTokens {
     fn new(start_span: ParseSpan, n_opening: usize) -> Rc<RefCell<Self>> {
         rc_refcell(Self {
-            ctx: BuilderContext::new("Code", start_span),
+            ctx: BuilderContext::new("Code", start_span, start_span),
             n_closing: n_opening,
             code: String::new(),
             evaled_code: None,
@@ -1678,7 +1688,7 @@ impl BuildFromTokens for CodeFromTokens {
                         let res: &PyAny = eval_or_exec(py, py_env, &self.code).err_as_interp(
                             py,
                             "Error evaluating contents of eval-brackets",
-                            self.ctx.from_span,
+                            self.ctx.full_span(),
                         )?;
 
                         // If we evaluated a TurnipTextSource, it may not be a builder of any kind thus we can finish immediately.
@@ -1690,7 +1700,7 @@ impl BuildFromTokens for CodeFromTokens {
                         }
                     }
                     TTToken::EOF(_) => Err(InterpError::EndedInsideCode {
-                        code_start: self.ctx.from_span,
+                        code_start: self.ctx.full_span(), // TODO use first_tok here
                     }
                     .into()),
                     _ => {
@@ -1749,8 +1759,8 @@ impl BuildFromTokens for CodeFromTokens {
                         let inline = coerce_to_inline_pytcref(py, evaled_result_ref)
                             .err_as_interp(
                                 py,
-                                "Error while evaluating initial python code",
-                                self.ctx.from_span,
+                                "This eval-bracket had no attached scope and returned something that wasn't None, Header, Block, or coercible to Inline.",
+                                self.ctx.full_span(),
                             )?;
                         Ok(BuildStatus::DoneAndReprocessToken(Some(
                             self.ctx.make(DocElement::Inline(inline)),
@@ -1776,12 +1786,12 @@ impl BuildFromTokens for CodeFromTokens {
                     PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
                     .err_as_interp(
                         py,
-                        "Expected a BlockScopeBuilder because the eval-brackets were followed by a block scope", self.ctx.from_span
+                        "Expected a BlockScopeBuilder because the eval-brackets were followed by a block scope", self.ctx.full_span()
                     )?;
 
                 // Now that we know coersion is a success, update the code span
                 assert!(
-                    self.ctx.try_extend(&pushed.from_builder.from_span),
+                    self.ctx.try_combine(pushed.from_builder),
                     "Code got a built object from a different file that it was opened in"
                 );
 
@@ -1794,12 +1804,12 @@ impl BuildFromTokens for CodeFromTokens {
                     .err_as_interp(
                         py,
                         "Expected an InlineScopeBuilder because the eval-brackets were followed by an inline scope",
-                        self.ctx.from_span
+                        self.ctx.full_span()
                     )?;
 
                 // Now that we know coersion is a success, update the code span
                 assert!(
-                    self.ctx.try_extend(&pushed.from_builder.from_span),
+                    self.ctx.try_combine(pushed.from_builder),
                     "Code got a built object from a different file that it was opened in"
                 );
 
@@ -1812,12 +1822,12 @@ impl BuildFromTokens for CodeFromTokens {
                     .err_as_interp(
                         py,
                         "Expected a RawScopeBuilder because the eval-brackets were followed by a raw scope",
-                    self.ctx.from_span
+                    self.ctx.full_span()
                     )?;
 
                 // Now that we know coersion is a success, update the code span
                 assert!(
-                    self.ctx.try_extend(&pushed.from_builder.from_span),
+                    self.ctx.try_combine(pushed.from_builder),
                     "Code got a built object from a different file that it was opened in"
                 );
 
