@@ -131,8 +131,6 @@ trait BuildFromTokens {
     /// When receiving any token from an inner file, this function must return either an error, [BuildStatus::Continue], or [BuildStatus::StartInnerBuilder]. Other responses would result in modifying the outer file due to the contents of the inner file, and are not allowed.
     ///
     /// When receiving [TTToken::EOF] this function must return either an error or [BuildStatus::DoneAndReprocessToken]. Other responses are not allowed.
-    ///
-    /// TODO prove this contract in the comments on block-scope builders.
     fn process_token(
         &mut self,
         py: Python,
@@ -446,6 +444,11 @@ trait BlockTokenProcessor {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
+        // This builder may receive tokens from inner files.
+        // It always returns an error, [BuildStatus::Continue], or [BuildStatus::StartInnerBuilder] on non-EOF tokens
+        // as long as [BlockTokenProcessor::on_close_scope] always does the same.
+        // When receiving EOF it returns [BuildStatus::DoneAndReprocessToken].
+        // This fulfils the contract for [BuildFromTokens::process_token].
         if self.expects_new_line() {
             match tok {
                 TTToken::Escaped(span, Escapable::Newline) => {
@@ -725,11 +728,16 @@ impl BlockTokenProcessor for TopLevelDocumentBuilder {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
+        // This builder may receive tokens from inner files.
+        // It always returns an error.
+        // This fulfils the contract for [BuildFromTokens::process_token].
         Err(InterpError::BlockScopeCloseOutsideScope(tok.token_span()).into())
     }
 
     // When EOF comes, we don't produce anything to bubble up - there's nothing above us!
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
+        // This is the only exception to the contract for [BuildFromTokens::process_token].
+        // There is never a builder above this one, so there is nothing that can reprocess the token.
         Ok(BuildStatus::Continue)
     }
 }
@@ -826,6 +834,9 @@ impl BuildFromTokens for CommentFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
+        // This builder does not directly emit new source files, so it cannot receive tokens from inner files.
+        // When receiving EOF it returns [BuildStatus::DoneAndReprocessToken].
+        // This fulfils the contract for [BuildFromTokens::process_token].
         match tok {
             TTToken::Newline(_) | TTToken::EOF(_) => Ok(BuildStatus::DoneAndReprocessToken(None)),
             _ => Ok(BuildStatus::Continue),
@@ -865,6 +876,9 @@ impl BuildFromTokens for RawStringFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
+        // This builder does not directly emit new source files, so it cannot receive tokens from inner files.
+        // When receiving EOF it returns an error.
+        // This fulfils the contract for [BuildFromTokens::process_token].
         match tok {
             TTToken::RawScopeClose(_, given_closing) if given_closing == self.n_closing => {
                 self.ctx.try_extend(&tok.token_span());
@@ -916,6 +930,10 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match self {
             BlockOrInlineScopeFromTokens::Undecided { first_tok } => match tok {
+                // This builder does not directly emit new source files, so it cannot receive tokens from inner files
+                // while in the Undecided state.
+                // When receiving EOF it returns an error.
+                // This fulfils the contract for [BuildFromTokens::process_token].
                 TTToken::Whitespace(_) => Ok(BuildStatus::Continue),
                 TTToken::EOF(_) => Err(InterpError::EndedInsideScope {
                     scope_start: *first_tok,
@@ -1044,6 +1062,9 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
+        // This builder may receive tokens from inner files.
+        // If it receives a token from an inner file, it returns an error.
+        // This fulfils the contract for [BuildFromTokens::process_token].
         if !self.ctx.try_extend(&tok.token_span()) {
             // Closing block scope from different file
             // This must be a block-level scope close, because if an unbalanced scope close appeared in inline mode it would already have errored and not bubbled out.
