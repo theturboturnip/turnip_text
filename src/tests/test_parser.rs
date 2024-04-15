@@ -3,7 +3,7 @@ use crate::interpreter::InterpError;
 use crate::interpreter::{ParsingFile, TurnipTextParser};
 use regex::Regex;
 
-use crate::interpreter::python::{
+use crate::python::{
     interop::{
         BlockScope, DocSegment, DocSegmentHeader, InlineScope, Paragraph, Raw, Sentence, Text,
     },

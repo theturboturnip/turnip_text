@@ -3,6 +3,8 @@ use pyo3::{types::PyDict, Py, Python};
 use std::fmt::Debug;
 use thiserror::Error;
 
+use crate::python::interop::{BlockScope, DocSegment, DocSegmentHeader};
+use crate::python::typeclass::{PyInstanceList, PyTcRef};
 use crate::{
     error::{
         stringify_pyerr, TurnipTextContextlessError, TurnipTextContextlessResult, TurnipTextError,
@@ -10,12 +12,6 @@ use crate::{
     },
     lexer::{lex, LexedStrIterator},
     util::ParseSpan,
-};
-
-pub mod python;
-use python::{
-    interop::*,
-    typeclass::{PyInstanceList, PyTcRef},
 };
 
 pub mod next;

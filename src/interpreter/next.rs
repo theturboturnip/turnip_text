@@ -32,16 +32,20 @@ use pyo3::{
 
 use crate::{
     error::{TurnipTextContextlessError, TurnipTextContextlessResult},
-    interpreter::{python::eval_or_exec, BlockScopeBuilder, InlineScopeBuilder, RawScopeBuilder},
     lexer::{Escapable, LexError, TTToken},
+    python::{
+        eval_or_exec,
+        interop::{
+            coerce_to_inline_pytcref, Block, BlockScope, BlockScopeBuilder, BuilderOutcome,
+            DocSegment, DocSegmentHeader, Inline, InlineScope, InlineScopeBuilder, Paragraph, Raw,
+            RawScopeBuilder, Sentence, Text, TurnipTextSource,
+        },
+        typeclass::PyTcRef,
+    },
     util::ParseSpan,
 };
 
-use super::{
-    coerce_to_inline_pytcref, python::typeclass::PyTcRef, Block, BlockScope, BuilderOutcome,
-    DocSegment, DocSegmentHeader, Inline, InlineScope, InterimDocumentStructure, InterpError,
-    InterpreterFileAction, MapContextlessResult, Paragraph, Raw, Sentence, Text, TurnipTextSource,
-};
+use super::{InterimDocumentStructure, InterpError, InterpreterFileAction, MapContextlessResult};
 
 /// An enum encompassing all the things that can be directly emitted from one Builder to be bubbled up to the previous Builder.
 ///
