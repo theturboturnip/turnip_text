@@ -1,6 +1,6 @@
 use crate::error::{TurnipTextError, TurnipTextResult};
 use crate::interpreter::InterpError;
-use crate::parser::{ParsingFile, TurnipTextParser};
+use crate::interpreter::{ParsingFile, TurnipTextParser};
 use regex::Regex;
 
 use crate::interpreter::python::{

@@ -32,9 +32,7 @@ use pyo3::{
 
 use crate::{
     error::{TurnipTextContextlessError, TurnipTextContextlessResult},
-    interpreter::{
-        eval_bracket::eval_or_exec, BlockScopeBuilder, InlineScopeBuilder, RawScopeBuilder,
-    },
+    interpreter::{python::eval_or_exec, BlockScopeBuilder, InlineScopeBuilder, RawScopeBuilder},
     lexer::{Escapable, LexError, TTToken},
     util::ParseSpan,
 };

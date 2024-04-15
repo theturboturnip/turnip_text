@@ -5,7 +5,7 @@ use annotate_snippets::{display_list::DisplayList, snippet::*};
 use pyo3::{PyErr, Python};
 use thiserror::Error;
 
-use crate::{interpreter::InterpError, lexer::LexError, parser::ParsingFile, util::ParseSpan};
+use crate::{interpreter::InterpError, interpreter::ParsingFile, lexer::LexError, util::ParseSpan};
 
 pub fn stringify_pyerr(py: Python, pyerr: &PyErr) -> String {
     let value = pyerr.value(py);

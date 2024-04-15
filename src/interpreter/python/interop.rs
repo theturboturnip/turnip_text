@@ -5,7 +5,7 @@ use pyo3::{
     types::{PyDict, PyFloat, PyIterator, PyList, PyLong, PyString},
 };
 
-use crate::{error::TurnipTextError, parser::TurnipTextParser};
+use crate::{error::TurnipTextError, interpreter::TurnipTextParser};
 
 use super::typeclass::{PyCanBeInstanceOf, PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
 
