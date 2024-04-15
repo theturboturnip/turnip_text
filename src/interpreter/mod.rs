@@ -258,6 +258,7 @@ impl InterpDocSegmentState {
 
 /// Enumeration of all possible interpreter errors
 ///
+/// TODO add "in-paragraph" flags to MidPara errors to tell if they're in a paragraph or in a code-owning-inline context
 /// TODO in all cases except XCloseOutsideY and EndedInsideX each of these should have two ParseSpans - the offending item, and the context for why it's offending.
 /// e.g. SentenceBreakInInlineScope should point to both the start of the inline scope *and* the sentence break! and probably any escaped newlines inbetween as well!
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

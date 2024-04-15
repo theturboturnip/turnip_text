@@ -1480,14 +1480,15 @@ mod block_spacing {
                 TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence("New Block")])]),
             ])),
         );
-        // TODO this should ideally be  InsufficientParaNewBlockSeparation - if it were on the same line as Paragraph one then it's MidPara.
         expect_parse_err(
             r#"Paragraph one
             {
                 New Block
             }"#,
-            TestInterpError::BlockScopeOpenedMidPara {
-                scope_start: TestParserSpan("{"),
+            TestInterpError::InsufficientParaNewBlockOrFileSeparation {
+                para: TestParserSpan("Paragraph one\n"),
+                next_block_start: TestParserSpan("{"),
+                was_block_not_file: true,
             },
         );
     }

@@ -21,8 +21,6 @@
 //! Not so!
 //! Note that the first condition requires that after eval-bracket-emitting-inserted-file, a newline must be seen before any content.
 //! The newline-consuming state of the outer builder is always reset when an inserted file is opened and after an inserted file is closed, so inserted files can't have an inconsistent impact on enclosing files and vice versa.
-//!
-//! TODO add "in-paragraph" flags to MidPara errors to tell if they're in a paragraph or in a code-owning-inline context
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -78,6 +76,7 @@ enum BuildStatus {
 }
 
 #[derive(Debug, Clone, Copy)]
+// TODO make BuilderContext separate opening_tok span from full_span so error messages can use it.
 struct BuilderContext {
     builder_name: &'static str,
     from_span: ParseSpan,
@@ -561,7 +560,7 @@ impl InlineTextState {
 }
 
 trait InlineTokenProcessor {
-    fn at_start_of_line(&self) -> bool;
+    fn ignore_whitespace(&self) -> bool;
     fn clear_pending_whitespace(&mut self);
     fn flush_pending_text(
         &mut self,
@@ -582,6 +581,12 @@ trait InlineTokenProcessor {
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus>;
     fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus>;
+    fn on_open_scope(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus>;
     fn on_close_scope(
         &mut self,
         py: Python,
@@ -603,8 +608,7 @@ trait InlineTokenProcessor {
                 self.on_plain_text(py, tok, data)
             }
             TTToken::Whitespace(_) => {
-                // Swallow whitespace at the start of the line
-                if self.at_start_of_line() {
+                if self.ignore_whitespace() {
                     Ok(BuildStatus::Continue)
                 } else {
                     self.on_midline_whitespace(py, tok, data)
@@ -619,6 +623,10 @@ trait InlineTokenProcessor {
                 self.clear_pending_whitespace();
                 self.flush_pending_text(py, true)?;
                 self.on_eof(py, tok)
+            }
+            TTToken::ScopeOpen(_) => {
+                self.flush_pending_text(py, true)?;
+                self.on_open_scope(py, tok, data)
             }
             TTToken::ScopeClose(_) => {
                 self.clear_pending_whitespace();
@@ -639,17 +647,6 @@ trait InlineTokenProcessor {
                 )))
             }
 
-            // TODO in theory if this were a block scope open and the current sentence were empty it should return InsufficientParaNewBlockSeparation not BlockScopeOpenedMidPara
-            // This could be allowed by opening a BlockScopeOrInlineScope and waiting for it to tell you what it was...
-            // although that could make the scope big lol.
-            // TODO make BuilderContext separate opening_tok span from full_span so error messages can use it.
-            TTToken::ScopeOpen(start_span) => {
-                self.flush_pending_text(py, true)?;
-                Ok(BuildStatus::StartInnerBuilder(InlineScopeFromTokens::new(
-                    py, start_span,
-                )?))
-            }
-
             TTToken::RawScopeOpen(start_span, n_opening) => {
                 self.flush_pending_text(py, true)?;
                 Ok(BuildStatus::StartInnerBuilder(RawStringFromTokens::new(
@@ -668,7 +665,6 @@ trait InlineTokenProcessor {
 
 struct TopLevelDocumentBuilder {
     /// The current structure of the document, including toplevel content, segments, and the current block stacks (one block stack per included subfile)
-    /// TODO remove the block-stack-handling parts from this
     structure: InterimDocumentStructure,
     expects_blank_line_after: Option<ParseSpan>,
 }
@@ -929,7 +925,11 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
                 }
                 _ => {
                     // Transition to an inline builder
-                    let mut inline_builder = InlineScopeFromTokens::new_unowned(py, *start_span)?;
+                    let mut inline_builder = InlineScopeFromTokens::new_unowned(
+                        py,
+                        *start_span,
+                        AmbiguousInlineContext::UnambiguouslyInline,
+                    )?;
                     // Make sure it knows about the new token
                     let res = inline_builder.process_token(py, py_env, tok, data)?;
                     // Swap ourselves out with the new state "i am an inline builder"
@@ -1204,7 +1204,8 @@ impl ParagraphFromTokens {
     }
 }
 impl InlineTokenProcessor for ParagraphFromTokens {
-    fn at_start_of_line(&self) -> bool {
+    fn ignore_whitespace(&self) -> bool {
+        // Swallow whitespace at the start of the line
         self.start_of_line
     }
     fn clear_pending_whitespace(&mut self) {
@@ -1275,6 +1276,25 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         ))))
     }
 
+    fn on_open_scope(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        Ok(BuildStatus::StartInnerBuilder(InlineScopeFromTokens::new(
+            py,
+            tok.token_span(),
+            if self.start_of_line {
+                AmbiguousInlineContext::StartOfLineMidPara {
+                    para_in_progress: self.ctx.from_span,
+                }
+            } else {
+                AmbiguousInlineContext::UnambiguouslyInline
+            },
+        )?))
+    }
+
     fn on_close_scope(
         &mut self,
         py: Python,
@@ -1325,7 +1345,7 @@ impl BuildFromTokens for ParagraphFromTokens {
                     .into())
                 }
                 DocElement::Block(_) => {
-                    if self.at_start_of_line() {
+                    if self.start_of_line {
                         // Someone is trying to open a new, separate block and not a block "inside" the paragraph.
                         // Give them a more relevant error message.
                         return Err(InterpError::InsufficientParaNewBlockOrFileSeparation {
@@ -1367,7 +1387,7 @@ impl BuildFromTokens for ParagraphFromTokens {
         &mut self,
         from_builder: BuilderContext,
     ) -> TurnipTextContextlessResult<()> {
-        if self.at_start_of_line() {
+        if self.start_of_line {
             // Someone is trying to open a new file separately from the paragraph and not "inside" the paragraph.
             // Give them a more relevant error message.
             Err(InterpError::InsufficientParaNewBlockOrFileSeparation {
@@ -1385,23 +1405,48 @@ impl BuildFromTokens for ParagraphFromTokens {
     }
 }
 
+enum AmbiguousInlineContext {
+    StartOfLineMidPara { para_in_progress: ParseSpan },
+    UnambiguouslyInline,
+}
+
 struct InlineScopeFromTokens {
     ctx: BuilderContext,
     inline_scope: Py<InlineScope>,
-    start_of_line: bool,
+    start_of_scope: bool,
     current_building_text: InlineTextState,
+    ambiguous_inline_context: AmbiguousInlineContext,
 }
 impl InlineScopeFromTokens {
-    fn new(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
-        Ok(rc_refcell(Self::new_unowned(py, start_span)?))
+    /// Create a new InlineScope builder.
+    ///
+    /// Set `ambiguous_inline_context` to [AmbiguousInlineContext::StartOfLine] if we're at the start of a line, because the user could be correctly continuing the paragraph or incorrectly try to create a new block immediately.
+    /// If a newline is encountered before any non-whitespace content, the user has effectively tried to open a block scope.
+    /// If we're in an ambiguous inline context, the error raised will be [InterpError::InsufficientBlockSeparation] to encourage the user to open the block on a new line.
+    /// In all other cases, the error will be [InterpError::BlockScopeOpenedMidPara] because it's clear that's what they actually were trying to do.
+    fn new(
+        py: Python,
+        start_span: ParseSpan,
+        ambiguous_inline_context: AmbiguousInlineContext,
+    ) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
+        Ok(rc_refcell(Self::new_unowned(
+            py,
+            start_span,
+            ambiguous_inline_context,
+        )?))
     }
 
-    fn new_unowned(py: Python, start_span: ParseSpan) -> TurnipTextContextlessResult<Self> {
+    fn new_unowned(
+        py: Python,
+        start_span: ParseSpan,
+        ambiguous_inline_context: AmbiguousInlineContext,
+    ) -> TurnipTextContextlessResult<Self> {
         Ok(Self {
             ctx: BuilderContext::new("InlineScope", start_span),
-            start_of_line: true,
+            start_of_scope: true,
             inline_scope: py_internal_alloc(py, InlineScope::new_empty(py))?,
             current_building_text: InlineTextState::new(),
+            ambiguous_inline_context,
         })
     }
 
@@ -1423,8 +1468,9 @@ impl InlineScopeFromTokens {
     }
 }
 impl InlineTokenProcessor for InlineScopeFromTokens {
-    fn at_start_of_line(&self) -> bool {
-        self.start_of_line
+    fn ignore_whitespace(&self) -> bool {
+        // Swallow whitespace at the start of the scope
+        self.start_of_scope
     }
     fn clear_pending_whitespace(&mut self) {
         self.current_building_text.clear_pending_whitespace();
@@ -1443,7 +1489,7 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        self.start_of_line = false;
+        self.start_of_scope = false;
         self.current_building_text
             .encounter_text(tok.stringify_escaped(data));
 
@@ -1477,10 +1523,22 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         // => Error: Block Scope Opened In Inline Mode
         // (InlineTokenProcessor automatically flushes our content before calling on_newline(), so we don't need to check self.current_building_text).
         if self.inline_scope.borrow_mut(py).__len__(py) == 0 {
-            Err(InterpError::BlockScopeOpenedMidPara {
-                scope_start: self.ctx.from_span,
+            match self.ambiguous_inline_context {
+                AmbiguousInlineContext::StartOfLineMidPara { para_in_progress } => {
+                    Err(InterpError::InsufficientParaNewBlockOrFileSeparation {
+                        para: para_in_progress,
+                        next_block_start: self.ctx.from_span,
+                        was_block_not_file: true,
+                    }
+                    .into())
+                }
+                AmbiguousInlineContext::UnambiguouslyInline => {
+                    Err(InterpError::BlockScopeOpenedMidPara {
+                        scope_start: self.ctx.from_span,
+                    }
+                    .into())
+                }
             }
-            .into())
         } else {
             // If there was content then we were definitely interrupted in the middle of a sentence
             Err(InterpError::SentenceBreakInInlineScope {
@@ -1490,6 +1548,18 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         }
     }
 
+    fn on_open_scope(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        Ok(BuildStatus::StartInnerBuilder(InlineScopeFromTokens::new(
+            py,
+            tok.token_span(),
+            AmbiguousInlineContext::UnambiguouslyInline,
+        )?))
+    }
     fn on_close_scope(
         &mut self,
         py: Python,
@@ -1530,7 +1600,7 @@ impl BuildFromTokens for InlineScopeFromTokens {
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        self.start_of_line = false;
+        self.start_of_scope = false;
         // Before we do anything else, push the current text into the scope including the whitespace between the text and the newly pushed item
         self.fold_current_text_into_scope(py, true)?;
         match pushed {
