@@ -51,7 +51,7 @@ impl TurnipTextParser {
     pub fn new(py: Python, file_name: String, file_contents: String) -> TurnipTextResult<Self> {
         let file = ParsingFile::new(0, file_name, file_contents);
         let files = vec![file];
-        let mut interp = crate::interpreter::next::Interpreter::new(py)
+        let interp = crate::interpreter::next::Interpreter::new(py)
             .map_err(|pyerr| TurnipTextError::InternalPython(stringify_pyerr(py, &pyerr)))?;
         Ok(Self {
             file_stack: vec![(None, 0)],

@@ -762,8 +762,7 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
                     // Thus, set expects_blank_line.
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
                     self.expects_blank_line_after = Some(from_builder.from_span);
-                    self.structure
-                        .push_segment_header(py, header, from_builder.from_span, None)?;
+                    self.structure.push_segment_header(py, header)?;
                     Ok(BuildStatus::Continue)
                 }
                 DocElement::Block(block) => {
