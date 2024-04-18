@@ -24,9 +24,8 @@ annotate-snippets = "0.9.1"
 anyhow = "1.0.66"
 thiserror = "1.0.37"
 argh = "0.1.9"
-
-[dev-dependencies]
 regex = "1.9.5"
+once_cell = "1.19.0"
 
 # Compile with extension-module by default, but make it optional
 # because 'cargo test' fails with link errors in that case.
