@@ -23,7 +23,16 @@ pub fn eval_or_exec<'py, 'code>(
 ) -> PyResult<&'py PyAny> {
     // Python picks up leading whitespace as an incorrect indent.
     let code = code.trim();
-    // TODO in multiline contexts it would be really nice to allow a toplevel indent (ignoring blank lines when calculating it)
+    // In exec() contexts it would be really nice to allow a toplevel indent (ignoring blank lines when calculating it)
+    // This requires two steps: determining if there is an indent, and removing that indent.
+    // Detecting an indent could be done programmatically *if* PyO3 exposed PyIndentError like it does PySyntaxError,
+    // otherwise we'd have to do our own parsing. The branch manual-indent-injection has some initial regexes for this,
+    // but I realized that doing this detection also requires ignoring comments (they don't count towards indentation)
+    // and I thought that strays too close to actually parsing the python for my liking.
+    // Resolving the indent is another problem: a feature automatically "dedenting" code passed to python -c
+    // exists https://discuss.python.org/t/allowing-indented-code-for-c/44122/1 and proposes appending `if True:` to the start as a stopgap.
+    // textwrap.dedent() also exists but I don't think it's suitable for code.
+    // Thus I have abandoned this quest.
     let raw_res = match py.eval(code, Some(py_env), None) {
         Ok(raw_res) => raw_res,
         Err(error) if error.is_instance_of::<PySyntaxError>(py) => {
