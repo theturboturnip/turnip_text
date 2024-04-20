@@ -26,6 +26,7 @@ impl From<LexPosn> for ParsePosn {
 }
 
 /// Helper struct representing a span of characters between `start` (inclusive) and `end` (exclusive) in a file
+/// TODO this is big and shouldn't be Copy
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParseSpan {
     file_idx: usize,
