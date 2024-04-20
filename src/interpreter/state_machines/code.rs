@@ -3,8 +3,10 @@ use std::{cell::RefCell, rc::Rc};
 use pyo3::{exceptions::PySyntaxError, ffi::Py_None, intern, prelude::*, types::PyDict};
 
 use crate::{
-    error::interp::{InterpError, MapContextlessResult},
-    error::TurnipTextContextlessResult,
+    error::{
+        interp::{InterpError, MapContextlessResult},
+        TurnipTextContextlessResult,
+    },
     lexer::TTToken,
     python::{
         interop::{
@@ -13,12 +15,12 @@ use crate::{
         },
         typeclass::PyTcRef,
     },
-    util::ParseSpan,
+    util::{ParseContext, ParseSpan},
 };
 
 use super::{
     block::BlockOrInlineScopeFromTokens, inline::RawStringFromTokens, rc_refcell, BlockElem,
-    BuildFromTokens, BuildStatus, DocElement, InlineElem, ParseContext, PushToNextLevel,
+    BuildFromTokens, BuildStatus, DocElement, InlineElem, PushToNextLevel,
 };
 
 pub struct CodeFromTokens {
@@ -119,13 +121,15 @@ impl BuildFromTokens for CodeFromTokens {
                     if evaled_result_ref.is_none() {
                         Ok(BuildStatus::DoneAndReprocessToken(None))
                     } else if let Ok(header) = PyTcRef::of(evaled_result_ref) {
-                        Ok(BuildStatus::DoneAndReprocessToken(Some(
-                            self.ctx.make(DocElement::HeaderFromCode(header)),
-                        )))
+                        Ok(BuildStatus::DoneAndReprocessToken(Some((
+                            self.ctx,
+                            DocElement::HeaderFromCode(header),
+                        ))))
                     } else if let Ok(block) = PyTcRef::of(evaled_result_ref) {
-                        Ok(BuildStatus::DoneAndReprocessToken(Some(
-                            self.ctx.make(BlockElem::FromCode(block).into()),
-                        )))
+                        Ok(BuildStatus::DoneAndReprocessToken(Some((
+                            self.ctx,
+                            BlockElem::FromCode(block).into(),
+                        ))))
                     } else {
                         let inline = coerce_to_inline_pytcref(py, evaled_result_ref)
                             .err_as_interp(
@@ -133,9 +137,10 @@ impl BuildFromTokens for CodeFromTokens {
                                 "This eval-bracket had no attached scope and returned something that wasn't None, Header, Block, or coercible to Inline.",
                                 self.ctx.full_span(),
                             )?;
-                        Ok(BuildStatus::DoneAndReprocessToken(Some(
-                            self.ctx.make(InlineElem::FromCode(inline).into()),
-                        )))
+                        Ok(BuildStatus::DoneAndReprocessToken(Some((
+                            self.ctx,
+                            InlineElem::FromCode(inline).into(),
+                        ))))
                     }
                 }
             },
@@ -150,8 +155,8 @@ impl BuildFromTokens for CodeFromTokens {
     ) -> TurnipTextContextlessResult<BuildStatus> {
         let evaled_result_ref = self.evaled_code.take().unwrap().into_ref(py);
 
-        let pushed = pushed.expect("Should never get a built None - CodeFromTokens only spawns BlockScopeFromTokens, InlineScopeFromTokens, RawScopeFromTokens none of which return None.");
-        let built = match pushed.elem {
+        let (elem_ctx, elem) = pushed.expect("Should never get a built None - CodeFromTokens only spawns BlockScopeFromTokens, InlineScopeFromTokens, RawScopeFromTokens none of which return None.");
+        let built = match elem {
             DocElement::Block(BlockElem::BlockScope(blocks)) => {
                 let builder: PyTcRef<BlockScopeBuilder> =
                     PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
@@ -162,7 +167,7 @@ impl BuildFromTokens for CodeFromTokens {
 
                 // Now that we know coersion is a success, update the code span
                 assert!(
-                    self.ctx.try_combine(pushed.from_builder),
+                    self.ctx.try_combine(elem_ctx),
                     "Code got a built object from a different file that it was opened in"
                 );
 
@@ -180,7 +185,7 @@ impl BuildFromTokens for CodeFromTokens {
 
                 // Now that we know coersion is a success, update the code span
                 assert!(
-                    self.ctx.try_combine(pushed.from_builder),
+                    self.ctx.try_combine(elem_ctx),
                     "Code got a built object from a different file that it was opened in"
                 );
 
@@ -198,7 +203,7 @@ impl BuildFromTokens for CodeFromTokens {
 
                 // Now that we know coersion is a success, update the code span
                 assert!(
-                    self.ctx.try_combine(pushed.from_builder),
+                    self.ctx.try_combine(elem_ctx),
                     "Code got a built object from a different file that it was opened in"
                 );
 
@@ -208,15 +213,18 @@ impl BuildFromTokens for CodeFromTokens {
             _ => unreachable!("Invalid combination of requested and actual built element types"),
         };
         match built {
-            BuilderOutcome::Block(block) => Ok(BuildStatus::Done(Some(
-                self.ctx.make(BlockElem::FromCode(block).into()),
-            ))),
-            BuilderOutcome::Inline(inline) => Ok(BuildStatus::Done(Some(
-                self.ctx.make(InlineElem::FromCode(inline).into()),
-            ))),
-            BuilderOutcome::Header(header) => Ok(BuildStatus::Done(Some(
-                self.ctx.make(DocElement::HeaderFromCode(header)),
-            ))),
+            BuilderOutcome::Block(block) => Ok(BuildStatus::Done(Some((
+                self.ctx,
+                BlockElem::FromCode(block).into(),
+            )))),
+            BuilderOutcome::Inline(inline) => Ok(BuildStatus::Done(Some((
+                self.ctx,
+                InlineElem::FromCode(inline).into(),
+            )))),
+            BuilderOutcome::Header(header) => Ok(BuildStatus::Done(Some((
+                self.ctx,
+                DocElement::HeaderFromCode(header),
+            )))),
             BuilderOutcome::None => Ok(BuildStatus::Done(None)),
         }
     }

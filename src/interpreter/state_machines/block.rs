@@ -10,7 +10,7 @@ use crate::{
     interpreter::InterimDocumentStructure,
     lexer::{Escapable, TTToken},
     python::interop::{BlockScope, DocSegment},
-    util::ParseSpan,
+    util::{ParseContext, ParseSpan},
 };
 
 use super::{
@@ -20,7 +20,7 @@ use super::{
         AmbiguousInlineContext, InlineScopeFromTokens, ParagraphFromTokens, RawStringFromTokens,
     },
     py_internal_alloc, rc_refcell, BlockElem, BuildFromTokens, BuildStatus, DocElement,
-    ParseContext, PushToNextLevel,
+    PushToNextLevel,
 };
 
 trait BlockTokenProcessor {
@@ -181,7 +181,7 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
     // Don't error when someone tries to include a new file inside a block scope
     fn on_emitted_source_inside(
         &mut self,
-        from_builder: ParseContext,
+        code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         // The tokens from this file will be passed through directly to us until we open new builders in its stack.
         // Allow the new file to start directly with content if it chooses.
@@ -213,7 +213,7 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
         // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match pushed {
-            Some(PushToNextLevel { from_builder, elem }) => match elem {
+            Some((elem_ctx, elem)) => match elem {
                 DocElement::HeaderFromCode(header) => {
                     // This must have been received from either
                     // 1. eval-brackets that directly emitted a header
@@ -221,7 +221,7 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
                     // We don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
                     // Thus, set expects_blank_line.
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
-                    self.expects_blank_line_after = Some(from_builder.full_span());
+                    self.expects_blank_line_after = Some(elem_ctx.full_span());
                     self.structure.push_segment_header(py, header)?;
                     Ok(BuildStatus::Continue)
                 }
@@ -235,13 +235,13 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
                     // In the cases of 2, 3, and 4 we don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
                     // Thus, set expects_blank_line.
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
-                    self.expects_blank_line_after = Some(from_builder.full_span());
+                    self.expects_blank_line_after = Some(elem_ctx.full_span());
                     self.structure.push_to_topmost_block(py, block.as_ref(py))?;
                     Ok(BuildStatus::Continue)
                 }
                 // If we get an inline, start building a paragraph with it
                 DocElement::Inline(inline) => Ok(BuildStatus::StartInnerBuilder(
-                    ParagraphFromTokens::new_with_inline(py, inline.as_ref(py), from_builder)?,
+                    ParagraphFromTokens::new_with_inline(py, inline.as_ref(py), elem_ctx)?,
                 )),
             },
             None => Ok(BuildStatus::Continue),
@@ -303,7 +303,8 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
             // This must be a block-level scope close, because if an unbalanced scope close appeared in inline mode it would already have errored and not bubbled out.
             Err(InterpError::BlockScopeCloseOutsideScope(tok.token_span()).into())
         } else {
-            Ok(BuildStatus::Done(Some(self.ctx.make(
+            Ok(BuildStatus::Done(Some((
+                self.ctx,
                 BlockElem::BlockScope(self.block_scope.clone_ref(py)).into(),
             ))))
         }
@@ -311,7 +312,7 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
 
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
         Err(InterpError::EndedInsideScope {
-            scope_start: self.ctx.first_tok,
+            scope_start: self.ctx.first_tok(),
         }
         .into())
     }
@@ -320,7 +321,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
     // Don't error when someone tries to include a new file inside a block scope
     fn on_emitted_source_inside(
         &mut self,
-        from_builder: ParseContext,
+        code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         // The tokens from this file will be passed through directly to us until we open new builders in its stack.
         // Allow the new file to start directly with content if it chooses.
@@ -351,11 +352,11 @@ impl BuildFromTokens for BlockScopeFromTokens {
         // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match pushed {
-            Some(PushToNextLevel { from_builder, elem }) => match elem {
+            Some((elem_ctx, elem)) => match elem {
                 DocElement::HeaderFromCode(_) => Err(InterpError::DocSegmentHeaderMidScope {
-                    code_span: from_builder.full_span(),
+                    code_span: elem_ctx.full_span(),
                     block_close_span: None,
-                    enclosing_scope_start: self.ctx.first_tok,
+                    enclosing_scope_start: self.ctx.first_tok(),
                 }
                 .into()),
                 DocElement::Block(block) => {
@@ -368,7 +369,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
                     // In the cases of 2, 3, and 4 we don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
                     // Thus, set expects_blank_line.
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
-                    self.expects_blank_line_after = Some(from_builder.full_span());
+                    self.expects_blank_line_after = Some(elem_ctx.full_span());
                     self.block_scope
                         .borrow_mut(py)
                         .push_block(block.as_ref(py))
@@ -377,7 +378,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
                 }
                 // If we get an inline, start building a paragraph inside this block-scope with it
                 DocElement::Inline(inline) => Ok(BuildStatus::StartInnerBuilder(
-                    ParagraphFromTokens::new_with_inline(py, inline.as_ref(py), from_builder)?,
+                    ParagraphFromTokens::new_with_inline(py, inline.as_ref(py), elem_ctx)?,
                 )),
             },
             None => Ok(BuildStatus::Continue),
@@ -477,17 +478,17 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
 
     fn on_emitted_source_inside(
         &mut self,
-        from_builder: ParseContext,
+        code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         match self {
             BlockOrInlineScopeFromTokens::Undecided { .. } => {
                 unreachable!("BlockOrInlineScopeFromTokens::Undecided does not push any builders except comments and thus cannot have source code emitted inside it")
             }
             BlockOrInlineScopeFromTokens::Block(block) => {
-                block.on_emitted_source_inside(from_builder)
+                block.on_emitted_source_inside(code_emitting_source)
             }
             BlockOrInlineScopeFromTokens::Inline(inline) => {
-                inline.on_emitted_source_inside(from_builder)
+                inline.on_emitted_source_inside(code_emitting_source)
             }
         }
     }

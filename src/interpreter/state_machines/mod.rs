@@ -42,7 +42,7 @@ use crate::{
         },
         typeclass::PyTcRef,
     },
-    util::ParseSpan,
+    util::{ParseContext, ParseSpan},
 };
 
 mod block;
@@ -101,10 +101,7 @@ impl From<InlineElem> for DocElement {
     }
 }
 
-struct PushToNextLevel {
-    from_builder: ParseContext,
-    elem: DocElement,
-}
+type PushToNextLevel = (ParseContext, DocElement);
 
 enum BuildStatus {
     Done(Option<PushToNextLevel>),
@@ -119,58 +116,6 @@ enum BuildStatus {
     Continue,
     StartInnerBuilder(Rc<RefCell<dyn BuildFromTokens>>),
     DoneAndNewSource(ParseContext, TurnipTextSource),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ParseContext {
-    first_tok: ParseSpan,
-    last_tok: ParseSpan,
-}
-impl ParseContext {
-    fn new(first_tok: ParseSpan, last_tok: ParseSpan) -> Self {
-        assert!(
-            first_tok.file_idx() == last_tok.file_idx(),
-            "Can't have a BuilderContext span two files"
-        );
-        Self {
-            first_tok,
-            last_tok,
-        }
-    }
-    fn try_extend(&mut self, new_tok: &ParseSpan) -> bool {
-        if new_tok.file_idx() == self.last_tok.file_idx() {
-            assert!(self.first_tok.start().byte_ofs <= new_tok.start().byte_ofs);
-            self.last_tok = *new_tok;
-            true
-        } else {
-            false
-        }
-    }
-    fn try_combine(&mut self, new_builder: ParseContext) -> bool {
-        if new_builder.first_tok.file_idx() == self.first_tok.file_idx() {
-            assert!(self.first_tok.start().byte_ofs <= new_builder.first_tok.start().byte_ofs);
-            self.last_tok = new_builder.last_tok;
-            true
-        } else {
-            false
-        }
-    }
-    fn make(self, elem: DocElement) -> PushToNextLevel {
-        PushToNextLevel {
-            from_builder: self,
-            elem,
-        }
-    }
-
-    pub fn first_tok(&self) -> ParseSpan {
-        self.first_tok
-    }
-    pub fn last_tok(&self) -> ParseSpan {
-        self.last_tok
-    }
-    pub fn full_span(&self) -> ParseSpan {
-        self.first_tok.combine(&self.last_tok)
-    }
 }
 
 trait BuildFromTokens {
@@ -200,10 +145,10 @@ trait BuildFromTokens {
     // Make it opt-in to allow emitting new source files. By default, return an error. To opt-in, override to return Ok.
     fn on_emitted_source_inside(
         &mut self,
-        from_builder: ParseContext,
+        code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         Err(InterpError::InsertedFileMidPara {
-            code_span: from_builder.full_span(),
+            code_span: code_emitting_source.full_span(),
         }
         .into())
     }
@@ -234,7 +179,7 @@ impl FileBuilderStack {
         py_env: &PyDict,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<Option<(ParseContext, TurnipTextSource)>> {
+    ) -> TurnipTextContextlessResult<Option<(ParseSpan, TurnipTextSource)>> {
         // If processing an EOF we need to flush all builders in the stack and not pass through tokens to self.top()
         if let TTToken::EOF(_) = &tok {
             loop {
@@ -314,12 +259,12 @@ impl FileBuilderStack {
                                 // Don't return, keep going through the loop to bubble the token up to the next builder from this file
                             }
                         }
-                        BuildStatus::DoneAndNewSource(from_builder, src) => {
+                        BuildStatus::DoneAndNewSource(code_emitting_source, src) => {
                             self.stack.pop().expect("self.curr_top() returned Done => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
                             self.curr_top()
                                 .borrow_mut()
-                                .on_emitted_source_inside(from_builder)?;
-                            return Ok(Some((from_builder, src)));
+                                .on_emitted_source_inside(code_emitting_source)?;
+                            return Ok(Some((code_emitting_source.full_span(), src)));
                         }
                     }
                 }

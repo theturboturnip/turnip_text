@@ -80,3 +80,49 @@ impl ParseSpan {
         self.end
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct ParseContext {
+    first_tok: ParseSpan,
+    last_tok: ParseSpan,
+}
+impl ParseContext {
+    pub fn new(first_tok: ParseSpan, last_tok: ParseSpan) -> Self {
+        assert!(
+            first_tok.file_idx() == last_tok.file_idx(),
+            "Can't have a BuilderContext span two files"
+        );
+        Self {
+            first_tok,
+            last_tok,
+        }
+    }
+    pub fn try_extend(&mut self, new_tok: &ParseSpan) -> bool {
+        if new_tok.file_idx() == self.last_tok.file_idx() {
+            assert!(self.first_tok.start().byte_ofs <= new_tok.start().byte_ofs);
+            self.last_tok = *new_tok;
+            true
+        } else {
+            false
+        }
+    }
+    pub fn try_combine(&mut self, new_builder: ParseContext) -> bool {
+        if new_builder.first_tok.file_idx() == self.first_tok.file_idx() {
+            assert!(self.first_tok.start().byte_ofs <= new_builder.first_tok.start().byte_ofs);
+            self.last_tok = new_builder.last_tok;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn first_tok(&self) -> ParseSpan {
+        self.first_tok
+    }
+    pub fn last_tok(&self) -> ParseSpan {
+        self.last_tok
+    }
+    pub fn full_span(&self) -> ParseSpan {
+        self.first_tok.combine(&self.last_tok)
+    }
+}

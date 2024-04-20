@@ -13,7 +13,7 @@ use crate::{
     util::ParseSpan,
 };
 
-use self::state_machines::{BuilderStacks, ParseContext};
+use self::state_machines::BuilderStacks;
 
 mod state_machines;
 
@@ -92,14 +92,13 @@ impl TurnipTextParser {
             };
             match action {
                 InterpreterFileAction::FileInserted {
-                    emitted_by,
+                    emitted_by_code,
                     name,
                     contents,
                 } => {
                     let file_idx = self.files.len();
                     self.files.push(ParsingFile::new(file_idx, name, contents));
-                    self.file_stack
-                        .push((Some(emitted_by.full_span()), file_idx));
+                    self.file_stack.push((Some(emitted_by_code), file_idx));
                     self.interp.push_subfile();
                 }
                 InterpreterFileAction::FileEnded => {
@@ -260,7 +259,7 @@ impl InterpDocSegmentState {
 
 pub enum InterpreterFileAction {
     FileInserted {
-        emitted_by: ParseContext,
+        emitted_by_code: ParseSpan,
         name: String,
         contents: String,
     },
@@ -293,9 +292,9 @@ impl Interpreter {
                 .process_token(py, py_env, tok, data)?
             {
                 None => continue,
-                Some((emitted_by, TurnipTextSource { name, contents })) => {
+                Some((emitted_by_code, TurnipTextSource { name, contents })) => {
                     return Ok(InterpreterFileAction::FileInserted {
-                        emitted_by,
+                        emitted_by_code,
                         name,
                         contents,
                     });
