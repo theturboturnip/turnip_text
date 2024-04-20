@@ -1,120 +1,15 @@
 //! This module tends to have a lot of long strings which cargo fmt won't automatically handle.
 //! `rustfmt .\src\error.rs --config format_strings=true` is good for this.
 
-use annotate_snippets::{display_list::DisplayList, snippet::*};
-use pyo3::{PyErr, Python};
-use thiserror::Error;
+use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 
-use crate::{interpreter::InterpError, interpreter::ParsingFile, lexer::LexError, util::ParseSpan};
+use crate::{
+    interpreter::{InterpError, ParsingFile},
+    lexer::LexError,
+    util::ParseSpan,
+};
 
-pub fn stringify_pyerr(py: Python, pyerr: &PyErr) -> String {
-    let value = pyerr.value(py);
-    let type_name = match value.get_type().name() {
-        Ok(name) => name,
-        Err(_) => "Unknown Type",
-    };
-    if let Ok(s) = value.str() {
-        format!("{0} : {1}", type_name, &s.to_string_lossy())
-    } else {
-        "<exception str() failed>".into()
-    }
-}
-
-#[derive(Error, Debug)]
-pub enum TurnipTextContextlessError {
-    #[error("Syntax Error: {1}")]
-    Lex(usize, LexError),
-    #[error("Interpreter Error: {0}")]
-    Interp(#[from] Box<InterpError>),
-    #[error("Internal Error: {0}")]
-    Internal(String),
-    #[error("Internal Python Error: {0}")]
-    InternalPython(String),
-}
-impl From<InterpError> for TurnipTextContextlessError {
-    fn from(value: InterpError) -> Self {
-        Self::Interp(Box::new(value))
-    }
-}
-impl From<(usize, LexError)> for TurnipTextContextlessError {
-    fn from(value: (usize, LexError)) -> Self {
-        Self::Lex(value.0, value.1)
-    }
-}
-impl From<(Python<'_>, PyErr)> for TurnipTextContextlessError {
-    fn from(value: (Python, PyErr)) -> Self {
-        Self::InternalPython(stringify_pyerr(value.0, &value.1))
-    }
-}
-
-pub type TurnipTextContextlessResult<T> = Result<T, TurnipTextContextlessError>;
-
-#[derive(Error, Debug)]
-pub enum TurnipTextError {
-    #[error("Syntax Error {2}")]
-    Lex(Vec<ParsingFile>, usize, LexError),
-    #[error("Interpreter Error {1}")]
-    Interp(Vec<ParsingFile>, Box<InterpError>),
-    #[error("Internal Error {0}")]
-    Internal(String),
-    #[error("Internal Python Error {0}")]
-    InternalPython(String),
-}
-impl From<(Vec<ParsingFile>, TurnipTextContextlessError)> for TurnipTextError {
-    fn from(value: (Vec<ParsingFile>, TurnipTextContextlessError)) -> Self {
-        match value.1 {
-            TurnipTextContextlessError::Lex(file_idx, err) => Self::Lex(value.0, file_idx, err),
-            TurnipTextContextlessError::Interp(err) => Self::Interp(value.0, err),
-            TurnipTextContextlessError::Internal(err) => Self::Internal(err),
-            TurnipTextContextlessError::InternalPython(err) => Self::InternalPython(err),
-        }
-    }
-}
-impl TurnipTextError {
-    pub fn display_cli_feedback(&self) {
-        let dl = DisplayList::from(self.snippet());
-        eprintln!("{}", dl);
-    }
-
-    fn snippet<'a>(&'a self) -> Snippet<'a> {
-        match self {
-            TurnipTextError::Lex(sources, file_idx, err) => {
-                Self::lex_error_snippet(sources, *file_idx, err)
-            }
-            TurnipTextError::Interp(sources, err) => Self::interp_error_snippet(sources, err),
-            TurnipTextError::Internal(pyerr) => Snippet {
-                title: Some(Annotation {
-                    label: Some("Internal Python error"),
-                    id: None,
-                    annotation_type: AnnotationType::Error,
-                }),
-                footer: vec![Annotation {
-                    label: Some(&pyerr),
-                    id: None,
-                    annotation_type: AnnotationType::Error,
-                }],
-                slices: vec![],
-                opt: Default::default(),
-            },
-            TurnipTextError::InternalPython(err) => Snippet {
-                title: Some(Annotation {
-                    label: Some("Internal error"),
-                    id: None,
-                    annotation_type: AnnotationType::Error,
-                }),
-                footer: vec![Annotation {
-                    label: Some(&err),
-                    id: None,
-                    annotation_type: AnnotationType::Error,
-                }],
-                slices: vec![],
-                opt: Default::default(),
-            },
-        }
-    }
-}
-
-pub type TurnipTextResult<T> = Result<T, TurnipTextError>;
+use super::TurnipTextError;
 
 fn snippet_from_spans<'a>(
     top_label: &'a str,
@@ -176,6 +71,43 @@ fn annotation_from_parse_span<'a>(
 }
 
 impl TurnipTextError {
+    pub fn snippet<'a>(&'a self) -> Snippet<'a> {
+        match self {
+            TurnipTextError::Lex(sources, file_idx, err) => {
+                Self::lex_error_snippet(sources, *file_idx, err)
+            }
+            TurnipTextError::Interp(sources, err) => Self::interp_error_snippet(sources, err),
+            TurnipTextError::Internal(pyerr) => Snippet {
+                title: Some(Annotation {
+                    label: Some("Internal Python error"),
+                    id: None,
+                    annotation_type: AnnotationType::Error,
+                }),
+                footer: vec![Annotation {
+                    label: Some(&pyerr),
+                    id: None,
+                    annotation_type: AnnotationType::Error,
+                }],
+                slices: vec![],
+                opt: Default::default(),
+            },
+            TurnipTextError::InternalPython(err) => Snippet {
+                title: Some(Annotation {
+                    label: Some("Internal error"),
+                    id: None,
+                    annotation_type: AnnotationType::Error,
+                }),
+                footer: vec![Annotation {
+                    label: Some(&err),
+                    id: None,
+                    annotation_type: AnnotationType::Error,
+                }],
+                slices: vec![],
+                opt: Default::default(),
+            },
+        }
+    }
+
     fn lex_error_snippet<'a>(
         sources: &'a Vec<ParsingFile>,
         file_idx: usize,
