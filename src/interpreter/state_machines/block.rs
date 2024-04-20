@@ -3,8 +3,11 @@ use std::{cell::RefCell, rc::Rc};
 use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
-    error::{TurnipTextContextlessError, TurnipTextContextlessResult},
-    interpreter::{InterimDocumentStructure, InterpError, MapContextlessResult},
+    error::{
+        interp::{InterpError, MapContextlessResult},
+        TurnipTextContextlessError, TurnipTextContextlessResult,
+    },
+    interpreter::InterimDocumentStructure,
     lexer::{Escapable, TTToken},
     python::{
         interop::{BlockScope, DocSegment, Raw},

@@ -2,9 +2,12 @@ use annotate_snippets::display_list::DisplayList;
 use pyo3::{PyErr, Python};
 use thiserror::Error;
 
-use crate::{interpreter::InterpError, interpreter::ParsingFile, lexer::LexError};
+use crate::{interpreter::ParsingFile, lexer::LexError};
+
+use self::interp::InterpError;
 
 mod display;
+pub mod interp;
 
 pub fn stringify_pyerr(py: Python, pyerr: &PyErr) -> String {
     let value = pyerr.value(py);

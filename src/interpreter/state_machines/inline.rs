@@ -3,8 +3,8 @@ use std::{cell::RefCell, rc::Rc};
 use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
+    error::interp::{InterpError, MapContextlessResult},
     error::TurnipTextContextlessResult,
-    interpreter::{InterpError, MapContextlessResult},
     lexer::{Escapable, TTToken},
     python::{
         interop::{InlineScope, Paragraph, Raw, Sentence, Text},

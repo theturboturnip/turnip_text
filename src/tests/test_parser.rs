@@ -1,5 +1,4 @@
-use crate::error::{TurnipTextError, TurnipTextResult};
-use crate::interpreter::InterpError;
+use crate::error::{interp::InterpError, TurnipTextError, TurnipTextResult};
 use crate::interpreter::{ParsingFile, TurnipTextParser};
 use regex::Regex;
 

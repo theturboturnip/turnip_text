@@ -30,6 +30,7 @@ use std::{cell::RefCell, rc::Rc};
 use pyo3::{prelude::*, types::PyDict, PyClass};
 
 use crate::{
+    error::interp::{InterpError, MapContextlessResult},
     error::TurnipTextContextlessResult,
     lexer::TTToken,
     python::{
@@ -38,8 +39,6 @@ use crate::{
     },
     util::ParseSpan,
 };
-
-use super::{InterpError, MapContextlessResult};
 
 mod block;
 pub use block::TopLevelDocumentBuilder;

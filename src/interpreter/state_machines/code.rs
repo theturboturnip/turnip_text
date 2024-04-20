@@ -3,8 +3,8 @@ use std::{cell::RefCell, rc::Rc};
 use pyo3::{exceptions::PySyntaxError, ffi::Py_None, intern, prelude::*, types::PyDict};
 
 use crate::{
+    error::interp::{InterpError, MapContextlessResult},
     error::TurnipTextContextlessResult,
-    interpreter::{InterpError, MapContextlessResult},
     lexer::TTToken,
     python::{
         interop::{

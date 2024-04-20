@@ -3,13 +3,9 @@
 
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 
-use crate::{
-    interpreter::{InterpError, ParsingFile},
-    lexer::LexError,
-    util::ParseSpan,
-};
+use crate::{interpreter::ParsingFile, lexer::LexError, util::ParseSpan};
 
-use super::TurnipTextError;
+use super::{interp::InterpError, TurnipTextError};
 
 fn snippet_from_spans<'a>(
     top_label: &'a str,
