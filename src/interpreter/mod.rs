@@ -13,7 +13,7 @@ use crate::{
     util::ParseSpan,
 };
 
-use self::state_machines::{BuilderContext, BuilderStacks};
+use self::state_machines::{BuilderStacks, ParseContext};
 
 mod state_machines;
 
@@ -260,7 +260,7 @@ impl InterpDocSegmentState {
 
 pub enum InterpreterFileAction {
     FileInserted {
-        emitted_by: BuilderContext,
+        emitted_by: ParseContext,
         name: String,
         contents: String,
     },

@@ -17,12 +17,12 @@ use crate::{
 };
 
 use super::{
-    block::BlockOrInlineScopeFromTokens, inline::RawStringFromTokens, rc_refcell, BuildFromTokens,
-    BuildStatus, BuilderContext, DocElement, PushToNextLevel,
+    block::BlockOrInlineScopeFromTokens, inline::RawStringFromTokens, rc_refcell, BlockElem,
+    BuildFromTokens, BuildStatus, DocElement, InlineElem, ParseContext, PushToNextLevel,
 };
 
 pub struct CodeFromTokens {
-    ctx: BuilderContext,
+    ctx: ParseContext,
     n_closing: usize,
     code: String,
     evaled_code: Option<PyObject>,
@@ -30,7 +30,7 @@ pub struct CodeFromTokens {
 impl CodeFromTokens {
     pub fn new(start_span: ParseSpan, n_opening: usize) -> Rc<RefCell<Self>> {
         rc_refcell(Self {
-            ctx: BuilderContext::new("Code", start_span, start_span),
+            ctx: ParseContext::new(start_span, start_span),
             n_closing: n_opening,
             code: String::new(),
             evaled_code: None,
@@ -120,11 +120,11 @@ impl BuildFromTokens for CodeFromTokens {
                         Ok(BuildStatus::DoneAndReprocessToken(None))
                     } else if let Ok(header) = PyTcRef::of(evaled_result_ref) {
                         Ok(BuildStatus::DoneAndReprocessToken(Some(
-                            self.ctx.make(DocElement::Header(header)),
+                            self.ctx.make(DocElement::HeaderFromCode(header)),
                         )))
                     } else if let Ok(block) = PyTcRef::of(evaled_result_ref) {
                         Ok(BuildStatus::DoneAndReprocessToken(Some(
-                            self.ctx.make(DocElement::Block(block)),
+                            self.ctx.make(BlockElem::FromCode(block).into()),
                         )))
                     } else {
                         let inline = coerce_to_inline_pytcref(py, evaled_result_ref)
@@ -134,7 +134,7 @@ impl BuildFromTokens for CodeFromTokens {
                                 self.ctx.full_span(),
                             )?;
                         Ok(BuildStatus::DoneAndReprocessToken(Some(
-                            self.ctx.make(DocElement::Inline(inline)),
+                            self.ctx.make(InlineElem::FromCode(inline).into()),
                         )))
                     }
                 }
@@ -152,7 +152,7 @@ impl BuildFromTokens for CodeFromTokens {
 
         let pushed = pushed.expect("Should never get a built None - CodeFromTokens only spawns BlockScopeFromTokens, InlineScopeFromTokens, RawScopeFromTokens none of which return None.");
         let built = match pushed.elem {
-            DocElement::Block(blocks) => {
+            DocElement::Block(BlockElem::BlockScope(blocks)) => {
                 let builder: PyTcRef<BlockScopeBuilder> =
                     PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
                     .err_as_interp(
@@ -166,10 +166,10 @@ impl BuildFromTokens for CodeFromTokens {
                     "Code got a built object from a different file that it was opened in"
                 );
 
-                BlockScopeBuilder::call_build_from_blocks(py, builder, blocks.as_ref(py))
+                BlockScopeBuilder::call_build_from_blocks(py, builder, blocks)
                     .err_as_internal(py)?
             }
-            DocElement::Inline(inlines) => {
+            DocElement::Inline(InlineElem::InlineScope(inlines)) => {
                 let builder: PyTcRef<InlineScopeBuilder> =
                     PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
                     .err_as_interp(
@@ -184,10 +184,10 @@ impl BuildFromTokens for CodeFromTokens {
                     "Code got a built object from a different file that it was opened in"
                 );
 
-                InlineScopeBuilder::call_build_from_inlines(py, builder, inlines.as_ref(py))
+                InlineScopeBuilder::call_build_from_inlines(py, builder, inlines)
                     .err_as_internal(py)?
             }
-            DocElement::Raw(raw) => {
+            DocElement::Inline(InlineElem::Raw(raw)) => {
                 let builder: PyTcRef<RawScopeBuilder> =
                     PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
                     .err_as_interp(
@@ -202,19 +202,20 @@ impl BuildFromTokens for CodeFromTokens {
                     "Code got a built object from a different file that it was opened in"
                 );
 
-                RawScopeBuilder::call_build_from_raw(py, &builder, &raw).err_as_internal(py)?
+                RawScopeBuilder::call_build_from_raw(py, &builder, raw.borrow(py).0.clone_ref(py))
+                    .err_as_internal(py)?
             }
             _ => unreachable!("Invalid combination of requested and actual built element types"),
         };
         match built {
             BuilderOutcome::Block(block) => Ok(BuildStatus::Done(Some(
-                self.ctx.make(DocElement::Block(block)),
+                self.ctx.make(BlockElem::FromCode(block).into()),
             ))),
             BuilderOutcome::Inline(inline) => Ok(BuildStatus::Done(Some(
-                self.ctx.make(DocElement::Inline(inline)),
+                self.ctx.make(InlineElem::FromCode(inline).into()),
             ))),
             BuilderOutcome::Header(header) => Ok(BuildStatus::Done(Some(
-                self.ctx.make(DocElement::Header(header)),
+                self.ctx.make(DocElement::HeaderFromCode(header)),
             ))),
             BuilderOutcome::None => Ok(BuildStatus::Done(None)),
         }

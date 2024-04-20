@@ -3,19 +3,19 @@ use std::{cell::RefCell, rc::Rc};
 use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
-    error::interp::{InterpError, MapContextlessResult},
-    error::TurnipTextContextlessResult,
-    lexer::{Escapable, TTToken},
-    python::{
-        interop::{InlineScope, Paragraph, Raw, Sentence, Text},
-        typeclass::PyTcRef,
+    error::{
+        interp::{InterpError, MapContextlessResult},
+        TurnipTextContextlessResult,
     },
+    interpreter::state_machines::{BlockElem, InlineElem},
+    lexer::{Escapable, TTToken},
+    python::interop::{InlineScope, Paragraph, Raw, Sentence, Text},
     util::ParseSpan,
 };
 
 use super::{
     code::CodeFromTokens, comment::CommentFromTokens, py_internal_alloc, rc_refcell,
-    BuildFromTokens, BuildStatus, BuilderContext, DocElement, PushToNextLevel,
+    BuildFromTokens, BuildStatus, DocElement, ParseContext, PushToNextLevel,
 };
 
 struct InlineTextState {
@@ -184,7 +184,7 @@ trait InlineTokenProcessor {
 }
 
 pub struct ParagraphFromTokens {
-    ctx: BuilderContext,
+    ctx: ParseContext,
     para: Py<Paragraph>,
     start_of_line: bool,
     current_building_text: InlineTextState,
@@ -194,7 +194,7 @@ impl ParagraphFromTokens {
     pub fn new_with_inline(
         py: Python,
         inline: &PyAny,
-        inline_ctx: BuilderContext,
+        inline_ctx: ParseContext,
     ) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
         let current_sentence = py_internal_alloc(py, Sentence::new_empty(py))?;
         current_sentence
@@ -202,7 +202,7 @@ impl ParagraphFromTokens {
             .push_inline(inline)
             .err_as_internal(py)?;
         Ok(rc_refcell(Self {
-            ctx: BuilderContext::new("Paragraph", inline_ctx.first_tok, inline_ctx.last_tok),
+            ctx: ParseContext::new(inline_ctx.first_tok, inline_ctx.last_tok),
             para: py_internal_alloc(py, Paragraph::new_empty(py))?,
             start_of_line: false,
             current_building_text: InlineTextState::new(),
@@ -215,7 +215,7 @@ impl ParagraphFromTokens {
         text_span: ParseSpan,
     ) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
         Ok(rc_refcell(Self {
-            ctx: BuilderContext::new("Paragraph", text_span, text_span),
+            ctx: ParseContext::new(text_span, text_span),
             para: py_internal_alloc(py, Paragraph::new_empty(py))?,
             start_of_line: false,
             current_building_text: InlineTextState::new_with_text(text),
@@ -306,9 +306,10 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         );
         // Text is already folded into the sentence
         if self.start_of_line {
-            Ok(BuildStatus::DoneAndReprocessToken(Some(self.ctx.make(
-                DocElement::Block(PyTcRef::of_unchecked(self.para.as_ref(py))),
-            ))))
+            Ok(BuildStatus::DoneAndReprocessToken(Some(
+                self.ctx
+                    .make(BlockElem::Para(self.para.clone_ref(py)).into()),
+            )))
         } else {
             self.fold_current_sentence_into_paragraph(py)?;
             // We're now at the start of the line
@@ -325,9 +326,10 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         if !self.start_of_line {
             self.fold_current_sentence_into_paragraph(py)?;
         }
-        Ok(BuildStatus::DoneAndReprocessToken(Some(self.ctx.make(
-            DocElement::Block(PyTcRef::of_unchecked(self.para.as_ref(py))),
-        ))))
+        Ok(BuildStatus::DoneAndReprocessToken(Some(
+            self.ctx
+                .make(BlockElem::Para(self.para.clone_ref(py)).into()),
+        )))
     }
 
     fn on_open_scope(
@@ -362,9 +364,10 @@ impl InlineTokenProcessor for ParagraphFromTokens {
                 self.ctx.try_extend(&tok.token_span()),
                 "ParagraphFromTokens got a token from a different file that it was opened in"
             );
-            Ok(BuildStatus::DoneAndReprocessToken(Some(self.ctx.make(
-                DocElement::Block(PyTcRef::of_unchecked(self.para.as_ref(py))),
-            ))))
+            Ok(BuildStatus::DoneAndReprocessToken(Some(
+                self.ctx
+                    .make(BlockElem::Para(self.para.clone_ref(py)).into()),
+            )))
         } else {
             Err(InterpError::InlineScopeCloseOutsideScope(tok.token_span()).into())
         }
@@ -392,7 +395,7 @@ impl BuildFromTokens for ParagraphFromTokens {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
                 // Can't get a header or a block in an inline scope
-                DocElement::Header(_) => {
+                DocElement::HeaderFromCode(_) => {
                     return Err(InterpError::DocSegmentHeaderMidPara {
                         code_span: from_builder.full_span(),
                     }
@@ -423,15 +426,6 @@ impl BuildFromTokens for ParagraphFromTokens {
                         .push_inline(inline.as_ref(py))
                         .err_as_internal(py)?;
                 }
-                // If we get a raw, convert it to an inline Raw() object and shove it in
-                DocElement::Raw(data) => {
-                    let raw = py_internal_alloc(py, Raw::new_rs(py, data.as_str()))?;
-                    self.current_sentence
-                        .borrow_mut(py)
-                        .push_inline(raw.as_ref(py))
-                        .err_as_internal(py)?;
-                    {}
-                }
             },
             None => {}
         }
@@ -440,7 +434,7 @@ impl BuildFromTokens for ParagraphFromTokens {
 
     fn on_emitted_source_inside(
         &mut self,
-        from_builder: BuilderContext,
+        from_builder: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         if self.start_of_line {
             // Someone is trying to open a new file separately from the paragraph and not "inside" the paragraph.
@@ -461,12 +455,12 @@ impl BuildFromTokens for ParagraphFromTokens {
 }
 
 pub enum AmbiguousInlineContext {
-    StartOfLineMidPara { para_in_progress: BuilderContext },
+    StartOfLineMidPara { para_in_progress: ParseContext },
     UnambiguouslyInline,
 }
 
 pub struct InlineScopeFromTokens {
-    ctx: BuilderContext,
+    ctx: ParseContext,
     inline_scope: Py<InlineScope>,
     start_of_scope: bool,
     current_building_text: InlineTextState,
@@ -497,7 +491,7 @@ impl InlineScopeFromTokens {
         ambiguous_inline_context: AmbiguousInlineContext,
     ) -> TurnipTextContextlessResult<Self> {
         Ok(Self {
-            ctx: BuilderContext::new("InlineScope", start_span, start_span),
+            ctx: ParseContext::new(start_span, start_span),
             start_of_scope: true,
             inline_scope: py_internal_alloc(py, InlineScope::new_empty(py))?,
             current_building_text: InlineTextState::new(),
@@ -626,9 +620,9 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
             self.ctx.try_extend(&tok.token_span()),
             "InlineScopeFromTokens got a token from a different file that it was opened in"
         );
-        Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Inline(
-            PyTcRef::of_unchecked(self.inline_scope.as_ref(py)),
-        )))))
+        Ok(BuildStatus::Done(Some(self.ctx.make(
+            InlineElem::InlineScope(self.inline_scope.clone_ref(py)).into(),
+        ))))
     }
 
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
@@ -661,7 +655,7 @@ impl BuildFromTokens for InlineScopeFromTokens {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
                 // Can't get a header or a block in an inline scope
-                DocElement::Header(_) => {
+                DocElement::HeaderFromCode(_) => {
                     return Err(InterpError::DocSegmentHeaderMidPara {
                         code_span: from_builder.full_span(),
                     }
@@ -680,14 +674,6 @@ impl BuildFromTokens for InlineScopeFromTokens {
                         .push_inline(inline.as_ref(py))
                         .err_as_internal(py)?;
                 }
-                // If we get a raw, convert it to an inline Raw() object and shove it in
-                DocElement::Raw(data) => {
-                    let raw = py_internal_alloc(py, Raw::new_rs(py, data.as_str()))?;
-                    self.inline_scope
-                        .borrow_mut(py)
-                        .push_inline(raw.as_ref(py))
-                        .err_as_internal(py)?;
-                }
             },
             None => {}
         };
@@ -696,14 +682,14 @@ impl BuildFromTokens for InlineScopeFromTokens {
 }
 
 pub struct RawStringFromTokens {
-    ctx: BuilderContext,
+    ctx: ParseContext,
     n_closing: usize,
     raw_data: String,
 }
 impl RawStringFromTokens {
     pub fn new(start_span: ParseSpan, n_opening: usize) -> Rc<RefCell<Self>> {
         rc_refcell(Self {
-            ctx: BuilderContext::new("RawString", start_span, start_span),
+            ctx: ParseContext::new(start_span, start_span),
             n_closing: n_opening,
             raw_data: String::new(),
         })
@@ -723,9 +709,13 @@ impl BuildFromTokens for RawStringFromTokens {
         match tok {
             TTToken::RawScopeClose(_, given_closing) if given_closing == self.n_closing => {
                 self.ctx.try_extend(&tok.token_span());
-                Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Raw(
-                    std::mem::take(&mut self.raw_data),
-                )))))
+                let raw = py_internal_alloc(
+                    py,
+                    Raw::new_rs(py, std::mem::take(&mut self.raw_data).as_str()),
+                )?;
+                Ok(BuildStatus::Done(Some(
+                    self.ctx.make(InlineElem::Raw(raw).into()),
+                )))
             }
             TTToken::EOF(_) => Err(InterpError::EndedInsideRawScope {
                 raw_scope_start: self.ctx.first_tok,

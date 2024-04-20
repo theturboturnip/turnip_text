@@ -9,10 +9,7 @@ use crate::{
     },
     interpreter::InterimDocumentStructure,
     lexer::{Escapable, TTToken},
-    python::{
-        interop::{BlockScope, DocSegment, Raw},
-        typeclass::PyTcRef,
-    },
+    python::interop::{BlockScope, DocSegment},
     util::ParseSpan,
 };
 
@@ -22,8 +19,8 @@ use super::{
     inline::{
         AmbiguousInlineContext, InlineScopeFromTokens, ParagraphFromTokens, RawStringFromTokens,
     },
-    py_internal_alloc, rc_refcell, BuildFromTokens, BuildStatus, BuilderContext, DocElement,
-    PushToNextLevel,
+    py_internal_alloc, rc_refcell, BlockElem, BuildFromTokens, BuildStatus, DocElement,
+    ParseContext, PushToNextLevel,
 };
 
 trait BlockTokenProcessor {
@@ -184,7 +181,7 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
     // Don't error when someone tries to include a new file inside a block scope
     fn on_emitted_source_inside(
         &mut self,
-        from_builder: BuilderContext,
+        from_builder: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         // The tokens from this file will be passed through directly to us until we open new builders in its stack.
         // Allow the new file to start directly with content if it chooses.
@@ -217,7 +214,7 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
-                DocElement::Header(header) => {
+                DocElement::HeaderFromCode(header) => {
                     // This must have been received from either
                     // 1. eval-brackets that directly emitted a header
                     // 2. eval-brackets that took some argument (a block scope, an inline scope, or a raw scope) and emitted a header
@@ -246,13 +243,6 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
                 DocElement::Inline(inline) => Ok(BuildStatus::StartInnerBuilder(
                     ParagraphFromTokens::new_with_inline(py, inline.as_ref(py), from_builder)?,
                 )),
-                // If we get a raw, convert it to an inline Raw() object and start building a paragraph with it
-                DocElement::Raw(data) => {
-                    let raw = py_internal_alloc(py, Raw::new_rs(py, data.as_str()))?;
-                    Ok(BuildStatus::StartInnerBuilder(
-                        ParagraphFromTokens::new_with_inline(py, raw.as_ref(py), from_builder)?,
-                    ))
-                }
             },
             None => Ok(BuildStatus::Continue),
         }
@@ -260,7 +250,7 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
 }
 
 pub struct BlockScopeFromTokens {
-    ctx: BuilderContext,
+    ctx: ParseContext,
     block_scope: Py<BlockScope>,
     /// If Some(), contains the span of a previously encountered token on this line that finished a block.
     /// New content is not allowed on the same line after finishing a block.
@@ -273,7 +263,7 @@ impl BlockScopeFromTokens {
         last_tok: ParseSpan,
     ) -> TurnipTextContextlessResult<Self> {
         Ok(Self {
-            ctx: BuilderContext::new("BlockScope", first_tok, last_tok),
+            ctx: ParseContext::new(first_tok, last_tok),
             block_scope: py_internal_alloc(py, BlockScope::new_empty(py))?,
             expects_blank_line_after: None,
         })
@@ -313,9 +303,9 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
             // This must be a block-level scope close, because if an unbalanced scope close appeared in inline mode it would already have errored and not bubbled out.
             Err(InterpError::BlockScopeCloseOutsideScope(tok.token_span()).into())
         } else {
-            Ok(BuildStatus::Done(Some(self.ctx.make(DocElement::Block(
-                PyTcRef::of_unchecked(self.block_scope.as_ref(py)),
-            )))))
+            Ok(BuildStatus::Done(Some(self.ctx.make(
+                BlockElem::BlockScope(self.block_scope.clone_ref(py)).into(),
+            ))))
         }
     }
 
@@ -330,7 +320,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
     // Don't error when someone tries to include a new file inside a block scope
     fn on_emitted_source_inside(
         &mut self,
-        from_builder: BuilderContext,
+        from_builder: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         // The tokens from this file will be passed through directly to us until we open new builders in its stack.
         // Allow the new file to start directly with content if it chooses.
@@ -362,7 +352,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match pushed {
             Some(PushToNextLevel { from_builder, elem }) => match elem {
-                DocElement::Header(_) => Err(InterpError::DocSegmentHeaderMidScope {
+                DocElement::HeaderFromCode(_) => Err(InterpError::DocSegmentHeaderMidScope {
                     code_span: from_builder.full_span(),
                     block_close_span: None,
                     enclosing_scope_start: self.ctx.first_tok,
@@ -389,13 +379,6 @@ impl BuildFromTokens for BlockScopeFromTokens {
                 DocElement::Inline(inline) => Ok(BuildStatus::StartInnerBuilder(
                     ParagraphFromTokens::new_with_inline(py, inline.as_ref(py), from_builder)?,
                 )),
-                // If we get a raw, convert it to an inline Raw() object and start building a paragraph inside this block-scope with it
-                DocElement::Raw(data) => {
-                    let raw = py_internal_alloc(py, Raw::new_rs(py, data.as_str()))?;
-                    Ok(BuildStatus::StartInnerBuilder(
-                        ParagraphFromTokens::new_with_inline(py, raw.as_ref(py), from_builder)?,
-                    ))
-                }
             },
             None => Ok(BuildStatus::Continue),
         }
@@ -494,7 +477,7 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
 
     fn on_emitted_source_inside(
         &mut self,
-        from_builder: BuilderContext,
+        from_builder: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         match self {
             BlockOrInlineScopeFromTokens::Undecided { .. } => {

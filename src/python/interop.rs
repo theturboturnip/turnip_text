@@ -7,7 +7,7 @@ use pyo3::{
 
 use crate::{error::TurnipTextError, interpreter::TurnipTextParser};
 
-use super::typeclass::{PyCanBeInstanceOf, PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
+use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
 
 mod error {
     use pyo3::create_exception;
@@ -309,12 +309,11 @@ impl BlockScopeBuilder {
     fn marker_func_name(py: Python<'_>) -> &PyString {
         intern!(py, "build_from_blocks")
     }
-    pub fn call_build_from_blocks<'py, T: PyCanBeInstanceOf<BlockScope>>(
+    pub fn call_build_from_blocks<'py>(
         py: Python<'py>,
         builder: PyTcRef<Self>,
-        blocks: T,
+        blocks: Py<BlockScope>,
     ) -> PyResult<BuilderOutcome> {
-        assert!(blocks.check_is_instance());
         let output = builder
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
@@ -342,12 +341,11 @@ impl InlineScopeBuilder {
     fn marker_func_name(py: Python<'_>) -> &PyString {
         intern!(py, "build_from_inlines")
     }
-    pub fn call_build_from_inlines<'py, T: PyCanBeInstanceOf<InlineScope>>(
+    pub fn call_build_from_inlines<'py>(
         py: Python<'py>,
         builder: PyTcRef<Self>,
-        inlines: T,
+        inlines: Py<InlineScope>,
     ) -> PyResult<BuilderOutcome> {
-        assert!(inlines.check_is_instance());
         let output = builder
             .as_ref(py)
             .getattr(Self::marker_func_name(py))?
@@ -379,7 +377,7 @@ impl RawScopeBuilder {
     pub fn call_build_from_raw<'py>(
         py: Python<'py>,
         builder: &PyTcRef<Self>,
-        raw: &String,
+        raw: Py<PyString>,
     ) -> PyResult<BuilderOutcome> {
         let output = builder
             .as_ref(py)

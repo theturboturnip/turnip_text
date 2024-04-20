@@ -30,11 +30,16 @@ use std::{cell::RefCell, rc::Rc};
 use pyo3::{prelude::*, types::PyDict, PyClass};
 
 use crate::{
-    error::interp::{InterpError, MapContextlessResult},
-    error::TurnipTextContextlessResult,
+    error::{
+        interp::{InterpError, MapContextlessResult},
+        TurnipTextContextlessResult,
+    },
     lexer::TTToken,
     python::{
-        interop::{Block, DocSegmentHeader, Inline, TurnipTextSource},
+        interop::{
+            Block, BlockScope, DocSegmentHeader, Inline, InlineScope, Paragraph, Raw,
+            TurnipTextSource,
+        },
         typeclass::PyTcRef,
     },
     util::ParseSpan,
@@ -51,14 +56,53 @@ mod inline;
 ///
 /// Doesn't include TurnipTextSource - that is emitted from Python but it needs to bypass everything and go to the top-level interpreter
 enum DocElement {
-    Block(PyTcRef<Block>),
-    Inline(PyTcRef<Inline>),
-    Header(PyTcRef<DocSegmentHeader>),
-    Raw(String),
+    Block(BlockElem),
+    Inline(InlineElem),
+    HeaderFromCode(PyTcRef<DocSegmentHeader>),
+}
+
+enum BlockElem {
+    FromCode(PyTcRef<Block>),
+    BlockScope(Py<BlockScope>),
+    Para(Py<Paragraph>),
+}
+impl BlockElem {
+    fn as_ref<'py>(&'py self, py: Python<'py>) -> &'py PyAny {
+        match self {
+            BlockElem::FromCode(b) => b.as_ref(py),
+            BlockElem::BlockScope(bs) => bs.as_ref(py),
+            BlockElem::Para(p) => p.as_ref(py),
+        }
+    }
+}
+impl From<BlockElem> for DocElement {
+    fn from(value: BlockElem) -> Self {
+        Self::Block(value)
+    }
+}
+
+enum InlineElem {
+    FromCode(PyTcRef<Inline>),
+    InlineScope(Py<InlineScope>),
+    Raw(Py<Raw>),
+}
+impl InlineElem {
+    fn as_ref<'py>(&'py self, py: Python<'py>) -> &'py PyAny {
+        match self {
+            InlineElem::FromCode(i) => i.as_ref(py),
+            InlineElem::InlineScope(is) => is.as_ref(py),
+            InlineElem::Raw(r) => r.as_ref(py),
+        }
+    }
+}
+impl From<InlineElem> for DocElement {
+    fn from(value: InlineElem) -> Self {
+        Self::Inline(value)
+    }
 }
 
 struct PushToNextLevel {
-    from_builder: BuilderContext,
+    from_builder: ParseContext,
     elem: DocElement,
 }
 
@@ -74,23 +118,21 @@ enum BuildStatus {
     DoneAndReprocessToken(Option<PushToNextLevel>),
     Continue,
     StartInnerBuilder(Rc<RefCell<dyn BuildFromTokens>>),
-    DoneAndNewSource(BuilderContext, TurnipTextSource),
+    DoneAndNewSource(ParseContext, TurnipTextSource),
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct BuilderContext {
-    builder_name: &'static str,
+pub struct ParseContext {
     first_tok: ParseSpan,
     last_tok: ParseSpan,
 }
-impl BuilderContext {
-    fn new(builder_name: &'static str, first_tok: ParseSpan, last_tok: ParseSpan) -> Self {
+impl ParseContext {
+    fn new(first_tok: ParseSpan, last_tok: ParseSpan) -> Self {
         assert!(
             first_tok.file_idx() == last_tok.file_idx(),
             "Can't have a BuilderContext span two files"
         );
         Self {
-            builder_name,
             first_tok,
             last_tok,
         }
@@ -104,7 +146,7 @@ impl BuilderContext {
             false
         }
     }
-    fn try_combine(&mut self, new_builder: BuilderContext) -> bool {
+    fn try_combine(&mut self, new_builder: ParseContext) -> bool {
         if new_builder.first_tok.file_idx() == self.first_tok.file_idx() {
             assert!(self.first_tok.start().byte_ofs <= new_builder.first_tok.start().byte_ofs);
             self.last_tok = new_builder.last_tok;
@@ -158,7 +200,7 @@ trait BuildFromTokens {
     // Make it opt-in to allow emitting new source files. By default, return an error. To opt-in, override to return Ok.
     fn on_emitted_source_inside(
         &mut self,
-        from_builder: BuilderContext,
+        from_builder: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         Err(InterpError::InsertedFileMidPara {
             code_span: from_builder.full_span(),
@@ -192,7 +234,7 @@ impl FileBuilderStack {
         py_env: &PyDict,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<Option<(BuilderContext, TurnipTextSource)>> {
+    ) -> TurnipTextContextlessResult<Option<(ParseContext, TurnipTextSource)>> {
         // If processing an EOF we need to flush all builders in the stack and not pass through tokens to self.top()
         if let TTToken::EOF(_) = &tok {
             loop {

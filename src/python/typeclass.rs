@@ -99,26 +99,3 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
 
 /// [PyTypeclassList] equivalent for objects which subclass the given type T
 pub type PyInstanceList<T> = PyTypeclassList<PyInstanceTypeclass<T>>;
-
-pub trait PyCanBeInstanceOf<T: PyClass> {
-    fn as_ref<'py>(&'py self, py: Python<'py>) -> &'py PyAny;
-    fn check_is_instance(&self) -> bool;
-}
-impl<T: PyClass> PyCanBeInstanceOf<T> for Py<T> {
-    fn as_ref<'py>(&'py self, py: Python<'py>) -> &'py PyAny {
-        self.as_ref(py)
-    }
-
-    fn check_is_instance(&self) -> bool {
-        true
-    }
-}
-impl<T: PyClass> PyCanBeInstanceOf<T> for &PyAny {
-    fn as_ref<'py>(&'py self, _py: Python<'py>) -> &'py PyAny {
-        self
-    }
-
-    fn check_is_instance(&self) -> bool {
-        self.is_instance_of::<T>()
-    }
-}
