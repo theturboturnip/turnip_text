@@ -31,7 +31,7 @@ use pyo3::{prelude::*, types::PyDict, PyClass};
 
 use crate::{
     error::{
-        interp::{InterpError, MapContextlessResult},
+        interp::{BlockModeElem, InterpError, MapContextlessResult},
         TurnipTextContextlessResult,
     },
     lexer::TTToken,
@@ -78,6 +78,15 @@ impl BlockElem {
 impl From<BlockElem> for DocElement {
     fn from(value: BlockElem) -> Self {
         Self::Block(value)
+    }
+}
+impl From<(ParseContext, &BlockElem)> for BlockModeElem {
+    fn from(value: (ParseContext, &BlockElem)) -> Self {
+        match value.1 {
+            BlockElem::FromCode(_) => BlockModeElem::BlockFromCode(value.0.full_span()),
+            BlockElem::BlockScope(_) => BlockModeElem::BlockScope(value.0),
+            BlockElem::Para(_) => BlockModeElem::Para(value.0),
+        }
     }
 }
 
@@ -142,18 +151,11 @@ trait BuildFromTokens {
         pushed: Option<PushToNextLevel>,
         // closing_tok: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus>;
-    // Make it opt-in to allow emitting new source files. By default, return an error. To opt-in, override to return Ok.
     fn on_emitted_source_inside(
         &mut self,
         code_emitting_source: ParseContext,
-    ) -> TurnipTextContextlessResult<()> {
-        Err(InterpError::InsertedFileMidPara {
-            code_span: code_emitting_source.full_span(),
-        }
-        .into())
-    }
-    // Called when an inner file is closed. Will only be called if on_emitted_source_inside() is overridden to sometimes return Ok().
-    fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan) {}
+    ) -> TurnipTextContextlessResult<()>;
+    fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan);
 }
 
 pub struct FileBuilderStack {

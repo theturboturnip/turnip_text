@@ -1,5 +1,6 @@
 use crate::lexer::Escapable;
 
+use super::helpers::*;
 use super::test_lexer::*;
 use super::test_parser::*;
 

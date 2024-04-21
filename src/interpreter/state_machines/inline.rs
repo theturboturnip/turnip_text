@@ -4,7 +4,7 @@ use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
     error::{
-        interp::{InterpError, MapContextlessResult},
+        interp::{BlockModeElem, InlineModeContext, InterpError, MapContextlessResult},
         TurnipTextContextlessResult,
     },
     interpreter::state_machines::{BlockElem, InlineElem},
@@ -80,6 +80,8 @@ impl InlineTextState {
 }
 
 trait InlineTokenProcessor {
+    fn inline_mode_ctx(&self) -> InlineModeContext;
+
     fn ignore_whitespace(&self) -> bool;
     fn clear_pending_whitespace(&mut self);
     fn flush_pending_text(
@@ -258,6 +260,13 @@ impl ParagraphFromTokens {
     }
 }
 impl InlineTokenProcessor for ParagraphFromTokens {
+    fn inline_mode_ctx(&self) -> InlineModeContext {
+        InlineModeContext::Paragraph {
+            para_start: self.ctx.first_tok(),
+            line_start: self.ctx.last_tok(),
+        }
+    }
+
     fn ignore_whitespace(&self) -> bool {
         // Swallow whitespace at the start of the line
         self.start_of_line
@@ -395,29 +404,38 @@ impl BuildFromTokens for ParagraphFromTokens {
         match pushed {
             Some((elem_ctx, elem)) => match elem {
                 // Can't get a header or a block in an inline scope
-                DocElement::HeaderFromCode(_) => {
-                    return Err(InterpError::DocSegmentHeaderMidPara {
+                DocElement::HeaderFromCode(header) => {
+                    return Err(InterpError::CodeEmittedHeaderInInlineMode {
+                        inl_mode: self.inline_mode_ctx(),
+                        header,
                         code_span: elem_ctx.full_span(),
                     }
                     .into())
                 }
-                DocElement::Block(_) => {
+                DocElement::Block(BlockElem::FromCode(block)) => {
                     // This must have come from code.
                     if self.start_of_line {
                         // Someone is trying to open a new, separate block and not a block "inside" the paragraph.
                         // Give them a more relevant error message.
-                        return Err(InterpError::InsufficientParaNewBlockOrFileSeparation {
-                            para: self.ctx.full_span(), // TODO should prob give the first and last token separately "paragraph started here...", "paragraph was still in progress here..."
-                            next_block_start: elem_ctx.full_span(),
-                            was_block_not_file: true,
+                        return Err(InterpError::InsufficientBlockSeparation {
+                            last_block: BlockModeElem::Para(self.ctx),
+                            next_block_start: BlockModeElem::BlockFromCode(elem_ctx.full_span()),
                         }
                         .into());
                     }
                     // We're deep inside a paragraph here.
-                    return Err(InterpError::BlockCodeMidPara {
+                    return Err(InterpError::CodeEmittedBlockInInlineMode {
+                        inl_mode: self.inline_mode_ctx(),
+                        block,
                         code_span: elem_ctx.full_span(),
                     }
                     .into());
+                }
+                DocElement::Block(BlockElem::BlockScope(_)) => {
+                    unreachable!("ParagraphFromTokens never tries to build a BlockScope")
+                }
+                DocElement::Block(BlockElem::Para(_)) => {
+                    unreachable!("ParagraphFromTokens never tries to build an inner Paragraph")
                 }
                 // If we get an inline, shove it in
                 DocElement::Inline(inline) => {
@@ -439,18 +457,22 @@ impl BuildFromTokens for ParagraphFromTokens {
         if self.start_of_line {
             // Someone is trying to open a new file separately from the paragraph and not "inside" the paragraph.
             // Give them a more relevant error message.
-            Err(InterpError::InsufficientParaNewBlockOrFileSeparation {
-                para: self.ctx.full_span(),
-                next_block_start: code_emitting_source.full_span(),
-                was_block_not_file: false,
+            Err(InterpError::InsufficientBlockSeparation {
+                last_block: BlockModeElem::Para(self.ctx),
+                next_block_start: BlockModeElem::SourceFromCode(code_emitting_source.full_span()),
             }
             .into())
         } else {
-            Err(InterpError::InsertedFileMidPara {
+            Err(InterpError::CodeEmittedSourceInInlineMode {
+                inl_mode: self.inline_mode_ctx(),
                 code_span: code_emitting_source.full_span(),
             }
             .into())
         }
+    }
+
+    fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan) {
+        unreachable!("ParagraphFromTokens always returns Err on_emitted_source_inside")
     }
 }
 
@@ -517,6 +539,12 @@ impl InlineScopeFromTokens {
     }
 }
 impl InlineTokenProcessor for InlineScopeFromTokens {
+    fn inline_mode_ctx(&self) -> InlineModeContext {
+        InlineModeContext::InlineScope {
+            scope_start: self.ctx.first_tok(),
+        }
+    }
+
     fn ignore_whitespace(&self) -> bool {
         // Swallow whitespace at the start of the scope
         self.start_of_scope
@@ -574,16 +602,17 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         if self.inline_scope.borrow_mut(py).__len__(py) == 0 {
             match self.ambiguous_inline_context {
                 AmbiguousInlineContext::StartOfLineMidPara { para_in_progress } => {
-                    Err(InterpError::InsufficientParaNewBlockOrFileSeparation {
-                        para: para_in_progress.full_span(),
-                        next_block_start: self.ctx.full_span(),
-                        was_block_not_file: true,
+                    Err(InterpError::InsufficientBlockSeparation {
+                        last_block: BlockModeElem::Para(para_in_progress),
+                        // The start of the next block is our *first* token, not the current token - that's just a newline
+                        next_block_start: BlockModeElem::AnyToken(self.ctx.first_tok()),
                     }
                     .into())
                 }
                 AmbiguousInlineContext::UnambiguouslyInline => {
-                    Err(InterpError::BlockScopeOpenedMidPara {
-                        scope_start: self.ctx.first_tok(),
+                    Err(InterpError::BlockScopeOpenedInInlineMode {
+                        inl_mode: self.inline_mode_ctx(),
+                        block_scope_open: self.ctx.first_tok(),
                     }
                     .into())
                 }
@@ -592,6 +621,7 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
             // If there was content then we were definitely interrupted in the middle of a sentence
             Err(InterpError::SentenceBreakInInlineScope {
                 scope_start: self.ctx.first_tok(),
+                sentence_break: tok.token_span(),
             }
             .into())
         }
@@ -656,17 +686,27 @@ impl BuildFromTokens for InlineScopeFromTokens {
         match pushed {
             Some((elem_ctx, elem)) => match elem {
                 // Can't get a header or a block in an inline scope
-                DocElement::HeaderFromCode(_) => {
-                    return Err(InterpError::DocSegmentHeaderMidPara {
+                DocElement::HeaderFromCode(header) => {
+                    return Err(InterpError::CodeEmittedHeaderInInlineMode {
+                        inl_mode: self.inline_mode_ctx(),
+                        header,
                         code_span: elem_ctx.full_span(),
                     }
                     .into())
                 }
-                DocElement::Block(_) => {
-                    return Err(InterpError::BlockCodeMidPara {
+                DocElement::Block(BlockElem::FromCode(block)) => {
+                    return Err(InterpError::CodeEmittedBlockInInlineMode {
+                        inl_mode: self.inline_mode_ctx(),
+                        block,
                         code_span: elem_ctx.full_span(),
                     }
                     .into())
+                }
+                DocElement::Block(BlockElem::BlockScope(_)) => {
+                    unreachable!("InlineScopeFromTokens never tries to build a BlockScope")
+                }
+                DocElement::Block(BlockElem::Para(_)) => {
+                    unreachable!("InlineScopeFromTokens never tries to build an inner Paragraph")
                 }
                 // If we get an inline, shove it in
                 DocElement::Inline(inline) => {
@@ -680,6 +720,19 @@ impl BuildFromTokens for InlineScopeFromTokens {
         };
         Ok(BuildStatus::Continue)
     }
+
+    fn on_emitted_source_inside(
+        &mut self,
+        code_emitting_source: ParseContext,
+    ) -> TurnipTextContextlessResult<()> {
+        Err(InterpError::CodeEmittedSourceInInlineMode {
+            inl_mode: self.inline_mode_ctx(),
+            code_span: code_emitting_source.full_span(),
+        }
+        .into())
+    }
+
+    fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan) {}
 }
 
 pub struct RawStringFromTokens {
@@ -738,5 +791,15 @@ impl BuildFromTokens for RawStringFromTokens {
         // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         panic!("RawStringFromTokens does not spawn inner builders")
+    }
+
+    fn on_emitted_source_inside(
+        &mut self,
+        code_emitting_source: ParseContext,
+    ) -> TurnipTextContextlessResult<()> {
+        unreachable!("RawStringFromTokens does not spawn an inner code builder, so cannot have a source file emitted inside")
+    }
+    fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan) {
+        unreachable!("RawStringFromTokens does not spawn an inner code builder, so cannot have a source file emitted inside")
     }
 }

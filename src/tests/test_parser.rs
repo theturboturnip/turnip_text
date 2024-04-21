@@ -1,638 +1,21 @@
-use crate::error::{interp::InterpError, TurnipTextError, TurnipTextResult};
-use crate::interpreter::{ParsingFile, TurnipTextParser};
+use crate::error::TurnipTextResult;
+use crate::interpreter::TurnipTextParser;
 use regex::Regex;
 
-use crate::python::{
-    interop::{
-        BlockScope, DocSegment, DocSegmentHeader, InlineScope, Paragraph, Raw, Sentence, Text,
-    },
-    prepare_freethreaded_turniptext_python,
-};
-use crate::util::ParseSpan;
+use crate::python::prepare_freethreaded_turniptext_python;
 
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
 
 use std::panic;
 // We need to initialize Python the first time we test
 use std::sync::Once;
+
+use super::helpers::*;
 static INIT_PYTHON: Once = Once::new();
-
-/// A type mimicking [ParserSpan] for test purposes
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TestParserSpan(&'static str);
-impl TestParserSpan {
-    fn same_text(&self, other: &ParseSpan, data: &Vec<ParsingFile>) -> bool {
-        let other_str = unsafe {
-            data[other.file_idx()]
-                .contents()
-                .get_unchecked(other.byte_range())
-        };
-        dbg!(self.0) == dbg!(other_str)
-    }
-}
-
-/// A type mimicking [TurnipTextError] for test purposes
-#[derive(Debug, Clone)]
-pub enum TestTurnipError {
-    Lex(char),
-    Interp(TestInterpError),
-    Internal(Regex),
-    InternalPython(Regex),
-}
-impl From<TestInterpError> for TestTurnipError {
-    fn from(value: TestInterpError) -> Self {
-        Self::Interp(value)
-    }
-}
-impl PartialEq<TurnipTextError> for TestTurnipError {
-    fn eq(&self, other: &TurnipTextError) -> bool {
-        match (self, other) {
-            (Self::Lex(l_ch), TurnipTextError::Lex(_, _, r_err)) => *l_ch == r_err.ch,
-            (Self::Interp(l_interp), TurnipTextError::Interp(sources, r_interp)) => {
-                l_interp.effectively_eq(r_interp, sources)
-            }
-            (Self::InternalPython(l_pyerr), TurnipTextError::InternalPython(r_pyerr)) => {
-                l_pyerr.is_match(&r_pyerr)
-            }
-            (Self::Internal(l_pyerr), TurnipTextError::Internal(r_pyerr)) => {
-                l_pyerr.is_match(&r_pyerr)
-            }
-            _ => false,
-        }
-    }
-}
-
-/// A type mimicking [InterpError] for test purposes
-#[derive(Debug, Clone)]
-pub enum TestInterpError {
-    CodeCloseOutsideCode(TestParserSpan),
-    BlockScopeCloseOutsideScope(TestParserSpan),
-    InlineScopeCloseOutsideScope(TestParserSpan),
-    RawScopeCloseOutsideRawScope(TestParserSpan),
-    EndedInsideCode {
-        code_start: TestParserSpan,
-    },
-    EndedInsideRawScope {
-        raw_scope_start: TestParserSpan,
-    },
-    EndedInsideScope {
-        scope_start: TestParserSpan,
-    },
-    BlockScopeOpenedMidPara {
-        scope_start: TestParserSpan,
-    },
-    BlockOwnerCodeMidPara {
-        code_span: TestParserSpan,
-    },
-    BlockCodeMidPara {
-        code_span: TestParserSpan,
-    },
-    InsertedFileMidPara {
-        code_span: TestParserSpan,
-    },
-    BlockCodeFromRawScopeMidPara {
-        code_span: TestParserSpan,
-    },
-    SentenceBreakInInlineScope {
-        scope_start: TestParserSpan,
-    },
-    ParaBreakInInlineScope {
-        scope_start: TestParserSpan,
-    },
-    BlockOwnerCodeHasNoScope {
-        code_span: TestParserSpan,
-    },
-    InlineOwnerCodeHasNoScope {
-        code_span: TestParserSpan,
-    },
-    PythonErr {
-        pyerr: Regex,
-        code_span: TestParserSpan,
-    },
-    InternalPythonErr {
-        pyerr: Regex,
-    },
-    InternalErr(Regex),
-    EscapedNewlineOutsideParagraph {
-        newline: TestParserSpan,
-    },
-
-    DocSegmentHeaderMidPara {
-        code_span: TestParserSpan,
-    },
-
-    DocSegmentHeaderMidScope {
-        code_span: TestParserSpan,
-        block_close_span: Option<TestParserSpan>,
-        enclosing_scope_start: TestParserSpan,
-    },
-
-    InsufficientBlockSeparation {
-        last_block: TestParserSpan,
-        next_block_start: TestParserSpan,
-    },
-    InsufficientParaNewBlockOrFileSeparation {
-        para: TestParserSpan,
-        next_block_start: TestParserSpan,
-        was_block_not_file: bool,
-    },
-}
-impl TestInterpError {
-    fn effectively_eq(&self, other: &InterpError, data: &Vec<ParsingFile>) -> bool {
-        match (self, other) {
-            (Self::CodeCloseOutsideCode(l0), InterpError::CodeCloseOutsideCode(r0)) => {
-                l0.same_text(r0, data)
-            }
-            (
-                Self::BlockScopeCloseOutsideScope(l0),
-                InterpError::BlockScopeCloseOutsideScope(r0),
-            ) => l0.same_text(r0, data),
-            (
-                Self::InlineScopeCloseOutsideScope(l0),
-                InterpError::InlineScopeCloseOutsideScope(r0),
-            ) => l0.same_text(r0, data),
-            (
-                Self::RawScopeCloseOutsideRawScope(l0),
-                InterpError::RawScopeCloseOutsideRawScope(r0),
-            ) => l0.same_text(r0, data),
-            (
-                Self::EndedInsideCode {
-                    code_start: l_code_start,
-                },
-                InterpError::EndedInsideCode {
-                    code_start: r_code_start,
-                },
-            ) => l_code_start.same_text(r_code_start, data),
-            (
-                Self::EndedInsideRawScope {
-                    raw_scope_start: l_raw_scope_start,
-                },
-                InterpError::EndedInsideRawScope {
-                    raw_scope_start: r_raw_scope_start,
-                },
-            ) => l_raw_scope_start.same_text(r_raw_scope_start, data),
-            (
-                Self::EndedInsideScope {
-                    scope_start: l_scope_start,
-                },
-                InterpError::EndedInsideScope {
-                    scope_start: r_scope_start,
-                },
-            ) => l_scope_start.same_text(r_scope_start, data),
-            (
-                Self::BlockScopeOpenedMidPara {
-                    scope_start: l_scope_start,
-                },
-                InterpError::BlockScopeOpenedMidPara {
-                    scope_start: r_scope_start,
-                },
-            ) => l_scope_start.same_text(r_scope_start, data),
-            (
-                Self::BlockOwnerCodeMidPara {
-                    code_span: l_code_span,
-                },
-                InterpError::BlockOwnerCodeMidPara {
-                    code_span: r_code_span,
-                },
-            ) => l_code_span.same_text(r_code_span, data),
-            (
-                Self::BlockCodeMidPara {
-                    code_span: l_code_span,
-                },
-                InterpError::BlockCodeMidPara {
-                    code_span: r_code_span,
-                },
-            ) => l_code_span.same_text(r_code_span, data),
-            (
-                Self::InsertedFileMidPara {
-                    code_span: l_code_span,
-                },
-                InterpError::InsertedFileMidPara {
-                    code_span: r_code_span,
-                },
-            ) => l_code_span.same_text(r_code_span, data),
-            (
-                Self::BlockCodeFromRawScopeMidPara {
-                    code_span: l_code_span,
-                },
-                InterpError::BlockCodeFromRawScopeMidPara {
-                    code_span: r_code_span,
-                },
-            ) => l_code_span.same_text(r_code_span, data),
-            (
-                Self::SentenceBreakInInlineScope {
-                    scope_start: l_scope_start,
-                },
-                InterpError::SentenceBreakInInlineScope {
-                    scope_start: r_scope_start,
-                },
-            ) => l_scope_start.same_text(r_scope_start, data),
-            (
-                Self::ParaBreakInInlineScope {
-                    scope_start: l_scope_start,
-                },
-                InterpError::ParaBreakInInlineScope {
-                    scope_start: r_scope_start,
-                    ..
-                },
-            ) => l_scope_start.same_text(r_scope_start, data),
-            (
-                Self::BlockOwnerCodeHasNoScope {
-                    code_span: l_code_span,
-                },
-                InterpError::BlockOwnerCodeHasNoScope {
-                    code_span: r_code_span,
-                },
-            ) => l_code_span.same_text(r_code_span, data),
-            (
-                Self::InlineOwnerCodeHasNoScope {
-                    code_span: l_code_span,
-                },
-                InterpError::InlineOwnerCodeHasNoScope {
-                    code_span: r_code_span,
-                },
-            ) => l_code_span.same_text(r_code_span, data),
-
-            (
-                Self::PythonErr {
-                    pyerr: l_pyerr,
-                    code_span: l_code_span,
-                },
-                InterpError::PythonErr {
-                    ctx: _, // TODO this is user-facing - do we need to test it?
-                    pyerr: r_pyerr,
-                    code_span: r_code_span,
-                },
-            ) => dbg!(l_pyerr).is_match(&dbg!(r_pyerr)) && l_code_span.same_text(r_code_span, data),
-
-            (
-                Self::EscapedNewlineOutsideParagraph { newline: l_newline },
-                InterpError::EscapedNewlineOutsideParagraph { newline: r_newline },
-            ) => l_newline.same_text(r_newline, data),
-
-            (
-                Self::DocSegmentHeaderMidPara {
-                    code_span: l_code_span,
-                },
-                InterpError::DocSegmentHeaderMidPara {
-                    code_span: r_code_span,
-                },
-            ) => l_code_span.same_text(r_code_span, data),
-
-            (
-                Self::DocSegmentHeaderMidScope {
-                    code_span: l_code_span,
-                    block_close_span: l_block_close_span,
-                    enclosing_scope_start: l_enclosing_scope_start,
-                },
-                InterpError::DocSegmentHeaderMidScope {
-                    code_span: r_code_span,
-                    block_close_span: r_block_close_span,
-                    enclosing_scope_start: r_enclosing_scope_start,
-                },
-            ) => {
-                (l_code_span.same_text(r_code_span, data))
-                    && (match (l_block_close_span, r_block_close_span) {
-                        (Some(l), Some(r)) => l.same_text(r, data),
-                        (None, None) => true,
-                        _ => false,
-                    })
-                    && (l_enclosing_scope_start.same_text(r_enclosing_scope_start, data))
-            }
-            (
-                Self::InsufficientBlockSeparation {
-                    last_block: l_last_block,
-                    next_block_start: l_next_block_start,
-                },
-                InterpError::InsufficientBlockSeparation {
-                    last_block: r_last_block,
-                    next_block_start: r_next_block_start,
-                },
-            ) => {
-                l_last_block.same_text(r_last_block, data)
-                    && l_next_block_start.same_text(r_next_block_start, data)
-            }
-            (
-                Self::InsufficientParaNewBlockOrFileSeparation {
-                    para: l_para,
-                    next_block_start: l_next_block_start,
-                    was_block_not_file: l_was_block_not_file,
-                },
-                InterpError::InsufficientParaNewBlockOrFileSeparation {
-                    para: r_para,
-                    next_block_start: r_next_block_start,
-                    was_block_not_file: r_was_block_not_file,
-                },
-            ) => {
-                l_para.same_text(r_para, data)
-                    && l_next_block_start.same_text(r_next_block_start, data)
-            }
-            _ => false,
-        }
-    }
-}
-
-const GLOBALS_CODE: &'static str = r#"
-# The Rust module name is _native, which is included under turnip_text, so Python IDEs don't try to import directly from it.
-# This means we use _native instead of turnip_text as the module name here.
-from _native import InlineScope, Text, BlockScope, TurnipTextSource, Paragraph, Sentence, Raw
-
-class FauxBlock:
-    is_block = True
-    def __init__(self, contents):
-        self.test_block = contents
-
-class FauxInline:
-    is_inline = True
-    def __init__(self, contents):
-        self.test_inline = contents
-
-class FauxInlineRaw:
-    is_inline = True
-    def __init__(self, raw_str):
-        self.test_raw_str = str(raw_str)
-
-class TestBlockBuilder:
-    def build_from_blocks(self, contents):
-        return FauxBlock(contents)
-    
-class TestInlineBuilder:
-    def build_from_inlines(self, contents):
-        return FauxInline(contents)
-
-class TestRawInlineBuilder:
-    def build_from_raw(self, raw_str):
-        return FauxInlineRaw(raw_str)
-
-TEST_BLOCK = FauxBlock(BlockScope([]))
-TEST_INLINE = FauxInline(InlineScope([]))
-TEST_INLINE_RAW = FauxInlineRaw("")
-
-class TestRawBlockBuilder:
-    def build_from_raw(self, raw_str):
-        return TEST_BLOCK
-
-class TestBlockSwallower():
-    def build_from_blocks(self, contents):
-        return None
-class TestInlineSwallower():
-    def build_from_inlines(self, contents):
-        return None
-class TestRawSwallower():
-    def build_from_raw(self, raw):
-        return None
-
-TEST_BLOCK_BUILDER = TestBlockBuilder()
-TEST_INLINE_BUILDER = TestInlineBuilder()
-TEST_RAW_INLINE_BUILDER = TestRawInlineBuilder()
-TEST_RAW_BLOCK_BUILDER = TestRawBlockBuilder()
-
-TEST_BLOCK_SWALLOWER = TestBlockSwallower()
-TEST_INLINE_SWALLOWER = TestInlineSwallower()
-TEST_RAW_SWALLOWER = TestRawSwallower()
-
-TEST_PROPERTY = property(lambda x: 5)
-
-class TestDocSegmentHeader:
-    is_segment_header = True
-    weight = 0
-    def __init__(self, weight=0, test_block=None, test_inline=None):
-        self.weight = weight
-        self.test_block = test_block
-        self.test_inline = test_inline
-
-class TestDocSegmentBuilder:
-    def __init__(self, weight=0):
-        self.weight=weight
-    def build_from_blocks(self, contents):
-        return TestDocSegmentHeader(weight=self.weight, test_block=contents)
-    def build_from_inlines(self, contents):
-        return TestDocSegmentHeader(weight=self.weight, test_inline=contents)
-    def build_from_raw(self, raw):
-        return TestDocSegmentHeader(weight=self.weight, test_inline=InlineScope([Raw(raw)]))
-
-def test_src(contents):
-    return TurnipTextSource.from_string(contents)
-
-class TestBlockBuilderFromInline:
-    def build_from_inlines(self, contents: InlineScope):
-        return FauxBlock(BlockScope([Paragraph([Sentence([contents])])]))
-
-TEST_BLOCK_BUILDER_FROM_INLINE = TestBlockBuilderFromInline()
-
-class TestDummyInlineBuilderFromBlock:
-    def __init__(self, dummy_text: str):
-        self.dummy_text = dummy_text
-    def build_from_blocks(self, contents):
-        return Text(self.dummy_text)
-"#;
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct TestDocSegment {
-    header: Option<(i64, Option<TestBlock>, Option<TestInline>)>,
-    contents: TestBlock,
-    subsegments: Vec<TestDocSegment>,
-}
-#[derive(Debug, PartialEq, Eq)]
-pub enum TestBlock {
-    BlockScope(Vec<TestBlock>),
-    Paragraph(Vec<Vec<TestInline>>),
-
-    TestOwnedBlock(Vec<TestBlock>),
-}
-#[derive(Debug, PartialEq, Eq)]
-pub enum TestInline {
-    InlineScope(Vec<TestInline>),
-    Text(String),
-    Raw(String),
-
-    /// Test-only - a Python object built from an inline scope with test_inline: List[Inline] = the contents of that scope
-    TestOwnedInline(Vec<TestInline>),
-    /// Test-only - a Python object built from raw text with test_raw_str: str = the raw text
-    TestOwnedRaw(String),
-}
-pub fn test_doc(contents: Vec<TestBlock>) -> TestDocSegment {
-    TestDocSegment {
-        header: None,
-        contents: TestBlock::BlockScope(contents),
-        subsegments: vec![],
-    }
-}
-pub fn test_sentence(s: impl Into<String>) -> Vec<TestInline> {
-    vec![TestInline::Text(s.into())]
-}
-pub fn test_text(s: impl Into<String>) -> TestInline {
-    TestInline::Text(s.into())
-}
-pub fn test_raw_text(s: impl Into<String>) -> TestInline {
-    TestInline::Raw(s.into())
-}
-
-pub trait PyToTest<T> {
-    fn as_test(&self, py: Python) -> T;
-}
-impl PyToTest<TestDocSegment> for PyAny {
-    fn as_test(&self, py: Python) -> TestDocSegment {
-        if let Ok(doc_segment) = self.extract::<DocSegment>() {
-            TestDocSegment {
-                header: doc_segment.header.map(|header| {
-                    let weight = DocSegmentHeader::get_weight(py, header.as_ref(py))
-                        .expect("Couldn't get_weight of header");
-                    let block_contents = match header.as_ref(py).getattr("test_block") {
-                        Ok(test_block) => {
-                            if test_block.is_none() {
-                                None
-                            } else {
-                                Some(test_block.as_test(py))
-                            }
-                        }
-                        Err(_) => None,
-                    };
-                    let inline_contents = match header.as_ref(py).getattr("test_inline") {
-                        Ok(test_inline) => {
-                            if test_inline.is_none() {
-                                None
-                            } else {
-                                Some(test_inline.as_test(py))
-                            }
-                        }
-                        Err(_) => None,
-                    };
-                    (weight, block_contents, inline_contents)
-                }),
-                contents: doc_segment.contents.as_ref(py).as_test(py),
-                subsegments: doc_segment
-                    .subsegments
-                    .list(py)
-                    .iter()
-                    .map(|subseg| subseg.as_test(py))
-                    .collect(),
-            }
-        } else {
-            let repr = match self.repr() {
-                Ok(py_str) => py_str.to_string(),
-                Err(_) => "<couldn't call __repr__>".to_owned(),
-            };
-            panic!("Expected DocSegment, got {repr}")
-        }
-    }
-}
-impl PyToTest<TestBlock> for PyAny {
-    fn as_test(&self, py: Python) -> TestBlock {
-        if let Ok(block) = self.extract::<BlockScope>() {
-            TestBlock::BlockScope(
-                block
-                    .0
-                    .list(py)
-                    .iter()
-                    .map(|obj| PyToTest::as_test(obj, py))
-                    .collect(),
-            )
-        } else if let Ok(para) = self.extract::<Paragraph>() {
-            TestBlock::Paragraph(
-                para.0
-                    .list(py)
-                    .iter()
-                    .map(|obj| PyToTest::as_test(obj, py))
-                    .collect(),
-            )
-        } else if let Ok(obj) = self.getattr("test_block") {
-            TestBlock::TestOwnedBlock(
-                obj.extract::<BlockScope>()
-                    .unwrap()
-                    .0
-                    .list(py)
-                    .iter()
-                    .map(|obj| PyToTest::as_test(obj, py))
-                    .collect(),
-            )
-        } else {
-            let repr = match self.repr() {
-                Ok(py_str) => py_str.to_string(),
-                Err(_) => "<couldn't call __repr__>".to_owned(),
-            };
-            panic!("Expected BlockNode-like, got {repr}")
-        }
-    }
-}
-impl PyToTest<Vec<TestInline>> for PyAny {
-    fn as_test(&self, py: Python) -> Vec<TestInline> {
-        if let Ok(sentence) = self.extract::<Sentence>() {
-            sentence
-                .0
-                .list(py)
-                .iter()
-                .map(|obj| PyToTest::as_test(obj, py))
-                .collect()
-        } else {
-            let repr = match self.repr() {
-                Ok(py_str) => py_str.to_string(),
-                Err(_) => "<couldn't call __repr__>".to_owned(),
-            };
-            panic!("Expected Sentence, got {repr}")
-        }
-    }
-}
-impl PyToTest<TestInline> for PyAny {
-    fn as_test(&self, py: Python) -> TestInline {
-        if let Ok(inl) = self.extract::<InlineScope>() {
-            TestInline::InlineScope(
-                inl.0
-                    .list(py)
-                    .iter()
-                    .map(|obj| PyToTest::as_test(obj, py))
-                    .collect(),
-            )
-        } else if let Ok(text) = self.extract::<Text>() {
-            TestInline::Text(text.0.as_ref(py).to_string())
-        } else if let Ok(text) = self.extract::<Raw>() {
-            TestInline::Raw(text.0.as_ref(py).to_string())
-        } else if let Ok(obj) = self.getattr("test_inline") {
-            TestInline::TestOwnedInline(
-                obj.extract::<InlineScope>()
-                    .unwrap()
-                    .0
-                    .list(py)
-                    .iter()
-                    .map(|obj| PyToTest::as_test(obj, py))
-                    .collect(),
-            )
-        } else if let Ok(text) = dbg!(self.getattr("test_raw_str")) {
-            TestInline::TestOwnedRaw(text.to_string())
-        } else {
-            let repr = match self.repr() {
-                Ok(py_str) => py_str.to_string(),
-                Err(_) => "<couldn't call __repr__>".to_owned(),
-            };
-            panic!("Expected Inline, got {repr}")
-        }
-    }
-}
-
-/// Generate a set of local Python variables used in each test case
-///
-/// Provides `TEST_BLOCK_BUILDER`, `TEST_INLINE_BUILDER`, `TEST_RAW_BUILDER` objects
-/// that can own block, inline, and raw scopes respectively.
-pub fn generate_globals<'interp>(py: Python<'interp>) -> Option<&'interp PyDict> {
-    let globals = PyDict::new(py);
-
-    let result = py.run(GLOBALS_CODE, Some(globals), Some(globals));
-
-    match result {
-        Err(pyerr) => {
-            pyerr.print(py);
-            return None;
-        }
-        Ok(_) => {}
-    };
-
-    Some(globals)
-}
 
 /// Run the lexer and parser on a given piece of text, convert the parsed result to our test versions, and compare with the expected result.
 
-fn expect_parse_err<T: Into<TestTurnipError>>(data: &str, expected_err: T) {
+fn expect_parse_err<'a, T: Into<TestTurnipError<'a>>>(data: &'a str, expected_err: T) {
     expect_parse(data, Err(expected_err.into()))
 }
 
@@ -660,17 +43,20 @@ pub fn expect_parse(data: &str, expected_parse: Result<TestDocSegment, TestTurni
     };
     // If any of the python-related code tried to panic, re-panic here now the mutex is unlocked
     match root {
-        Ok(root) => {
-            if root.is_ok() != expected_parse.is_ok() {
-                panic!("assertion failed, expected\n\t{expected_parse:?}\ngot\n\t{root:?}\n(mismatching success)");
-            } else {
-                match root {
-                    Ok(r) => assert_eq!(expected_parse.unwrap(), r),
-                    Err(e) => assert_eq!(expected_parse.unwrap_err(), e),
+        Ok(root) => match (&root, &expected_parse) {
+            (Ok(doc), Ok(expected_doc)) => assert_eq!(doc, expected_doc),
+            (Err(actual_err), Err(expected_err)) => {
+                let matches = Python::with_gil(|py| {
+                    expected_err.matches(py, &actual_err)
+                });
+                if !matches {
+                    panic!("assertion failed:\nexpected: {expected_err:?}\n  actual: {actual_err:?}");
                 }
             }
+                
+            _ => panic!("assertion failed, expected\n\t{expected_parse:?}\ngot\n\t{root:?}\n(mismatching success)")
         }
-        Err(e) => panic!("{:?}", e),
+        Err(caught_panic) => panic!("{:?}", caught_panic),
     }
 }
 
@@ -868,9 +254,9 @@ pub fn test_owned_block_scope_with_non_block_builder() {
 It was the best of the times, it was the blurst of times
 }
 "#,
-        TestInterpError::PythonErr {
-            pyerr: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None.*").unwrap(),
-            code_span: TestParserSpan("[None]"),
+        TestUserPythonExecError::CoercingBlockScopeBuilder {
+            code: TestParseContext("[", "None", "]"),
+            err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None.*").unwrap(),
         },
     )
 }
@@ -889,9 +275,9 @@ pub fn test_owned_inline_scope() {
 pub fn test_owned_inline_scope_with_non_inline_builder() {
     expect_parse_err(
         r"[None]{special text}",
-        TestInterpError::PythonErr {
-            pyerr: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got None.*").unwrap(),
-            code_span: TestParserSpan("[None]"),
+        TestUserPythonExecError::CoercingInlineScopeBuilder {
+            code: TestParseContext("[", "None", "]"),
+            err: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got None.*").unwrap(),
         },
     )
 }
@@ -919,10 +305,7 @@ pub fn test_owned_inline_raw_scope_with_non_raw_builder() {
         r#"[None]#{
 import os
 }#"#,
-        TestInterpError::PythonErr {
-            pyerr: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got None").unwrap(),
-            code_span: TestParserSpan("[None]"),
-        },
+        TestUserPythonExecError::CoercingRawScopeBuilder { code: TestParseContext("[", "None", "]"), err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got None").unwrap() } 
     )
 }
 
@@ -1088,16 +471,31 @@ pub fn test_newline_inside_inline_scope() {
         "text {scope\n",
         TestInterpError::SentenceBreakInInlineScope {
             scope_start: TestParserSpan("{"),
+            sentence_break: TestParserSpan("\n"),
         },
+    )
+}
+#[test]
+pub fn test_block_scope_open_inline_para() {
+    expect_parse_err(
+        "text {\n",
+        TestInterpError::BlockScopeOpenedInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("text"), line_start: TestParserSpan("text") }, block_scope_open: TestParserSpan("{") },
+    )
+}
+#[test]
+pub fn test_block_scope_open_inline_multiline_para() {
+    expect_parse_err(
+        "1st line
+        2nd line
+        3rd {\n",
+        TestInterpError::BlockScopeOpenedInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("1st"), line_start: TestParserSpan("3rd") }, block_scope_open: TestParserSpan("{") },
     )
 }
 #[test]
 pub fn test_block_scope_open_inline() {
     expect_parse_err(
-        "text {\n",
-        TestInterpError::BlockScopeOpenedMidPara {
-            scope_start: TestParserSpan("{"),
-        },
+        "{text {\n",
+        TestInterpError::BlockScopeOpenedInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParserSpan("{") }, block_scope_open: TestParserSpan("{") },
     )
 }
 #[test]
@@ -1259,11 +657,11 @@ pub fn test_cant_emit_block_from_code_inside_paragraph() {
     expect_parse_err(
         "Lorem ipsum!
 I'm in a [TEST_BLOCK]",
-        TestInterpError::BlockCodeMidPara {
-            code_span: TestParserSpan("[TEST_BLOCK]"),
-        },
+        TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("Lorem"), line_start: TestParserSpan("\n") }, code_span: TestParserSpan("[TEST_BLOCK]") },
     )
 }
+
+// TODO test emitting things that can/can't get coerced to inline?
 
 #[test]
 pub fn test_raw_scope_emitting_block_from_block_level() {
@@ -1287,7 +685,7 @@ pub fn test_raw_scope_emitting_inline_from_block_level() {
 pub fn test_raw_scope_cant_emit_block_inside_paragraph() {
     expect_parse_err(
         "Inside a paragraph, you can't [TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#",
-        TestInterpError::BlockCodeMidPara { code_span: TestParserSpan("[TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#") }
+        TestInterpError::CodeEmittedBlockInInlineMode{ inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("Inside"), line_start: TestParserSpan("Inside") }, code_span: TestParserSpan("[TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#") }
     )
 }
 
@@ -1346,10 +744,7 @@ pub fn test_cant_eval_none_for_block_builder() {
         "[None]{
     That doesn't make any sense! The owner can't be None
 }",
-        TestInterpError::PythonErr {
-            pyerr: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None").unwrap(),
-            code_span: TestParserSpan("[None]"),
-        },
+TestUserPythonExecError::CoercingBlockScopeBuilder { code: TestParseContext ("[", "None", "]"), err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None").unwrap(), },
     )
 }
 
@@ -1359,10 +754,7 @@ pub fn test_cant_assign_for_block_builder() {
         "[x = 5]{
     That doesn't make any sense! The owner can't be an abstract concept of x being something
 }",
-        TestInterpError::PythonErr {
-            pyerr: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None").unwrap(),
-            code_span: TestParserSpan("[x = 5]"),
-        },
+TestUserPythonExecError::CoercingBlockScopeBuilder { code: TestParseContext ("[", "x = 5", "]"), err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None").unwrap(), },
     )
 }
 
@@ -1370,10 +762,7 @@ pub fn test_cant_assign_for_block_builder() {
 pub fn test_cant_assign_for_raw_builder() {
     expect_parse_err(
         "[x = 5]#{That doesn't make any sense! The owner can't be an abstract concept of x being something}#",
-        TestInterpError::PythonErr {
-            pyerr: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got None").unwrap(),
-            code_span: TestParserSpan("[x = 5]"),
-        },
+        TestUserPythonExecError::CoercingRawScopeBuilder { code: TestParseContext ("[", "x = 5", "]"), err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got None").unwrap(), },
     )
 }
 
@@ -1381,10 +770,7 @@ pub fn test_cant_assign_for_raw_builder() {
 pub fn test_cant_assign_for_inline_builder() {
     expect_parse_err(
         "[x = 5]{That doesn't make any sense! The owner can't be an abstract concept of x being something}",
-        TestInterpError::PythonErr {
-            pyerr: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got None").unwrap(),
-            code_span: TestParserSpan ("[x = 5]"),
-        },
+        TestUserPythonExecError::CoercingInlineScopeBuilder { code: TestParseContext ("[", "x = 5", "]"), err: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got None").unwrap(), }
     )
 }
 
@@ -1394,10 +780,7 @@ pub fn test_syntax_errs_passed_thru() {
     // Make sure that something invalid as both still returns a SyntaxError
     expect_parse_err(
         "[1invalid]",
-        TestInterpError::PythonErr {
-            pyerr: Regex::new(r"^SyntaxError\s*:\s*invalid syntax").unwrap(),
-            code_span: TestParserSpan("[1invalid]"),
-        },
+        TestUserPythonExecError::RunningEvalBrackets { code: TestParseContext("[", "1invalid", "]"), err: Regex::new(r"^SyntaxError\s*:\s*invalid syntax").unwrap() },
     )
 }
 
@@ -1484,16 +867,13 @@ mod block_spacing {
             {
                 New Block
             }"#,
-            TestInterpError::InsufficientParaNewBlockOrFileSeparation {
-                para: TestParserSpan("Paragraph one\n"),
-                next_block_start: TestParserSpan("{"),
-                was_block_not_file: true,
-            },
+            TestInterpError::InsufficientBlockSeparation { last_block: TestBlockModeElem::Para(TestParseContext("Paragraph", " one", "\n")), next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("{")) },
         );
     }
 
     // There should always be a blank line between a paragraph ending and code-emitting-block
     // - this is picked up as trying to emit a block inside a paragraph
+    // TODO we have the technology to change this to insufficient block separation
     #[test]
     pub fn test_block_sep_para_code() {
         expect_parse(
@@ -1508,9 +888,7 @@ mod block_spacing {
         expect_parse_err(
             r#"Paragraph one
             [TEST_BLOCK]"#,
-            TestInterpError::BlockCodeMidPara {
-                code_span: TestParserSpan("[TEST_BLOCK]"),
-            },
+            TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("Paragraph"), line_start: TestParserSpan("\n") }, code_span: TestParserSpan("[TEST_BLOCK]") },
         )
     }
 
@@ -1528,8 +906,8 @@ mod block_spacing {
         expect_parse_err(
             r#"[TEST_BLOCK] Paragraph one"#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestParserSpan("[TEST_BLOCK]"),
-                next_block_start: TestParserSpan("Paragraph"),
+                last_block: TestBlockModeElem::BlockFromCode(TestParserSpan("[TEST_BLOCK]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("Paragraph")),
             },
         )
     }
@@ -1565,11 +943,10 @@ mod block_spacing {
             } {
             }"#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestParserSpan(
-                    "{
-            }",
-                ),
-                next_block_start: TestParserSpan("{"),
+                last_block: TestBlockModeElem::BlockScope(TestParseContext(
+                    "{", "\n            ", "}"
+                )),
+                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("{")),
             },
         );
         expect_parse_err(
@@ -1577,11 +954,11 @@ mod block_spacing {
             } {
             }"#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestParserSpan(
+                last_block: TestBlockModeElem::BlockFromCode(TestParserSpan(
                     "[TEST_BLOCK_BUILDER]{
             }",
-                ),
-                next_block_start: TestParserSpan("{"),
+                )),
+                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("{")),
             },
         )
     }
@@ -1618,8 +995,8 @@ mod block_spacing {
             [TEST_BLOCK]      {
             }"#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestParserSpan("[TEST_BLOCK]"),
-                next_block_start: TestParserSpan("{"),
+                last_block: TestBlockModeElem::BlockFromCode(TestParserSpan("[TEST_BLOCK]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("{")),
             },
         )
     }
@@ -1639,8 +1016,8 @@ mod block_spacing {
         expect_parse_err(
             r#"[TEST_BLOCK] [TEST_BLOCK_2]"#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestParserSpan("[TEST_BLOCK]"),
-                next_block_start: TestParserSpan("["),
+                last_block: TestBlockModeElem::BlockFromCode(TestParserSpan("[TEST_BLOCK]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("[")),
             },
         )
     }
@@ -1667,8 +1044,8 @@ Look a test paragraph
 [f] and some more content
         "#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestParserSpan("[f]"),
-                next_block_start: TestParserSpan("and"),
+                last_block: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("and")),
             },
         )
     }
@@ -1701,11 +1078,7 @@ f = test_src("""some content""")
 content
 [f]
         "#,
-            TestInterpError::InsufficientParaNewBlockOrFileSeparation {
-                para: TestParserSpan("content\n"),
-                next_block_start: TestParserSpan("[f]"),
-                was_block_not_file: false,
-            },
+            TestInterpError::InsufficientBlockSeparation { last_block: TestBlockModeElem::Para(TestParseContext("content", "", "\n")), next_block_start: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")) },
         )
     }
     #[test]
@@ -1735,8 +1108,8 @@ f = test_src("""some content""")
 [f] and some more content
         "#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestParserSpan("[f]"),
-                next_block_start: TestParserSpan("and"),
+                last_block: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("and")),
             },
         )
     }
@@ -1767,8 +1140,8 @@ f = test_src("""some content""")
 [f] [f]
         "#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestParserSpan("[f]"),
-                next_block_start: TestParserSpan("["),
+                last_block: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("[")),
             },
         )
     }
@@ -1805,8 +1178,8 @@ f = test_src("""some content""")
 }
         "#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestParserSpan("[f]"),
-                next_block_start: TestParserSpan("["),
+                last_block: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("[")),
             },
         )
     }
@@ -1840,8 +1213,8 @@ f = test_src("""some content""")
 [f] [TEST_INLINE_BUILDER]{some other content}
         "#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestParserSpan("[f]"),
-                next_block_start: TestParserSpan("["),
+                last_block: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("[")),
             },
         )
     }
@@ -1879,8 +1252,8 @@ f = test_src("""some content""")
 }
         "#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestParserSpan("[f]"),
-                next_block_start: TestParserSpan("{"),
+                last_block: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("{")),
             },
         )
     }
@@ -1913,8 +1286,8 @@ f = test_src("""some content""")
 [f]    { some other content }
         "#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestParserSpan("[f]"),
-                next_block_start: TestParserSpan("{"),
+                last_block: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("{")),
             },
         )
     }
@@ -2181,11 +1554,7 @@ mod doc_structure {
             "{
     [TestDocSegmentHeader()]
     }",
-            TestInterpError::DocSegmentHeaderMidScope {
-                code_span: TestParserSpan("[TestDocSegmentHeader()]"),
-                block_close_span: None,
-                enclosing_scope_start: TestParserSpan("{"),
-            },
+        TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParserSpan("{"), code_span: TestParserSpan("[TestDocSegmentHeader()]") }
         )
     }
 
@@ -2198,16 +1567,11 @@ mod doc_structure {
         But if they're in a block scope it shouldn't be allowed :(
     }
     }",
-            TestInterpError::DocSegmentHeaderMidScope {
-                code_span: TestParserSpan(
+        TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParserSpan("{"), code_span: TestParserSpan(
                     "[TestDocSegmentBuilder()]{
         Sometimes docsegmentheaders can be built, too!
         But if they're in a block scope it shouldn't be allowed :(
-    }",
-                ),
-                block_close_span: None,
-                enclosing_scope_start: TestParserSpan("{"),
-            },
+    }"), }
         )
     }
 
@@ -2217,11 +1581,7 @@ mod doc_structure {
             "[TEST_BLOCK_BUILDER]{
     [TestDocSegmentHeader()]
     }",
-            TestInterpError::DocSegmentHeaderMidScope {
-                code_span: TestParserSpan("[TestDocSegmentHeader()]"),
-                block_close_span: None,
-                enclosing_scope_start: TestParserSpan("{"),
-            },
+    TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParserSpan("{"), code_span: TestParserSpan("[TestDocSegmentHeader()]"), },
         )
     }
 
@@ -2299,11 +1659,7 @@ header_in_file = test_src("""
         [header_in_file]
         
         Content outside file!"#,
-            TestInterpError::DocSegmentHeaderMidScope {
-                code_span: TestParserSpan("[TestDocSegmentHeader(weight=123)]"),
-                block_close_span: None,
-                enclosing_scope_start: TestParserSpan("{"),
-            },
+        TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParserSpan("{"), code_span: TestParserSpan("[TestDocSegmentHeader(weight=123)]") },
         )
     }
 
@@ -2325,11 +1681,7 @@ Content in file!
             
             Content outside file!
         }"#,
-            TestInterpError::DocSegmentHeaderMidScope {
-                code_span: TestParserSpan("[TestDocSegmentHeader(weight=123)]"),
-                block_close_span: None,
-                enclosing_scope_start: TestParserSpan("{"),
-            },
+        TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParserSpan("{"), code_span: TestParserSpan("[TestDocSegmentHeader(weight=123)]"),},
         )
     }
 
@@ -2337,8 +1689,7 @@ Content in file!
     fn test_cant_create_header_in_paragraph() {
         expect_parse_err(
             "And as I was saying [TestDocSegmentHeader()]",
-            TestInterpError::DocSegmentHeaderMidPara {
-                code_span: TestParserSpan("[TestDocSegmentHeader()]"),
+            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("And"), line_start: TestParserSpan("And") }, code_span: TestParserSpan("[TestDocSegmentHeader()]"),
             },
         )
     }
@@ -2347,8 +1698,7 @@ Content in file!
     fn test_cant_create_header_inline() {
         expect_parse_err(
             "[TEST_BLOCK_BUILDER_FROM_INLINE]{ [TestDocSegmentHeader()] }",
-            TestInterpError::DocSegmentHeaderMidPara {
-                code_span: TestParserSpan("[TestDocSegmentHeader()]"),
+            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParserSpan("{") }, code_span: TestParserSpan("[TestDocSegmentHeader()]"),
             },
         )
     }
@@ -2492,9 +1842,7 @@ f4 = test_src("""
     fn test_no_inserted_file_in_paragraph() {
         expect_parse_err(
             r#"wow i'm inside a paragraph! [test_src("some more data O.O")]"#,
-            TestInterpError::InsertedFileMidPara {
-                code_span: TestParserSpan(r#"[test_src("some more data O.O")]"#),
-            },
+            TestInterpError::CodeEmittedSourceInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("wow"), line_start: TestParserSpan("wow") }, code_span: TestParserSpan(r#"[test_src("some more data O.O")]"#) },
         )
     }
 
@@ -2502,9 +1850,7 @@ f4 = test_src("""
     fn test_no_inserted_file_in_inline_scope() {
         expect_parse_err(
             r#"{ wow i'm inside an inline scope! [test_src("some more data O.O")] }"#,
-            TestInterpError::InsertedFileMidPara {
-                code_span: TestParserSpan(r#"[test_src("some more data O.O")]"#),
-            },
+            TestInterpError::CodeEmittedSourceInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParserSpan("{") } , code_span: TestParserSpan(r#"[test_src("some more data O.O")]"#) },
         )
     }
 
@@ -2512,9 +1858,7 @@ f4 = test_src("""
     fn test_no_inserted_file_in_inline_builder() {
         expect_parse_err(
             r#"[TEST_INLINE_BUILDER]{wow i'm inside an inline scope builder! [test_src("some more data O.O")] }"#,
-            TestInterpError::InsertedFileMidPara {
-                code_span: TestParserSpan(r#"[test_src("some more data O.O")]"#),
-            },
+            TestInterpError::CodeEmittedSourceInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParserSpan("{") } , code_span: TestParserSpan(r#"[test_src("some more data O.O")]"#) },
         )
     }
 
@@ -2673,11 +2017,9 @@ mod flexibility {
     fn test_inline_scope_builder_building_block_in_inline() {
         expect_parse_err(
             "{wow i'm in an inline context [TEST_BLOCK_BUILDER_FROM_INLINE]{only inlines :)}}",
-            TestInterpError::BlockCodeMidPara {
-                code_span: super::TestParserSpan(
-                    "[TEST_BLOCK_BUILDER_FROM_INLINE]{only inlines :)}",
-                ),
-            },
+            TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParserSpan("{") }, code_span: TestParserSpan(
+                "[TEST_BLOCK_BUILDER_FROM_INLINE]{only inlines :)}",
+            ) },
         )
     }
 
@@ -2689,11 +2031,9 @@ mod flexibility {
                 Stuff
             } continuing the inline context}
         "#,
-            TestInterpError::BlockCodeMidPara {
-                code_span: super::TestParserSpan(
-                    "[TEST_BLOCK_BUILDER]{\n                Stuff\n            }",
-                ),
-            },
+        TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParserSpan("{") }, code_span: TestParserSpan(
+            "[TEST_BLOCK_BUILDER]{\n                Stuff\n            }",
+        ) },
         )
     }
 
@@ -2701,9 +2041,7 @@ mod flexibility {
     fn test_raw_scope_builder_building_block_in_inline() {
         expect_parse_err(
             "{wow i'm in an inline context [TEST_RAW_BLOCK_BUILDER]#{ block! }# continuing the inline context}",
-            TestInterpError::BlockCodeMidPara {
-                code_span: super::TestParserSpan("[TEST_RAW_BLOCK_BUILDER]#{ block! }#"),
-            },
+            TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParserSpan("{") }, code_span: TestParserSpan("[TEST_RAW_BLOCK_BUILDER]#{ block! }#") },
         )
     }
 
@@ -2779,14 +2117,12 @@ mod flexibility {
     // Even if each builder can build blocks, they shouldn't be able to emit a header in an inline context
 
     #[test]
-    fn test_inline_scope_builder_building_header_in_inline() {
+    fn test_inline_scope_builder_building_header_in_inline_mode_para() {
         expect_parse_err(
             "And as I was saying [TestDocSegmentBuilder()]{ Wowee i wish I had inline content }",
-            TestInterpError::DocSegmentHeaderMidPara {
-                code_span: TestParserSpan(
-                    "[TestDocSegmentBuilder()]{ Wowee i wish I had inline content }",
-                ),
-            },
+            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("And"), line_start: TestParserSpan("And") }, code_span: TestParserSpan(
+                "[TestDocSegmentBuilder()]{ Wowee i wish I had inline content }",
+            ), },
         )
     }
 
@@ -2796,13 +2132,11 @@ mod flexibility {
             "And as I was saying [TestDocSegmentBuilder()]{
                 Wowee i wish I had block content
             }",
-            TestInterpError::DocSegmentHeaderMidPara {
-                code_span: TestParserSpan(
-                    "[TestDocSegmentBuilder()]{
+            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("And"), line_start: TestParserSpan("And") }, code_span: TestParserSpan(
+                "[TestDocSegmentBuilder()]{
                 Wowee i wish I had block content
             }",
-                ),
-            },
+            ), },
         )
     }
 
@@ -2813,14 +2147,12 @@ mod flexibility {
                 I had inline 
                 and raw
                 content }#",
-            TestInterpError::DocSegmentHeaderMidPara {
-                code_span: TestParserSpan(
+                TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("And"), line_start: TestParserSpan("And") }, code_span: TestParserSpan(
                     "[TestDocSegmentBuilder()]#{ Wowee i wish 
                 I had inline 
                 and raw
                 content }#",
-                ),
-            },
+                ), },
         )
     }
 
@@ -2974,11 +2306,8 @@ class Super:
         expect_parse_err(
             "[TEST_BLOCK]{
         }",
-            TestInterpError::PythonErr {
-                pyerr: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got <FauxBlock.*")
-                    .unwrap(),
-                code_span: TestParserSpan("[TEST_BLOCK]"),
-            },
+            TestUserPythonExecError::CoercingBlockScopeBuilder { code: TestParseContext("[", "TEST_BLOCK", "]"), err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got <FauxBlock.*")
+            .unwrap(), },
         )
     }
 
@@ -3012,13 +2341,8 @@ class Super:
         // Test that things that can't build throw errors
         expect_parse_err(
             "[TEST_INLINE]{}",
-            TestInterpError::PythonErr {
-                pyerr: Regex::new(
-                    r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got <FauxInline.*",
-                )
-                .unwrap(),
-                code_span: TestParserSpan("[TEST_INLINE]"),
-            },
+            TestUserPythonExecError::CoercingInlineScopeBuilder { code: TestParseContext("[", "TEST_INLINE", "]"), err: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got <FauxInline.*")
+            .unwrap(), },
         )
     }
 
@@ -3052,11 +2376,8 @@ class Super:
         // Test that things that can't build throw errors
         expect_parse_err(
             "[TEST_INLINE]#{}#",
-            TestInterpError::PythonErr {
-                pyerr: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got <FauxInline.*")
-                    .unwrap(),
-                code_span: TestParserSpan("[TEST_INLINE]"),
-            },
+            TestUserPythonExecError::CoercingRawScopeBuilder { code: TestParseContext("[", "TEST_INLINE", "]"), err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got <FauxInline.*")
+            .unwrap(), },
         )
     }
 }

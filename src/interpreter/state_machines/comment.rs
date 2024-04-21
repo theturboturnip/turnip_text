@@ -2,7 +2,11 @@ use std::{cell::RefCell, rc::Rc};
 
 use pyo3::{prelude::*, types::PyDict};
 
-use crate::{error::TurnipTextContextlessResult, lexer::TTToken};
+use crate::{
+    error::TurnipTextContextlessResult,
+    lexer::TTToken,
+    util::{ParseContext, ParseSpan},
+};
 
 use super::{rc_refcell, BuildFromTokens, BuildStatus, PushToNextLevel};
 
@@ -36,6 +40,16 @@ impl BuildFromTokens for CommentFromTokens {
         pushed: Option<PushToNextLevel>,
         // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        panic!("CommentFromTokens does not spawn inner builders")
+        unreachable!("CommentFromTokens does not spawn inner builders")
+    }
+
+    fn on_emitted_source_inside(
+        &mut self,
+        code_emitting_source: ParseContext,
+    ) -> TurnipTextContextlessResult<()> {
+        unreachable!("CommentFromTokens does not spawn an inner code builder, so cannot have a source file emitted inside")
+    }
+    fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan) {
+        unreachable!("CommentFromTokens does not spawn an inner code builder, so cannot have a source file emitted inside")
     }
 }

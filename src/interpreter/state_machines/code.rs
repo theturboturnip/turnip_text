@@ -5,7 +5,7 @@ use pyo3::{exceptions::PySyntaxError, ffi::Py_None, intern, prelude::*, types::P
 use crate::{
     error::{
         interp::{InterpError, MapContextlessResult},
-        TurnipTextContextlessResult,
+        TurnipTextContextlessResult, UserPythonExecError,
     },
     lexer::TTToken,
     python::{
@@ -58,11 +58,12 @@ impl BuildFromTokens for CodeFromTokens {
                     TTToken::CodeClose(_, n_close_brackets)
                         if n_close_brackets == self.n_closing =>
                     {
-                        let res: &PyAny = eval_or_exec(py, py_env, &self.code).err_as_interp(
-                            py,
-                            "Error evaluating contents of eval-brackets",
-                            self.ctx.full_span(),
-                        )?;
+                        let res: &PyAny = eval_or_exec(py, py_env, &self.code).map_err(|err| {
+                            UserPythonExecError::RunningEvalBrackets {
+                                code: self.ctx,
+                                err,
+                            }
+                        })?;
 
                         // If we evaluated a TurnipTextSource, it may not be a builder of any kind thus we can finish immediately.
                         if let Ok(inserted_file) = res.extract::<TurnipTextSource>() {
@@ -74,8 +75,7 @@ impl BuildFromTokens for CodeFromTokens {
                     }
                     TTToken::EOF(_) => Err(InterpError::EndedInsideCode {
                         code_start: self.ctx.full_span(), // TODO use first_tok here
-                    }
-                    .into()),
+                    })?,
                     _ => {
                         // Code blocks use raw stringification to avoid confusion between text written and text entered
                         self.code.push_str(tok.stringify_raw(data));
@@ -131,12 +131,13 @@ impl BuildFromTokens for CodeFromTokens {
                             BlockElem::FromCode(block).into(),
                         ))))
                     } else {
-                        let inline = coerce_to_inline_pytcref(py, evaled_result_ref)
-                            .err_as_interp(
-                                py,
-                                "This eval-bracket had no attached scope and returned something that wasn't None, Header, Block, or coercible to Inline.",
-                                self.ctx.full_span(),
-                            )?;
+                        let inline =
+                            coerce_to_inline_pytcref(py, evaled_result_ref).map_err(|err| {
+                                UserPythonExecError::CoercingNonBuilderEvalBracket {
+                                    code: self.ctx,
+                                    obj: evaled_result.clone_ref(py),
+                                }
+                            })?;
                         Ok(BuildStatus::DoneAndReprocessToken(Some((
                             self.ctx,
                             InlineElem::FromCode(inline).into(),
@@ -160,10 +161,11 @@ impl BuildFromTokens for CodeFromTokens {
             DocElement::Block(BlockElem::BlockScope(blocks)) => {
                 let builder: PyTcRef<BlockScopeBuilder> =
                     PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
-                    .err_as_interp(
-                        py,
-                        "Expected a BlockScopeBuilder because the eval-brackets were followed by a block scope", self.ctx.full_span()
-                    )?;
+                        .map_err(|err| UserPythonExecError::CoercingBlockScopeBuilder {
+                            code: self.ctx,
+                            obj: evaled_result_ref.to_object(py),
+                            err,
+                        })?;
 
                 // Now that we know coersion is a success, update the code span
                 assert!(
@@ -177,11 +179,11 @@ impl BuildFromTokens for CodeFromTokens {
             DocElement::Inline(InlineElem::InlineScope(inlines)) => {
                 let builder: PyTcRef<InlineScopeBuilder> =
                     PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
-                    .err_as_interp(
-                        py,
-                        "Expected an InlineScopeBuilder because the eval-brackets were followed by an inline scope",
-                        self.ctx.full_span()
-                    )?;
+                        .map_err(|err| UserPythonExecError::CoercingInlineScopeBuilder {
+                            code: self.ctx,
+                            obj: evaled_result_ref.to_object(py),
+                            err,
+                        })?;
 
                 // Now that we know coersion is a success, update the code span
                 assert!(
@@ -195,11 +197,11 @@ impl BuildFromTokens for CodeFromTokens {
             DocElement::Inline(InlineElem::Raw(raw)) => {
                 let builder: PyTcRef<RawScopeBuilder> =
                     PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
-                    .err_as_interp(
-                        py,
-                        "Expected a RawScopeBuilder because the eval-brackets were followed by a raw scope",
-                    self.ctx.full_span()
-                    )?;
+                        .map_err(|err| UserPythonExecError::CoercingRawScopeBuilder {
+                            code: self.ctx,
+                            obj: evaled_result_ref.to_object(py),
+                            err,
+                        })?;
 
                 // Now that we know coersion is a success, update the code span
                 assert!(
@@ -227,6 +229,16 @@ impl BuildFromTokens for CodeFromTokens {
             )))),
             BuilderOutcome::None => Ok(BuildStatus::Done(None)),
         }
+    }
+
+    fn on_emitted_source_inside(
+        &mut self,
+        code_emitting_source: ParseContext,
+    ) -> TurnipTextContextlessResult<()> {
+        unreachable!("CodeFromTokens does not spawn an inner code builder, so cannot have a source file emitted inside")
+    }
+    fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan) {
+        unreachable!("CodeFromTokens does not spawn an inner code builder, so cannot have a source file emitted inside")
     }
 }
 

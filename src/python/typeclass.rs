@@ -32,10 +32,11 @@ impl<T: PyTypeclass> PyTcRef<T> {
             Ok(Self(obj.into(), PhantomData::default()))
         } else {
             let obj_repr = obj.repr()?;
+            // TODO make fits_typeclass() return a specific TypeError instead of doing a catch-all here.
             Err(PyTypeError::new_err(format!(
-                "Expected object fitting typeclass {} while handling {}, didn't get it. Got {}",
-                T::NAME,
+                "Expected {} to be an instance of {}, but it wasn't. Got {}",
                 context,
+                T::NAME,
                 obj_repr.to_str()?
             )))
         }

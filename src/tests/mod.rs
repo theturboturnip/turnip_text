@@ -4,6 +4,7 @@
 //! All tests are disabled unless compiled without the feature to make it clear that's necessary.
 #![cfg(all(test, not(feature = "extension-module")))]
 
+mod helpers;
 mod test_lexer;
 mod test_lexer_parser;
 mod test_parser;

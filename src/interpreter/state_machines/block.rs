@@ -4,7 +4,7 @@ use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
     error::{
-        interp::{InterpError, MapContextlessResult},
+        interp::{BlockModeElem, InterpError, MapContextlessResult},
         TurnipTextContextlessError, TurnipTextContextlessResult,
     },
     interpreter::InterimDocumentStructure,
@@ -123,7 +123,7 @@ trait BlockTokenProcessor {
 pub struct TopLevelDocumentBuilder {
     /// The current structure of the document, including toplevel content, segments, and the current block stacks (one block stack per included subfile)
     structure: InterimDocumentStructure,
-    expects_blank_line_after: Option<ParseSpan>,
+    expects_blank_line_after: Option<BlockModeElem>,
 }
 impl TopLevelDocumentBuilder {
     pub fn new(py: Python) -> PyResult<Rc<RefCell<Self>>> {
@@ -150,10 +150,10 @@ impl BlockTokenProcessor for TopLevelDocumentBuilder {
         tok: TTToken,
     ) -> TurnipTextContextlessError {
         InterpError::InsufficientBlockSeparation {
-            last_block: self.expects_blank_line_after.expect(
+            last_block: std::mem::take(&mut self.expects_blank_line_after).expect(
                 "This function is only called when self.expects_blank_line_after.is_some()",
             ),
-            next_block_start: tok.token_span(),
+            next_block_start: BlockModeElem::AnyToken(tok.token_span()),
         }
         .into()
     }
@@ -191,7 +191,8 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
 
     fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan) {
         // An inner file must have come from emitted code - a blank line must be seen before any new content after code emitting a file
-        self.expects_blank_line_after = Some(inner_source_emitted_by);
+        self.expects_blank_line_after =
+            Some(BlockModeElem::SourceFromCode(inner_source_emitted_by));
     }
 
     // This builder is responsible for spawning lower-level builders
@@ -221,7 +222,8 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
                     // We don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
                     // Thus, set expects_blank_line.
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
-                    self.expects_blank_line_after = Some(elem_ctx.full_span());
+                    self.expects_blank_line_after =
+                        Some(BlockModeElem::HeaderFromCode(elem_ctx.full_span()));
                     self.structure.push_segment_header(py, header)?;
                     Ok(BuildStatus::Continue)
                 }
@@ -235,7 +237,7 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
                     // In the cases of 2, 3, and 4 we don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
                     // Thus, set expects_blank_line.
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
-                    self.expects_blank_line_after = Some(elem_ctx.full_span());
+                    self.expects_blank_line_after = Some((elem_ctx, &block).into());
                     self.structure.push_to_topmost_block(py, block.as_ref(py))?;
                     Ok(BuildStatus::Continue)
                 }
@@ -254,7 +256,7 @@ pub struct BlockScopeFromTokens {
     block_scope: Py<BlockScope>,
     /// If Some(), contains the span of a previously encountered token on this line that finished a block.
     /// New content is not allowed on the same line after finishing a block.
-    expects_blank_line_after: Option<ParseSpan>,
+    expects_blank_line_after: Option<BlockModeElem>,
 }
 impl BlockScopeFromTokens {
     pub fn new_unowned(
@@ -281,10 +283,10 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
         tok: TTToken,
     ) -> TurnipTextContextlessError {
         InterpError::InsufficientBlockSeparation {
-            last_block: self.expects_blank_line_after.expect(
+            last_block: std::mem::take(&mut self.expects_blank_line_after).expect(
                 "This function is only called when self.expects_blank_line_after.is_some()",
             ),
-            next_block_start: tok.token_span(),
+            next_block_start: BlockModeElem::AnyToken(tok.token_span()),
         }
         .into()
     }
@@ -331,7 +333,8 @@ impl BuildFromTokens for BlockScopeFromTokens {
 
     fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan) {
         // An inner file must have come from emitted code - a blank line must be seen before any new content after code emitting a file
-        self.expects_blank_line_after = Some(inner_source_emitted_by);
+        self.expects_blank_line_after =
+            Some(BlockModeElem::SourceFromCode(inner_source_emitted_by));
     }
 
     fn process_token(
@@ -353,12 +356,14 @@ impl BuildFromTokens for BlockScopeFromTokens {
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match pushed {
             Some((elem_ctx, elem)) => match elem {
-                DocElement::HeaderFromCode(_) => Err(InterpError::DocSegmentHeaderMidScope {
-                    code_span: elem_ctx.full_span(),
-                    block_close_span: None,
-                    enclosing_scope_start: self.ctx.first_tok(),
+                DocElement::HeaderFromCode(header) => {
+                    Err(InterpError::CodeEmittedHeaderInBlockScope {
+                        block_scope_start: self.ctx.first_tok(),
+                        header,
+                        code_span: elem_ctx.full_span(),
+                    }
+                    .into())
                 }
-                .into()),
                 DocElement::Block(block) => {
                     // This must have been received from either
                     // 1. a paragraph, which has seen a blank line and ended itself
@@ -369,7 +374,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
                     // In the cases of 2, 3, and 4 we don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
                     // Thus, set expects_blank_line.
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
-                    self.expects_blank_line_after = Some(elem_ctx.full_span());
+                    self.expects_blank_line_after = Some((elem_ctx, &block).into());
                     self.block_scope
                         .borrow_mut(py)
                         .push_block(block.as_ref(py))
@@ -489,6 +494,20 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
             }
             BlockOrInlineScopeFromTokens::Inline(inline) => {
                 inline.on_emitted_source_inside(code_emitting_source)
+            }
+        }
+    }
+
+    fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan) {
+        match self {
+            BlockOrInlineScopeFromTokens::Undecided { .. } => {
+                unreachable!("BlockOrInlineScopeFromTokens::Undecided does not push any builders except comments and thus cannot have source code emitted inside it")
+            }
+            BlockOrInlineScopeFromTokens::Block(block) => {
+                block.on_emitted_source_closed(inner_source_emitted_by)
+            }
+            BlockOrInlineScopeFromTokens::Inline(inline) => {
+                inline.on_emitted_source_closed(inner_source_emitted_by)
             }
         }
     }

@@ -5,7 +5,7 @@ use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, Sou
 
 use crate::{interpreter::ParsingFile, lexer::LexError, util::ParseSpan};
 
-use super::{interp::InterpError, TurnipTextError};
+use super::{interp::InterpError, TurnipTextError, UserPythonExecError};
 
 fn snippet_from_spans<'a>(
     top_label: &'a str,
@@ -73,7 +73,8 @@ impl TurnipTextError {
                 Self::lex_error_snippet(sources, *file_idx, err)
             }
             TurnipTextError::Interp(sources, err) => Self::interp_error_snippet(sources, err),
-            TurnipTextError::Internal(pyerr) => Snippet {
+            TurnipTextError::UserPython(sources, err) => Self::user_python_snippet(sources, err),
+            TurnipTextError::InternalPython(pyerr) => Snippet {
                 title: Some(Annotation {
                     label: Some("Internal Python error"),
                     id: None,
@@ -81,20 +82,6 @@ impl TurnipTextError {
                 }),
                 footer: vec![Annotation {
                     label: Some(&pyerr),
-                    id: None,
-                    annotation_type: AnnotationType::Error,
-                }],
-                slices: vec![],
-                opt: Default::default(),
-            },
-            TurnipTextError::InternalPython(err) => Snippet {
-                title: Some(Annotation {
-                    label: Some("Internal error"),
-                    id: None,
-                    annotation_type: AnnotationType::Error,
-                }),
-                footer: vec![Annotation {
-                    label: Some(&err),
                     id: None,
                     annotation_type: AnnotationType::Error,
                 }],
@@ -135,7 +122,9 @@ impl TurnipTextError {
         sources: &'a Vec<ParsingFile>,
         err: &'a Box<InterpError>,
     ) -> Snippet<'a> {
+        todo!("uncomment");
         use InterpError::*;
+        /*
         match err.as_ref() {
             CodeCloseOutsideCode(span) => snippet_from_spans(
                 "Code close token in text mode",
@@ -473,6 +462,13 @@ impl TurnipTextError {
                 ),
                 opt: Default::default(),
             },
-        }
+        }*/
+    }
+
+    fn user_python_snippet<'a>(
+        sources: &'a Vec<ParsingFile>,
+        error: &Box<UserPythonExecError>,
+    ) -> Snippet<'a> {
+        todo!()
     }
 }
