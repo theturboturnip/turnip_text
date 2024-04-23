@@ -261,10 +261,7 @@ impl ParagraphFromTokens {
 }
 impl InlineTokenProcessor for ParagraphFromTokens {
     fn inline_mode_ctx(&self) -> InlineModeContext {
-        InlineModeContext::Paragraph {
-            para_start: self.ctx.first_tok(),
-            line_start: self.ctx.last_tok(),
-        }
+        InlineModeContext::Paragraph(self.ctx)
     }
 
     fn ignore_whitespace(&self) -> bool {
@@ -291,6 +288,10 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         self.start_of_line = false;
         self.current_building_text
             .encounter_text(tok.stringify_escaped(data));
+        assert!(
+            self.ctx.try_extend(&tok.token_span()),
+            "ParagraphFromTokens got a token from a different file that it was opened in"
+        );
 
         Ok(BuildStatus::Continue)
     }
@@ -303,6 +304,10 @@ impl InlineTokenProcessor for ParagraphFromTokens {
     ) -> TurnipTextContextlessResult<BuildStatus> {
         self.current_building_text
             .encounter_whitespace(tok.stringify_escaped(data));
+        assert!(
+            self.ctx.try_extend(&tok.token_span()),
+            "ParagraphFromTokens got a token from a different file that it was opened in"
+        );
 
         Ok(BuildStatus::Continue)
     }
@@ -347,17 +352,13 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        Ok(BuildStatus::StartInnerBuilder(InlineScopeFromTokens::new(
-            py,
-            tok.token_span(),
-            if self.start_of_line {
-                AmbiguousInlineContext::StartOfLineMidPara {
-                    para_in_progress: self.ctx,
-                }
-            } else {
-                AmbiguousInlineContext::UnambiguouslyInline
-            },
-        )?))
+        Ok(BuildStatus::StartInnerBuilder(
+            InlineLevelAmbiguousScope::new(
+                InlineModeContext::Paragraph(self.ctx),
+                self.start_of_line,
+                tok.token_span(),
+            ),
+        ))
     }
 
     fn on_close_scope(
@@ -439,6 +440,10 @@ impl BuildFromTokens for ParagraphFromTokens {
                 }
                 // If we get an inline, shove it in
                 DocElement::Inline(inline) => {
+                    assert!(self.ctx.try_combine(elem_ctx),
+                        "ParagraphFromTokens got a token from a different file that it was opened in"
+                    );
+
                     self.current_sentence
                         .borrow_mut(py)
                         .push_inline(inline.as_ref(py))
@@ -476,48 +481,154 @@ impl BuildFromTokens for ParagraphFromTokens {
     }
 }
 
-pub enum AmbiguousInlineContext {
-    StartOfLineMidPara { para_in_progress: ParseContext },
-    UnambiguouslyInline,
+/// Parser for a scope which based on context *should* be inline, i.e. if you encounter no content before a newline then you must throw an error.
+pub enum InlineLevelAmbiguousScope {
+    Undecided {
+        preceding_inline: InlineModeContext,
+        start_of_line: bool,
+        scope_ctx: ParseContext,
+    },
+    Known(KnownInlineScopeFromTokens),
+}
+impl InlineLevelAmbiguousScope {
+    pub fn new(
+        preceding_inline: InlineModeContext,
+        start_of_line: bool,
+        start_span: ParseSpan,
+    ) -> Rc<RefCell<Self>> {
+        rc_refcell(Self::Undecided {
+            preceding_inline,
+            start_of_line,
+            scope_ctx: ParseContext::new(start_span, start_span),
+        })
+    }
+}
+impl BuildFromTokens for InlineLevelAmbiguousScope {
+    fn process_token(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        match self {
+            InlineLevelAmbiguousScope::Undecided {
+                preceding_inline,
+                start_of_line,
+                scope_ctx,
+            } => match tok {
+                TTToken::Newline(_) => match preceding_inline {
+                    InlineModeContext::Paragraph(preceding_para) => {
+                        if *start_of_line {
+                            Err(InterpError::InsufficientBlockSeparation {
+                                last_block: BlockModeElem::Para(*preceding_para),
+                                // The start of the next block is our *first* token, not the current token - that's just a newline
+                                next_block_start: BlockModeElem::AnyToken(scope_ctx.first_tok()),
+                            })?
+                        } else {
+                            // TODO test the case where you open a paragraph, then in the middle of a line you insert a block-scope-open - the preceding_para context should be the whole para up to the block-scope-open
+                            Err(InterpError::BlockScopeOpenedInInlineMode {
+                                inl_mode: preceding_inline.clone(),
+                                block_scope_open: scope_ctx.first_tok(),
+                            })?
+                        }
+                    }
+                    InlineModeContext::InlineScope { .. } => {
+                        // TODO test the case where you open a paragraph, then in the middle of a line you insert a block-scope-open *inside an inline scope* - the preceding_para context should be the whole para including that enclosing inline scope
+                        Err(InterpError::BlockScopeOpenedInInlineMode {
+                            inl_mode: preceding_inline.clone(),
+                            block_scope_open: scope_ctx.first_tok(),
+                        })?
+                    }
+                },
+                // Ignore whitespace on the first line
+                TTToken::Whitespace(_) => Ok(BuildStatus::Continue),
+                // This inevitably will fail, because we won't receive any content other than the newline
+                TTToken::Hashes(_, _) => {
+                    Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new()))
+                }
+                // In any other case we're creating *some* content - we must be in an inline scope
+                _ => {
+                    // Transition to an inline builder
+                    let mut inline_builder = KnownInlineScopeFromTokens::new_unowned(
+                        py,
+                        Some(preceding_inline.clone()),
+                        *scope_ctx,
+                    )?;
+                    // Make sure it knows about the new token
+                    let res = inline_builder.process_token(py, py_env, tok, data)?;
+                    // Swap ourselves out with the new state "i am an inline builder"
+                    let _ = std::mem::replace(self, Self::Known(inline_builder));
+                    Ok(res)
+                }
+            },
+            InlineLevelAmbiguousScope::Known(k) => k.process_token(py, py_env, tok, data),
+        }
+    }
+
+    fn process_push_from_inner_builder(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+        pushed: Option<PushToNextLevel>,
+    ) -> TurnipTextContextlessResult<BuildStatus> {
+        match self {
+            InlineLevelAmbiguousScope::Undecided { .. } => {
+                assert!(pushed.is_none(), "ScopeWhichShouldBeInline::Undecided does not push any builders except comments thus cannot receive non-None pushed items");
+                Ok(BuildStatus::Continue)
+            }
+            InlineLevelAmbiguousScope::Known(k) => {
+                k.process_push_from_inner_builder(py, py_env, pushed)
+            }
+        }
+    }
+
+    fn on_emitted_source_inside(
+        &mut self,
+        code_emitting_source: ParseContext,
+    ) -> TurnipTextContextlessResult<()> {
+        match self {
+            InlineLevelAmbiguousScope::Undecided { .. } => unreachable!("ScopeWhichShouldBeInline doesn't spawn non-comment builders in Undecided mode, so can't get a source emitted from them"),
+            InlineLevelAmbiguousScope::Known(k) => k.on_emitted_source_inside(code_emitting_source),
+        }
+    }
+
+    fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan) {
+        match self {
+            InlineLevelAmbiguousScope::Undecided { .. } => unreachable!("ScopeWhichShouldBeInline doesn't spawn non-comment builders in Undecided mode, so can't get a source emitted from them"),
+            InlineLevelAmbiguousScope::Known(k) => k.on_emitted_source_closed(inner_source_emitted_by),
+        }
+    }
 }
 
-pub struct InlineScopeFromTokens {
+/// Parser for a scope that is known to be an inline scope, i.e. has content on the same line as the scope open.
+pub struct KnownInlineScopeFromTokens {
+    preceding_inline: Option<InlineModeContext>,
     ctx: ParseContext,
     inline_scope: Py<InlineScope>,
     start_of_scope: bool,
     current_building_text: InlineTextState,
-    ambiguous_inline_context: AmbiguousInlineContext,
 }
-impl InlineScopeFromTokens {
-    /// Create a new InlineScope builder.
-    ///
-    /// Set `ambiguous_inline_context` to [AmbiguousInlineContext::StartOfLine] if we're at the start of a line, because the user could be correctly continuing the paragraph or incorrectly try to create a new block immediately.
-    /// If a newline is encountered before any non-whitespace content, the user has effectively tried to open a block scope.
-    /// If we're in an ambiguous inline context, the error raised will be [InterpError::InsufficientBlockSeparation] to encourage the user to open the block on a new line.
-    /// In all other cases, the error will be [InterpError::BlockScopeOpenedMidPara] because it's clear that's what they actually were trying to do.
+impl KnownInlineScopeFromTokens {
     pub fn new(
         py: Python,
-        start_span: ParseSpan,
-        ambiguous_inline_context: AmbiguousInlineContext,
+        preceding_inline: Option<InlineModeContext>,
+        ctx: ParseContext,
     ) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
-        Ok(rc_refcell(Self::new_unowned(
-            py,
-            start_span,
-            ambiguous_inline_context,
-        )?))
+        Ok(rc_refcell(Self::new_unowned(py, preceding_inline, ctx)?))
     }
 
     pub fn new_unowned(
         py: Python,
-        start_span: ParseSpan,
-        ambiguous_inline_context: AmbiguousInlineContext,
+        preceding_inline: Option<InlineModeContext>,
+        ctx: ParseContext,
     ) -> TurnipTextContextlessResult<Self> {
         Ok(Self {
-            ctx: ParseContext::new(start_span, start_span),
+            preceding_inline,
+            ctx,
             start_of_scope: true,
             inline_scope: py_internal_alloc(py, InlineScope::new_empty(py))?,
             current_building_text: InlineTextState::new(),
-            ambiguous_inline_context,
         })
     }
 
@@ -538,7 +649,7 @@ impl InlineScopeFromTokens {
         }
     }
 }
-impl InlineTokenProcessor for InlineScopeFromTokens {
+impl InlineTokenProcessor for KnownInlineScopeFromTokens {
     fn inline_mode_ctx(&self) -> InlineModeContext {
         InlineModeContext::InlineScope {
             scope_start: self.ctx.first_tok(),
@@ -586,37 +697,8 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
     }
 
     fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
-        // If there is only whitespace between us and the newline, this is actually a block scope open.
-        // Clearly we're supposed to be in inline mode - InlineScopeFromTokens is only created inside
-        // - BlockOrInlineScopeFromTokens
-        // - anything implementing InlineTokenProcessor i.e.
-        //   - ParagraphFromTokens
-        //   - another instance of InlineScopeFromTokens
-        //
-        // in the BlockOrInlineScopeFromTokens case, the newline would have been used to resolve ambiguity and it would be building a block scope - this function wouldn't have been called.
-        // => if we encounter just whitespace and a newline, we must in inside ParagraphFromTokens or InlineScopeFromTokens
-        // => i.e. we must be in inline mode
-        // => and the user has just tried to open a block scope i.e. r"{\s*\n"
-        // => Error: Block Scope Opened In Inline Mode
-        // (InlineTokenProcessor automatically flushes our content before calling on_newline(), so we don't need to check self.current_building_text).
         if self.inline_scope.borrow_mut(py).__len__(py) == 0 {
-            match self.ambiguous_inline_context {
-                AmbiguousInlineContext::StartOfLineMidPara { para_in_progress } => {
-                    Err(InterpError::InsufficientBlockSeparation {
-                        last_block: BlockModeElem::Para(para_in_progress),
-                        // The start of the next block is our *first* token, not the current token - that's just a newline
-                        next_block_start: BlockModeElem::AnyToken(self.ctx.first_tok()),
-                    }
-                    .into())
-                }
-                AmbiguousInlineContext::UnambiguouslyInline => {
-                    Err(InterpError::BlockScopeOpenedInInlineMode {
-                        inl_mode: self.inline_mode_ctx(),
-                        block_scope_open: self.ctx.first_tok(),
-                    }
-                    .into())
-                }
-            }
+            unreachable!("KnownInlineScopeFromTokens received a newline with no preceding content - was actually a block scope");
         } else {
             // If there was content then we were definitely interrupted in the middle of a sentence
             Err(InterpError::SentenceBreakInInlineScope {
@@ -627,17 +709,30 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         }
     }
 
+    // TODO test error reporting for nested inline scopes
     fn on_open_scope(
         &mut self,
         py: Python,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        Ok(BuildStatus::StartInnerBuilder(InlineScopeFromTokens::new(
-            py,
-            tok.token_span(),
-            AmbiguousInlineContext::UnambiguouslyInline,
-        )?))
+        let new_scopes_inline_context = match self.preceding_inline {
+            // If we're part of a paragraph, the inner scope is part of a paragraph too
+            // Just extend the paragraph to include the current token
+            // TODO test this gets all the tokens up to but not including the inline scope
+            Some(InlineModeContext::Paragraph(preceding_para)) => {
+                let mut new = preceding_para.clone();
+                assert!(new.try_combine(self.ctx), "Paragraph, KnownInlineScopeFromTokens don't generate source files, must always receive tokens from the same file");
+                InlineModeContext::Paragraph(new)
+            }
+            // If we aren't part of a paragraph, say the inner builder is in inline mode because of us
+            None | Some(InlineModeContext::InlineScope { .. }) => InlineModeContext::InlineScope {
+                scope_start: self.ctx.first_tok(),
+            },
+        };
+        Ok(BuildStatus::StartInnerBuilder(
+            InlineLevelAmbiguousScope::new(new_scopes_inline_context, false, tok.token_span()),
+        ))
     }
     fn on_close_scope(
         &mut self,
@@ -663,7 +758,7 @@ impl InlineTokenProcessor for InlineScopeFromTokens {
         .into())
     }
 }
-impl BuildFromTokens for InlineScopeFromTokens {
+impl BuildFromTokens for KnownInlineScopeFromTokens {
     fn process_token(
         &mut self,
         py: Python,

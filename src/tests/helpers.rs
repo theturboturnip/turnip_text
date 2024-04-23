@@ -99,24 +99,13 @@ impl<'a> TestTurnipError<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TestInlineModeContext<'a> {
-    Paragraph {
-        para_start: TestParserSpan<'a>,
-        line_start: TestParserSpan<'a>,
-    },
-    InlineScope {
-        scope_start: TestParserSpan<'a>,
-    },
+    Paragraph(TestParseContext<'a>),
+    InlineScope { scope_start: TestParserSpan<'a> },
 }
 impl<'a> From<(&'a InlineModeContext, &'a Vec<ParsingFile>)> for TestInlineModeContext<'a> {
     fn from(value: (&'a InlineModeContext, &'a Vec<ParsingFile>)) -> Self {
         match value.0 {
-            InlineModeContext::Paragraph {
-                para_start,
-                line_start,
-            } => Self::Paragraph {
-                para_start: (para_start, value.1).into(),
-                line_start: (line_start, value.1).into(),
-            },
+            InlineModeContext::Paragraph(c) => Self::Paragraph((c, value.1).into()),
             InlineModeContext::InlineScope { scope_start } => Self::InlineScope {
                 scope_start: (scope_start, value.1).into(),
             },

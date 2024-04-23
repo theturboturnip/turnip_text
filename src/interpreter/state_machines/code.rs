@@ -19,7 +19,7 @@ use crate::{
 };
 
 use super::{
-    block::BlockOrInlineScopeFromTokens, inline::RawStringFromTokens, rc_refcell, BlockElem,
+    block::BlockLevelAmbiguousScope, inline::RawStringFromTokens, rc_refcell, BlockElem,
     BuildFromTokens, BuildStatus, DocElement, InlineElem, PushToNextLevel,
 };
 
@@ -85,8 +85,9 @@ impl BuildFromTokens for CodeFromTokens {
             }
             // Parse one token after the code ends to see what we should do.
             Some(evaled_result) => match tok {
+                // A scope open could be for a block scope or inline scope - we accept either, so use the BlockLevelAmbiguousScope
                 TTToken::ScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-                    BlockOrInlineScopeFromTokens::new(start_span),
+                    BlockLevelAmbiguousScope::new(start_span),
                 )),
                 TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
                     RawStringFromTokens::new(start_span, n_opening),

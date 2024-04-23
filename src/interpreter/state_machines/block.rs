@@ -16,9 +16,7 @@ use crate::{
 use super::{
     code::CodeFromTokens,
     comment::CommentFromTokens,
-    inline::{
-        AmbiguousInlineContext, InlineScopeFromTokens, ParagraphFromTokens, RawStringFromTokens,
-    },
+    inline::{KnownInlineScopeFromTokens, ParagraphFromTokens, RawStringFromTokens},
     py_internal_alloc, rc_refcell, BlockElem, BuildFromTokens, BuildStatus, DocElement,
     PushToNextLevel,
 };
@@ -89,7 +87,7 @@ trait BlockTokenProcessor {
                 )),
 
                 TTToken::ScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-                    BlockOrInlineScopeFromTokens::new(start_span),
+                    BlockLevelAmbiguousScope::new(start_span),
                 )),
 
                 TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
@@ -393,17 +391,17 @@ impl BuildFromTokens for BlockScopeFromTokens {
 
 /// This builder is initially started with a ScopeOpen token that may be a block scope open (followed by "\s*\n") or an inline scope open (followed by \s*[^\n]).
 /// It starts out [BlockOrInlineScopeFromTokens::Undecided], then based on the following tokens either decides on [BlockOrInlineScopeFromTokens::Block] or [BlockOrInlineScopeFromTokens::Inline] and from then on acts as exactly [BlockScopeFromTokens] or [InlineScopeFromTokens] respectfully.
-pub enum BlockOrInlineScopeFromTokens {
+pub enum BlockLevelAmbiguousScope {
     Undecided { first_tok: ParseSpan },
     Block(BlockScopeFromTokens),
-    Inline(InlineScopeFromTokens),
+    Inline(KnownInlineScopeFromTokens),
 }
-impl BlockOrInlineScopeFromTokens {
+impl BlockLevelAmbiguousScope {
     pub fn new(first_tok: ParseSpan) -> Rc<RefCell<Self>> {
         rc_refcell(Self::Undecided { first_tok })
     }
 }
-impl BuildFromTokens for BlockOrInlineScopeFromTokens {
+impl BuildFromTokens for BlockLevelAmbiguousScope {
     fn process_token(
         &mut self,
         py: Python,
@@ -412,7 +410,7 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match self {
-            BlockOrInlineScopeFromTokens::Undecided { first_tok } => match tok {
+            BlockLevelAmbiguousScope::Undecided { first_tok } => match tok {
                 // This builder does not directly emit new source files, so it cannot receive tokens from inner files
                 // while in the Undecided state.
                 // When receiving EOF it returns an error.
@@ -428,8 +426,7 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
                         BlockScopeFromTokens::new_unowned(py, *first_tok, last_tok)?;
                     // Block builder doesn't need to process the newline token specifically
                     // Swap ourselves out with the new state "i am a block builder"
-                    let _ =
-                        std::mem::replace(self, BlockOrInlineScopeFromTokens::Block(block_builder));
+                    let _ = std::mem::replace(self, BlockLevelAmbiguousScope::Block(block_builder));
                     Ok(BuildStatus::Continue)
                 }
                 TTToken::Hashes(_, _) => {
@@ -437,27 +434,22 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
                 }
                 _ => {
                     // Transition to an inline builder
-                    let mut inline_builder = InlineScopeFromTokens::new_unowned(
+                    let mut inline_builder = KnownInlineScopeFromTokens::new_unowned(
                         py,
-                        *first_tok,
-                        AmbiguousInlineContext::UnambiguouslyInline,
+                        // This has not been preceded by any inline content
+                        None,
+                        ParseContext::new(*first_tok, tok.token_span()),
                     )?;
                     // Make sure it knows about the new token
                     let res = inline_builder.process_token(py, py_env, tok, data)?;
                     // Swap ourselves out with the new state "i am an inline builder"
-                    let _ = std::mem::replace(
-                        self,
-                        BlockOrInlineScopeFromTokens::Inline(inline_builder),
-                    );
+                    let _ =
+                        std::mem::replace(self, BlockLevelAmbiguousScope::Inline(inline_builder));
                     Ok(res)
                 }
             },
-            BlockOrInlineScopeFromTokens::Block(block) => {
-                block.process_token(py, py_env, tok, data)
-            }
-            BlockOrInlineScopeFromTokens::Inline(inline) => {
-                inline.process_token(py, py_env, tok, data)
-            }
+            BlockLevelAmbiguousScope::Block(block) => block.process_token(py, py_env, tok, data),
+            BlockLevelAmbiguousScope::Inline(inline) => inline.process_token(py, py_env, tok, data),
         }
     }
 
@@ -468,14 +460,14 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
         pushed: Option<PushToNextLevel>,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         match self {
-            BlockOrInlineScopeFromTokens::Undecided { .. } => {
+            BlockLevelAmbiguousScope::Undecided { .. } => {
                 assert!(pushed.is_none(), "BlockOrInlineScopeFromTokens::Undecided does not push any builders except comments thus cannot receive non-None pushed items");
                 Ok(BuildStatus::Continue)
             }
-            BlockOrInlineScopeFromTokens::Block(block) => {
+            BlockLevelAmbiguousScope::Block(block) => {
                 block.process_push_from_inner_builder(py, py_env, pushed)
             }
-            BlockOrInlineScopeFromTokens::Inline(inline) => {
+            BlockLevelAmbiguousScope::Inline(inline) => {
                 inline.process_push_from_inner_builder(py, py_env, pushed)
             }
         }
@@ -486,13 +478,13 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
         code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         match self {
-            BlockOrInlineScopeFromTokens::Undecided { .. } => {
+            BlockLevelAmbiguousScope::Undecided { .. } => {
                 unreachable!("BlockOrInlineScopeFromTokens::Undecided does not push any builders except comments and thus cannot have source code emitted inside it")
             }
-            BlockOrInlineScopeFromTokens::Block(block) => {
+            BlockLevelAmbiguousScope::Block(block) => {
                 block.on_emitted_source_inside(code_emitting_source)
             }
-            BlockOrInlineScopeFromTokens::Inline(inline) => {
+            BlockLevelAmbiguousScope::Inline(inline) => {
                 inline.on_emitted_source_inside(code_emitting_source)
             }
         }
@@ -500,13 +492,13 @@ impl BuildFromTokens for BlockOrInlineScopeFromTokens {
 
     fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan) {
         match self {
-            BlockOrInlineScopeFromTokens::Undecided { .. } => {
+            BlockLevelAmbiguousScope::Undecided { .. } => {
                 unreachable!("BlockOrInlineScopeFromTokens::Undecided does not push any builders except comments and thus cannot have source code emitted inside it")
             }
-            BlockOrInlineScopeFromTokens::Block(block) => {
+            BlockLevelAmbiguousScope::Block(block) => {
                 block.on_emitted_source_closed(inner_source_emitted_by)
             }
-            BlockOrInlineScopeFromTokens::Inline(inline) => {
+            BlockLevelAmbiguousScope::Inline(inline) => {
                 inline.on_emitted_source_closed(inner_source_emitted_by)
             }
         }

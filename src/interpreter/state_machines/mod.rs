@@ -149,13 +149,12 @@ trait BuildFromTokens {
         py: Python,
         py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
-        // closing_tok: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus>;
     fn on_emitted_source_inside(
         &mut self,
         code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()>;
-    fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan);
+    fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan);
 }
 
 pub struct FileBuilderStack {

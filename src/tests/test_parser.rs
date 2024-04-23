@@ -479,7 +479,7 @@ pub fn test_newline_inside_inline_scope() {
 pub fn test_block_scope_open_inline_para() {
     expect_parse_err(
         "text {\n",
-        TestInterpError::BlockScopeOpenedInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("text"), line_start: TestParserSpan("text") }, block_scope_open: TestParserSpan("{") },
+        TestInterpError::BlockScopeOpenedInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("text", "", " ")), block_scope_open: TestParserSpan("{") },
     )
 }
 #[test]
@@ -488,7 +488,7 @@ pub fn test_block_scope_open_inline_multiline_para() {
         "1st line
         2nd line
         3rd {\n",
-        TestInterpError::BlockScopeOpenedInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("1st"), line_start: TestParserSpan("3rd") }, block_scope_open: TestParserSpan("{") },
+        TestInterpError::BlockScopeOpenedInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("1st", " line\n        2nd line\n        3rd", " ")), block_scope_open: TestParserSpan("{") },
     )
 }
 #[test]
@@ -657,7 +657,7 @@ pub fn test_cant_emit_block_from_code_inside_paragraph() {
     expect_parse_err(
         "Lorem ipsum!
 I'm in a [TEST_BLOCK]",
-        TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("Lorem"), line_start: TestParserSpan("\n") }, code_span: TestParserSpan("[TEST_BLOCK]") },
+        TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("Lorem", " ipsum!\nI'm in a", " ")), code_span: TestParserSpan("[TEST_BLOCK]") },
     )
 }
 
@@ -685,7 +685,7 @@ pub fn test_raw_scope_emitting_inline_from_block_level() {
 pub fn test_raw_scope_cant_emit_block_inside_paragraph() {
     expect_parse_err(
         "Inside a paragraph, you can't [TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#",
-        TestInterpError::CodeEmittedBlockInInlineMode{ inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("Inside"), line_start: TestParserSpan("Inside") }, code_span: TestParserSpan("[TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#") }
+        TestInterpError::CodeEmittedBlockInInlineMode{ inl_mode: TestInlineModeContext::Paragraph(TestParseContext("Inside", " a paragraph, you can't", " ")), code_span: TestParserSpan("[TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#") }
     )
 }
 
@@ -888,7 +888,7 @@ mod block_spacing {
         expect_parse_err(
             r#"Paragraph one
             [TEST_BLOCK]"#,
-            TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("Paragraph"), line_start: TestParserSpan("\n") }, code_span: TestParserSpan("[TEST_BLOCK]") },
+            TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("Paragraph", " one", "\n")), code_span: TestParserSpan("[TEST_BLOCK]") },
         )
     }
 
@@ -1689,7 +1689,7 @@ Content in file!
     fn test_cant_create_header_in_paragraph() {
         expect_parse_err(
             "And as I was saying [TestDocSegmentHeader()]",
-            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("And"), line_start: TestParserSpan("And") }, code_span: TestParserSpan("[TestDocSegmentHeader()]"),
+            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("And", " as I was saying", " ")), code_span: TestParserSpan("[TestDocSegmentHeader()]"),
             },
         )
     }
@@ -1842,7 +1842,7 @@ f4 = test_src("""
     fn test_no_inserted_file_in_paragraph() {
         expect_parse_err(
             r#"wow i'm inside a paragraph! [test_src("some more data O.O")]"#,
-            TestInterpError::CodeEmittedSourceInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("wow"), line_start: TestParserSpan("wow") }, code_span: TestParserSpan(r#"[test_src("some more data O.O")]"#) },
+            TestInterpError::CodeEmittedSourceInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("wow", " i'm inside a paragraph!", " ")), code_span: TestParserSpan(r#"[test_src("some more data O.O")]"#) },
         )
     }
 
@@ -2120,7 +2120,7 @@ mod flexibility {
     fn test_inline_scope_builder_building_header_in_inline_mode_para() {
         expect_parse_err(
             "And as I was saying [TestDocSegmentBuilder()]{ Wowee i wish I had inline content }",
-            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("And"), line_start: TestParserSpan("And") }, code_span: TestParserSpan(
+            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("And", " as I was saying", " ")), code_span: TestParserSpan(
                 "[TestDocSegmentBuilder()]{ Wowee i wish I had inline content }",
             ), },
         )
@@ -2132,7 +2132,7 @@ mod flexibility {
             "And as I was saying [TestDocSegmentBuilder()]{
                 Wowee i wish I had block content
             }",
-            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("And"), line_start: TestParserSpan("And") }, code_span: TestParserSpan(
+            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("And", " as I was saying", " ")), code_span: TestParserSpan(
                 "[TestDocSegmentBuilder()]{
                 Wowee i wish I had block content
             }",
@@ -2147,7 +2147,7 @@ mod flexibility {
                 I had inline 
                 and raw
                 content }#",
-                TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph { para_start: TestParserSpan("And"), line_start: TestParserSpan("And") }, code_span: TestParserSpan(
+                TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("And", " as I was saying", " ")), code_span: TestParserSpan(
                     "[TestDocSegmentBuilder()]#{ Wowee i wish 
                 I had inline 
                 and raw
