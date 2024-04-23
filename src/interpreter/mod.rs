@@ -105,16 +105,13 @@ impl TurnipTextParser {
                         .file_stack
                         .pop()
                         .expect("We just handled tokens from a file, there must be one");
-                    match self.interp.pop_subfile(py, py_env, emitted_by) {
-                        Ok(()) => {}
-                        Err(err) => return Err((self.files, err).into()),
-                    };
+                    self.interp.pop_subfile(emitted_by)
                 }
             };
         }
 
         self.interp
-            .finalize(py, py_env)
+            .finalize(py)
             .map_err(|err| (self.files, err).into())
     }
 }
@@ -307,21 +304,11 @@ impl Interpreter {
         self.builders.push_subfile()
     }
 
-    pub fn pop_subfile(
-        &mut self,
-        py: Python,
-        py_env: &'_ PyDict,
-        subfile_emitted_by: Option<ParseSpan>,
-    ) -> TurnipTextContextlessResult<()> {
-        let stack = self.builders.pop_subfile(subfile_emitted_by);
-        Ok(())
+    pub fn pop_subfile(&mut self, subfile_emitted_by: Option<ParseSpan>) {
+        self.builders.pop_subfile(subfile_emitted_by)
     }
 
-    pub fn finalize(
-        self,
-        py: Python,
-        py_env: &PyDict,
-    ) -> TurnipTextContextlessResult<Py<DocSegment>> {
+    pub fn finalize(self, py: Python) -> TurnipTextContextlessResult<Py<DocSegment>> {
         let rc_refcell_top = self.builders.finalize();
         match Rc::try_unwrap(rc_refcell_top) {
             Err(_) => panic!("Shouldn't have any other stacks holding references to this"),

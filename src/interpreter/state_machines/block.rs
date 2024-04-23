@@ -168,9 +168,9 @@ impl BlockTokenProcessor for TopLevelDocumentBuilder {
 
     fn on_close_scope(
         &mut self,
-        py: Python,
+        _py: Python,
         tok: TTToken,
-        data: &str,
+        _data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         // This builder may receive tokens from inner files.
         // It always returns an error.
@@ -179,7 +179,7 @@ impl BlockTokenProcessor for TopLevelDocumentBuilder {
     }
 
     // When EOF comes, we don't produce anything to bubble up - there's nothing above us!
-    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
+    fn on_eof(&mut self, _py: Python, _tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
         // This is the only exception to the contract for [BuildFromTokens::process_token].
         // There is never a builder above this one, so there is nothing that can reprocess the token.
         Ok(BuildStatus::Continue)
@@ -189,7 +189,7 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
     // Don't error when someone tries to include a new file inside a block scope
     fn on_emitted_source_inside(
         &mut self,
-        code_emitting_source: ParseContext,
+        _code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         // The tokens from this file will be passed through directly to us until we open new builders in its stack.
         // Allow the new file to start directly with content if it chooses.
@@ -207,7 +207,7 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
     fn process_token(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        _py_env: &PyDict,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
@@ -217,7 +217,7 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
     fn process_push_from_inner_builder(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        _py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
         // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
@@ -311,7 +311,7 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
         &mut self,
         py: Python,
         tok: TTToken,
-        data: &str,
+        _data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         // This builder may receive tokens from inner files.
         // If it receives a token from an inner file, it returns an error.
@@ -328,7 +328,7 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
         }
     }
 
-    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
+    fn on_eof(&mut self, _py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
         Err(InterpError::EndedInsideScope {
             scope_start: self.ctx.first_tok(),
             eof_span: tok.token_span(),
@@ -340,7 +340,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
     // Don't error when someone tries to include a new file inside a block scope
     fn on_emitted_source_inside(
         &mut self,
-        code_emitting_source: ParseContext,
+        _code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         // The tokens from this file will be passed through directly to us until we open new builders in its stack.
         // Allow the new file to start directly with content if it chooses.
@@ -357,7 +357,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
     fn process_token(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        _py_env: &PyDict,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
@@ -367,7 +367,7 @@ impl BuildFromTokens for BlockScopeFromTokens {
     fn process_push_from_inner_builder(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        _py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
         // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {

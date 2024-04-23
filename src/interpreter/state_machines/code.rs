@@ -134,7 +134,7 @@ impl BuildFromTokens for CodeFromTokens {
                         ))))
                     } else {
                         let inline =
-                            coerce_to_inline_pytcref(py, evaled_result_ref).map_err(|err| {
+                            coerce_to_inline_pytcref(py, evaled_result_ref).map_err(|_err| {
                                 UserPythonExecError::CoercingNonBuilderEvalBracket {
                                     code: self.ctx,
                                     obj: evaled_result.clone_ref(py),
@@ -153,7 +153,7 @@ impl BuildFromTokens for CodeFromTokens {
     fn process_push_from_inner_builder(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        _py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         let evaled_result_ref = self.evaled_code.take().unwrap().into_ref(py);
@@ -235,7 +235,7 @@ impl BuildFromTokens for CodeFromTokens {
 
     fn on_emitted_source_inside(
         &mut self,
-        code_emitting_source: ParseContext,
+        _code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         unreachable!("CodeFromTokens does not spawn an inner code builder, so cannot have a source file emitted inside")
     }

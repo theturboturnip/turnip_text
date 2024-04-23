@@ -281,7 +281,7 @@ impl InlineTokenProcessor for ParagraphFromTokens {
 
     fn on_plain_text(
         &mut self,
-        py: Python,
+        _py: Python,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
@@ -298,7 +298,7 @@ impl InlineTokenProcessor for ParagraphFromTokens {
 
     fn on_midline_whitespace(
         &mut self,
-        py: Python,
+        _py: Python,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
@@ -348,9 +348,9 @@ impl InlineTokenProcessor for ParagraphFromTokens {
 
     fn on_open_scope(
         &mut self,
-        py: Python,
+        _py: Python,
         tok: TTToken,
-        data: &str,
+        _data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         Ok(BuildStatus::StartInnerBuilder(
             InlineLevelAmbiguousScope::new(
@@ -365,7 +365,7 @@ impl InlineTokenProcessor for ParagraphFromTokens {
         &mut self,
         py: Python,
         tok: TTToken,
-        data: &str,
+        _data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         // If the closing brace is at the start of the line, it must be for block-scope and we can assume there won't be text afterwards.
         // End the paragraph, and tell the scope above us in the hierarchy to handle the scope close.
@@ -387,7 +387,7 @@ impl BuildFromTokens for ParagraphFromTokens {
     fn process_token(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        _py_env: &PyDict,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
@@ -397,7 +397,7 @@ impl BuildFromTokens for ParagraphFromTokens {
     fn process_push_from_inner_builder(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        _py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
         // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
@@ -610,14 +610,6 @@ pub struct KnownInlineScopeFromTokens {
     current_building_text: InlineTextState,
 }
 impl KnownInlineScopeFromTokens {
-    pub fn new(
-        py: Python,
-        preceding_inline: Option<InlineModeContext>,
-        ctx: ParseContext,
-    ) -> TurnipTextContextlessResult<Rc<RefCell<Self>>> {
-        Ok(rc_refcell(Self::new_unowned(py, preceding_inline, ctx)?))
-    }
-
     pub fn new_unowned(
         py: Python,
         preceding_inline: Option<InlineModeContext>,
@@ -673,7 +665,7 @@ impl InlineTokenProcessor for KnownInlineScopeFromTokens {
 
     fn on_plain_text(
         &mut self,
-        py: Python,
+        _py: Python,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
@@ -686,7 +678,7 @@ impl InlineTokenProcessor for KnownInlineScopeFromTokens {
 
     fn on_midline_whitespace(
         &mut self,
-        py: Python,
+        _py: Python,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
@@ -712,9 +704,9 @@ impl InlineTokenProcessor for KnownInlineScopeFromTokens {
     // TODO test error reporting for nested inline scopes
     fn on_open_scope(
         &mut self,
-        py: Python,
+        _py: Python,
         tok: TTToken,
-        data: &str,
+        _data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         let new_scopes_inline_context = match self.preceding_inline {
             // If we're part of a paragraph, the inner scope is part of a paragraph too
@@ -738,7 +730,7 @@ impl InlineTokenProcessor for KnownInlineScopeFromTokens {
         &mut self,
         py: Python,
         tok: TTToken,
-        data: &str,
+        _data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         // pending text has already been folded in
         assert!(
@@ -751,7 +743,7 @@ impl InlineTokenProcessor for KnownInlineScopeFromTokens {
         ))))
     }
 
-    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
+    fn on_eof(&mut self, _py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
         Err(InterpError::EndedInsideScope {
             scope_start: self.ctx.first_tok(),
             eof_span: tok.token_span(),
@@ -763,7 +755,7 @@ impl BuildFromTokens for KnownInlineScopeFromTokens {
     fn process_token(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        _py_env: &PyDict,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
@@ -773,7 +765,7 @@ impl BuildFromTokens for KnownInlineScopeFromTokens {
     fn process_push_from_inner_builder(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        _py_env: &PyDict,
         pushed: Option<PushToNextLevel>,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         self.start_of_scope = false;
@@ -849,7 +841,7 @@ impl BuildFromTokens for RawStringFromTokens {
     fn process_token(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        _py_env: &PyDict,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
@@ -882,9 +874,9 @@ impl BuildFromTokens for RawStringFromTokens {
 
     fn process_push_from_inner_builder(
         &mut self,
-        py: Python,
-        py_env: &PyDict,
-        pushed: Option<PushToNextLevel>,
+        _py: Python,
+        _py_env: &PyDict,
+        _pushed: Option<PushToNextLevel>,
         // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<BuildStatus> {
         panic!("RawStringFromTokens does not spawn inner builders")
@@ -892,7 +884,7 @@ impl BuildFromTokens for RawStringFromTokens {
 
     fn on_emitted_source_inside(
         &mut self,
-        code_emitting_source: ParseContext,
+        _code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         unreachable!("RawStringFromTokens does not spawn an inner code builder, so cannot have a source file emitted inside")
     }
