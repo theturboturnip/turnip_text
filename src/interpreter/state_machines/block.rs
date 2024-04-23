@@ -121,13 +121,13 @@ trait BlockTokenProcessor {
 pub struct TopLevelDocumentBuilder {
     /// The current structure of the document, including toplevel content, segments, and the current block stacks (one block stack per included subfile)
     structure: InterimDocumentStructure,
-    expects_blank_line_after: Option<BlockModeElem>,
+    expects_n_blank_lines_after: Option<(u8, BlockModeElem)>,
 }
 impl TopLevelDocumentBuilder {
     pub fn new(py: Python) -> PyResult<Rc<RefCell<Self>>> {
         Ok(rc_refcell(Self {
             structure: InterimDocumentStructure::new(py)?,
-            expects_blank_line_after: None,
+            expects_n_blank_lines_after: None,
         }))
     }
 
@@ -138,19 +138,29 @@ impl TopLevelDocumentBuilder {
 }
 impl BlockTokenProcessor for TopLevelDocumentBuilder {
     fn expects_new_line(&self) -> bool {
-        self.expects_blank_line_after.is_some()
+        self.expects_n_blank_lines_after.is_some()
     }
     fn on_new_line_finish(&mut self) {
-        self.expects_blank_line_after = None
+        self.expects_n_blank_lines_after =
+            match std::mem::take(&mut self.expects_n_blank_lines_after) {
+                Some((0, _)) => {
+                    unreachable!("should never set expects_n_blank_lines_after = (0, _)")
+                }
+                Some((1, _)) => None,
+                Some((n_lines, ctx)) => Some((n_lines - 1, ctx)),
+                None => None,
+            };
     }
     fn on_unexpected_token_while_expecting_new_line(
         &mut self,
         tok: TTToken,
     ) -> TurnipTextContextlessError {
         InterpError::InsufficientBlockSeparation {
-            last_block: std::mem::take(&mut self.expects_blank_line_after).expect(
-                "This function is only called when self.expects_blank_line_after.is_some()",
-            ),
+            last_block: std::mem::take(&mut self.expects_n_blank_lines_after)
+                .expect(
+                    "This function is only called when self.expects_n_blank_lines_after.is_some()",
+                )
+                .1,
             next_block_start: BlockModeElem::AnyToken(tok.token_span()),
         }
         .into()
@@ -183,14 +193,14 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
     ) -> TurnipTextContextlessResult<()> {
         // The tokens from this file will be passed through directly to us until we open new builders in its stack.
         // Allow the new file to start directly with content if it chooses.
-        self.expects_blank_line_after = None;
+        self.expects_n_blank_lines_after = None;
         Ok(())
     }
 
     fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan) {
         // An inner file must have come from emitted code - a blank line must be seen before any new content after code emitting a file
-        self.expects_blank_line_after =
-            Some(BlockModeElem::SourceFromCode(inner_source_emitted_by));
+        self.expects_n_blank_lines_after =
+            Some((2, BlockModeElem::SourceFromCode(inner_source_emitted_by)));
     }
 
     // This builder is responsible for spawning lower-level builders
@@ -218,24 +228,32 @@ impl BuildFromTokens for TopLevelDocumentBuilder {
                     // 1. eval-brackets that directly emitted a header
                     // 2. eval-brackets that took some argument (a block scope, an inline scope, or a raw scope) and emitted a header
                     // We don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
-                    // Thus, set expects_blank_line.
+                    // Thus, set expects_blank_line to *two* blank lines i.e. no content on the current line, and then a full line without content
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
-                    self.expects_blank_line_after =
-                        Some(BlockModeElem::HeaderFromCode(elem_ctx.full_span()));
+                    self.expects_n_blank_lines_after =
+                        Some((2, BlockModeElem::HeaderFromCode(elem_ctx.full_span())));
                     self.structure.push_segment_header(py, header)?;
                     Ok(BuildStatus::Continue)
                 }
-                DocElement::Block(block) => {
-                    // This must have been received from either
-                    // 1. a paragraph, which has seen a blank line and ended itself
-                    // 2. eval-brackets that directly emitted a block
-                    // 3. eval-brackets that took some argument (a block scope, an inline scope, or a raw scope) and emitted a block
-                    // 4. a manually opened block scope that was just closed
-                    // In the case of 1, the paragraph will push the token for reprocessing so we can set expects_blank_line and it will immediately get unset.
-                    // In the cases of 2, 3, and 4 we don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
-                    // Thus, set expects_blank_line.
+                // Blocks must have been received from either
+                // 1. a paragraph, which has seen a blank line and ended itself
+                // 2. eval-brackets that directly emitted a block
+                // 3. eval-brackets that took some argument (a block scope, an inline scope, or a raw scope) and emitted a block
+                // 4. a manually opened block scope that was just closed
+                // We always want a single clear line between block elements.
+                // In the case of 1, the paragraph has processed a blank line already because that's what ends the paragraph.
+                // In the cases of 2, 3, and 4 we need to clear a. the current line and b. the next line, so set expects_blank_line=2
+                DocElement::Block(BlockElem::Para(p)) => {
+                    // The paragraph has already received a fully blank line.
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
-                    self.expects_blank_line_after = Some((elem_ctx, &block).into());
+                    self.expects_n_blank_lines_after = None;
+                    self.structure.push_to_topmost_block(py, p.as_ref(py))?;
+                    Ok(BuildStatus::Continue)
+                }
+                DocElement::Block(block) => {
+                    // Set expects_blank_line to *two* blank lines i.e. no content on the current line, and then a full line without content
+                    // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
+                    self.expects_n_blank_lines_after = Some((2, (elem_ctx, &block).into()));
                     self.structure.push_to_topmost_block(py, block.as_ref(py))?;
                     Ok(BuildStatus::Continue)
                 }

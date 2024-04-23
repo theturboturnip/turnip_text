@@ -418,6 +418,7 @@ pub fn test_block_scope_vs_inline_scope() {
         r#"{
 block
 }
+
 {inline}"#,
         vec![
             ScopeOpen,
@@ -425,6 +426,7 @@ block
             OtherText("block"),
             Newline,
             ScopeClose,
+            Newline,
             Newline,
             ScopeOpen,
             OtherText("inline"),

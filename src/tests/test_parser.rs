@@ -547,6 +547,7 @@ pub fn test_block_scope_vs_inline_scope() {
         r#"{
 block scope
 }
+
 {inline scope}"#,
         Ok(test_doc(vec![
             TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
@@ -857,8 +858,8 @@ mod block_spacing {
     use super::*;
 
     // These are tests for strict blank-line syntax checking - where the parser ensures that there is always a blank line between two blocks.
-    // With the way the parser is currently structured, it's impossible to check this inside subfiles without having the newlines inside subfiles impact the correctness of the surrounding file.
-    // Thus these tests are disabled and instead we allow some funky unintuitive syntax.
+
+    // TODO check separation of headers - they're also block-level elements
 
     // There should always be a blank line between a paragraph ending and a paragraph starting
     // (otherwise they'd be the same paragraph)
@@ -941,11 +942,12 @@ mod block_spacing {
         )
     }
 
-    // There should always be a new line between a code-emitting-block and a paragraph starting
+    // There should always be a blank line between a code-emitting-block and a paragraph starting
     #[test]
     pub fn test_block_sep_code_para() {
         expect_parse(
             r#"[TEST_BLOCK]
+
             Paragraph one"#,
             Ok(test_doc(vec![
                 TestBlock::TestOwnedBlock(vec![]),
@@ -954,6 +956,14 @@ mod block_spacing {
         );
         expect_parse_err(
             r#"[TEST_BLOCK] Paragraph one"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("Paragraph")),
+            },
+        );
+        expect_parse_err(
+            r#"[TEST_BLOCK]
+            Paragraph one"#,
             TestInterpError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
                 next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("Paragraph")),
@@ -974,12 +984,14 @@ mod block_spacing {
         );
     }
 
-    // There should need to be a new line between a scope closing and another scope starting
+    // There should need to be a blank line between a scope closing and another scope starting
     #[test]
     pub fn test_block_sep_scope_scope() {
+        // Expect a full blank line separating two scops
         expect_parse(
             r#"{
             }
+
             {
             }"#,
             Ok(test_doc(vec![
@@ -987,6 +999,7 @@ mod block_spacing {
                 TestBlock::BlockScope(vec![]),
             ])),
         );
+        // Expect an error on no lines separating two scopes
         expect_parse_err(
             r#"{
             } {
@@ -1011,35 +1024,88 @@ mod block_spacing {
                 )),
                 next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
             },
+        );
+        // Expect an error on one newline separating scopes
+        expect_parse_err(
+            r#"{
+            }
+            {
+            }"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::BlockScope(TestParseContext(
+                    "{",
+                    "\n            ",
+                    "}",
+                )),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
+            },
+        );
+        expect_parse_err(
+            r#"[TEST_BLOCK_BUILDER]{
+            }
+            {
+            }"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::BlockFromCode(TestParseSpan(
+                    "[TEST_BLOCK_BUILDER]{
+            }",
+                )),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
+            },
         )
     }
 
-    // There should not need to be a blank line between a scope closing and code-emitting-block
+    // There needs to be a blank line between a scope closing and code-emitting-block
     #[test]
     pub fn test_block_sep_scope_code() {
         expect_parse(
             r#"{
             }
+
             [TEST_BLOCK]"#,
             Ok(test_doc(vec![
                 TestBlock::BlockScope(vec![]),
                 TestBlock::TestOwnedBlock(vec![]),
             ])),
         );
+        expect_parse_err(
+            r#"{
+            }
+            [TEST_BLOCK]"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::BlockScope(TestParseContext(
+                    "{",
+                    "\n            ",
+                    "}",
+                )),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+            },
+        );
     }
 
-    // There should always be a new line between a code-emitting-block and a scope opening
+    // There should always be a blank line between a code-emitting-block and a scope opening
     #[test]
     pub fn test_block_sep_code_scope() {
         expect_parse(
             r#"
             [TEST_BLOCK]
+
             {
             }"#,
             Ok(test_doc(vec![
                 TestBlock::TestOwnedBlock(vec![]),
                 TestBlock::BlockScope(vec![]),
             ])),
+        );
+        expect_parse_err(
+            r#"
+            [TEST_BLOCK]
+            {
+            }"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
+            },
         );
         expect_parse_err(
             r#"
@@ -1052,17 +1118,27 @@ mod block_spacing {
         )
     }
 
-    // There should always be a new line between two code-emitting-blocks
+    // There should always be a blank line between two code-emitting-blocks
     #[test]
     pub fn test_block_sep_code_code() {
         expect_parse(
             r#"
             [TEST_BLOCK]
+
             [TEST_BLOCK]"#,
             Ok(test_doc(vec![
                 TestBlock::TestOwnedBlock(vec![]),
                 TestBlock::TestOwnedBlock(vec![]),
             ])),
+        );
+        expect_parse_err(
+            r#"
+            [TEST_BLOCK]
+            [TEST_BLOCK]"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+            },
         );
         expect_parse_err(
             r#"[TEST_BLOCK] [TEST_BLOCK_2]"#,
@@ -1137,8 +1213,24 @@ content
     }
     #[test]
     pub fn test_block_sep_inserted_file_para() {
-        // We should be able to put a file in and then insert a paragraph on adjacent lines
+        // There must be a blank line between inserted file and para
         expect_parse(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f]
+
+another paragraph of content
+"#,
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![test_sentence("some content")]),
+                TestBlock::Paragraph(vec![test_sentence("another paragraph of content")]),
+            ])),
+        );
+        // We shouldn't be able to two on adjacent lines
+        expect_parse_err(
             r#"
 [[
 f = test_src("""some content""")
@@ -1147,10 +1239,10 @@ f = test_src("""some content""")
 [f]
 another paragraph of content
 "#,
-            Ok(test_doc(vec![
-                TestBlock::Paragraph(vec![test_sentence("some content")]),
-                TestBlock::Paragraph(vec![test_sentence("another paragraph of content")]),
-            ])),
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("another")),
+            },
         );
         // We shouldn't be able to both on the same line
         expect_parse_err(
@@ -1169,8 +1261,24 @@ f = test_src("""some content""")
     }
     #[test]
     pub fn test_block_sep_inserted_file_inserted_file() {
-        // We should be able to put files in on adjacent lines (TODO as syntax goes this is kinda sad - implies they're in the same paragraph)
+        // We must have a blank line between two files
         expect_parse(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f]
+
+[f]
+"#,
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![test_sentence("some content")]),
+                TestBlock::Paragraph(vec![test_sentence("some content")]),
+            ])),
+        );
+        // We shouldn't be able to two on adjacent lines
+        expect_parse_err(
             r#"
 [[
 f = test_src("""some content""")
@@ -1179,10 +1287,10 @@ f = test_src("""some content""")
 [f]
 [f]
 "#,
-            Ok(test_doc(vec![
-                TestBlock::Paragraph(vec![test_sentence("some content")]),
-                TestBlock::Paragraph(vec![test_sentence("some content")]),
-            ])),
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+            },
         );
         // We shouldn't be able to two on the same line
         expect_parse_err(
@@ -1201,7 +1309,7 @@ f = test_src("""some content""")
     }
     #[test]
     pub fn test_block_sep_inserted_file_block_code() {
-        // We should be able to put files in on adjacent lines (TODO as syntax goes this is kinda sad - implies they're in the same paragraph)
+        // We must have a blank line between a file and block code
         expect_parse(
             r#"
 [[
@@ -1209,6 +1317,7 @@ f = test_src("""some content""")
 ]]
 
 [f]
+
 [TEST_BLOCK_BUILDER]{
     some other content
 }
@@ -1219,6 +1328,23 @@ f = test_src("""some content""")
                     "some other content",
                 )])]),
             ])),
+        );
+        // We shouldn't be able to two on adjacent lines
+        expect_parse_err(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f]
+[TEST_BLOCK_BUILDER]{
+    some other content
+}
+"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+            },
         );
         // We shouldn't be able to two on the same line
         expect_parse_err(
@@ -1240,7 +1366,7 @@ f = test_src("""some content""")
 
     #[test]
     pub fn test_block_sep_inserted_file_inline_code() {
-        // We should be able to put files in on adjacent lines (TODO as syntax goes this is kinda sad - implies they're in the same paragraph)
+        // We must have a blank line between a file and inline code
         expect_parse(
             r#"
 [[
@@ -1248,6 +1374,7 @@ f = test_src("""some content""")
 ]]
 
 [f]
+
 [TEST_INLINE_BUILDER]{some other content}
 "#,
             Ok(test_doc(vec![
@@ -1256,6 +1383,21 @@ f = test_src("""some content""")
                     "some other content",
                 )])]]),
             ])),
+        );
+        // We shouldn't be able to two on adjacent lines
+        expect_parse_err(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f]
+[TEST_INLINE_BUILDER]{some other content}
+"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+            },
         );
         // We shouldn't be able to two on the same line
         expect_parse_err(
@@ -1275,7 +1417,7 @@ f = test_src("""some content""")
 
     #[test]
     pub fn test_block_sep_inserted_file_block_scope() {
-        // We should be able to put files in on adjacent lines (TODO as syntax goes this is kinda sad - implies they're in the same paragraph)
+        // We must have a blank line between a file and block scopes
         expect_parse(
             r#"
 [[
@@ -1283,6 +1425,7 @@ f = test_src("""some content""")
 ]]
 
 [f]
+
 {
     some other content
 }
@@ -1293,6 +1436,23 @@ f = test_src("""some content""")
                     "some other content",
                 )])]),
             ])),
+        );
+        // We shouldn't be able to two on adjacent lines
+        expect_parse_err(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f]
+{
+    some other content
+}
+"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
+            },
         );
         // We shouldn't be able to two on the same line
         expect_parse_err(
@@ -1313,7 +1473,7 @@ f = test_src("""some content""")
     }
     #[test]
     pub fn test_block_sep_inserted_file_inline_scope() {
-        // We should be able to put files in on adjacent lines (TODO as syntax goes this is kinda sad - implies they're in the same paragraph)
+        // We must have a blank line between a file and inline scope
         expect_parse(
             r#"
 [[
@@ -1321,6 +1481,7 @@ f = test_src("""some content""")
 ]]
 
 [f]
+
 { some other content }
 "#,
             Ok(test_doc(vec![
@@ -1329,6 +1490,21 @@ f = test_src("""some content""")
                     "some other content",
                 )])]]),
             ])),
+        );
+        // We shouldn't be able to two on adjacent lines
+        expect_parse_err(
+            r#"
+[[
+f = test_src("""some content""")
+]]
+
+[f]
+{ some other content }
+"#,
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
+            },
         );
         // We shouldn't be able to two on the same line
         expect_parse_err(
@@ -2689,23 +2865,4 @@ mod scope_ambiguity {
 /// This contains tests for situations that are currently allowed but probably shouldn't be.
 mod overflexibility {
     use super::*;
-
-    #[test]
-    fn inserted_files_adj_lines() {
-        // We should be able to put files in on adjacent lines (TODO as syntax goes this is kinda sad - implies they're in the same paragraph)
-        expect_parse(
-            r#"
-[[
-f = test_src("""some content""")
-]]
-
-[f]
-[f]
-"#,
-            Ok(test_doc(vec![
-                TestBlock::Paragraph(vec![test_sentence("some content")]),
-                TestBlock::Paragraph(vec![test_sentence("some content")]),
-            ])),
-        );
-    }
 }

@@ -14,8 +14,8 @@
 //! file B include file C include file D, and you just write paragraphs, files A through C will have empty builder stacks while file D is being processed and paragraphs from file D will bubble right up to the top-level document.
 //!
 //! This builder structure introduces strict newline separation for blocks:
-//! - after eval-bracket-emitting-block-or-header-or-inserted-file-or-none, a newline must be seen before any content
-//! - after closing a block-level block scope (i.e. ignoring block scopes used as arguments to code producing inline), a newline must be seen before any content
+//! - after eval-bracket-emitting-block-or-header-or-inserted-file-or-none, a blank line must be seen before any content
+//! - after closing a block-level block scope (i.e. ignoring block scopes used as arguments to code producing inline), a blank line must be seen before any content
 //! There's no need to worry about this with paragraphs (double newline required to end the paragraph) and block scope opens/closes (extra newlines between opening new block scopes seems superfluous, opening a block scope requires a newline, block scopes can't be closed mid paragraph)
 //! This means newlines must bubble up through files (blocks inside an inner file are governed by either the top-level document token builder or an enclosing block scope builder, both of which are "the next file up"), and I previously worried that this would mean newlines in an inner file would affect an outer file.
 //! Not so!
