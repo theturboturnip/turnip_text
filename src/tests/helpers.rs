@@ -16,11 +16,9 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 /// A type mimicking [ParserSpan] for test purposes
-///
-/// TODO rename lol
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TestParserSpan<'a>(pub &'a str);
-impl<'a> From<(&ParseSpan, &'a Vec<ParsingFile>)> for TestParserSpan<'a> {
+pub struct TestParseSpan<'a>(pub &'a str);
+impl<'a> From<(&ParseSpan, &'a Vec<ParsingFile>)> for TestParseSpan<'a> {
     fn from(value: (&ParseSpan, &'a Vec<ParsingFile>)) -> Self {
         Self(unsafe {
             value.1[value.0.file_idx()]
@@ -39,9 +37,9 @@ impl<'a> From<(&ParseSpan, &'a Vec<ParsingFile>)> for TestParserSpan<'a> {
 pub struct TestParseContext<'a>(pub &'a str, pub &'a str, pub &'a str);
 impl<'a> From<(&ParseContext, &'a Vec<ParsingFile>)> for TestParseContext<'a> {
     fn from(value: (&ParseContext, &'a Vec<ParsingFile>)) -> Self {
-        let start: TestParserSpan = (&value.0.first_tok(), value.1).into();
+        let start: TestParseSpan = (&value.0.first_tok(), value.1).into();
 
-        let middle: TestParserSpan =
+        let middle: TestParseSpan =
             if value.0.first_tok().end().byte_ofs <= value.0.last_tok().start().byte_ofs {
                 let middle_span = ParseSpan::new(
                     value.0.first_tok().file_idx(),
@@ -50,10 +48,10 @@ impl<'a> From<(&ParseContext, &'a Vec<ParsingFile>)> for TestParseContext<'a> {
                 );
                 (&middle_span, value.1).into()
             } else {
-                TestParserSpan("")
+                TestParseSpan("")
             };
 
-        let end: TestParserSpan = (&value.0.last_tok(), value.1).into();
+        let end: TestParseSpan = (&value.0.last_tok(), value.1).into();
         Self(start.0, middle.0, end.0)
     }
 }
@@ -100,7 +98,7 @@ impl<'a> TestTurnipError<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TestInlineModeContext<'a> {
     Paragraph(TestParseContext<'a>),
-    InlineScope { scope_start: TestParserSpan<'a> },
+    InlineScope { scope_start: TestParseSpan<'a> },
 }
 impl<'a> From<(&'a InlineModeContext, &'a Vec<ParsingFile>)> for TestInlineModeContext<'a> {
     fn from(value: (&'a InlineModeContext, &'a Vec<ParsingFile>)) -> Self {
@@ -115,12 +113,12 @@ impl<'a> From<(&'a InlineModeContext, &'a Vec<ParsingFile>)> for TestInlineModeC
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TestBlockModeElem<'a> {
-    HeaderFromCode(TestParserSpan<'a>),
+    HeaderFromCode(TestParseSpan<'a>),
     Para(TestParseContext<'a>),
     BlockScope(TestParseContext<'a>),
-    BlockFromCode(TestParserSpan<'a>),
-    SourceFromCode(TestParserSpan<'a>),
-    AnyToken(TestParserSpan<'a>),
+    BlockFromCode(TestParseSpan<'a>),
+    SourceFromCode(TestParseSpan<'a>),
+    AnyToken(TestParseSpan<'a>),
 }
 impl<'a> From<(&'a BlockModeElem, &'a Vec<ParsingFile>)> for TestBlockModeElem<'a> {
     fn from(value: (&'a BlockModeElem, &'a Vec<ParsingFile>)) -> Self {
@@ -138,45 +136,45 @@ impl<'a> From<(&'a BlockModeElem, &'a Vec<ParsingFile>)> for TestBlockModeElem<'
 /// A type mimicking [InterpError] for test purposes
 #[derive(Debug, Clone, PartialEq)]
 pub enum TestInterpError<'a> {
-    CodeCloseOutsideCode(TestParserSpan<'a>),
-    BlockScopeCloseOutsideScope(TestParserSpan<'a>),
-    InlineScopeCloseOutsideScope(TestParserSpan<'a>),
-    RawScopeCloseOutsideRawScope(TestParserSpan<'a>),
+    CodeCloseOutsideCode(TestParseSpan<'a>),
+    BlockScopeCloseOutsideScope(TestParseSpan<'a>),
+    InlineScopeCloseOutsideScope(TestParseSpan<'a>),
+    RawScopeCloseOutsideRawScope(TestParseSpan<'a>),
     EndedInsideCode {
-        code_start: TestParserSpan<'a>,
+        code_start: TestParseSpan<'a>,
     },
     EndedInsideRawScope {
-        raw_scope_start: TestParserSpan<'a>,
+        raw_scope_start: TestParseSpan<'a>,
     },
     EndedInsideScope {
-        scope_start: TestParserSpan<'a>,
+        scope_start: TestParseSpan<'a>,
     },
     BlockScopeOpenedInInlineMode {
         inl_mode: TestInlineModeContext<'a>,
-        block_scope_open: TestParserSpan<'a>,
+        block_scope_open: TestParseSpan<'a>,
     },
     CodeEmittedBlockInInlineMode {
         inl_mode: TestInlineModeContext<'a>,
-        code_span: TestParserSpan<'a>,
+        code_span: TestParseSpan<'a>,
     },
     CodeEmittedHeaderInInlineMode {
         inl_mode: TestInlineModeContext<'a>,
-        code_span: TestParserSpan<'a>,
+        code_span: TestParseSpan<'a>,
     },
     CodeEmittedHeaderInBlockScope {
-        block_scope_start: TestParserSpan<'a>,
-        code_span: TestParserSpan<'a>, // TODO should include argument to code_span separately
+        block_scope_start: TestParseSpan<'a>,
+        code_span: TestParseSpan<'a>, // TODO should include argument to code_span separately
     },
     CodeEmittedSourceInInlineMode {
         inl_mode: TestInlineModeContext<'a>,
-        code_span: TestParserSpan<'a>,
+        code_span: TestParseSpan<'a>,
     },
     SentenceBreakInInlineScope {
-        scope_start: TestParserSpan<'a>,
-        sentence_break: TestParserSpan<'a>,
+        scope_start: TestParseSpan<'a>,
+        sentence_break: TestParseSpan<'a>,
     },
     EscapedNewlineOutsideParagraph {
-        newline: TestParserSpan<'a>,
+        newline: TestParseSpan<'a>,
     },
     InsufficientBlockSeparation {
         last_block: TestBlockModeElem<'a>,

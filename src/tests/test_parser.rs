@@ -395,21 +395,21 @@ pub fn test_newline_in_code() {
 pub fn test_code_close_in_text() {
     expect_parse_err(
         "not code ] but closed code",
-        TestInterpError::CodeCloseOutsideCode(TestParserSpan("]")),
+        TestInterpError::CodeCloseOutsideCode(TestParseSpan("]")),
     )
 }
 #[test]
 pub fn test_inline_scope_close_outside_scope() {
     expect_parse_err(
         "not in a scope } but closed scope",
-        TestInterpError::InlineScopeCloseOutsideScope(TestParserSpan("}")),
+        TestInterpError::InlineScopeCloseOutsideScope(TestParseSpan("}")),
     )
 }
 #[test]
 pub fn test_block_scope_close_outside_scope() {
     expect_parse_err(
         "} # not in a scope",
-        TestInterpError::BlockScopeCloseOutsideScope(TestParserSpan("}")),
+        TestInterpError::BlockScopeCloseOutsideScope(TestParseSpan("}")),
     )
 }
 // Scope closes at the start of a line directly after a paragraph are treated differently
@@ -419,14 +419,14 @@ pub fn test_block_scope_close_outside_scope() {
 pub fn test_block_scope_close_outside_scope_after_para() {
     expect_parse_err(
         "wow some content\nthat could imply the next scope close is in a paragraph i.e. inline mode\n} # not in a scope",
-        TestInterpError::BlockScopeCloseOutsideScope(TestParserSpan("}")),
+        TestInterpError::BlockScopeCloseOutsideScope(TestParseSpan("}")),
     )
 }
 #[test]
 pub fn test_raw_scope_close_outside_scope() {
     expect_parse_err(
         "text in a scope with a mismatched }### # comment",
-        TestInterpError::RawScopeCloseOutsideRawScope(TestParserSpan("}###")),
+        TestInterpError::RawScopeCloseOutsideRawScope(TestParseSpan("}###")),
     )
 }
 #[test]
@@ -434,7 +434,7 @@ pub fn test_mismatching_raw_scope_close() {
     expect_parse_err(
         "##{ text in a scope with a }#",
         TestInterpError::EndedInsideRawScope {
-            raw_scope_start: TestParserSpan("##{"),
+            raw_scope_start: TestParseSpan("##{"),
         },
     )
 }
@@ -443,7 +443,7 @@ pub fn test_ended_inside_code() {
     expect_parse_err(
         "text [code",
         TestInterpError::EndedInsideCode {
-            code_start: TestParserSpan("[code"),
+            code_start: TestParseSpan("[code"),
         },
     )
 }
@@ -452,7 +452,7 @@ pub fn test_ended_inside_raw_scope() {
     expect_parse_err(
         "text #{raw",
         TestInterpError::EndedInsideRawScope {
-            raw_scope_start: TestParserSpan("#{"),
+            raw_scope_start: TestParseSpan("#{"),
         },
     )
 }
@@ -461,7 +461,7 @@ pub fn test_ended_inside_scope() {
     expect_parse_err(
         "text {scope",
         TestInterpError::EndedInsideScope {
-            scope_start: TestParserSpan("{"),
+            scope_start: TestParseSpan("{"),
         },
     )
 }
@@ -470,8 +470,8 @@ pub fn test_newline_inside_inline_scope() {
     expect_parse_err(
         "text {scope\n",
         TestInterpError::SentenceBreakInInlineScope {
-            scope_start: TestParserSpan("{"),
-            sentence_break: TestParserSpan("\n"),
+            scope_start: TestParseSpan("{"),
+            sentence_break: TestParseSpan("\n"),
         },
     )
 }
@@ -479,7 +479,7 @@ pub fn test_newline_inside_inline_scope() {
 pub fn test_block_scope_open_inline_para() {
     expect_parse_err(
         "text {\n",
-        TestInterpError::BlockScopeOpenedInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("text", "", " ")), block_scope_open: TestParserSpan("{") },
+        TestInterpError::BlockScopeOpenedInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("text", "", " ")), block_scope_open: TestParseSpan("{") },
     )
 }
 #[test]
@@ -488,14 +488,14 @@ pub fn test_block_scope_open_inline_multiline_para() {
         "1st line
         2nd line
         3rd {\n",
-        TestInterpError::BlockScopeOpenedInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("1st", " line\n        2nd line\n        3rd", " ")), block_scope_open: TestParserSpan("{") },
+        TestInterpError::BlockScopeOpenedInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("1st", " line\n        2nd line\n        3rd", " ")), block_scope_open: TestParseSpan("{") },
     )
 }
 #[test]
 pub fn test_block_scope_open_inline() {
     expect_parse_err(
         "{text {\n",
-        TestInterpError::BlockScopeOpenedInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParserSpan("{") }, block_scope_open: TestParserSpan("{") },
+        TestInterpError::BlockScopeOpenedInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParseSpan("{") }, block_scope_open: TestParseSpan("{") },
     )
 }
 #[test]
@@ -503,7 +503,7 @@ pub fn test_eof_inside_block_scope() {
     expect_parse_err(
         "{\n",
         TestInterpError::EndedInsideScope {
-            scope_start: TestParserSpan("{"),
+            scope_start: TestParseSpan("{"),
         },
     )
 }
@@ -513,7 +513,7 @@ pub fn test_eof_inside_para_inside_block_scope() {
     expect_parse_err(
         "{\n paragraph paragraph paragraph EOF",
         TestInterpError::EndedInsideScope {
-            scope_start: TestParserSpan("{"),
+            scope_start: TestParseSpan("{"),
         },
     )
 }
@@ -657,7 +657,7 @@ pub fn test_cant_emit_block_from_code_inside_paragraph() {
     expect_parse_err(
         "Lorem ipsum!
 I'm in a [TEST_BLOCK]",
-        TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("Lorem", " ipsum!\nI'm in a", " ")), code_span: TestParserSpan("[TEST_BLOCK]") },
+        TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("Lorem", " ipsum!\nI'm in a", " ")), code_span: TestParseSpan("[TEST_BLOCK]") },
     )
 }
 
@@ -685,7 +685,7 @@ pub fn test_raw_scope_emitting_inline_from_block_level() {
 pub fn test_raw_scope_cant_emit_block_inside_paragraph() {
     expect_parse_err(
         "Inside a paragraph, you can't [TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#",
-        TestInterpError::CodeEmittedBlockInInlineMode{ inl_mode: TestInlineModeContext::Paragraph(TestParseContext("Inside", " a paragraph, you can't", " ")), code_span: TestParserSpan("[TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#") }
+        TestInterpError::CodeEmittedBlockInInlineMode{ inl_mode: TestInlineModeContext::Paragraph(TestParseContext("Inside", " a paragraph, you can't", " ")), code_span: TestParseSpan("[TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#") }
     )
 }
 
@@ -867,7 +867,7 @@ mod block_spacing {
             {
                 New Block
             }"#,
-            TestInterpError::InsufficientBlockSeparation { last_block: TestBlockModeElem::Para(TestParseContext("Paragraph", " one", "\n")), next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("{")) },
+            TestInterpError::InsufficientBlockSeparation { last_block: TestBlockModeElem::Para(TestParseContext("Paragraph", " one", "\n")), next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")) },
         );
     }
 
@@ -888,7 +888,7 @@ mod block_spacing {
         expect_parse_err(
             r#"Paragraph one
             [TEST_BLOCK]"#,
-            TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("Paragraph", " one", "\n")), code_span: TestParserSpan("[TEST_BLOCK]") },
+            TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("Paragraph", " one", "\n")), code_span: TestParseSpan("[TEST_BLOCK]") },
         )
     }
 
@@ -906,8 +906,8 @@ mod block_spacing {
         expect_parse_err(
             r#"[TEST_BLOCK] Paragraph one"#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestBlockModeElem::BlockFromCode(TestParserSpan("[TEST_BLOCK]")),
-                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("Paragraph")),
+                last_block: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("Paragraph")),
             },
         )
     }
@@ -946,7 +946,7 @@ mod block_spacing {
                 last_block: TestBlockModeElem::BlockScope(TestParseContext(
                     "{", "\n            ", "}"
                 )),
-                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("{")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
             },
         );
         expect_parse_err(
@@ -954,11 +954,11 @@ mod block_spacing {
             } {
             }"#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestBlockModeElem::BlockFromCode(TestParserSpan(
+                last_block: TestBlockModeElem::BlockFromCode(TestParseSpan(
                     "[TEST_BLOCK_BUILDER]{
             }",
                 )),
-                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("{")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
             },
         )
     }
@@ -995,8 +995,8 @@ mod block_spacing {
             [TEST_BLOCK]      {
             }"#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestBlockModeElem::BlockFromCode(TestParserSpan("[TEST_BLOCK]")),
-                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("{")),
+                last_block: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
             },
         )
     }
@@ -1016,8 +1016,8 @@ mod block_spacing {
         expect_parse_err(
             r#"[TEST_BLOCK] [TEST_BLOCK_2]"#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestBlockModeElem::BlockFromCode(TestParserSpan("[TEST_BLOCK]")),
-                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("[")),
+                last_block: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
             },
         )
     }
@@ -1044,8 +1044,8 @@ Look a test paragraph
 [f] and some more content
         "#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")),
-                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("and")),
+                last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("and")),
             },
         )
     }
@@ -1078,7 +1078,7 @@ f = test_src("""some content""")
 content
 [f]
         "#,
-            TestInterpError::InsufficientBlockSeparation { last_block: TestBlockModeElem::Para(TestParseContext("content", "", "\n")), next_block_start: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")) },
+            TestInterpError::InsufficientBlockSeparation { last_block: TestBlockModeElem::Para(TestParseContext("content", "", "\n")), next_block_start: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")) },
         )
     }
     #[test]
@@ -1108,8 +1108,8 @@ f = test_src("""some content""")
 [f] and some more content
         "#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")),
-                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("and")),
+                last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("and")),
             },
         )
     }
@@ -1140,8 +1140,8 @@ f = test_src("""some content""")
 [f] [f]
         "#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")),
-                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("[")),
+                last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
             },
         )
     }
@@ -1178,8 +1178,8 @@ f = test_src("""some content""")
 }
         "#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")),
-                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("[")),
+                last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
             },
         )
     }
@@ -1213,8 +1213,8 @@ f = test_src("""some content""")
 [f] [TEST_INLINE_BUILDER]{some other content}
         "#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")),
-                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("[")),
+                last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
             },
         )
     }
@@ -1252,8 +1252,8 @@ f = test_src("""some content""")
 }
         "#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")),
-                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("{")),
+                last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
             },
         )
     }
@@ -1286,8 +1286,8 @@ f = test_src("""some content""")
 [f]    { some other content }
         "#,
             TestInterpError::InsufficientBlockSeparation {
-                last_block: TestBlockModeElem::SourceFromCode(TestParserSpan("[f]")),
-                next_block_start: TestBlockModeElem::AnyToken(TestParserSpan("{")),
+                last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
             },
         )
     }
@@ -1554,7 +1554,7 @@ mod doc_structure {
             "{
     [TestDocSegmentHeader()]
     }",
-        TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParserSpan("{"), code_span: TestParserSpan("[TestDocSegmentHeader()]") }
+        TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParseSpan("{"), code_span: TestParseSpan("[TestDocSegmentHeader()]") }
         )
     }
 
@@ -1567,7 +1567,7 @@ mod doc_structure {
         But if they're in a block scope it shouldn't be allowed :(
     }
     }",
-        TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParserSpan("{"), code_span: TestParserSpan(
+        TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParseSpan("{"), code_span: TestParseSpan(
                     "[TestDocSegmentBuilder()]{
         Sometimes docsegmentheaders can be built, too!
         But if they're in a block scope it shouldn't be allowed :(
@@ -1581,7 +1581,7 @@ mod doc_structure {
             "[TEST_BLOCK_BUILDER]{
     [TestDocSegmentHeader()]
     }",
-    TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParserSpan("{"), code_span: TestParserSpan("[TestDocSegmentHeader()]"), },
+    TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParseSpan("{"), code_span: TestParseSpan("[TestDocSegmentHeader()]"), },
         )
     }
 
@@ -1659,7 +1659,7 @@ header_in_file = test_src("""
         [header_in_file]
         
         Content outside file!"#,
-        TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParserSpan("{"), code_span: TestParserSpan("[TestDocSegmentHeader(weight=123)]") },
+        TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParseSpan("{"), code_span: TestParseSpan("[TestDocSegmentHeader(weight=123)]") },
         )
     }
 
@@ -1681,7 +1681,7 @@ Content in file!
             
             Content outside file!
         }"#,
-        TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParserSpan("{"), code_span: TestParserSpan("[TestDocSegmentHeader(weight=123)]"),},
+        TestInterpError::CodeEmittedHeaderInBlockScope { block_scope_start: TestParseSpan("{"), code_span: TestParseSpan("[TestDocSegmentHeader(weight=123)]"),},
         )
     }
 
@@ -1689,7 +1689,7 @@ Content in file!
     fn test_cant_create_header_in_paragraph() {
         expect_parse_err(
             "And as I was saying [TestDocSegmentHeader()]",
-            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("And", " as I was saying", " ")), code_span: TestParserSpan("[TestDocSegmentHeader()]"),
+            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("And", " as I was saying", " ")), code_span: TestParseSpan("[TestDocSegmentHeader()]"),
             },
         )
     }
@@ -1698,7 +1698,7 @@ Content in file!
     fn test_cant_create_header_inline() {
         expect_parse_err(
             "[TEST_BLOCK_BUILDER_FROM_INLINE]{ [TestDocSegmentHeader()] }",
-            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParserSpan("{") }, code_span: TestParserSpan("[TestDocSegmentHeader()]"),
+            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParseSpan("{") }, code_span: TestParseSpan("[TestDocSegmentHeader()]"),
             },
         )
     }
@@ -1842,7 +1842,7 @@ f4 = test_src("""
     fn test_no_inserted_file_in_paragraph() {
         expect_parse_err(
             r#"wow i'm inside a paragraph! [test_src("some more data O.O")]"#,
-            TestInterpError::CodeEmittedSourceInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("wow", " i'm inside a paragraph!", " ")), code_span: TestParserSpan(r#"[test_src("some more data O.O")]"#) },
+            TestInterpError::CodeEmittedSourceInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("wow", " i'm inside a paragraph!", " ")), code_span: TestParseSpan(r#"[test_src("some more data O.O")]"#) },
         )
     }
 
@@ -1850,7 +1850,7 @@ f4 = test_src("""
     fn test_no_inserted_file_in_inline_scope() {
         expect_parse_err(
             r#"{ wow i'm inside an inline scope! [test_src("some more data O.O")] }"#,
-            TestInterpError::CodeEmittedSourceInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParserSpan("{") } , code_span: TestParserSpan(r#"[test_src("some more data O.O")]"#) },
+            TestInterpError::CodeEmittedSourceInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParseSpan("{") } , code_span: TestParseSpan(r#"[test_src("some more data O.O")]"#) },
         )
     }
 
@@ -1858,7 +1858,7 @@ f4 = test_src("""
     fn test_no_inserted_file_in_inline_builder() {
         expect_parse_err(
             r#"[TEST_INLINE_BUILDER]{wow i'm inside an inline scope builder! [test_src("some more data O.O")] }"#,
-            TestInterpError::CodeEmittedSourceInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParserSpan("{") } , code_span: TestParserSpan(r#"[test_src("some more data O.O")]"#) },
+            TestInterpError::CodeEmittedSourceInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParseSpan("{") } , code_span: TestParseSpan(r#"[test_src("some more data O.O")]"#) },
         )
     }
 
@@ -1871,7 +1871,7 @@ f4 = test_src("""
             {
                 [test_src("}")]
             "#,
-            TestInterpError::BlockScopeCloseOutsideScope(TestParserSpan("}")),
+            TestInterpError::BlockScopeCloseOutsideScope(TestParseSpan("}")),
         )
     }
 }
@@ -2017,7 +2017,7 @@ mod flexibility {
     fn test_inline_scope_builder_building_block_in_inline() {
         expect_parse_err(
             "{wow i'm in an inline context [TEST_BLOCK_BUILDER_FROM_INLINE]{only inlines :)}}",
-            TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParserSpan("{") }, code_span: TestParserSpan(
+            TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParseSpan("{") }, code_span: TestParseSpan(
                 "[TEST_BLOCK_BUILDER_FROM_INLINE]{only inlines :)}",
             ) },
         )
@@ -2031,7 +2031,7 @@ mod flexibility {
                 Stuff
             } continuing the inline context}
         "#,
-        TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParserSpan("{") }, code_span: TestParserSpan(
+        TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParseSpan("{") }, code_span: TestParseSpan(
             "[TEST_BLOCK_BUILDER]{\n                Stuff\n            }",
         ) },
         )
@@ -2041,7 +2041,7 @@ mod flexibility {
     fn test_raw_scope_builder_building_block_in_inline() {
         expect_parse_err(
             "{wow i'm in an inline context [TEST_RAW_BLOCK_BUILDER]#{ block! }# continuing the inline context}",
-            TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParserSpan("{") }, code_span: TestParserSpan("[TEST_RAW_BLOCK_BUILDER]#{ block! }#") },
+            TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParseSpan("{") }, code_span: TestParseSpan("[TEST_RAW_BLOCK_BUILDER]#{ block! }#") },
         )
     }
 
@@ -2120,7 +2120,7 @@ mod flexibility {
     fn test_inline_scope_builder_building_header_in_inline_mode_para() {
         expect_parse_err(
             "And as I was saying [TestDocSegmentBuilder()]{ Wowee i wish I had inline content }",
-            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("And", " as I was saying", " ")), code_span: TestParserSpan(
+            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("And", " as I was saying", " ")), code_span: TestParseSpan(
                 "[TestDocSegmentBuilder()]{ Wowee i wish I had inline content }",
             ), },
         )
@@ -2132,7 +2132,7 @@ mod flexibility {
             "And as I was saying [TestDocSegmentBuilder()]{
                 Wowee i wish I had block content
             }",
-            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("And", " as I was saying", " ")), code_span: TestParserSpan(
+            TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("And", " as I was saying", " ")), code_span: TestParseSpan(
                 "[TestDocSegmentBuilder()]{
                 Wowee i wish I had block content
             }",
@@ -2147,7 +2147,7 @@ mod flexibility {
                 I had inline 
                 and raw
                 content }#",
-                TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("And", " as I was saying", " ")), code_span: TestParserSpan(
+                TestInterpError::CodeEmittedHeaderInInlineMode { inl_mode: TestInlineModeContext::Paragraph(TestParseContext("And", " as I was saying", " ")), code_span: TestParseSpan(
                     "[TestDocSegmentBuilder()]#{ Wowee i wish 
                 I had inline 
                 and raw
@@ -2533,7 +2533,7 @@ mod scope_ambiguity {
         expect_parse_err(
             "{ wow some data and then EOF",
             TestInterpError::EndedInsideScope {
-                scope_start: TestParserSpan("{"),
+                scope_start: TestParseSpan("{"),
             },
         )
     }
@@ -2543,7 +2543,7 @@ mod scope_ambiguity {
         expect_parse_err(
             "{   \n wow some data and then EOF",
             TestInterpError::EndedInsideScope {
-                scope_start: TestParserSpan("{"),
+                scope_start: TestParseSpan("{"),
             },
         )
     }
