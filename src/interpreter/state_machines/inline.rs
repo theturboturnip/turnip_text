@@ -754,6 +754,7 @@ impl InlineTokenProcessor for KnownInlineScopeFromTokens {
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
         Err(InterpError::EndedInsideScope {
             scope_start: self.ctx.first_tok(),
+            eof_span: tok.token_span(),
         }
         .into())
     }
@@ -867,8 +868,9 @@ impl BuildFromTokens for RawStringFromTokens {
                     InlineElem::Raw(raw).into(),
                 ))))
             }
-            TTToken::EOF(_) => Err(InterpError::EndedInsideRawScope {
+            TTToken::EOF(eof_span) => Err(InterpError::EndedInsideRawScope {
                 raw_scope_start: self.ctx.first_tok(),
+                eof_span,
             }
             .into()),
             _ => {

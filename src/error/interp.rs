@@ -44,13 +44,21 @@ pub enum InterpError {
     InlineScopeCloseOutsideScope(ParseSpan),
     #[error("Raw scope close when not in a raw scope")]
     RawScopeCloseOutsideRawScope(ParseSpan),
-    // TODO give these tokens for file end?
     #[error("File ended inside code block")]
-    EndedInsideCode { code_start: ParseSpan },
+    EndedInsideCode {
+        code_start: ParseSpan,
+        eof_span: ParseSpan,
+    },
     #[error("File ended inside raw scope")]
-    EndedInsideRawScope { raw_scope_start: ParseSpan },
+    EndedInsideRawScope {
+        raw_scope_start: ParseSpan,
+        eof_span: ParseSpan,
+    },
     #[error("File ended inside scope")]
-    EndedInsideScope { scope_start: ParseSpan },
+    EndedInsideScope {
+        scope_start: ParseSpan,
+        eof_span: ParseSpan,
+    },
 
     #[error("Encountered a block-scope-open in inline mode")]
     BlockScopeOpenedInInlineMode {

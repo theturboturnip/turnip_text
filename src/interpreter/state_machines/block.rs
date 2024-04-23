@@ -313,6 +313,7 @@ impl BlockTokenProcessor for BlockScopeFromTokens {
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
         Err(InterpError::EndedInsideScope {
             scope_start: self.ctx.first_tok(),
+            eof_span: tok.token_span(),
         }
         .into())
     }
@@ -416,8 +417,9 @@ impl BuildFromTokens for BlockLevelAmbiguousScope {
                 // When receiving EOF it returns an error.
                 // This fulfils the contract for [BuildFromTokens::process_token].
                 TTToken::Whitespace(_) => Ok(BuildStatus::Continue),
-                TTToken::EOF(_) => Err(InterpError::EndedInsideScope {
+                TTToken::EOF(eof_span) => Err(InterpError::EndedInsideScope {
                     scope_start: *first_tok,
+                    eof_span,
                 }
                 .into()),
                 TTToken::Newline(last_tok) => {

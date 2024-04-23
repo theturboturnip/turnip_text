@@ -142,12 +142,15 @@ pub enum TestInterpError<'a> {
     RawScopeCloseOutsideRawScope(TestParseSpan<'a>),
     EndedInsideCode {
         code_start: TestParseSpan<'a>,
+        eof_span: TestParseSpan<'a>,
     },
     EndedInsideRawScope {
         raw_scope_start: TestParseSpan<'a>,
+        eof_span: TestParseSpan<'a>,
     },
     EndedInsideScope {
         scope_start: TestParseSpan<'a>,
+        eof_span: TestParseSpan<'a>,
     },
     BlockScopeOpenedInInlineMode {
         inl_mode: TestInlineModeContext<'a>,
@@ -194,14 +197,26 @@ impl<'a> From<(&'a Box<InterpError>, &'a Vec<ParsingFile>)> for TestInterpError<
             InterpError::RawScopeCloseOutsideRawScope(s) => {
                 Self::RawScopeCloseOutsideRawScope((s, value.1).into())
             }
-            InterpError::EndedInsideCode { code_start } => Self::EndedInsideCode {
+            InterpError::EndedInsideCode {
+                code_start,
+                eof_span,
+            } => Self::EndedInsideCode {
                 code_start: (code_start, value.1).into(),
+                eof_span: (eof_span, value.1).into(),
             },
-            InterpError::EndedInsideRawScope { raw_scope_start } => Self::EndedInsideRawScope {
+            InterpError::EndedInsideRawScope {
+                raw_scope_start,
+                eof_span,
+            } => Self::EndedInsideRawScope {
                 raw_scope_start: (raw_scope_start, value.1).into(),
+                eof_span: (eof_span, value.1).into(),
             },
-            InterpError::EndedInsideScope { scope_start } => Self::EndedInsideScope {
+            InterpError::EndedInsideScope {
+                scope_start,
+                eof_span,
+            } => Self::EndedInsideScope {
                 scope_start: (scope_start, value.1).into(),
+                eof_span: (eof_span, value.1).into(),
             },
             InterpError::BlockScopeOpenedInInlineMode {
                 inl_mode,

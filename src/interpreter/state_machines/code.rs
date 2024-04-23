@@ -73,8 +73,9 @@ impl BuildFromTokens for CodeFromTokens {
                             Ok(BuildStatus::Continue)
                         }
                     }
-                    TTToken::EOF(_) => Err(InterpError::EndedInsideCode {
-                        code_start: self.ctx.full_span(), // TODO use first_tok here
+                    TTToken::EOF(eof_span) => Err(InterpError::EndedInsideCode {
+                        code_start: self.ctx.first_tok(),
+                        eof_span,
                     })?,
                     _ => {
                         // Code blocks use raw stringification to avoid confusion between text written and text entered

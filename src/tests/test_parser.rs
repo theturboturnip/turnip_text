@@ -435,6 +435,7 @@ pub fn test_mismatching_raw_scope_close() {
         "##{ text in a scope with a }#",
         TestInterpError::EndedInsideRawScope {
             raw_scope_start: TestParseSpan("##{"),
+            eof_span: TestParseSpan(""),
         },
     )
 }
@@ -443,7 +444,8 @@ pub fn test_ended_inside_code() {
     expect_parse_err(
         "text [code",
         TestInterpError::EndedInsideCode {
-            code_start: TestParseSpan("[code"),
+            code_start: TestParseSpan("["),
+            eof_span: TestParseSpan(""),
         },
     )
 }
@@ -453,6 +455,7 @@ pub fn test_ended_inside_raw_scope() {
         "text #{raw",
         TestInterpError::EndedInsideRawScope {
             raw_scope_start: TestParseSpan("#{"),
+            eof_span: TestParseSpan(""),
         },
     )
 }
@@ -462,6 +465,7 @@ pub fn test_ended_inside_scope() {
         "text {scope",
         TestInterpError::EndedInsideScope {
             scope_start: TestParseSpan("{"),
+            eof_span: TestParseSpan(""),
         },
     )
 }
@@ -504,6 +508,7 @@ pub fn test_eof_inside_block_scope() {
         "{\n",
         TestInterpError::EndedInsideScope {
             scope_start: TestParseSpan("{"),
+            eof_span: TestParseSpan(""),
         },
     )
 }
@@ -514,6 +519,7 @@ pub fn test_eof_inside_para_inside_block_scope() {
         "{\n paragraph paragraph paragraph EOF",
         TestInterpError::EndedInsideScope {
             scope_start: TestParseSpan("{"),
+            eof_span: TestParseSpan(""),
         },
     )
 }
@@ -2534,7 +2540,8 @@ mod scope_ambiguity {
             "{ wow some data and then EOF",
             TestInterpError::EndedInsideScope {
                 scope_start: TestParseSpan("{"),
-            },
+            eof_span: TestParseSpan(""),
+        },
         )
     }
 
@@ -2544,7 +2551,8 @@ mod scope_ambiguity {
             "{   \n wow some data and then EOF",
             TestInterpError::EndedInsideScope {
                 scope_start: TestParseSpan("{"),
-            },
+            eof_span: TestParseSpan(""),
+        },
         )
     }
 }
