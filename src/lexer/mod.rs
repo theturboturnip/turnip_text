@@ -69,7 +69,7 @@ pub fn lex(file_idx: usize, data: &str) -> LexedStrIterator {
     LexedStrIterator::Tokenizing(Box::new(toks.into_iter()))
 }
 
-/// Sequences that can define the start of a [SimpleToken]
+/// Sequences that can define the start of a non-text [TTToken]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum LexerPrefixSeq {
     /// `\r`
@@ -124,8 +124,6 @@ impl LexerPrefixSeq {
 }
 
 /// Characters/sequences that usually have special meaning in the lexer and can be backslash-escaped
-///
-/// [LexerPrefixSeq::RSqgOpen] is *not* included, because that is part of a raw scope open 'r{" which is escaped by escaping the '{' not the 'r'.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Escapable {
     /// `\r`, `\r\n`, `\n`
@@ -215,7 +213,6 @@ pub enum TTToken {
 }
 impl TTToken {
     fn parse_n_chars<L>(
-        file_idx: usize,
         stream: &L,
         state: L::State,
         target_ch: char,
@@ -274,7 +271,7 @@ impl TTToken {
                 // SqrOpen => CodeOpen()
                 LexerPrefixSeq::SqrOpen => {
                     // Run will have at least one [, because it's starting with this character.
-                    match Self::parse_n_chars(file_idx, stream, state, '[')? {
+                    match Self::parse_n_chars(stream, state, '[')? {
                         Some((hash_end, n)) => Ok(Some((
                             hash_end,
                             Self::CodeOpen(ParseSpan::from_lex(file_idx, start, hash_end), n),
@@ -285,7 +282,7 @@ impl TTToken {
                 // SqrClose => CodeClose
                 LexerPrefixSeq::SqrClose => {
                     // Run will have at least one ], because it's starting with this character.
-                    match Self::parse_n_chars(file_idx, stream, state, ']')? {
+                    match Self::parse_n_chars(stream, state, ']')? {
                         Some((hash_end, n)) => Ok(Some((
                             hash_end,
                             Self::CodeClose(ParseSpan::from_lex(file_idx, start, hash_end), n),
@@ -297,7 +294,7 @@ impl TTToken {
                 LexerPrefixSeq::SqgOpen => Ok(Some((state_after_seq, Self::ScopeOpen(seq_span)))),
                 // SqgClose => ScopeClose
                 LexerPrefixSeq::SqgClose => {
-                    match Self::parse_n_chars(file_idx, stream, state_after_seq, '#')? {
+                    match Self::parse_n_chars(stream, state_after_seq, '#')? {
                         Some((hash_end, n)) => Ok(Some((
                             hash_end,
                             Self::RawScopeClose(ParseSpan::from_lex(file_idx, start, hash_end), n),
@@ -309,7 +306,7 @@ impl TTToken {
                 // Hash => Hash
                 LexerPrefixSeq::Hash => {
                     // Run will have at least one #, because it's starting with this character.
-                    match Self::parse_n_chars(file_idx, stream, state, '#')? {
+                    match Self::parse_n_chars(stream, state, '#')? {
                         Some((hash_end, n)) => {
                             // if followed by { it's a raw scope open
                             let state_after_char_after_hash = stream.consumed(hash_end, 1);
