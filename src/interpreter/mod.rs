@@ -1,14 +1,13 @@
 use pyo3::prelude::*;
 use pyo3::{types::PyDict, Py, Python};
 use std::fmt::Debug;
-use std::rc::Rc;
 
 use crate::error::interp::MapContextlessResult;
-use crate::python::interop::{BlockScope, DocSegment, DocSegmentHeader, TurnipTextSource};
+use crate::python::interop::{BlockScope, DocSegment, DocSegmentHeader};
 use crate::python::typeclass::{PyInstanceList, PyTcRef};
 use crate::{
     error::{stringify_pyerr, TurnipTextContextlessResult, TurnipTextError, TurnipTextResult},
-    lexer::{lex, LexError, LexedStrIterator, TTToken},
+    lexer::{lex, LexedStrIterator},
     util::ParseSpan,
 };
 
@@ -48,22 +47,31 @@ impl ParsingFile {
     }
 }
 
+pub enum FileEvent {
+    FileInserted {
+        emitted_by_code: ParseSpan,
+        name: String,
+        contents: String,
+    },
+    FileEnded,
+}
+
 pub struct TurnipTextParser {
     // The stack of currently parsed file (spawned from, indices). `spawned from` is None for the first file, Some for all others
     file_stack: Vec<(Option<ParseSpan>, usize)>,
     files: Vec<ParsingFile>,
-    interp: Interpreter,
+    builders: BuilderStacks,
 }
 impl TurnipTextParser {
     pub fn new(py: Python, file_name: String, file_contents: String) -> TurnipTextResult<Self> {
         let file = ParsingFile::new(0, file_name, file_contents);
         let files = vec![file];
-        let interp = Interpreter::new(py)
+        let builders = BuilderStacks::new(py)
             .map_err(|pyerr| TurnipTextError::InternalPython(stringify_pyerr(py, &pyerr)))?;
         Ok(Self {
             file_stack: vec![(None, 0)],
             files,
-            interp,
+            builders,
         })
     }
     pub fn parse(mut self, py: Python, py_env: &PyDict) -> TurnipTextResult<Py<DocSegment>> {
@@ -77,7 +85,7 @@ impl TurnipTextParser {
                     Some((_, file_idx)) => file_idx,
                 };
                 let file = &mut self.files[*file_idx];
-                self.interp.handle_tokens(
+                self.builders.top_stack().process_tokens(
                     py,
                     py_env,
                     &mut file.token_stream,
@@ -90,7 +98,7 @@ impl TurnipTextParser {
                 Err(err) => return Err((self.files, err).into()),
             };
             match action {
-                InterpreterFileAction::FileInserted {
+                FileEvent::FileInserted {
                     emitted_by_code,
                     name,
                     contents,
@@ -98,19 +106,19 @@ impl TurnipTextParser {
                     let file_idx = self.files.len();
                     self.files.push(ParsingFile::new(file_idx, name, contents));
                     self.file_stack.push((Some(emitted_by_code), file_idx));
-                    self.interp.push_subfile();
+                    self.builders.push_subfile();
                 }
-                InterpreterFileAction::FileEnded => {
+                FileEvent::FileEnded => {
                     let (emitted_by, _) = self
                         .file_stack
                         .pop()
                         .expect("We just handled tokens from a file, there must be one");
-                    self.interp.pop_subfile(emitted_by)
+                    self.builders.pop_subfile(emitted_by)
                 }
             };
         }
 
-        self.interp
+        self.builders
             .finalize(py)
             .map_err(|err| (self.files, err).into())
     }
@@ -187,7 +195,7 @@ impl InterimDocumentStructure {
                 .pop()
                 .expect("Just checked, it isn't empty");
 
-            let segment = segment_to_finish.finish(py).err_as_internal(py)?;
+            let segment = segment_to_finish.finalize(py).err_as_internal(py)?;
 
             // Look into the next segment
             curr_toplevel_weight = match self.segment_stack.last() {
@@ -245,74 +253,10 @@ impl InterpDocSegmentState {
             subsegments: PyInstanceList::new(py),
         })
     }
-    fn finish(self, py: Python) -> PyResult<Py<DocSegment>> {
+    fn finalize(self, py: Python) -> PyResult<Py<DocSegment>> {
         Py::new(
             py,
             DocSegment::new_checked(py, Some(self.header), self.content, self.subsegments)?,
         )
-    }
-}
-
-pub enum InterpreterFileAction {
-    FileInserted {
-        emitted_by_code: ParseSpan,
-        name: String,
-        contents: String,
-    },
-    FileEnded,
-}
-
-pub struct Interpreter {
-    builders: BuilderStacks,
-}
-impl Interpreter {
-    pub fn new(py: Python) -> PyResult<Self> {
-        Ok(Self {
-            builders: BuilderStacks::new(py)?,
-        })
-    }
-
-    pub fn handle_tokens<'a>(
-        &'a mut self,
-        py: Python,
-        py_env: &PyDict,
-        toks: &mut impl Iterator<Item = Result<TTToken, LexError>>,
-        file_idx: usize, // Attached to any LexError given
-        data: &str,
-    ) -> TurnipTextContextlessResult<InterpreterFileAction> {
-        for tok in toks {
-            let tok = tok.map_err(|lex_err| (file_idx, lex_err))?;
-            match self
-                .builders
-                .top_stack()
-                .process_token(py, py_env, tok, data)?
-            {
-                None => continue,
-                Some((emitted_by_code, TurnipTextSource { name, contents })) => {
-                    return Ok(InterpreterFileAction::FileInserted {
-                        emitted_by_code,
-                        name,
-                        contents,
-                    });
-                }
-            }
-        }
-        Ok(InterpreterFileAction::FileEnded)
-    }
-
-    pub fn push_subfile(&mut self) {
-        self.builders.push_subfile()
-    }
-
-    pub fn pop_subfile(&mut self, subfile_emitted_by: Option<ParseSpan>) {
-        self.builders.pop_subfile(subfile_emitted_by)
-    }
-
-    pub fn finalize(self, py: Python) -> TurnipTextContextlessResult<Py<DocSegment>> {
-        let rc_refcell_top = self.builders.finalize();
-        match Rc::try_unwrap(rc_refcell_top) {
-            Err(_) => panic!("Shouldn't have any other stacks holding references to this"),
-            Ok(refcell_top) => refcell_top.into_inner().finalize(py),
-        }
     }
 }

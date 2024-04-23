@@ -34,10 +34,10 @@ use crate::{
         interp::{BlockModeElem, InterpError, MapContextlessResult},
         TurnipTextContextlessResult,
     },
-    lexer::TTToken,
+    lexer::{LexError, TTToken},
     python::{
         interop::{
-            Block, BlockScope, DocSegmentHeader, Inline, InlineScope, Paragraph, Raw,
+            Block, BlockScope, DocSegment, DocSegmentHeader, Inline, InlineScope, Paragraph, Raw,
             TurnipTextSource,
         },
         typeclass::PyTcRef,
@@ -46,7 +46,9 @@ use crate::{
 };
 
 mod block;
-pub use block::TopLevelDocumentBuilder;
+use block::TopLevelDocumentBuilder;
+
+use super::FileEvent;
 
 mod code;
 mod comment;
@@ -172,6 +174,31 @@ impl FileBuilderStack {
             None => &self.top,
             Some(top) => top,
         }
+    }
+
+    pub fn process_tokens(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+        toks: &mut impl Iterator<Item = Result<TTToken, LexError>>,
+        file_idx: usize, // Attached to any LexError given
+        data: &str,
+    ) -> TurnipTextContextlessResult<FileEvent> {
+        for tok in toks {
+            let tok = tok.map_err(|lex_err| (file_idx, lex_err))?;
+            match self.process_token(py, py_env, tok, data)? {
+                None => continue,
+                Some((emitted_by_code, TurnipTextSource { name, contents })) => {
+                    return Ok(FileEvent::FileInserted {
+                        emitted_by_code,
+                        name,
+                        contents,
+                    });
+                }
+            }
+        }
+        // We have exhausted the token stream
+        Ok(FileEvent::FileEnded)
     }
 
     pub fn process_token(
@@ -342,11 +369,14 @@ impl BuilderStacks {
         }
     }
 
-    pub fn finalize(self) -> Rc<RefCell<TopLevelDocumentBuilder>> {
+    pub fn finalize(self, py: Python) -> TurnipTextContextlessResult<Py<DocSegment>> {
         if self.builder_stacks.len() > 0 {
             panic!("Called finalize() on BuilderStacks when more than one stack was left - forgot to pop_subfile()?");
         }
-        self.top
+        match Rc::try_unwrap(self.top) {
+            Err(_) => panic!(),
+            Ok(refcell_top) => refcell_top.into_inner().finalize(py),
+        }
     }
 }
 
