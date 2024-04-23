@@ -193,7 +193,6 @@ pub enum Unit {
     /// A backslash followed by any other character (e.g. `\abc`) is treated as a plain `Backslash` followed by `Other`.
     ///
     /// Current escapable characters/sequences are `[, ], {, }, \, #, \r, \n, \r\n`.
-    /// TODO include `%` when [SimpleToken::Percent] is uncommented
     Escaped(ParseSpan, Escapable),
     /// '\' that does not participate in a [Self::Escaped]
     Backslash(ParseSpan),
@@ -212,9 +211,7 @@ pub enum Unit {
     /// String of non-escaped, whitespace, non-[Self::Newline] characters.
     /// The definition of whitespace comes from [char::is_whitespace], i.e. from Unicode
     Whitespace(ParseSpan),
-    // TODO
-    // /// `%` character not preceded by a backslash
-    // Percent(P),
+    /// End-of-file token, with a zero-length ParseSpan at the last byte of the file
     EOF(ParseSpan),
 }
 impl Unit {
@@ -422,9 +419,7 @@ pub enum TTToken {
     OtherText(ParseSpan),
     /// See [Unit::Whitespace]
     Whitespace(ParseSpan),
-    // TODO
-    // /// `%` character not preceded by a backslash
-    // Percent(P),
+    /// See [Unit::EOF]
     EOF(ParseSpan),
 }
 pub fn units_to_tokens(units: Vec<Unit>) -> Vec<TTToken> {
