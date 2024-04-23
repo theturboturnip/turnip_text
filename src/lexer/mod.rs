@@ -9,11 +9,10 @@ use line_col_char_posn::LineColumnChar;
 use crate::util::ParsePosn;
 use crate::util::ParseSpan;
 
-#[derive(Debug)]
 pub enum LexedStrIterator {
     Exhausted,
     Error(LexError),
-    Tokenizing(UnitsToTokensIterator),
+    Tokenizing(Box<dyn Iterator<Item = TTToken>>),
 }
 impl Iterator for LexedStrIterator {
     type Item = Result<TTToken, LexError>;
@@ -34,23 +33,26 @@ impl Iterator for LexedStrIterator {
         ret
     }
 }
-/// TODO right now we have to store all the first-level lex tokens in a vector. This sucks.
-fn lex_units_only(file_idx: usize, data: &str) -> Result<Vec<Unit>, LexError> {
+/// Right now lexing holds all the tokens in a vector. This sucks, but it's not really avoidable unless we start screwing around with lifetimes inside iterators that match the String in the same field of a struct... argh! :)
+pub fn lex(file_idx: usize, data: &str) -> LexedStrIterator {
     let lexer = LexerOfStr::<LexPosn, LexToken, LexError>::new(data);
 
-    let mut units: Vec<Unit> = vec![];
-    for u in lexer.iter(&[
-        Box::new(|stream, state, ch| Unit::parse_special(file_idx, stream, state, ch)),
-        Box::new(|stream, state, ch| Unit::parse_other(file_idx, stream, state, ch)),
+    let mut toks: Vec<TTToken> = vec![];
+    for tok in lexer.iter(&[
+        Box::new(|stream, state, ch| TTToken::parse_special(file_idx, stream, state, ch)),
+        Box::new(|stream, state, ch| TTToken::parse_other(file_idx, stream, state, ch)),
     ]) {
-        units.push(u?);
+        match tok {
+            Ok(tok) => toks.push(tok),
+            Err(e) => return LexedStrIterator::Error(e),
+        }
     }
 
     // Add an EOF unit to the end of the stream, with a zero-length ParseSpan at the end of the final character
-    let eof_span = match units.last() {
-        Some(last_unit) => {
-            let end_of_last_unit = last_unit.span().end();
-            ParseSpan::new(file_idx, end_of_last_unit, end_of_last_unit)
+    let eof_span = match toks.last() {
+        Some(last_tok) => {
+            let end_of_last_tok = last_tok.token_span().end();
+            ParseSpan::new(file_idx, end_of_last_tok, end_of_last_tok)
         }
         None => {
             let zero_posn = ParsePosn {
@@ -62,16 +64,9 @@ fn lex_units_only(file_idx: usize, data: &str) -> Result<Vec<Unit>, LexError> {
             ParseSpan::new(file_idx, zero_posn, zero_posn)
         }
     };
-    units.push(Unit::EOF(eof_span));
+    toks.push(TTToken::EOF(eof_span));
 
-    Ok(units)
-}
-pub fn lex(file_idx: usize, data: &str) -> LexedStrIterator {
-    let units = lex_units_only(file_idx, data);
-    match units {
-        Ok(units) => LexedStrIterator::Tokenizing(UnitsToTokensIterator::new(units)),
-        Err(e) => LexedStrIterator::Error(e),
-    }
+    LexedStrIterator::Tokenizing(Box::new(toks.into_iter()))
 }
 
 /// Sequences that can define the start of a [SimpleToken]
@@ -122,7 +117,7 @@ impl LexerPrefixSeq {
     where
         P: PosnInCharStream,
         L: CharStream<P>,
-        L: Lexer<Token = Unit, State = P>,
+        L: Lexer<Token = TTToken, State = P>,
     {
         Self::try_from_char2(ch, stream.peek_at(&stream.consumed(state, 1)))
     }
@@ -153,7 +148,7 @@ impl Escapable {
     where
         P: PosnInCharStream,
         L: CharStream<P>,
-        L: Lexer<Token = Unit, State = P>,
+        L: Lexer<Token = TTToken, State = P>,
     {
         use Escapable::*;
         match stream.peek_at(&state_of_escapee)? {
@@ -174,11 +169,11 @@ impl Escapable {
 }
 
 pub type LexPosn = lexer_rs::StreamCharPos<LineColumnChar>;
-pub type LexToken = Unit;
+pub type LexToken = TTToken;
 pub type LexError = SimpleParseError<LexPosn>;
 
 #[derive(Debug, Copy, Clone)]
-pub enum Unit {
+pub enum TTToken {
     /// `\r\n`, `\n`, or `\r`, supports all for windows compatability
     ///
     /// Note that these are not the literal sequences e.g. ('\\', 'n') - they are the single characters.
@@ -200,10 +195,14 @@ pub enum Unit {
     CodeOpen(ParseSpan, usize),
     /// N `]` characters not preceded by a backslash
     CodeClose(ParseSpan, usize),
-    /// `{` character not preceded by a backslash
+    /// `{` character not preceded by a hash or backslash
     ScopeOpen(ParseSpan),
-    /// `}` character not preceded by a backslash
+    /// `}` character not preceded by a hash or backslash
     ScopeClose(ParseSpan),
+    /// N hashes followed by `{` not preceded by a backslash
+    RawScopeOpen(ParseSpan, usize),
+    /// `}` character followed by N hashes not preceded by backslash
+    RawScopeClose(ParseSpan, usize),
     /// N `#` characters not preceded by a backslash
     Hashes(ParseSpan, usize),
     /// Span of characters not included in [LexerPrefixSeq]
@@ -214,7 +213,7 @@ pub enum Unit {
     /// End-of-file token, with a zero-length ParseSpan at the last byte of the file
     EOF(ParseSpan),
 }
-impl Unit {
+impl TTToken {
     fn parse_n_chars<L>(
         file_idx: usize,
         stream: &L,
@@ -285,7 +284,7 @@ impl Unit {
                 }
                 // SqrClose => CodeClose
                 LexerPrefixSeq::SqrClose => {
-                    // Run will have at least one hash, because it's starting with this character.
+                    // Run will have at least one ], because it's starting with this character.
                     match Self::parse_n_chars(file_idx, stream, state, ']')? {
                         Some((hash_end, n)) => Ok(Some((
                             hash_end,
@@ -294,19 +293,45 @@ impl Unit {
                         None => unreachable!(),
                     }
                 }
-                // SqrOpen => ScopeOpen()
+                // SqrOpen => ScopeOpen
                 LexerPrefixSeq::SqgOpen => Ok(Some((state_after_seq, Self::ScopeOpen(seq_span)))),
                 // SqgClose => ScopeClose
-                LexerPrefixSeq::SqgClose => Ok(Some((state_after_seq, Self::ScopeClose(seq_span)))),
+                LexerPrefixSeq::SqgClose => {
+                    match Self::parse_n_chars(file_idx, stream, state_after_seq, '#')? {
+                        Some((hash_end, n)) => Ok(Some((
+                            hash_end,
+                            Self::RawScopeClose(ParseSpan::from_lex(file_idx, start, hash_end), n),
+                        ))),
+                        // No subsequent hashes, it's a normal scope close
+                        None => Ok(Some((state_after_seq, Self::ScopeClose(seq_span)))),
+                    }
+                }
                 // Hash => Hash
                 LexerPrefixSeq::Hash => {
                     // Run will have at least one #, because it's starting with this character.
                     match Self::parse_n_chars(file_idx, stream, state, '#')? {
-                        Some((hash_end, n)) => Ok(Some((
-                            hash_end,
-                            Self::Hashes(ParseSpan::from_lex(file_idx, start, hash_end), n),
-                        ))),
-                        None => unreachable!(),
+                        Some((hash_end, n)) => {
+                            // if followed by { it's a raw scope open
+                            let state_after_char_after_hash = stream.consumed(hash_end, 1);
+                            match stream.peek_at(&hash_end) {
+                                Some('{') => Ok(Some((
+                                    state_after_char_after_hash,
+                                    Self::RawScopeOpen(
+                                        ParseSpan::from_lex(
+                                            file_idx,
+                                            start,
+                                            state_after_char_after_hash,
+                                        ),
+                                        n,
+                                    ),
+                                ))),
+                                _ => Ok(Some((
+                                    hash_end,
+                                    Self::Hashes(ParseSpan::from_lex(file_idx, start, hash_end), n),
+                                ))),
+                            }
+                        }
+                        None => unreachable!("We just peeked a hash, there must be at least one"),
                     }
                 }
                 // Whitespace => Whitespace
@@ -376,150 +401,21 @@ impl Unit {
         }
     }
 
-    pub fn span(&self) -> ParseSpan {
-        match *self {
-            Unit::Newline(span) => span,
-            Unit::Escaped(span, _) => span,
-            Unit::Backslash(span) => span,
-            Unit::CodeOpen(span, _) => span,
-            Unit::CodeClose(span, _) => span,
-            Unit::ScopeOpen(span) => span,
-            Unit::ScopeClose(span) => span,
-            Unit::Hashes(span, _) => span,
-            Unit::OtherText(span) => span,
-            Unit::Whitespace(span) => span,
-            Unit::EOF(span) => span,
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum TTToken {
-    /// See [Unit::Newline]
-    Newline(ParseSpan),
-    /// See [Unit::Escaped]
-    Escaped(ParseSpan, Escapable),
-    /// See [Unit::Backslash]
-    Backslash(ParseSpan),
-    /// N `[` characters not preceded by a backslash
-    CodeOpen(ParseSpan, usize),
-    /// N `]` characters not preceded by a backslash, not followed by a scope open
-    CodeClose(ParseSpan, usize),
-    /// `{` character not preceded by a backslash or code
-    ScopeOpen(ParseSpan),
-    /// `}` character not preceded by a backslash
-    ScopeClose(ParseSpan),
-    /// N hashes followed by `{` not preceded by a backslash
-    RawScopeOpen(ParseSpan, usize),
-    /// `}` character followed by N hashes not preceded by backslash
-    RawScopeClose(ParseSpan, usize),
-    /// See [Unit::Hashes]
-    Hashes(ParseSpan, usize),
-    /// See [Unit::OtherText]
-    OtherText(ParseSpan),
-    /// See [Unit::Whitespace]
-    Whitespace(ParseSpan),
-    /// See [Unit::EOF]
-    EOF(ParseSpan),
-}
-pub fn units_to_tokens(units: Vec<Unit>) -> Vec<TTToken> {
-    let mut toks = vec![];
-    let mut i = 0;
-    while i < units.len() {
-        let (tok, n_consumed) = TTToken::units_to_token((
-            &units[i],
-            if i + 1 < units.len() {
-                Some(&units[i + 1])
-            } else {
-                None
-            },
-            if i + 2 < units.len() {
-                Some(&units[i + 2])
-            } else {
-                None
-            },
-        ));
-        assert!(n_consumed > 0);
-        toks.push(tok);
-        i += n_consumed;
-    }
-    toks
-}
-
-#[derive(Debug)]
-pub struct UnitsToTokensIterator {
-    units: Vec<Unit>,
-    idx: usize,
-}
-impl UnitsToTokensIterator {
-    pub fn new(units: Vec<Unit>) -> UnitsToTokensIterator {
-        UnitsToTokensIterator { units, idx: 0 }
-    }
-}
-impl Iterator for UnitsToTokensIterator {
-    type Item = TTToken;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let i = self.idx;
-        let len = self.units.len();
-        if i >= len {
-            None
-        } else {
-            let (tok, n_consumed) = TTToken::units_to_token((
-                &self.units[i],
-                if i + 1 < self.units.len() {
-                    Some(&self.units[i + 1])
-                } else {
-                    None
-                },
-                if i + 2 < self.units.len() {
-                    Some(&self.units[i + 2])
-                } else {
-                    None
-                },
-            ));
-            assert!(n_consumed > 0);
-            self.idx += n_consumed;
-            Some(tok)
-        }
-    }
-}
-
-impl TTToken {
-    fn units_to_token(units: (&Unit, Option<&Unit>, Option<&Unit>)) -> (Self, usize) {
-        match units {
-            (Unit::Newline(s), _, _) => (TTToken::Newline(*s), 1),
-            (Unit::Escaped(s, e), _, _) => (TTToken::Escaped(*s, *e), 1),
-            (Unit::Backslash(p), _, _) => (TTToken::Backslash(*p), 1),
-            (Unit::OtherText(s), _, _) => (TTToken::OtherText(*s), 1),
-            (Unit::Whitespace(s), _, _) => (TTToken::Whitespace(*s), 1),
-
-            // Code open and close
-            (Unit::CodeOpen(s, n), _, _) => (TTToken::CodeOpen(*s, *n), 1),
-            (Unit::CodeClose(span, n), _, _) => (TTToken::CodeClose(*span, *n), 1),
-
-            // Scope open
-            (Unit::ScopeOpen(s), _, _) => (TTToken::ScopeOpen(*s), 1),
-
-            // Raw scope open
-            (Unit::Hashes(s_start, n), Some(Unit::ScopeOpen(s_end)), _) => {
-                (TTToken::RawScopeOpen(s_start.combine(s_end), *n), 2)
-            }
-
-            // Scope close
-            (Unit::ScopeClose(s_start), Some(Unit::Hashes(s_end, n)), _) => {
-                (TTToken::RawScopeClose(s_start.combine(s_end), *n), 2)
-            }
-            (Unit::ScopeClose(s), _, _) => (TTToken::ScopeClose(*s), 1),
-
-            // Raw scope close
-            (Unit::Hashes(s, n), _, _) => (TTToken::Hashes(*s, *n), 1),
-
-            // EOF handling
-            (Unit::EOF(s), None, None) => (TTToken::EOF(*s), 1),
-            (Unit::EOF(_), _, _) => unreachable!("EOF cannot be followed by any other units"),
-        }
-    }
+    // pub fn span(&self) -> ParseSpan {
+    //     match *self {
+    //         Unit::Newline(span) => span,
+    //         Unit::Escaped(span, _) => span,
+    //         Unit::Backslash(span) => span,
+    //         Unit::CodeOpen(span, _) => span,
+    //         Unit::CodeClose(span, _) => span,
+    //         Unit::ScopeOpen(span) => span,
+    //         Unit::ScopeClose(span) => span,
+    //         Unit::Hashes(span, _) => span,
+    //         Unit::OtherText(span) => span,
+    //         Unit::Whitespace(span) => span,
+    //         Unit::EOF(span) => span,
+    //     }
+    // }
 
     pub fn token_span(&self) -> ParseSpan {
         match *self {

@@ -4,12 +4,11 @@ use std::fmt::Debug;
 use std::rc::Rc;
 
 use crate::error::interp::MapContextlessResult;
-use crate::lexer::{LexError, TTToken};
 use crate::python::interop::{BlockScope, DocSegment, DocSegmentHeader, TurnipTextSource};
 use crate::python::typeclass::{PyInstanceList, PyTcRef};
 use crate::{
     error::{stringify_pyerr, TurnipTextContextlessResult, TurnipTextError, TurnipTextResult},
-    lexer::{lex, LexedStrIterator},
+    lexer::{lex, LexError, LexedStrIterator, TTToken},
     util::ParseSpan,
 };
 
