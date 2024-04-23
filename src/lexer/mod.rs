@@ -18,18 +18,15 @@ impl Iterator for LexedStrIterator {
     type Item = Result<TTToken, LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (should_exhaust, ret) = match self {
-            LexedStrIterator::Exhausted => (false, None),
-            // TODO sucks we have to clone this :/
-            LexedStrIterator::Error(e) => (true, Some(Err(e.clone()))),
-            LexedStrIterator::Tokenizing(tokenizer) => match tokenizer.next() {
-                Some(tok) => (false, Some(Ok(tok))),
-                None => (true, None),
+        let (next, ret) = match std::mem::replace(self, LexedStrIterator::Exhausted) {
+            LexedStrIterator::Exhausted => (LexedStrIterator::Exhausted, None),
+            LexedStrIterator::Error(e) => (LexedStrIterator::Exhausted, Some(Err(e))),
+            LexedStrIterator::Tokenizing(mut iter) => match iter.next() {
+                Some(tok) => (LexedStrIterator::Tokenizing(iter), Some(Ok(tok))),
+                None => (LexedStrIterator::Exhausted, None),
             },
         };
-        if should_exhaust {
-            *self = LexedStrIterator::Exhausted;
-        }
+        *self = next;
         ret
     }
 }
