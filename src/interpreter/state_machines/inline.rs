@@ -14,8 +14,8 @@ use crate::{
 };
 
 use super::{
-    code::CodeFromTokens, comment::CommentFromTokens, py_internal_alloc, rc_refcell,
-    BuildFromTokens, BuildStatus, DocElement, PushToNextLevel,
+    ambiguous_scope::InlineLevelAmbiguousScope, code::CodeFromTokens, comment::CommentFromTokens,
+    py_internal_alloc, rc_refcell, BuildFromTokens, BuildStatus, DocElement, PushToNextLevel,
 };
 
 struct InlineTextState {
@@ -478,126 +478,6 @@ impl BuildFromTokens for ParagraphFromTokens {
 
     fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan) {
         unreachable!("ParagraphFromTokens always returns Err on_emitted_source_inside")
-    }
-}
-
-/// Parser for a scope which based on context *should* be inline, i.e. if you encounter no content before a newline then you must throw an error.
-pub enum InlineLevelAmbiguousScope {
-    Undecided {
-        preceding_inline: InlineModeContext,
-        start_of_line: bool,
-        scope_ctx: ParseContext,
-    },
-    Known(KnownInlineScopeFromTokens),
-}
-impl InlineLevelAmbiguousScope {
-    pub fn new(
-        preceding_inline: InlineModeContext,
-        start_of_line: bool,
-        start_span: ParseSpan,
-    ) -> Rc<RefCell<Self>> {
-        rc_refcell(Self::Undecided {
-            preceding_inline,
-            start_of_line,
-            scope_ctx: ParseContext::new(start_span, start_span),
-        })
-    }
-}
-impl BuildFromTokens for InlineLevelAmbiguousScope {
-    fn process_token(
-        &mut self,
-        py: Python,
-        py_env: &PyDict,
-        tok: TTToken,
-        data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
-        match self {
-            InlineLevelAmbiguousScope::Undecided {
-                preceding_inline,
-                start_of_line,
-                scope_ctx,
-            } => match tok {
-                TTToken::Newline(_) => match preceding_inline {
-                    InlineModeContext::Paragraph(preceding_para) => {
-                        if *start_of_line {
-                            Err(InterpError::InsufficientBlockSeparation {
-                                last_block: BlockModeElem::Para(*preceding_para),
-                                // The start of the next block is our *first* token, not the current token - that's just a newline
-                                next_block_start: BlockModeElem::AnyToken(scope_ctx.first_tok()),
-                            })?
-                        } else {
-                            // TODO test the case where you open a paragraph, then in the middle of a line you insert a block-scope-open - the preceding_para context should be the whole para up to the block-scope-open
-                            Err(InterpError::BlockScopeOpenedInInlineMode {
-                                inl_mode: preceding_inline.clone(),
-                                block_scope_open: scope_ctx.first_tok(),
-                            })?
-                        }
-                    }
-                    InlineModeContext::InlineScope { .. } => {
-                        // TODO test the case where you open a paragraph, then in the middle of a line you insert a block-scope-open *inside an inline scope* - the preceding_para context should be the whole para including that enclosing inline scope
-                        Err(InterpError::BlockScopeOpenedInInlineMode {
-                            inl_mode: preceding_inline.clone(),
-                            block_scope_open: scope_ctx.first_tok(),
-                        })?
-                    }
-                },
-                // Ignore whitespace on the first line
-                TTToken::Whitespace(_) => Ok(BuildStatus::Continue),
-                // This inevitably will fail, because we won't receive any content other than the newline
-                TTToken::Hashes(_, _) => {
-                    Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new()))
-                }
-                // In any other case we're creating *some* content - we must be in an inline scope
-                _ => {
-                    // Transition to an inline builder
-                    let mut inline_builder = KnownInlineScopeFromTokens::new_unowned(
-                        py,
-                        Some(preceding_inline.clone()),
-                        *scope_ctx,
-                    )?;
-                    // Make sure it knows about the new token
-                    let res = inline_builder.process_token(py, py_env, tok, data)?;
-                    // Swap ourselves out with the new state "i am an inline builder"
-                    let _ = std::mem::replace(self, Self::Known(inline_builder));
-                    Ok(res)
-                }
-            },
-            InlineLevelAmbiguousScope::Known(k) => k.process_token(py, py_env, tok, data),
-        }
-    }
-
-    fn process_push_from_inner_builder(
-        &mut self,
-        py: Python,
-        py_env: &PyDict,
-        pushed: Option<PushToNextLevel>,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
-        match self {
-            InlineLevelAmbiguousScope::Undecided { .. } => {
-                assert!(pushed.is_none(), "ScopeWhichShouldBeInline::Undecided does not push any builders except comments thus cannot receive non-None pushed items");
-                Ok(BuildStatus::Continue)
-            }
-            InlineLevelAmbiguousScope::Known(k) => {
-                k.process_push_from_inner_builder(py, py_env, pushed)
-            }
-        }
-    }
-
-    fn on_emitted_source_inside(
-        &mut self,
-        code_emitting_source: ParseContext,
-    ) -> TurnipTextContextlessResult<()> {
-        match self {
-            InlineLevelAmbiguousScope::Undecided { .. } => unreachable!("ScopeWhichShouldBeInline doesn't spawn non-comment builders in Undecided mode, so can't get a source emitted from them"),
-            InlineLevelAmbiguousScope::Known(k) => k.on_emitted_source_inside(code_emitting_source),
-        }
-    }
-
-    fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan) {
-        match self {
-            InlineLevelAmbiguousScope::Undecided { .. } => unreachable!("ScopeWhichShouldBeInline doesn't spawn non-comment builders in Undecided mode, so can't get a source emitted from them"),
-            InlineLevelAmbiguousScope::Known(k) => k.on_emitted_source_closed(inner_source_emitted_by),
-        }
     }
 }
 

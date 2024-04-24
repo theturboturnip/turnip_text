@@ -19,7 +19,7 @@ use crate::{
 };
 
 use super::{
-    block::BlockLevelAmbiguousScope, inline::RawStringFromTokens, rc_refcell, BlockElem,
+    ambiguous_scope::BlockLevelAmbiguousScope, inline::RawStringFromTokens, rc_refcell, BlockElem,
     BuildFromTokens, BuildStatus, DocElement, InlineElem, PushToNextLevel,
 };
 

@@ -45,6 +45,7 @@ use crate::{
     util::{ParseContext, ParseSpan},
 };
 
+mod ambiguous_scope;
 mod block;
 use block::TopLevelDocumentBuilder;
 
