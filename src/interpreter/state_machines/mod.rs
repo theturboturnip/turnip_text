@@ -47,7 +47,7 @@ use crate::{
 
 mod ambiguous_scope;
 mod block;
-use block::TopLevelDocumentBuilder;
+use block::TopLevelProcessor;
 
 use super::FileEvent;
 
@@ -329,14 +329,14 @@ impl FileBuilderStack {
 /// Holds multiple stacks of builders including an always-present top level builder.
 /// Each stack of builders
 pub struct BuilderStacks {
-    top: Rc<RefCell<TopLevelDocumentBuilder>>,
+    top: Rc<RefCell<TopLevelProcessor>>,
     /// The stacks of builders, one stack per file.
     /// If empty, the file is about to be finalized and functions for getting/popping a stack must not be called.
     builder_stacks: Vec<FileBuilderStack>,
 }
 impl BuilderStacks {
     pub fn new(py: Python) -> PyResult<Self> {
-        let top = TopLevelDocumentBuilder::new(py)?;
+        let top = rc_refcell(TopLevelProcessor::new(py)?);
         Ok(Self {
             builder_stacks: vec![FileBuilderStack::new(top.clone())], // Constant condition: there is always at least one builder stack
             top,

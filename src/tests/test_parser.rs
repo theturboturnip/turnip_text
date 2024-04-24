@@ -854,6 +854,7 @@ pub fn test_property_calls_get() {
     )
 }
 
+// TODO do all these tests inside a block scope?? as well as at the top level??
 mod block_spacing {
     use super::*;
 

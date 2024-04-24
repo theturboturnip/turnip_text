@@ -12,7 +12,7 @@ use crate::{
 };
 
 use super::{
-    block::BlockScopeFromTokens, comment::CommentFromTokens, inline::KnownInlineScopeFromTokens,
+    block::BlockScopeProcessor, comment::CommentFromTokens, inline::KnownInlineScopeFromTokens,
     rc_refcell, BuildFromTokens, BuildStatus, PushToNextLevel,
 };
 
@@ -20,7 +20,7 @@ use super::{
 /// It starts out [BlockOrInlineScopeFromTokens::Undecided], then based on the following tokens either decides on [BlockOrInlineScopeFromTokens::Block] or [BlockOrInlineScopeFromTokens::Inline] and from then on acts as exactly [BlockScopeFromTokens] or [InlineScopeFromTokens] respectfully.
 pub enum BlockLevelAmbiguousScope {
     Undecided { first_tok: ParseSpan },
-    Block(BlockScopeFromTokens),
+    Block(BlockScopeProcessor),
     Inline(KnownInlineScopeFromTokens),
 }
 impl BlockLevelAmbiguousScope {
@@ -50,8 +50,7 @@ impl BuildFromTokens for BlockLevelAmbiguousScope {
                 .into()),
                 TTToken::Newline(last_tok) => {
                     // Transition to a block builder
-                    let block_builder =
-                        BlockScopeFromTokens::new_unowned(py, *first_tok, last_tok)?;
+                    let block_builder = BlockScopeProcessor::new(py, *first_tok, last_tok)?;
                     // Block builder doesn't need to process the newline token specifically
                     // Swap ourselves out with the new state "i am a block builder"
                     let _ = std::mem::replace(self, BlockLevelAmbiguousScope::Block(block_builder));
