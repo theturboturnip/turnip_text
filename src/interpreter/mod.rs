@@ -11,7 +11,7 @@ use crate::{
     util::ParseSpan,
 };
 
-use self::state_machines::BuilderStacks;
+use self::state_machines::ProcessorStacks;
 
 mod state_machines;
 
@@ -60,13 +60,13 @@ pub struct TurnipTextParser {
     // The stack of currently parsed file (spawned from, indices). `spawned from` is None for the first file, Some for all others
     file_stack: Vec<(Option<ParseSpan>, usize)>,
     files: Vec<ParsingFile>,
-    builders: BuilderStacks,
+    builders: ProcessorStacks,
 }
 impl TurnipTextParser {
     pub fn new(py: Python, file_name: String, file_contents: String) -> TurnipTextResult<Self> {
         let file = ParsingFile::new(0, file_name, file_contents);
         let files = vec![file];
-        let builders = BuilderStacks::new(py)
+        let builders = ProcessorStacks::new(py)
             .map_err(|pyerr| TurnipTextError::InternalPython(stringify_pyerr(py, &pyerr)))?;
         Ok(Self {
             file_stack: vec![(None, 0)],
@@ -75,7 +75,7 @@ impl TurnipTextParser {
         })
     }
     pub fn parse(mut self, py: Python, py_env: &PyDict) -> TurnipTextResult<Py<DocSegment>> {
-        // Call handle_tokens until it breaks out returning FileInserted or FileEnded.
+        // Call process_tokens until it breaks out returning FileInserted or FileEnded.
         // FileEnded will be returned exactly once more than FileInserted - FileInserted is only returned for subfiles, FileEnded is returned for all subfiles AND the initial file.
         // We handle this because the file stack, Vec<ParsingFile>, and interpreter each have one file's worth of content pushed in initially.
         loop {
@@ -178,6 +178,9 @@ impl InterimDocumentStructure {
         Ok(())
     }
 
+    /// Pop segments from the segment stack until either
+    /// - there are no segments left
+    /// - self.segment_stack.last() is Some() and has a weight < the target weight.
     fn pop_segments_until_less_than(
         &mut self,
         py: Python,
@@ -190,6 +193,8 @@ impl InterimDocumentStructure {
 
         // We only get to this point if self.segment_stack.last() == Some
         while curr_toplevel_weight >= weight {
+            // We know self.segment_stack.last() exists and has a weight greater than or equal to the target.
+            // We have to finish it and push it into the next one.
             let segment_to_finish = self
                 .segment_stack
                 .pop()
@@ -197,18 +202,19 @@ impl InterimDocumentStructure {
 
             let segment = segment_to_finish.finalize(py).err_as_internal(py)?;
 
-            // Look into the next segment
+            // Push the newly finished segment into the next one up,
+            // and return the weight of that segment to see if it's greater than or equal to the target.
             curr_toplevel_weight = match self.segment_stack.last() {
-                // If there's another segment, push the new finished segment into it
+                // If there's another segment, push the new finished segment into it,
+                // and return that weight
                 Some(x) => {
                     x.subsegments
                         .append_checked(segment.as_ref(py))
                         .err_as_internal(py)?;
                     x.weight
                 }
-                // Otherwise just push it into toplevel_segments and FUCK, NO, THAT DOESN'T WORK YOU MORON
-                // WHERE THE FUCK DOES THE NEXT SET OF TEXT GO THEN
-                // TODO resolve whatever the hell was the problem here?
+                // Otherwise just push it into toplevel_segments.
+                // The segment stack is now empty.
                 None => {
                     self.toplevel_segments
                         .append_checked(segment.as_ref(py))

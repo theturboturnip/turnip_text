@@ -252,7 +252,7 @@ impl TTToken {
                             Ok(Some((end, Self::Escaped(span, escapable))))
                         }
                         None => {
-                            // TODO bare backslash can be abiguous with something you indended to escape. Should it be allowed?
+                            // Bare backslash can be ambiguous with something you indended to escape, but the only things you can escape are syntax-defining characters and newlines. A mistaken not-escaping backslash will be clearly evident both in the syntax-colored text and in the output.
                             let end = stream.consumed(state, 1);
                             Ok(Some((
                                 state_after_seq,
