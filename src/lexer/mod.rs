@@ -55,8 +55,6 @@ pub fn lex(file_idx: usize, data: &str) -> LexedStrIterator {
             let zero_posn = ParsePosn {
                 byte_ofs: 0,
                 char_ofs: 0,
-                line: 0,
-                column: 0,
             };
             ParseSpan::new(file_idx, zero_posn, zero_posn)
         }

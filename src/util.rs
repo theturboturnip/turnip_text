@@ -6,21 +6,17 @@ use crate::lexer::LexPosn;
 
 /// Helper struct representing the position of a character in a file, as both:
 /// - Byte offset of the start of the UTF-8 code point
-/// - (line, column) integers for display purposes
+/// - Character offset because some error libraries need this
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParsePosn {
     pub byte_ofs: usize,
     pub char_ofs: usize,
-    pub line: usize,
-    pub column: usize,
 }
 impl From<LexPosn> for ParsePosn {
     fn from(p: LexPosn) -> Self {
         ParsePosn {
             byte_ofs: p.byte_ofs(),
             char_ofs: p.pos().char_ofs(),
-            line: p.line(),
-            column: p.column(),
         }
     }
 }
