@@ -1,5 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
 use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
@@ -22,8 +20,8 @@ use super::{
 };
 
 // Only expose specific implementations of InlineLevelProcessor
-pub type ParagraphProcessor = InlineLevelProcessor<ParagraphFromTokens>;
-pub type KnownInlineScopeProcessor = InlineLevelProcessor<KnownInlineScopeFromTokens>;
+pub type ParagraphProcessor = InlineLevelProcessor<ParagraphInlineMode>;
+pub type KnownInlineScopeProcessor = InlineLevelProcessor<KnownInlineScopeInlineMode>;
 
 /// This struct handled inline-mode processing.
 ///
@@ -70,14 +68,14 @@ trait InlineMode {
 }
 
 /// When encountering inline content at the block level, build a Paragraph block
-pub struct ParagraphFromTokens {
+pub struct ParagraphInlineMode {
     ctx: ParseContext,
     para: Py<Paragraph>,
     start_of_line: bool,
     current_sentence: Py<Sentence>,
 }
 // Implement constructors for InlineLevelProcessor<Paragraph>
-impl InlineLevelProcessor<ParagraphFromTokens> {
+impl InlineLevelProcessor<ParagraphInlineMode> {
     pub fn new_with_inline(
         py: Python,
         inline: &PyAny,
@@ -89,7 +87,7 @@ impl InlineLevelProcessor<ParagraphFromTokens> {
             .push_inline(inline)
             .err_as_internal(py)?;
         Ok(Self {
-            inner: ParagraphFromTokens {
+            inner: ParagraphInlineMode {
                 ctx: ParseContext::new(inline_ctx.first_tok(), inline_ctx.last_tok()),
                 para: py_internal_alloc(py, Paragraph::new_empty(py))?,
                 start_of_line: false,
@@ -104,7 +102,7 @@ impl InlineLevelProcessor<ParagraphFromTokens> {
         text_span: ParseSpan,
     ) -> TurnipTextContextlessResult<Self> {
         Ok(Self {
-            inner: ParagraphFromTokens {
+            inner: ParagraphInlineMode {
                 ctx: ParseContext::new(text_span, text_span),
                 para: py_internal_alloc(py, Paragraph::new_empty(py))?,
                 start_of_line: false,
@@ -114,7 +112,7 @@ impl InlineLevelProcessor<ParagraphFromTokens> {
         })
     }
 }
-impl ParagraphFromTokens {
+impl ParagraphInlineMode {
     fn fold_current_sentence_into_paragraph(
         &mut self,
         py: Python,
@@ -135,7 +133,7 @@ impl ParagraphFromTokens {
         Ok(())
     }
 }
-impl InlineMode for ParagraphFromTokens {
+impl InlineMode for ParagraphInlineMode {
     fn inline_mode_ctx(&self) -> InlineModeContext {
         InlineModeContext::Paragraph(self.ctx)
     }
@@ -282,21 +280,21 @@ impl InlineMode for ParagraphFromTokens {
 }
 
 /// Parser for a scope that is known to be an inline scope, i.e. has content on the same line as the scope open.
-pub struct KnownInlineScopeFromTokens {
+pub struct KnownInlineScopeInlineMode {
     preceding_inline: Option<InlineModeContext>,
     ctx: ParseContext,
     inline_scope: Py<InlineScope>,
     start_of_scope: bool,
 }
 // Implement constructor for InlineLevelProcessor<KnownInlineScope>
-impl InlineLevelProcessor<KnownInlineScopeFromTokens> {
-    pub fn new_unowned(
+impl InlineLevelProcessor<KnownInlineScopeInlineMode> {
+    pub fn new(
         py: Python,
         preceding_inline: Option<InlineModeContext>,
         ctx: ParseContext,
     ) -> TurnipTextContextlessResult<Self> {
         Ok(Self {
-            inner: KnownInlineScopeFromTokens {
+            inner: KnownInlineScopeInlineMode {
                 preceding_inline,
                 ctx,
                 start_of_scope: true,
@@ -306,7 +304,7 @@ impl InlineLevelProcessor<KnownInlineScopeFromTokens> {
         })
     }
 }
-impl InlineMode for KnownInlineScopeFromTokens {
+impl InlineMode for KnownInlineScopeInlineMode {
     fn inline_mode_ctx(&self) -> InlineModeContext {
         InlineModeContext::InlineScope {
             scope_start: self.ctx.first_tok(),
@@ -582,8 +580,8 @@ impl<T: InlineMode> BuildFromTokens for InlineLevelProcessor<T> {
             TTToken::RawScopeOpen(start_span, n_opening) => {
                 self.current_building_text
                     .flush_into(py, true, &mut self.inner)?;
-                Ok(BuildStatus::StartInnerBuilder(RawStringFromTokens::new(
-                    start_span, n_opening,
+                Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+                    RawStringProcessor::new(start_span, n_opening),
                 )))
             }
 
@@ -649,21 +647,21 @@ impl<T: InlineMode> BuildFromTokens for InlineLevelProcessor<T> {
 }
 
 /// Processor that generates a raw string, ending on raw-scope-closes with the correct number of hash characters.
-pub struct RawStringFromTokens {
+pub struct RawStringProcessor {
     ctx: ParseContext,
     n_closing: usize,
     raw_data: String,
 }
-impl RawStringFromTokens {
-    pub fn new(start_span: ParseSpan, n_opening: usize) -> Rc<RefCell<Self>> {
-        rc_refcell(Self {
+impl RawStringProcessor {
+    pub fn new(start_span: ParseSpan, n_opening: usize) -> Self {
+        Self {
             ctx: ParseContext::new(start_span, start_span),
             n_closing: n_opening,
             raw_data: String::new(),
-        })
+        }
     }
 }
-impl BuildFromTokens for RawStringFromTokens {
+impl BuildFromTokens for RawStringProcessor {
     fn process_token(
         &mut self,
         py: Python,

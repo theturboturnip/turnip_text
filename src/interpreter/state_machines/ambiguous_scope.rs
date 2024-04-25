@@ -61,7 +61,7 @@ impl BuildFromTokens for BlockLevelAmbiguousScope {
                 }
                 _ => {
                     // Transition to an inline builder
-                    let mut inline_builder = KnownInlineScopeProcessor::new_unowned(
+                    let mut inline_builder = KnownInlineScopeProcessor::new(
                         py,
                         // This has not been preceded by any inline content
                         None,
@@ -201,7 +201,7 @@ impl BuildFromTokens for InlineLevelAmbiguousScope {
                 // In any other case we're creating *some* content - we must be in an inline scope
                 _ => {
                     // Transition to an inline builder
-                    let mut inline_builder = KnownInlineScopeProcessor::new_unowned(
+                    let mut inline_builder = KnownInlineScopeProcessor::new(
                         py,
                         Some(preceding_inline.clone()),
                         *scope_ctx,

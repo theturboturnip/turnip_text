@@ -19,7 +19,7 @@ use crate::{
 };
 
 use super::{
-    ambiguous_scope::BlockLevelAmbiguousScope, inline::RawStringFromTokens, rc_refcell, BlockElem,
+    ambiguous_scope::BlockLevelAmbiguousScope, inline::RawStringProcessor, rc_refcell, BlockElem,
     BuildFromTokens, BuildStatus, DocElement, InlineElem, PushToNextLevel,
 };
 
@@ -91,7 +91,7 @@ impl BuildFromTokens for CodeFromTokens {
                     BlockLevelAmbiguousScope::new(start_span),
                 )),
                 TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
-                    RawStringFromTokens::new(start_span, n_opening),
+                    rc_refcell(RawStringProcessor::new(start_span, n_opening)),
                 )),
 
                 _ => {

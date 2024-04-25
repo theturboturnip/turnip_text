@@ -18,7 +18,7 @@ use super::{
     ambiguous_scope::BlockLevelAmbiguousScope,
     code::CodeFromTokens,
     comment::CommentFromTokens,
-    inline::{ParagraphProcessor, RawStringFromTokens},
+    inline::{ParagraphProcessor, RawStringProcessor},
     py_internal_alloc, rc_refcell, BlockElem, BuildFromTokens, BuildStatus, DocElement,
     PushToNextLevel,
 };
@@ -273,7 +273,7 @@ impl<T: BlockMode> BuildFromTokens for BlockLevelProcessor<T> {
                 )),
 
                 TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
-                    RawStringFromTokens::new(start_span, n_opening),
+                    rc_refcell(RawStringProcessor::new(start_span, n_opening)),
                 )),
 
                 TTToken::Escaped(text_span, _)
