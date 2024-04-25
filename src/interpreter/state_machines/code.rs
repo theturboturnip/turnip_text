@@ -18,7 +18,7 @@ use crate::{
 
 use super::{
     ambiguous_scope::AmbiguousScopeProcessor, inline::RawStringProcessor, rc_refcell, BlockElem,
-    BuildFromTokens, BuildStatus, DocElement, InlineElem, PushToNextLevel,
+    DocElement, EmittedElement, InlineElem, ProcStatus, TokenProcessor,
 };
 
 pub struct CodeProcessor {
@@ -37,14 +37,14 @@ impl CodeProcessor {
         }
     }
 }
-impl BuildFromTokens for CodeProcessor {
+impl TokenProcessor for CodeProcessor {
     fn process_token(
         &mut self,
         py: Python,
         py_env: &PyDict,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
+    ) -> TurnipTextContextlessResult<ProcStatus> {
         match &self.evaled_code {
             // If None, we're still parsing the code itself.
             None => {
@@ -65,10 +65,10 @@ impl BuildFromTokens for CodeProcessor {
 
                         // If we evaluated a TurnipTextSource, it may not be a builder of any kind thus we can finish immediately.
                         if let Ok(inserted_file) = res.extract::<TurnipTextSource>() {
-                            Ok(BuildStatus::DoneAndNewSource(self.ctx, inserted_file))
+                            Ok(ProcStatus::PopAndNewSource(self.ctx, inserted_file))
                         } else {
                             self.evaled_code = Some(res.into_py(py));
-                            Ok(BuildStatus::Continue)
+                            Ok(ProcStatus::Continue)
                         }
                     }
                     TTToken::EOF(eof_span) => Err(InterpError::EndedInsideCode {
@@ -78,17 +78,17 @@ impl BuildFromTokens for CodeProcessor {
                     _ => {
                         // Code blocks use raw stringification to avoid confusion between text written and text entered
                         self.code.push_str(tok.stringify_raw(data));
-                        Ok(BuildStatus::Continue)
+                        Ok(ProcStatus::Continue)
                     }
                 }
             }
             // Parse one token after the code ends to see what we should do.
             Some(evaled_result) => match tok {
                 // A scope open could be for a block scope or inline scope - we accept either, so use the BlockLevelAmbiguousScope
-                TTToken::ScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+                TTToken::ScopeOpen(start_span) => Ok(ProcStatus::PushProcessor(rc_refcell(
                     AmbiguousScopeProcessor::new(start_span),
                 ))),
-                TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
+                TTToken::RawScopeOpen(start_span, n_opening) => Ok(ProcStatus::PushProcessor(
                     rc_refcell(RawStringProcessor::new(start_span, n_opening)),
                 )),
 
@@ -119,14 +119,14 @@ impl BuildFromTokens for CodeProcessor {
                     let evaled_result_ref = evaled_result.as_ref(py);
 
                     if evaled_result_ref.is_none() {
-                        Ok(BuildStatus::DoneAndReprocessToken(None))
+                        Ok(ProcStatus::PopAndReprocessToken(None))
                     } else if let Ok(header) = PyTcRef::of(evaled_result_ref) {
-                        Ok(BuildStatus::DoneAndReprocessToken(Some((
+                        Ok(ProcStatus::PopAndReprocessToken(Some((
                             self.ctx,
                             DocElement::HeaderFromCode(header),
                         ))))
                     } else if let Ok(block) = PyTcRef::of(evaled_result_ref) {
-                        Ok(BuildStatus::DoneAndReprocessToken(Some((
+                        Ok(ProcStatus::PopAndReprocessToken(Some((
                             self.ctx,
                             BlockElem::FromCode(block).into(),
                         ))))
@@ -138,7 +138,7 @@ impl BuildFromTokens for CodeProcessor {
                                     obj: evaled_result.clone_ref(py),
                                 }
                             })?;
-                        Ok(BuildStatus::DoneAndReprocessToken(Some((
+                        Ok(ProcStatus::PopAndReprocessToken(Some((
                             self.ctx,
                             InlineElem::FromCode(inline).into(),
                         ))))
@@ -148,15 +148,15 @@ impl BuildFromTokens for CodeProcessor {
         }
     }
 
-    fn process_push_from_inner_builder(
+    fn process_emitted_element(
         &mut self,
         py: Python,
         _py_env: &PyDict,
-        pushed: Option<PushToNextLevel>,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
+        pushed: Option<EmittedElement>,
+    ) -> TurnipTextContextlessResult<ProcStatus> {
         let evaled_result_ref = self.evaled_code.take().unwrap().into_ref(py);
 
-        let (elem_ctx, elem) = pushed.expect("Should never get a built None - CodeFromTokens only spawns BlockScopeFromTokens, InlineScopeFromTokens, RawScopeFromTokens none of which return None.");
+        let (elem_ctx, elem) = pushed.expect("Should never get a built None - CodeProcessor only spawns AmbiguousScopeProcessor and RawScopeProcessor none of which return None.");
         let built = match elem {
             DocElement::Block(BlockElem::BlockScope(blocks)) => {
                 let builder: PyTcRef<BlockScopeBuilder> =
@@ -215,19 +215,19 @@ impl BuildFromTokens for CodeProcessor {
             _ => unreachable!("Invalid combination of requested and actual built element types"),
         };
         match built {
-            BuilderOutcome::Block(block) => Ok(BuildStatus::Done(Some((
+            BuilderOutcome::Block(block) => Ok(ProcStatus::Pop(Some((
                 self.ctx,
                 BlockElem::FromCode(block).into(),
             )))),
-            BuilderOutcome::Inline(inline) => Ok(BuildStatus::Done(Some((
+            BuilderOutcome::Inline(inline) => Ok(ProcStatus::Pop(Some((
                 self.ctx,
                 InlineElem::FromCode(inline).into(),
             )))),
-            BuilderOutcome::Header(header) => Ok(BuildStatus::Done(Some((
+            BuilderOutcome::Header(header) => Ok(ProcStatus::Pop(Some((
                 self.ctx,
                 DocElement::HeaderFromCode(header),
             )))),
-            BuilderOutcome::None => Ok(BuildStatus::Done(None)),
+            BuilderOutcome::None => Ok(ProcStatus::Pop(None)),
         }
     }
 
@@ -235,10 +235,10 @@ impl BuildFromTokens for CodeProcessor {
         &mut self,
         _code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
-        unreachable!("CodeFromTokens does not spawn an inner code builder, so cannot have a source file emitted inside")
+        unreachable!("CodeProcessor does not spawn an inner code builder, so cannot have a source file emitted inside")
     }
     fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan) {
-        unreachable!("CodeFromTokens does not spawn an inner code builder, so cannot have a source file emitted inside")
+        unreachable!("CodeProcessor does not spawn an inner code builder, so cannot have a source file emitted inside")
     }
 }
 

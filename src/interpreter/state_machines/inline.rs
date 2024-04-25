@@ -16,8 +16,8 @@ use crate::{
 
 use super::{
     ambiguous_scope::InlineLevelAmbiguousScopeProcessor, code::CodeProcessor,
-    comment::CommentProcessor, py_internal_alloc, rc_refcell, BuildFromTokens, BuildStatus,
-    DocElement, PushToNextLevel,
+    comment::CommentProcessor, py_internal_alloc, rc_refcell, DocElement, EmittedElement,
+    ProcStatus, TokenProcessor,
 };
 
 // Only expose specific implementations of InlineLevelProcessor
@@ -39,20 +39,20 @@ trait InlineMode {
 
     fn on_content(&mut self);
 
-    fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus>;
+    fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus>;
     fn on_open_scope(
         &mut self,
         py: Python,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus>;
+    ) -> TurnipTextContextlessResult<ProcStatus>;
     fn on_close_scope(
         &mut self,
         py: Python,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus>;
-    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus>;
+    ) -> TurnipTextContextlessResult<ProcStatus>;
+    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus>;
 
     fn err_on_block_from_code(
         &self,
@@ -144,15 +144,15 @@ impl InlineMode for ParagraphInlineMode {
         self.start_of_line
     }
 
-    fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
+    fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus> {
         // Always extend our token span so error messages using it have the full context
         assert!(
             self.ctx.try_extend(&tok.token_span()),
-            "ParagraphFromTokens got a token from a different file that it was opened in"
+            "ParagraphInlineMode got a token from a different file that it was opened in"
         );
         // Text is already folded into the sentence
         if self.start_of_line {
-            Ok(BuildStatus::DoneAndReprocessToken(Some((
+            Ok(ProcStatus::PopAndReprocessToken(Some((
                 self.ctx,
                 BlockElem::Para(self.para.clone_ref(py)).into(),
             ))))
@@ -160,19 +160,19 @@ impl InlineMode for ParagraphInlineMode {
             self.fold_current_sentence_into_paragraph(py)?;
             // We're now at the start of the line
             self.start_of_line = true;
-            Ok(BuildStatus::Continue)
+            Ok(ProcStatus::Continue)
         }
     }
 
-    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
+    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus> {
         assert!(
             self.ctx.try_extend(&tok.token_span()),
-            "ParagraphFromTokens got a token from a different file that it was opened in"
+            "ParagraphInlineMode got a token from a different file that it was opened in"
         );
         if !self.start_of_line {
             self.fold_current_sentence_into_paragraph(py)?;
         }
-        Ok(BuildStatus::DoneAndReprocessToken(Some((
+        Ok(ProcStatus::PopAndReprocessToken(Some((
             self.ctx,
             BlockElem::Para(self.para.clone_ref(py)).into(),
         ))))
@@ -183,8 +183,8 @@ impl InlineMode for ParagraphInlineMode {
         _py: Python,
         tok: TTToken,
         _data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
-        Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+    ) -> TurnipTextContextlessResult<ProcStatus> {
+        Ok(ProcStatus::PushProcessor(rc_refcell(
             InlineLevelAmbiguousScopeProcessor::new(
                 self.inline_mode_ctx(),
                 self.start_of_line,
@@ -198,15 +198,15 @@ impl InlineMode for ParagraphInlineMode {
         py: Python,
         tok: TTToken,
         _data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
+    ) -> TurnipTextContextlessResult<ProcStatus> {
         // If the closing brace is at the start of the line, it must be for block-scope and we can assume there won't be text afterwards.
         // End the paragraph, and tell the scope above us in the hierarchy to handle the scope close.
         if self.start_of_line {
             assert!(
                 self.ctx.try_extend(&tok.token_span()),
-                "ParagraphFromTokens got a token from a different file that it was opened in"
+                "ParagraphInlineMode got a token from a different file that it was opened in"
             );
-            Ok(BuildStatus::DoneAndReprocessToken(Some((
+            Ok(ProcStatus::PopAndReprocessToken(Some((
                 self.ctx,
                 BlockElem::Para(self.para.clone_ref(py)).into(),
             ))))
@@ -270,7 +270,7 @@ impl InlineMode for ParagraphInlineMode {
     ) -> TurnipTextContextlessResult<()> {
         assert!(
             self.ctx.try_combine(inl_ctx),
-            "ParagraphFromTokens got a token from a different file that it was opened in"
+            "ParagraphInlineMode got a token from a different file that it was opened in"
         );
         self.current_sentence
             .borrow_mut(py)
@@ -317,9 +317,9 @@ impl InlineMode for KnownInlineScopeInlineMode {
         self.start_of_scope
     }
 
-    fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
+    fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus> {
         if self.inline_scope.borrow_mut(py).__len__(py) == 0 {
-            unreachable!("KnownInlineScopeFromTokens received a newline with no preceding content - was actually a block scope");
+            unreachable!("KnownInlineScopeInlineMode received a newline with no preceding content - was actually a block scope");
         } else {
             // If there was content then we were definitely interrupted in the middle of a sentence
             Err(InterpError::SentenceBreakInInlineScope {
@@ -336,14 +336,14 @@ impl InlineMode for KnownInlineScopeInlineMode {
         _py: Python,
         tok: TTToken,
         _data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
+    ) -> TurnipTextContextlessResult<ProcStatus> {
         let new_scopes_inline_context = match self.preceding_inline {
             // If we're part of a paragraph, the inner scope is part of a paragraph too
             // Just extend the paragraph to include the current token
             // TODO test this gets all the tokens up to but not including the inline scope
             Some(InlineModeContext::Paragraph(preceding_para)) => {
                 let mut new = preceding_para.clone();
-                assert!(new.try_combine(self.ctx), "Paragraph, KnownInlineScopeFromTokens don't generate source files, must always receive tokens from the same file");
+                assert!(new.try_combine(self.ctx), "Paragraph, KnownInlineScopeInlineMode don't generate source files, must always receive tokens from the same file");
                 InlineModeContext::Paragraph(new)
             }
             // If we aren't part of a paragraph, say the inner builder is in inline mode because of us
@@ -351,7 +351,7 @@ impl InlineMode for KnownInlineScopeInlineMode {
                 scope_start: self.ctx.first_tok(),
             },
         };
-        Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+        Ok(ProcStatus::PushProcessor(rc_refcell(
             InlineLevelAmbiguousScopeProcessor::new(
                 new_scopes_inline_context,
                 false,
@@ -364,19 +364,19 @@ impl InlineMode for KnownInlineScopeInlineMode {
         py: Python,
         tok: TTToken,
         _data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
+    ) -> TurnipTextContextlessResult<ProcStatus> {
         // pending text has already been folded in
         assert!(
             self.ctx.try_extend(&tok.token_span()),
-            "InlineScopeFromTokens got a token from a different file that it was opened in"
+            "KnownInlineScopeInlineMode got a token from a different file that it was opened in"
         );
-        Ok(BuildStatus::Done(Some((
+        Ok(ProcStatus::Pop(Some((
             self.ctx,
             InlineElem::InlineScope(self.inline_scope.clone_ref(py)).into(),
         ))))
     }
 
-    fn on_eof(&mut self, _py: Python, tok: TTToken) -> TurnipTextContextlessResult<BuildStatus> {
+    fn on_eof(&mut self, _py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus> {
         Err(InterpError::EndedInsideScope {
             scope_start: self.ctx.first_tok(),
             eof_span: tok.token_span(),
@@ -417,7 +417,7 @@ impl InlineMode for KnownInlineScopeInlineMode {
     ) -> TurnipTextContextlessResult<()> {
         assert!(
             self.ctx.try_combine(inl_ctx),
-            "ParagraphFromTokens got a token from a different file that it was opened in"
+            "ParagraphInlineMode got a token from a different file that it was opened in"
         );
         self.inline_scope
             .borrow_mut(py)
@@ -520,27 +520,27 @@ impl InlineTextState {
     }
 }
 
-impl<T: InlineMode> BuildFromTokens for InlineLevelProcessor<T> {
+impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
     fn process_token(
         &mut self,
         py: Python,
         _py_env: &PyDict,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
+    ) -> TurnipTextContextlessResult<ProcStatus> {
         match tok {
             // Escaped newline => "Continue sentence"
-            TTToken::Escaped(_, Escapable::Newline) => Ok(BuildStatus::Continue),
+            TTToken::Escaped(_, Escapable::Newline) => Ok(ProcStatus::Continue),
             TTToken::Escaped(_, _) | TTToken::Backslash(_) | TTToken::OtherText(_) => {
                 self.inner.on_content();
                 self.current_building_text.encounter_text(tok, data);
-                Ok(BuildStatus::Continue)
+                Ok(ProcStatus::Continue)
             }
             TTToken::Whitespace(_) => {
                 if !self.inner.ignore_whitespace() {
                     self.current_building_text.encounter_whitespace(tok, data);
                 }
-                Ok(BuildStatus::Continue)
+                Ok(ProcStatus::Continue)
             }
 
             // Whitespace between content and a newline/EOF/scope close/comment is *trailing*
@@ -563,7 +563,7 @@ impl<T: InlineMode> BuildFromTokens for InlineLevelProcessor<T> {
             TTToken::Hashes(_, _) => {
                 self.current_building_text
                     .flush_into(py, false, &mut self.inner)?;
-                Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+                Ok(ProcStatus::PushProcessor(rc_refcell(
                     CommentProcessor::new(),
                 )))
             }
@@ -579,15 +579,15 @@ impl<T: InlineMode> BuildFromTokens for InlineLevelProcessor<T> {
             TTToken::CodeOpen(start_span, n_brackets) => {
                 self.current_building_text
                     .flush_into(py, true, &mut self.inner)?;
-                Ok(BuildStatus::StartInnerBuilder(rc_refcell(
-                    CodeProcessor::new(start_span, n_brackets),
-                )))
+                Ok(ProcStatus::PushProcessor(rc_refcell(CodeProcessor::new(
+                    start_span, n_brackets,
+                ))))
             }
 
             TTToken::RawScopeOpen(start_span, n_opening) => {
                 self.current_building_text
                     .flush_into(py, true, &mut self.inner)?;
-                Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+                Ok(ProcStatus::PushProcessor(rc_refcell(
                     RawStringProcessor::new(start_span, n_opening),
                 )))
             }
@@ -601,12 +601,12 @@ impl<T: InlineMode> BuildFromTokens for InlineLevelProcessor<T> {
         }
     }
 
-    fn process_push_from_inner_builder(
+    fn process_emitted_element(
         &mut self,
         py: Python,
         _py_env: &PyDict,
-        pushed: Option<PushToNextLevel>,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
+        pushed: Option<EmittedElement>,
+    ) -> TurnipTextContextlessResult<ProcStatus> {
         match pushed {
             Some((elem_ctx, elem)) => match elem {
                 // Can't get a header or a block in an inline scope
@@ -631,12 +631,12 @@ impl<T: InlineMode> BuildFromTokens for InlineLevelProcessor<T> {
                 DocElement::Inline(inline) => {
                     self.inner.on_content();
                     self.inner.on_inline(py, inline.as_ref(py), elem_ctx)?;
-                    Ok(BuildStatus::Continue)
+                    Ok(ProcStatus::Continue)
                 }
             },
             None => {
                 self.inner.on_content();
-                Ok(BuildStatus::Continue)
+                Ok(ProcStatus::Continue)
             }
         }
     }
@@ -668,17 +668,17 @@ impl RawStringProcessor {
         }
     }
 }
-impl BuildFromTokens for RawStringProcessor {
+impl TokenProcessor for RawStringProcessor {
     fn process_token(
         &mut self,
         py: Python,
         _py_env: &PyDict,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
+    ) -> TurnipTextContextlessResult<ProcStatus> {
         // This builder does not directly emit new source files, so it cannot receive tokens from inner files.
         // When receiving EOF it returns an error.
-        // This fulfils the contract for [BuildFromTokens::process_token].
+        // This fulfils the contract for [TokenProcessor::process_token].
         match tok {
             TTToken::RawScopeClose(_, given_closing) if given_closing == self.n_closing => {
                 self.ctx.try_extend(&tok.token_span());
@@ -686,7 +686,7 @@ impl BuildFromTokens for RawStringProcessor {
                     py,
                     Raw::new_rs(py, std::mem::take(&mut self.raw_data).as_str()),
                 )?;
-                Ok(BuildStatus::Done(Some((
+                Ok(ProcStatus::Pop(Some((
                     self.ctx,
                     InlineElem::Raw(raw).into(),
                 ))))
@@ -698,28 +698,28 @@ impl BuildFromTokens for RawStringProcessor {
             .into()),
             _ => {
                 self.raw_data.push_str(tok.stringify_raw(data));
-                Ok(BuildStatus::Continue)
+                Ok(ProcStatus::Continue)
             }
         }
     }
 
-    fn process_push_from_inner_builder(
+    fn process_emitted_element(
         &mut self,
         _py: Python,
         _py_env: &PyDict,
-        _pushed: Option<PushToNextLevel>,
+        _pushed: Option<EmittedElement>,
         // closing_token: TTToken,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
-        panic!("RawStringFromTokens does not spawn inner builders")
+    ) -> TurnipTextContextlessResult<ProcStatus> {
+        panic!("RawStringProcessor does not spawn inner builders")
     }
 
     fn on_emitted_source_inside(
         &mut self,
         _code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
-        unreachable!("RawStringFromTokens does not spawn an inner code builder, so cannot have a source file emitted inside")
+        unreachable!("RawStringProcessor does not spawn an inner code builder, so cannot have a source file emitted inside")
     }
     fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan) {
-        unreachable!("RawStringFromTokens does not spawn an inner code builder, so cannot have a source file emitted inside")
+        unreachable!("RawStringProcessor does not spawn an inner code builder, so cannot have a source file emitted inside")
     }
 }

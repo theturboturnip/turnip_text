@@ -11,11 +11,11 @@ use crate::{
 
 use super::{
     block::BlockScopeProcessor, comment::CommentProcessor, inline::KnownInlineScopeProcessor,
-    rc_refcell, BuildFromTokens, BuildStatus, PushToNextLevel,
+    rc_refcell, EmittedElement, ProcStatus, TokenProcessor,
 };
 
 /// This builder is initially started with a ScopeOpen token that may be a block scope open (followed by "\s*\n") or an inline scope open (followed by \s*[^\n]).
-/// It starts out [BlockOrInlineScopeFromTokens::Undecided], then based on the following tokens either decides on [BlockOrInlineScopeFromTokens::Block] or [BlockOrInlineScopeFromTokens::Inline] and from then on acts as exactly [BlockScopeFromTokens] or [InlineScopeFromTokens] respectfully.
+/// It starts out [AmbiguousScopeProcessor::Undecided], then based on the following tokens either decides on [AmbiguousScopeProcessor::Block] or [AmbiguousScopeProcessor::Inline] and from then on acts as exactly [BlockScopeProcessor] or [KnownInlineScopeProcessor] respectfully.
 pub enum AmbiguousScopeProcessor {
     Undecided { first_tok: ParseSpan },
     Block(BlockScopeProcessor),
@@ -26,21 +26,21 @@ impl AmbiguousScopeProcessor {
         Self::Undecided { first_tok }
     }
 }
-impl BuildFromTokens for AmbiguousScopeProcessor {
+impl TokenProcessor for AmbiguousScopeProcessor {
     fn process_token(
         &mut self,
         py: Python,
         py_env: &PyDict,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
+    ) -> TurnipTextContextlessResult<ProcStatus> {
         match self {
             AmbiguousScopeProcessor::Undecided { first_tok } => match tok {
                 // This builder does not directly emit new source files, so it cannot receive tokens from inner files
                 // while in the Undecided state.
                 // When receiving EOF it returns an error.
-                // This fulfils the contract for [BuildFromTokens::process_token].
-                TTToken::Whitespace(_) => Ok(BuildStatus::Continue),
+                // This fulfils the contract for [TokenProcessor::process_token].
+                TTToken::Whitespace(_) => Ok(ProcStatus::Continue),
                 TTToken::EOF(eof_span) => Err(InterpError::EndedInsideScope {
                     scope_start: *first_tok,
                     eof_span,
@@ -52,9 +52,9 @@ impl BuildFromTokens for AmbiguousScopeProcessor {
                     // Block builder doesn't need to process the newline token specifically
                     // Swap ourselves out with the new state "i am a block builder"
                     let _ = std::mem::replace(self, AmbiguousScopeProcessor::Block(block_builder));
-                    Ok(BuildStatus::Continue)
+                    Ok(ProcStatus::Continue)
                 }
-                TTToken::Hashes(_, _) => Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+                TTToken::Hashes(_, _) => Ok(ProcStatus::PushProcessor(rc_refcell(
                     CommentProcessor::new(),
                 ))),
                 _ => {
@@ -78,22 +78,22 @@ impl BuildFromTokens for AmbiguousScopeProcessor {
         }
     }
 
-    fn process_push_from_inner_builder(
+    fn process_emitted_element(
         &mut self,
         py: Python,
         py_env: &PyDict,
-        pushed: Option<PushToNextLevel>,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
+        pushed: Option<EmittedElement>,
+    ) -> TurnipTextContextlessResult<ProcStatus> {
         match self {
             AmbiguousScopeProcessor::Undecided { .. } => {
-                assert!(pushed.is_none(), "BlockOrInlineScopeFromTokens::Undecided does not push any builders except comments thus cannot receive non-None pushed items");
-                Ok(BuildStatus::Continue)
+                assert!(pushed.is_none(), "AmbiguousScopeProcessor::Undecided does not push any builders except comments thus cannot receive non-None pushed items");
+                Ok(ProcStatus::Continue)
             }
             AmbiguousScopeProcessor::Block(block) => {
-                block.process_push_from_inner_builder(py, py_env, pushed)
+                block.process_emitted_element(py, py_env, pushed)
             }
             AmbiguousScopeProcessor::Inline(inline) => {
-                inline.process_push_from_inner_builder(py, py_env, pushed)
+                inline.process_emitted_element(py, py_env, pushed)
             }
         }
     }
@@ -104,7 +104,7 @@ impl BuildFromTokens for AmbiguousScopeProcessor {
     ) -> TurnipTextContextlessResult<()> {
         match self {
             AmbiguousScopeProcessor::Undecided { .. } => {
-                unreachable!("BlockOrInlineScopeFromTokens::Undecided does not push any builders except comments and thus cannot have source code emitted inside it")
+                unreachable!("AmbiguousScopeProcessor::Undecided does not push any builders except comments and thus cannot have source code emitted inside it")
             }
             AmbiguousScopeProcessor::Block(block) => {
                 block.on_emitted_source_inside(code_emitting_source)
@@ -118,7 +118,7 @@ impl BuildFromTokens for AmbiguousScopeProcessor {
     fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan) {
         match self {
             AmbiguousScopeProcessor::Undecided { .. } => {
-                unreachable!("BlockOrInlineScopeFromTokens::Undecided does not push any builders except comments and thus cannot have source code emitted inside it")
+                unreachable!("AmbiguousScopeProcessor::Undecided does not push any builders except comments and thus cannot have source code emitted inside it")
             }
             AmbiguousScopeProcessor::Block(block) => {
                 block.on_emitted_source_closed(inner_source_emitted_by)
@@ -152,14 +152,14 @@ impl InlineLevelAmbiguousScopeProcessor {
         }
     }
 }
-impl BuildFromTokens for InlineLevelAmbiguousScopeProcessor {
+impl TokenProcessor for InlineLevelAmbiguousScopeProcessor {
     fn process_token(
         &mut self,
         py: Python,
         py_env: &PyDict,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
+    ) -> TurnipTextContextlessResult<ProcStatus> {
         match self {
             InlineLevelAmbiguousScopeProcessor::Undecided {
                 preceding_inline,
@@ -191,9 +191,9 @@ impl BuildFromTokens for InlineLevelAmbiguousScopeProcessor {
                     }
                 },
                 // Ignore whitespace on the first line
-                TTToken::Whitespace(_) => Ok(BuildStatus::Continue),
+                TTToken::Whitespace(_) => Ok(ProcStatus::Continue),
                 // This inevitably will fail, because we won't receive any content other than the newline
-                TTToken::Hashes(_, _) => Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+                TTToken::Hashes(_, _) => Ok(ProcStatus::PushProcessor(rc_refcell(
                     CommentProcessor::new(),
                 ))),
                 // In any other case we're creating *some* content - we must be in an inline scope
@@ -215,19 +215,19 @@ impl BuildFromTokens for InlineLevelAmbiguousScopeProcessor {
         }
     }
 
-    fn process_push_from_inner_builder(
+    fn process_emitted_element(
         &mut self,
         py: Python,
         py_env: &PyDict,
-        pushed: Option<PushToNextLevel>,
-    ) -> TurnipTextContextlessResult<BuildStatus> {
+        pushed: Option<EmittedElement>,
+    ) -> TurnipTextContextlessResult<ProcStatus> {
         match self {
             InlineLevelAmbiguousScopeProcessor::Undecided { .. } => {
-                assert!(pushed.is_none(), "ScopeWhichShouldBeInline::Undecided does not push any builders except comments thus cannot receive non-None pushed items");
-                Ok(BuildStatus::Continue)
+                assert!(pushed.is_none(), "InlineLevelAmbiguousScopeProcessor::Undecided does not push any builders except comments thus cannot receive non-None pushed items");
+                Ok(ProcStatus::Continue)
             }
             InlineLevelAmbiguousScopeProcessor::Known(k) => {
-                k.process_push_from_inner_builder(py, py_env, pushed)
+                k.process_emitted_element(py, py_env, pushed)
             }
         }
     }
@@ -237,14 +237,14 @@ impl BuildFromTokens for InlineLevelAmbiguousScopeProcessor {
         code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         match self {
-            InlineLevelAmbiguousScopeProcessor::Undecided { .. } => unreachable!("ScopeWhichShouldBeInline doesn't spawn non-comment builders in Undecided mode, so can't get a source emitted from them"),
+            InlineLevelAmbiguousScopeProcessor::Undecided { .. } => unreachable!("InlineLevelAmbiguousScopeProcessor doesn't spawn non-comment builders in Undecided mode, so can't get a source emitted from them"),
             InlineLevelAmbiguousScopeProcessor::Known(k) => k.on_emitted_source_inside(code_emitting_source),
         }
     }
 
     fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan) {
         match self {
-            InlineLevelAmbiguousScopeProcessor::Undecided { .. } => unreachable!("ScopeWhichShouldBeInline doesn't spawn non-comment builders in Undecided mode, so can't get a source emitted from them"),
+            InlineLevelAmbiguousScopeProcessor::Undecided { .. } => unreachable!("InlineLevelAmbiguousScopeProcessor doesn't spawn non-comment builders in Undecided mode, so can't get a source emitted from them"),
             InlineLevelAmbiguousScopeProcessor::Known(k) => k.on_emitted_source_closed(inner_source_emitted_by),
         }
     }

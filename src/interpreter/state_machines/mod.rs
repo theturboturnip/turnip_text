@@ -23,7 +23,6 @@
 //! The newline-consuming state of the outer builder is always reset when an inserted file is opened and after an inserted file is closed, so inserted files can't have an inconsistent impact on enclosing files and vice versa.
 //!
 //! TODO update documentation
-//! TODO rename stuff to be better and consistent
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -113,10 +112,53 @@ impl From<InlineElem> for DocElement {
     }
 }
 
-type PushToNextLevel = (ParseContext, DocElement);
+type EmittedElement = (ParseContext, DocElement);
 
-enum BuildStatus {
-    Done(Option<PushToNextLevel>),
+trait TokenProcessor {
+    /// This will usually receive tokens from the same file it was created in, unless a source file is opened within it
+    /// in which case it will receive the top-level tokens from that file too except EOF.
+    ///
+    /// Note: this means if an impl doesn't override [TokenProcessor::on_emitted_source_inside] to true then it will always receive tokens from the same file.
+    ///
+    /// When receiving any token from an inner file, this function must return either an error, [ProcStatus::Continue], or [ProcStatus::PushProcessor]. Other responses would result in modifying the outer file due to the contents of the inner file, and are not allowed.
+    ///
+    /// When receiving [TTToken::EOF] this function must return either an error or [ProcStatus::PopAndReprocessToken]. Other responses are not allowed.
+    fn process_token(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+        tok: TTToken,
+        data: &str,
+    ) -> TurnipTextContextlessResult<ProcStatus>;
+    /// Handle an emitted element from a processor you pushed.
+    /// May only return an error, [ProcStatus::Continue], [ProcStatus::PushProcessor], or [ProcStatus::Pop].
+    fn process_emitted_element(
+        &mut self,
+        py: Python,
+        py_env: &PyDict,
+        pushed: Option<EmittedElement>,
+    ) -> TurnipTextContextlessResult<ProcStatus>;
+    /// Called when a processor you pushed returns [ProcStatus::PopAndNewSource].
+    fn on_emitted_source_inside(
+        &mut self,
+        code_emitting_source: ParseContext,
+    ) -> TurnipTextContextlessResult<()>;
+    /// Called when a source file emitted by a processor you pushed is closed.
+    /// Will not be called if [on_emitted_source_inside] returned an error.
+    fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan);
+}
+
+enum ProcStatus {
+    /// Keep processing tokens, don't modify the stacks.
+    Continue,
+    /// Push a new processor onto the stack, which will consume the following tokens instead of you
+    /// until it Pops itself.
+    PushProcessor(Rc<RefCell<dyn TokenProcessor>>),
+    /// Pop the current processor off, and optionally emit an element into the processor that spawned you.
+    Pop(Option<EmittedElement>),
+    /// Pop the current processor off, optionally emit an element into the processor that spawned you,
+    /// and make that outer processor reprocess the current token.
+    ///
     /// On rare occasions it is necessary to bubble the token up to the next builder as well as the finished item.
     /// This applies to
     /// - newlines and scope-closes at the start of the line when in paragraph-mode - these scope closes are clearly intended for an enclosing block scope, so the paragraph should finish and the containing builder should handle the scope-close
@@ -124,53 +166,23 @@ enum BuildStatus {
     /// - newlines at the end of comments, because those still signal the end of sentence in inline mode and count as a blank line in block mode
     /// - any token directly following an eval-bracket close that does not open a scope for the evaled code to own
     /// Scope-closes and raw-scope-closes crossing file boundaries invoke a (Raw)ScopeCloseOutsideScope error. Newlines are passed through. EOFs are silently ignored.
-    DoneAndReprocessToken(Option<PushToNextLevel>),
-    Continue,
-    StartInnerBuilder(Rc<RefCell<dyn BuildFromTokens>>),
-    DoneAndNewSource(ParseContext, TurnipTextSource),
-}
-
-trait BuildFromTokens {
-    /// This will usually receive tokens from the same file it was created in, unless a source file is opened within it
-    /// in which case it will receive the top-level tokens from that file too except EOF.
-    ///
-    /// Note: this means if an impl doesn't override [BuildFromTokens::on_emitted_source_inside] to true then it will always receive tokens from the same file.
-    ///
-    /// When receiving any token from an inner file, this function must return either an error, [BuildStatus::Continue], or [BuildStatus::StartInnerBuilder]. Other responses would result in modifying the outer file due to the contents of the inner file, and are not allowed.
-    ///
-    /// When receiving [TTToken::EOF] this function must return either an error or [BuildStatus::DoneAndReprocessToken]. Other responses are not allowed.
-    fn process_token(
-        &mut self,
-        py: Python,
-        py_env: &PyDict,
-        tok: TTToken,
-        data: &str,
-    ) -> TurnipTextContextlessResult<BuildStatus>;
-    /// May only return an error, [BuildStatus::Continue], [BuildStatus::StartInnerBuilder], or [BuildStatus::Done].
-    fn process_push_from_inner_builder(
-        &mut self,
-        py: Python,
-        py_env: &PyDict,
-        pushed: Option<PushToNextLevel>,
-    ) -> TurnipTextContextlessResult<BuildStatus>;
-    fn on_emitted_source_inside(
-        &mut self,
-        code_emitting_source: ParseContext,
-    ) -> TurnipTextContextlessResult<()>;
-    fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan);
+    PopAndReprocessToken(Option<EmittedElement>),
+    /// Pop the current processor off, emitting a new source file that is pushed to the top of the file stack.
+    /// Its tokens will be consumed next until it ends or a new source is pushed.
+    PopAndNewSource(ParseContext, TurnipTextSource),
 }
 
 pub struct FileBuilderStack {
-    top: Rc<RefCell<dyn BuildFromTokens>>,
+    top: Rc<RefCell<dyn TokenProcessor>>,
     /// The stack of builders created inside this file.
-    stack: Vec<Rc<RefCell<dyn BuildFromTokens>>>,
+    stack: Vec<Rc<RefCell<dyn TokenProcessor>>>,
 }
 impl FileBuilderStack {
-    fn new(top: Rc<RefCell<dyn BuildFromTokens>>) -> Self {
+    fn new(top: Rc<RefCell<dyn TokenProcessor>>) -> Self {
         Self { top, stack: vec![] }
     }
 
-    fn curr_top(&self) -> &Rc<RefCell<dyn BuildFromTokens>> {
+    fn curr_top(&self) -> &Rc<RefCell<dyn TokenProcessor>> {
         match self.stack.last() {
             None => &self.top,
             Some(top) => top,
@@ -218,10 +230,10 @@ impl FileBuilderStack {
                 };
                 let action = top.borrow_mut().process_token(py, py_env, tok, data)?;
                 match action {
-                    BuildStatus::DoneAndReprocessToken(pushed) => {
+                    ProcStatus::PopAndReprocessToken(pushed) => {
                         self.push_to_top_builder(py, py_env, pushed)?
                     }
-                    _ => unreachable!("builder returned a BuildStatus that wasn't DoneAndReprocessToken in response to an EOF")
+                    _ => unreachable!("builder returned a ProcStatus that wasn't PopAndReprocessToken in response to an EOF")
                 }
             }
             Ok(None)
@@ -231,36 +243,36 @@ impl FileBuilderStack {
             if self.stack.is_empty() {
                 let action = self.top.borrow_mut().process_token(py, py_env, tok, data)?;
                 match action {
-                    BuildStatus::Done(_)
-                    | BuildStatus::DoneAndReprocessToken(_)
-                    | BuildStatus::DoneAndNewSource(..) => {
-                        unreachable!("builder for previous file returned a Done* when presented with a token for an inner file")
+                    ProcStatus::Pop(_)
+                    | ProcStatus::PopAndReprocessToken(_)
+                    | ProcStatus::PopAndNewSource(..) => {
+                        unreachable!("builder for previous file returned a Pop* when presented with a token for an inner file")
                     }
-                    BuildStatus::StartInnerBuilder(builder) => self.stack.push(builder),
-                    BuildStatus::Continue => {}
+                    ProcStatus::PushProcessor(builder) => self.stack.push(builder),
+                    ProcStatus::Continue => {}
                 };
                 Ok(None)
             } else {
                 // If there are builders, pass the token to the topmost one.
-                // The token may bubble out if the builder returns DoneAndReprocessToken, so loop to support that case and break out with returns otherwise.
+                // The token may bubble out if the builder returns PopAndReprocessToken, so loop to support that case and break out with returns otherwise.
                 loop {
                     let action = self
                         .curr_top()
                         .borrow_mut()
                         .process_token(py, py_env, tok, data)?;
                     match action {
-                        BuildStatus::Continue => return Ok(None),
-                        BuildStatus::StartInnerBuilder(builder) => {
+                        ProcStatus::Continue => return Ok(None),
+                        ProcStatus::PushProcessor(builder) => {
                             self.stack.push(builder);
                             return Ok(None);
                         }
-                        BuildStatus::Done(pushed) => {
-                            self.stack.pop().expect("self.curr_top() returned Done => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
+                        ProcStatus::Pop(pushed) => {
+                            self.stack.pop().expect("self.curr_top() returned Pop => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
                             self.push_to_top_builder(py, py_env, pushed)?;
                             return Ok(None);
                         }
-                        BuildStatus::DoneAndReprocessToken(pushed) => {
-                            self.stack.pop().expect("self.curr_top() returned Done => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
+                        ProcStatus::PopAndReprocessToken(pushed) => {
+                            self.stack.pop().expect("self.curr_top() returned Pop => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
                             self.push_to_top_builder(py, py_env, pushed)?;
                             if self.stack.is_empty() {
                                 // The token is bubbling up to the next file!
@@ -288,8 +300,8 @@ impl FileBuilderStack {
                                 // Don't return, keep going through the loop to bubble the token up to the next builder from this file
                             }
                         }
-                        BuildStatus::DoneAndNewSource(code_emitting_source, src) => {
-                            self.stack.pop().expect("self.curr_top() returned Done => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
+                        ProcStatus::PopAndNewSource(code_emitting_source, src) => {
+                            self.stack.pop().expect("self.curr_top() returned Pop => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
                             self.curr_top()
                                 .borrow_mut()
                                 .on_emitted_source_inside(code_emitting_source)?;
@@ -305,23 +317,25 @@ impl FileBuilderStack {
         &mut self,
         py: Python,
         py_env: &PyDict,
-        pushed: Option<PushToNextLevel>,
+        pushed: Option<EmittedElement>,
     ) -> TurnipTextContextlessResult<()> {
         let action = self
             .curr_top()
             .borrow_mut()
-            .process_push_from_inner_builder(py, py_env, pushed)?;
+            .process_emitted_element(py, py_env, pushed)?;
         match action {
-            BuildStatus::Continue => Ok(()),
-            BuildStatus::Done(new_pushed) => {
-                self.stack.pop().expect("self.curr_top() returned Done => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
+            ProcStatus::Continue => Ok(()),
+            ProcStatus::Pop(new_pushed) => {
+                self.stack.pop().expect("self.curr_top() returned Pop => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
                 self.push_to_top_builder(py, py_env, new_pushed)
             }
-            BuildStatus::StartInnerBuilder(builder) => {
+            ProcStatus::PushProcessor(builder) => {
                 self.stack.push(builder);
                 Ok(())
-            },
-            BuildStatus::DoneAndReprocessToken(_) | BuildStatus::DoneAndNewSource(..) => unreachable!("process_push_from_inner_builder may not return DoneAndReprocessToken or DoneAndNewSource."),
+            }
+            ProcStatus::PopAndReprocessToken(_) | ProcStatus::PopAndNewSource(..) => unreachable!(
+                "push_to_top_builder may not return PopAndReprocessToken or PopAndNewSource."
+            ),
         }
     }
 }
