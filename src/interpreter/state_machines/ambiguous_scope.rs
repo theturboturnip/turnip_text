@@ -12,7 +12,7 @@ use crate::{
 };
 
 use super::{
-    block::BlockScopeProcessor, comment::CommentFromTokens, inline::KnownInlineScopeFromTokens,
+    block::BlockScopeProcessor, comment::CommentFromTokens, inline::KnownInlineScopeProcessor,
     rc_refcell, BuildFromTokens, BuildStatus, PushToNextLevel,
 };
 
@@ -21,7 +21,7 @@ use super::{
 pub enum BlockLevelAmbiguousScope {
     Undecided { first_tok: ParseSpan },
     Block(BlockScopeProcessor),
-    Inline(KnownInlineScopeFromTokens),
+    Inline(KnownInlineScopeProcessor),
 }
 impl BlockLevelAmbiguousScope {
     pub fn new(first_tok: ParseSpan) -> Rc<RefCell<Self>> {
@@ -61,7 +61,7 @@ impl BuildFromTokens for BlockLevelAmbiguousScope {
                 }
                 _ => {
                     // Transition to an inline builder
-                    let mut inline_builder = KnownInlineScopeFromTokens::new_unowned(
+                    let mut inline_builder = KnownInlineScopeProcessor::new_unowned(
                         py,
                         // This has not been preceded by any inline content
                         None,
@@ -139,7 +139,7 @@ pub enum InlineLevelAmbiguousScope {
         start_of_line: bool,
         scope_ctx: ParseContext,
     },
-    Known(KnownInlineScopeFromTokens),
+    Known(KnownInlineScopeProcessor),
 }
 impl InlineLevelAmbiguousScope {
     pub fn new(
@@ -201,7 +201,7 @@ impl BuildFromTokens for InlineLevelAmbiguousScope {
                 // In any other case we're creating *some* content - we must be in an inline scope
                 _ => {
                     // Transition to an inline builder
-                    let mut inline_builder = KnownInlineScopeFromTokens::new_unowned(
+                    let mut inline_builder = KnownInlineScopeProcessor::new_unowned(
                         py,
                         Some(preceding_inline.clone()),
                         *scope_ctx,

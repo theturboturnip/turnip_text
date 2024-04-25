@@ -18,8 +18,9 @@ use super::{
     ambiguous_scope::BlockLevelAmbiguousScope,
     code::CodeFromTokens,
     comment::CommentFromTokens,
-    inline::{ParagraphFromTokens, RawStringFromTokens},
-    py_internal_alloc, BlockElem, BuildFromTokens, BuildStatus, DocElement, PushToNextLevel,
+    inline::{ParagraphProcessor, RawStringFromTokens},
+    py_internal_alloc, rc_refcell, BlockElem, BuildFromTokens, BuildStatus, DocElement,
+    PushToNextLevel,
 };
 
 // Only expose specific implementations of BlockLevelProcessor
@@ -277,13 +278,13 @@ impl<T: BlockMode> BuildFromTokens for BlockLevelProcessor<T> {
 
                 TTToken::Escaped(text_span, _)
                 | TTToken::Backslash(text_span)
-                | TTToken::OtherText(text_span) => Ok(BuildStatus::StartInnerBuilder(
-                    ParagraphFromTokens::new_with_starting_text(
+                | TTToken::OtherText(text_span) => Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+                    ParagraphProcessor::new_with_starting_text(
                         py,
                         tok.stringify_escaped(data),
                         text_span,
                     )?,
-                )),
+                ))),
 
                 TTToken::CodeClose(span, _) => Err(InterpError::CodeCloseOutsideCode(span).into()),
 
@@ -339,9 +340,9 @@ impl<T: BlockMode> BuildFromTokens for BlockLevelProcessor<T> {
                     self.inner.on_block(py, block, elem_ctx)
                 }
                 // If we get an inline, start building a paragraph with it
-                DocElement::Inline(inline) => Ok(BuildStatus::StartInnerBuilder(
-                    ParagraphFromTokens::new_with_inline(py, inline.as_ref(py), elem_ctx)?,
-                )),
+                DocElement::Inline(inline) => Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+                    ParagraphProcessor::new_with_inline(py, inline.as_ref(py), elem_ctx)?,
+                ))),
             },
             None => Ok(BuildStatus::Continue),
         }

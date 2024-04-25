@@ -917,7 +917,6 @@ mod block_spacing {
 
     // There should always be a blank line between a paragraph ending and code-emitting-block
     // - this is picked up as trying to emit a block inside a paragraph
-    // TODO we have the technology to change this to insufficient block separation
     #[test]
     pub fn test_block_sep_para_code() {
         expect_parse(
@@ -932,13 +931,9 @@ mod block_spacing {
         expect_parse_err(
             r#"Paragraph one
             [TEST_BLOCK]"#,
-            TestInterpError::CodeEmittedBlockInInlineMode {
-                inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
-                    "Paragraph",
-                    " one",
-                    "\n",
-                )),
-                code_span: TestParseSpan("[TEST_BLOCK]"),
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(TestParseContext("Paragraph", " one", "\n")),
+                next_block_start: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
             },
         )
     }
