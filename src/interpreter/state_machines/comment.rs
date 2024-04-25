@@ -1,5 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
 use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
@@ -8,15 +6,15 @@ use crate::{
     util::{ParseContext, ParseSpan},
 };
 
-use super::{rc_refcell, BuildFromTokens, BuildStatus, PushToNextLevel};
+use super::{BuildFromTokens, BuildStatus, PushToNextLevel};
 
-pub struct CommentFromTokens {}
-impl CommentFromTokens {
-    pub fn new() -> Rc<RefCell<Self>> {
-        rc_refcell(Self {})
+pub struct CommentProcessor {}
+impl CommentProcessor {
+    pub fn new() -> Self {
+        Self {}
     }
 }
-impl BuildFromTokens for CommentFromTokens {
+impl BuildFromTokens for CommentProcessor {
     fn process_token(
         &mut self,
         _py: Python,

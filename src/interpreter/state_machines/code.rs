@@ -1,5 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
 use pyo3::{exceptions::PySyntaxError, ffi::Py_None, intern, prelude::*, types::PyDict};
 
 use crate::{
@@ -19,27 +17,27 @@ use crate::{
 };
 
 use super::{
-    ambiguous_scope::BlockLevelAmbiguousScope, inline::RawStringProcessor, rc_refcell, BlockElem,
+    ambiguous_scope::AmbiguousScopeProcessor, inline::RawStringProcessor, rc_refcell, BlockElem,
     BuildFromTokens, BuildStatus, DocElement, InlineElem, PushToNextLevel,
 };
 
-pub struct CodeFromTokens {
+pub struct CodeProcessor {
     ctx: ParseContext,
     n_closing: usize,
     code: String,
     evaled_code: Option<PyObject>,
 }
-impl CodeFromTokens {
-    pub fn new(start_span: ParseSpan, n_opening: usize) -> Rc<RefCell<Self>> {
-        rc_refcell(Self {
+impl CodeProcessor {
+    pub fn new(start_span: ParseSpan, n_opening: usize) -> Self {
+        Self {
             ctx: ParseContext::new(start_span, start_span),
             n_closing: n_opening,
             code: String::new(),
             evaled_code: None,
-        })
+        }
     }
 }
-impl BuildFromTokens for CodeFromTokens {
+impl BuildFromTokens for CodeProcessor {
     fn process_token(
         &mut self,
         py: Python,
@@ -87,9 +85,9 @@ impl BuildFromTokens for CodeFromTokens {
             // Parse one token after the code ends to see what we should do.
             Some(evaled_result) => match tok {
                 // A scope open could be for a block scope or inline scope - we accept either, so use the BlockLevelAmbiguousScope
-                TTToken::ScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-                    BlockLevelAmbiguousScope::new(start_span),
-                )),
+                TTToken::ScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+                    AmbiguousScopeProcessor::new(start_span),
+                ))),
                 TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
                     rc_refcell(RawStringProcessor::new(start_span, n_opening)),
                 )),

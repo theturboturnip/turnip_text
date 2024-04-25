@@ -15,8 +15,9 @@ use crate::{
 };
 
 use super::{
-    ambiguous_scope::InlineLevelAmbiguousScope, code::CodeFromTokens, comment::CommentFromTokens,
-    py_internal_alloc, rc_refcell, BuildFromTokens, BuildStatus, DocElement, PushToNextLevel,
+    ambiguous_scope::InlineLevelAmbiguousScopeProcessor, code::CodeProcessor,
+    comment::CommentProcessor, py_internal_alloc, rc_refcell, BuildFromTokens, BuildStatus,
+    DocElement, PushToNextLevel,
 };
 
 // Only expose specific implementations of InlineLevelProcessor
@@ -183,13 +184,13 @@ impl InlineMode for ParagraphInlineMode {
         tok: TTToken,
         _data: &str,
     ) -> TurnipTextContextlessResult<BuildStatus> {
-        Ok(BuildStatus::StartInnerBuilder(
-            InlineLevelAmbiguousScope::new(
+        Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+            InlineLevelAmbiguousScopeProcessor::new(
                 self.inline_mode_ctx(),
                 self.start_of_line,
                 tok.token_span(),
             ),
-        ))
+        )))
     }
 
     fn on_close_scope(
@@ -350,9 +351,13 @@ impl InlineMode for KnownInlineScopeInlineMode {
                 scope_start: self.ctx.first_tok(),
             },
         };
-        Ok(BuildStatus::StartInnerBuilder(
-            InlineLevelAmbiguousScope::new(new_scopes_inline_context, false, tok.token_span()),
-        ))
+        Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+            InlineLevelAmbiguousScopeProcessor::new(
+                new_scopes_inline_context,
+                false,
+                tok.token_span(),
+            ),
+        )))
     }
     fn on_close_scope(
         &mut self,
@@ -558,7 +563,9 @@ impl<T: InlineMode> BuildFromTokens for InlineLevelProcessor<T> {
             TTToken::Hashes(_, _) => {
                 self.current_building_text
                     .flush_into(py, false, &mut self.inner)?;
-                Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new()))
+                Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+                    CommentProcessor::new(),
+                )))
             }
 
             // Whitespace between content and a scope open/code open/raw scope open is included
@@ -572,8 +579,8 @@ impl<T: InlineMode> BuildFromTokens for InlineLevelProcessor<T> {
             TTToken::CodeOpen(start_span, n_brackets) => {
                 self.current_building_text
                     .flush_into(py, true, &mut self.inner)?;
-                Ok(BuildStatus::StartInnerBuilder(CodeFromTokens::new(
-                    start_span, n_brackets,
+                Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+                    CodeProcessor::new(start_span, n_brackets),
                 )))
             }
 

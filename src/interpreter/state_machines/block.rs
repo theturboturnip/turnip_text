@@ -15,9 +15,9 @@ use crate::{
 };
 
 use super::{
-    ambiguous_scope::BlockLevelAmbiguousScope,
-    code::CodeFromTokens,
-    comment::CommentFromTokens,
+    ambiguous_scope::AmbiguousScopeProcessor,
+    code::CodeProcessor,
+    comment::CommentProcessor,
     inline::{ParagraphProcessor, RawStringProcessor},
     py_internal_alloc, rc_refcell, BlockElem, BuildFromTokens, BuildStatus, DocElement,
     PushToNextLevel,
@@ -235,7 +235,7 @@ impl<T: BlockMode> BuildFromTokens for BlockLevelProcessor<T> {
                     }
 
                     TTToken::Hashes(_, _) => {
-                        Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new()))
+                        Ok(BuildStatus::StartInnerBuilder(rc_refcell(CommentProcessor::new())))
                     }
 
                     // A scope close is not counted as "content" for our sake.
@@ -259,18 +259,18 @@ impl<T: BlockMode> BuildFromTokens for BlockLevelProcessor<T> {
                 }
                 TTToken::Whitespace(_) | TTToken::Newline(_) => Ok(BuildStatus::Continue),
 
-                TTToken::Hashes(_, _) => {
-                    Ok(BuildStatus::StartInnerBuilder(CommentFromTokens::new()))
-                }
+                TTToken::Hashes(_, _) => Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+                    CommentProcessor::new(),
+                ))),
 
                 // Because this may return Inline we *always* have to be able to handle inlines at top scope.
                 TTToken::CodeOpen(start_span, n_brackets) => Ok(BuildStatus::StartInnerBuilder(
-                    CodeFromTokens::new(start_span, n_brackets),
+                    rc_refcell(CodeProcessor::new(start_span, n_brackets)),
                 )),
 
-                TTToken::ScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(
-                    BlockLevelAmbiguousScope::new(start_span),
-                )),
+                TTToken::ScopeOpen(start_span) => Ok(BuildStatus::StartInnerBuilder(rc_refcell(
+                    AmbiguousScopeProcessor::new(start_span),
+                ))),
 
                 TTToken::RawScopeOpen(start_span, n_opening) => Ok(BuildStatus::StartInnerBuilder(
                     rc_refcell(RawStringProcessor::new(start_span, n_opening)),
