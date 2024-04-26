@@ -2,6 +2,7 @@
 //! The general usage pattern is to define the expected result of your test with these types, then for harness code to execute the necessary Rust+Python and to then convert those results to these types before comparing.
 
 use crate::error::interp::{BlockModeElem, InlineModeContext};
+use crate::error::lexer::LexError;
 use crate::error::{interp::InterpError, TurnipTextError};
 use crate::error::{stringify_pyerr, UserPythonExecError};
 use crate::interpreter::ParsingFile;
@@ -61,10 +62,15 @@ impl<'a> From<(&ParseContext, &'a Vec<ParsingFile>)> for TestParseContext<'a> {
 /// Does not derive
 #[derive(Debug, Clone)]
 pub enum TestTurnipError<'a> {
-    Lex(char),
+    Lex(TestLexError<'a>),
     Interp(TestInterpError<'a>),
     UserPython(TestUserPythonExecError<'a>),
     InternalPython(Regex),
+}
+impl<'a> From<TestLexError<'a>> for TestTurnipError<'a> {
+    fn from(value: TestLexError<'a>) -> Self {
+        Self::Lex(value)
+    }
 }
 impl<'a> From<TestInterpError<'a>> for TestTurnipError<'a> {
     fn from(value: TestInterpError<'a>) -> Self {
@@ -79,7 +85,10 @@ impl<'a> From<TestUserPythonExecError<'a>> for TestTurnipError<'a> {
 impl<'a> TestTurnipError<'a> {
     pub fn matches(&self, py: Python, other: &TurnipTextError) -> bool {
         match (self, other) {
-            (Self::Lex(expected), TurnipTextError::Lex(_, _, actual)) => *expected == actual.ch,
+            (Self::Lex(expected), TurnipTextError::Lex(sources, actual)) => {
+                let actual_as_test: TestLexError<'_> = (actual, sources).into();
+                *dbg!(expected) == dbg!(actual_as_test)
+            }
             (Self::Interp(expected), TurnipTextError::Interp(sources, actual)) => {
                 let actual_as_test: TestInterpError<'_> = (actual, sources).into();
                 *dbg!(expected) == dbg!(actual_as_test)
@@ -91,6 +100,20 @@ impl<'a> TestTurnipError<'a> {
                 l_pyerr.is_match(&r_pyerr)
             }
             _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TestLexError<'a> {
+    TooLongStringOfHyphenMinus(TestParseSpan<'a>, usize),
+}
+impl<'a> From<(&'a LexError, &'a Vec<ParsingFile>)> for TestLexError<'a> {
+    fn from(value: (&'a LexError, &'a Vec<ParsingFile>)) -> Self {
+        match value.0 {
+            LexError::TooLongStringOfHyphenMinus(span, n) => {
+                TestLexError::TooLongStringOfHyphenMinus((span, value.1).into(), *n)
+            }
         }
     }
 }

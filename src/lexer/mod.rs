@@ -1,11 +1,11 @@
 use lexer_rs::LexerOfStr;
 use lexer_rs::PosnInCharStream;
-use lexer_rs::SimpleParseError;
 use lexer_rs::{CharStream, Lexer, LexerParseResult};
 
 mod line_col_char_posn;
-use line_col_char_posn::LineColumnChar;
+pub use line_col_char_posn::LineColumnChar;
 
+use crate::error::lexer::LexError;
 use crate::util::ParsePosn;
 use crate::util::ParseSpan;
 
@@ -87,6 +87,8 @@ pub enum LexerPrefixSeq {
     SqgClose,
     /// `#`
     Hash,
+    /// `-`
+    HyphenMinus,
 }
 impl LexerPrefixSeq {
     pub fn try_from_char2(ch: char, ch2: Option<char>) -> Option<(Self, usize)> {
@@ -103,6 +105,7 @@ impl LexerPrefixSeq {
             '{' => Some((SqgOpen, 1)),
             '}' => Some((SqgClose, 1)),
             '#' => Some((Hash, 1)),
+            '-' => Some((HyphenMinus, 1)),
             x if x.is_whitespace() => Some((Whitespace, 1)),
             _ => None,
         }
@@ -135,6 +138,8 @@ pub enum Escapable {
     SqgClose,
     /// `#`
     Hash,
+    /// `-`
+    HyphenMinus,
 }
 impl Escapable {
     pub fn try_extract<L, P>(stream: &L, state_of_escapee: L::State) -> Option<(Self, usize)>
@@ -156,6 +161,7 @@ impl Escapable {
             '{' => Some((SqgOpen, 1)),
             '}' => Some((SqgClose, 1)),
             '#' => Some((Hash, 1)),
+            '-' => Some((HyphenMinus, 1)),
             _ => None,
         }
     }
@@ -163,7 +169,6 @@ impl Escapable {
 
 pub type LexPosn = lexer_rs::StreamCharPos<LineColumnChar>;
 pub type LexToken = TTToken;
-pub type LexError = SimpleParseError<LexPosn>;
 
 #[derive(Debug, Copy, Clone)]
 pub enum TTToken {
@@ -198,6 +203,25 @@ pub enum TTToken {
     RawScopeClose(ParseSpan, usize),
     /// N `#` characters not preceded by a backslash
     Hashes(ParseSpan, usize),
+    /// 1 ASCII hyphen-minus '-' character, not preceded by backslash
+    ///
+    /// When stringified translates to ASCII/Unicode hyphen-minus
+    /// Note that different backends handle this differently: LaTeX treats hyphen-minus as a hyphen, Typst treats it as Unicode minus \u{2212}.
+    /// Typst has/has issues with emitting actual hyphen-minus, because some PDF viewers treat that as an actual hyphenation character and omit it when copy-pasting.
+    /// https://github.com/typst/typst/issues/1267
+    /// It also sounds like the Unicode hyphen \u{2010} doesn't have support in a lot of fonts.
+    /// If I did translate this to Unicode-hyphen then in LaTeX and Markdown I'd
+    /// just have to convert it back. For now, hyphen-minus is fine.
+    HyphenMinus(ParseSpan),
+    /// 2 ASCII hyphen-minus '--' characters, none preceded by backslash
+    ///
+    /// When stringified translates to Unicode en-dash \u{2013}, unless raw in which case it returns '--'
+    EnDash(ParseSpan),
+    /// 3 ASCII hyphen-minus '--' characters, none preceded by backslash
+    ///
+    /// When stringified translates to Unicode em-dash \u{2014}, unless raw in which case it returns '---'
+    EmDash(ParseSpan),
+    // TODO consider soft-hyphen
     /// Span of characters not included in [LexerPrefixSeq]
     OtherText(ParseSpan),
     /// String of non-escaped, whitespace, non-[Self::Newline] characters.
@@ -207,14 +231,15 @@ pub enum TTToken {
     EOF(ParseSpan),
 }
 impl TTToken {
+    /// Parses a run of N >= 1 instances of the target character, or None.
     fn parse_n_chars<L>(
         stream: &L,
         state: L::State,
         target_ch: char,
-    ) -> LexerParseResult<LexPosn, usize, L::Error>
+    ) -> LexerParseResult<LexPosn, usize, LexError>
     where
         L: CharStream<LexPosn>,
-        L: Lexer<Token = Self, State = LexPosn>,
+        L: Lexer<Token = Self, State = LexPosn, Error = LexError>,
     {
         if let Some(ch) = stream.peek_at(&state) {
             match stream.do_while(state, ch, &|_, ch| ch == target_ch) {
@@ -230,10 +255,10 @@ impl TTToken {
         stream: &L,
         state: L::State,
         ch: char,
-    ) -> LexerParseResult<LexPosn, Self, L::Error>
+    ) -> LexerParseResult<LexPosn, Self, LexError>
     where
         L: CharStream<LexPosn>,
-        L: Lexer<Token = Self, State = LexPosn>,
+        L: Lexer<Token = Self, State = LexPosn, Error = LexError>,
     {
         if let Some((seq, n_chars_in_seq)) = LexerPrefixSeq::try_extract(stream, state, ch) {
             let start = state;
@@ -326,6 +351,25 @@ impl TTToken {
                         None => unreachable!("We just peeked a hash, there must be at least one"),
                     }
                 }
+                // HyphenMinus => HyphenMinuses
+                LexerPrefixSeq::HyphenMinus => {
+                    // Run will have at least one -, because it's starting with this character.
+                    match Self::parse_n_chars(stream, state, '-')? {
+                        Some((hyphens_end, n)) => {
+                            let span = ParseSpan::from_lex(file_idx, start, hyphens_end);
+                            match n {
+                                0 => unreachable!("It would return None in this case"),
+                                1 => Ok(Some((hyphens_end, Self::HyphenMinus(span)))),
+                                2 => Ok(Some((hyphens_end, Self::EnDash(span)))),
+                                3 => Ok(Some((hyphens_end, Self::EmDash(span)))),
+                                _ => Err(LexError::TooLongStringOfHyphenMinus(span, n)),
+                            }
+                        }
+                        None => unreachable!(
+                            "We just peeked a hyphen-minus, there must be at least one"
+                        ),
+                    }
+                }
                 // Whitespace => Whitespace
                 LexerPrefixSeq::Whitespace => {
                     // Match all whitespace except newlines
@@ -350,10 +394,10 @@ impl TTToken {
         stream: &L,
         start: L::State,
         start_ch: char,
-    ) -> LexerParseResult<LexPosn, Self, L::Error>
+    ) -> LexerParseResult<LexPosn, Self, LexError>
     where
         L: CharStream<LexPosn>,
-        L: Lexer<Token = Self, State = LexPosn>,
+        L: Lexer<Token = Self, State = LexPosn, Error = LexError>,
     {
         // This function moves an `end` stream-state forward until it reaches
         // 1) the end of the stream
@@ -424,6 +468,9 @@ impl TTToken {
             TTToken::OtherText(span) => span,
             TTToken::Whitespace(span) => span,
             TTToken::EOF(span) => span,
+            TTToken::HyphenMinus(span) => span,
+            TTToken::EnDash(span) => span,
+            TTToken::EmDash(span) => span,
         }
     }
 
@@ -449,11 +496,15 @@ impl TTToken {
             | ScopeClose(span)
             | Hashes(span, _)
             | Whitespace(span)
+            | HyphenMinus(span)
+            | EnDash(span)
+            | EmDash(span)
             | OtherText(span) => &data[span.byte_range()],
         }
     }
     /// Convert a token to a [str] representation, usable for normal representation
     /// i.e. with escaping - `TTToken::Escaped(_, Escapable::SqrOpen)` is converted to just `'['` without the escaping backslash.
+    /// Converts [EnDash] to Unicode endash, [EmDash] to Unicode emdash, and [HyphenMinus] to ASCII hyphen-minus.
     ///
     /// Panics on newlines and escaped newlines as they should always have semantic meaning.
     /// EOFs are converted to "".
@@ -475,7 +526,11 @@ impl TTToken {
                 Escapable::SqgOpen => "{",
                 Escapable::SqgClose => "}",
                 Escapable::Hash => "#",
+                Escapable::HyphenMinus => "-",
             },
+            HyphenMinus(_) => "-",
+            EnDash(_) => "\u{2013}",
+            EmDash(_) => "\u{2014}",
             RawScopeOpen(span, _)
             | RawScopeClose(span, _)
             | CodeOpen(span, _)

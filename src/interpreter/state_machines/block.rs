@@ -276,8 +276,12 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
                     rc_refcell(RawStringProcessor::new(start_span, n_opening)),
                 )),
 
+                // Other escaped content, lone backslash, hyphens and dashes, and any other text are all treated as content
                 TTToken::Escaped(text_span, _)
                 | TTToken::Backslash(text_span)
+                | TTToken::HyphenMinus(text_span)
+                | TTToken::EnDash(text_span)
+                | TTToken::EmDash(text_span)
                 | TTToken::OtherText(text_span) => Ok(ProcStatus::PushProcessor(rc_refcell(
                     ParagraphProcessor::new_with_starting_text(
                         py,

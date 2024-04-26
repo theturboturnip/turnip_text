@@ -531,7 +531,13 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
         match tok {
             // Escaped newline => "Continue sentence"
             TTToken::Escaped(_, Escapable::Newline) => Ok(ProcStatus::Continue),
-            TTToken::Escaped(_, _) | TTToken::Backslash(_) | TTToken::OtherText(_) => {
+            // Other escaped content, lone backslash, hyphens and dashes, and any other text are all treated as content
+            TTToken::Escaped(_, _)
+            | TTToken::Backslash(_)
+            | TTToken::HyphenMinus(_)
+            | TTToken::EnDash(_)
+            | TTToken::EmDash(_)
+            | TTToken::OtherText(_) => {
                 self.inner.on_content();
                 self.current_building_text.encounter_text(tok, data);
                 Ok(ProcStatus::Continue)

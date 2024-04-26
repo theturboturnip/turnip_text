@@ -2,12 +2,14 @@ use annotate_snippets::display_list::DisplayList;
 use pyo3::{PyErr, PyObject, Python};
 use thiserror::Error;
 
-use crate::{interpreter::ParsingFile, lexer::LexError, util::ParseContext};
+use crate::{interpreter::ParsingFile, util::ParseContext};
 
 use self::interp::InterpError;
+use self::lexer::LexError;
 
 mod display;
 pub mod interp;
+pub mod lexer;
 
 pub fn stringify_pyerr(py: Python, pyerr: &PyErr) -> String {
     let value = pyerr.value(py);
@@ -60,8 +62,8 @@ pub enum UserPythonExecError {
 
 #[derive(Error, Debug)]
 pub enum TurnipTextContextlessError {
-    #[error("Syntax Error: {1}")]
-    Lex(usize, LexError),
+    #[error("Syntax Error: {0}")]
+    Lex(LexError),
     #[error("Interpreter Error: {0}")]
     Interp(#[from] Box<InterpError>),
     #[error("Error when executing user-generated Python")]
@@ -79,9 +81,9 @@ impl From<UserPythonExecError> for TurnipTextContextlessError {
         Self::UserPython(Box::new(value))
     }
 }
-impl From<(usize, LexError)> for TurnipTextContextlessError {
-    fn from(value: (usize, LexError)) -> Self {
-        Self::Lex(value.0, value.1)
+impl From<LexError> for TurnipTextContextlessError {
+    fn from(value: LexError) -> Self {
+        Self::Lex(value)
     }
 }
 impl From<(Python<'_>, PyErr)> for TurnipTextContextlessError {
@@ -94,19 +96,19 @@ pub type TurnipTextContextlessResult<T> = Result<T, TurnipTextContextlessError>;
 
 #[derive(Error, Debug)]
 pub enum TurnipTextError {
-    #[error("Syntax Error {2}")]
-    Lex(Vec<ParsingFile>, usize, LexError),
-    #[error("Interpreter Error {1}")]
+    #[error("Syntax Error: {1}")]
+    Lex(Vec<ParsingFile>, LexError),
+    #[error("Interpreter Error: {1}")]
     Interp(Vec<ParsingFile>, Box<InterpError>),
     #[error("Error when executing user-generated Python")]
     UserPython(Vec<ParsingFile>, Box<UserPythonExecError>),
-    #[error("Internal Python Error {0}")]
+    #[error("Internal Python Error: {0}")]
     InternalPython(String),
 }
 impl From<(Vec<ParsingFile>, TurnipTextContextlessError)> for TurnipTextError {
     fn from(value: (Vec<ParsingFile>, TurnipTextContextlessError)) -> Self {
         match value.1 {
-            TurnipTextContextlessError::Lex(file_idx, err) => Self::Lex(value.0, file_idx, err),
+            TurnipTextContextlessError::Lex(err) => Self::Lex(value.0, err),
             TurnipTextContextlessError::Interp(err) => Self::Interp(value.0, err),
             TurnipTextContextlessError::UserPython(err) => Self::UserPython(value.0, err),
             TurnipTextContextlessError::InternalPython(err) => Self::InternalPython(err),

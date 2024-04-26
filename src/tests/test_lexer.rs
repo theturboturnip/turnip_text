@@ -1,3 +1,5 @@
+use crate::error::lexer::LexError;
+use crate::interpreter::ParsingFile;
 use crate::lexer::lex;
 
 use crate::lexer::{Escapable, TTToken};
@@ -18,9 +20,12 @@ pub enum TestTTToken<'a> {
     OtherText(&'a str),
     Whitespace(&'a str),
     EOF,
+    HyphenMinus,
+    EnDash,
+    EmDash,
 }
 impl<'a> TestTTToken<'a> {
-    pub fn from_str_tok(data: &'a str, t: TTToken) -> Self {
+    fn from_str_tok(data: &'a str, t: TTToken) -> Self {
         match t {
             TTToken::Newline(_) => Self::Newline,
             TTToken::Escaped(_, escapable) => Self::Escaped(escapable),
@@ -35,6 +40,9 @@ impl<'a> TestTTToken<'a> {
             TTToken::OtherText(span) => Self::OtherText(data[span.byte_range()].into()),
             TTToken::Whitespace(span) => Self::Whitespace(data[span.byte_range()].into()),
             TTToken::EOF(_) => Self::EOF,
+            TTToken::HyphenMinus(_) => Self::HyphenMinus,
+            TTToken::EnDash(_) => Self::EnDash,
+            TTToken::EmDash(_) => Self::EmDash,
         }
     }
 }
@@ -53,10 +61,24 @@ pub fn expect_lex<'a>(data: &str, expected_stok_types: Vec<TestTTToken<'a>>) {
     assert_eq!(stok_types, expected_stok_types);
 }
 
+/// Expect a TestLexError from lexing the given string
+pub fn expect_lex_err<'a>(data: &str, expected_err: TestLexError<'a>) {
+    println!("{:?}", data);
+    let res: Vec<LexError> = lex(0, data).scan((), |_, x| x.err()).collect();
+    dbg!(&res);
+    dbg!(&expected_err);
+    assert!(res.len() == 1);
+    let srcs = vec![ParsingFile::new(0, "<string>".to_owned(), data.to_owned())];
+    let actual_err_as_test: TestLexError = (&res[0], &srcs).into();
+    assert_eq!(actual_err_as_test, expected_err);
+}
+
 use TestTTToken::*;
 
+use super::helpers::{TestLexError, TestParseSpan};
+
 #[test]
-pub fn integration_test() {
+fn integration_test() {
     let sp = Whitespace(" ");
     let txt = OtherText;
 
@@ -166,7 +188,7 @@ The bee, of course, [code]###{flies} anyway because bees [[[emph]]]{don't} care 
 
 /// Test \n, \r, \r\n
 #[test]
-pub fn test_newline() {
+fn test_newline() {
     expect_lex(
         "a\nb\rc\r\n",
         vec![
@@ -182,7 +204,7 @@ pub fn test_newline() {
 }
 
 #[test]
-pub fn test_whitespace_newline_chain() {
+fn test_whitespace_newline_chain() {
     expect_lex(
         "    \n    \r    \r\n    ",
         vec![
@@ -200,7 +222,7 @@ pub fn test_whitespace_newline_chain() {
 
 /// Test escaped things
 #[test]
-pub fn test_escaped() {
+fn test_escaped() {
     expect_lex(
         r#"
 \
@@ -211,6 +233,7 @@ pub fn test_escaped() {
 \{
 \}
 \#
+\-
 "#,
         vec![
             Newline,
@@ -228,6 +251,8 @@ pub fn test_escaped() {
             Newline,
             Escaped(Escapable::Hash),
             Newline,
+            Escaped(Escapable::HyphenMinus),
+            Newline,
             EOF,
         ],
     )
@@ -237,7 +262,7 @@ pub fn test_escaped() {
 ///
 /// e.g. \a, \b, \c
 #[test]
-pub fn test_backslash() {
+fn test_backslash() {
     expect_lex(
         r#"\a\b\c"#,
         vec![
@@ -253,7 +278,7 @@ pub fn test_backslash() {
 }
 
 #[test]
-pub fn test_code_open() {
+fn test_code_open() {
     expect_lex(
         r#"
 [
@@ -277,7 +302,7 @@ pub fn test_code_open() {
 }
 
 #[test]
-pub fn test_code_close() {
+fn test_code_close() {
     expect_lex(
         r#"
 ]
@@ -301,7 +326,7 @@ pub fn test_code_close() {
 }
 
 #[test]
-pub fn test_code_close_owning_inline() {
+fn test_code_close_owning_inline() {
     expect_lex(
         r#"
 ]{}
@@ -333,7 +358,7 @@ pub fn test_code_close_owning_inline() {
 }
 
 #[test]
-pub fn test_code_close_owning_raw() {
+fn test_code_close_owning_raw() {
     expect_lex(
         r#"
 ]#{
@@ -377,7 +402,7 @@ pub fn test_code_close_owning_raw() {
 }
 
 #[test]
-pub fn test_code_close_owning_block() {
+fn test_code_close_owning_block() {
     expect_lex(
         r#"
 ]{
@@ -413,7 +438,7 @@ pub fn test_code_close_owning_block() {
 }
 
 #[test]
-pub fn test_inline_scope_open() {
+fn test_inline_scope_open() {
     expect_lex(
         r#" { "#,
         vec![Whitespace(" "), ScopeOpen, Whitespace(" "), EOF],
@@ -421,7 +446,7 @@ pub fn test_inline_scope_open() {
 }
 
 #[test]
-pub fn test_block_scope_open() {
+fn test_block_scope_open() {
     expect_lex(
         r#"
 {
@@ -432,7 +457,7 @@ pub fn test_block_scope_open() {
 }
 
 #[test]
-pub fn test_scope_close() {
+fn test_scope_close() {
     expect_lex(
         r#"
 }
@@ -442,7 +467,7 @@ pub fn test_scope_close() {
 }
 
 #[test]
-pub fn test_raw_scope_open() {
+fn test_raw_scope_open() {
     expect_lex(
         r#"
 #{
@@ -466,7 +491,7 @@ pub fn test_raw_scope_open() {
 }
 
 #[test]
-pub fn test_raw_scope_close() {
+fn test_raw_scope_close() {
     expect_lex(
         r#"
 }#
@@ -490,7 +515,7 @@ pub fn test_raw_scope_close() {
 }
 
 #[test]
-pub fn test_hashes() {
+fn test_hashes() {
     expect_lex(
         r#"
 #
@@ -514,7 +539,7 @@ pub fn test_hashes() {
 }
 
 #[test]
-pub fn test_escaped_cr() {
+fn test_escaped_cr() {
     // '\' + '\r'&
     expect_lex(
         "before\\\rafter",
@@ -527,7 +552,7 @@ pub fn test_escaped_cr() {
     )
 }
 #[test]
-pub fn test_escaped_lf() {
+fn test_escaped_lf() {
     // '\' + '\n'
     expect_lex(
         "before\\\nafter",
@@ -540,7 +565,7 @@ pub fn test_escaped_lf() {
     )
 }
 #[test]
-pub fn test_escaped_crlf() {
+fn test_escaped_crlf() {
     // '\' + '\r' + '\n'
     expect_lex(
         "before\\\r\nafter",
@@ -554,19 +579,137 @@ pub fn test_escaped_crlf() {
 }
 
 #[test]
-pub fn test_cr() {
+fn test_cr() {
     // '\r'
     expect_lex("\rcontent", vec![Newline, OtherText("content"), EOF])
 }
 #[test]
-pub fn test_lf() {
+fn test_lf() {
     // '\n'
     expect_lex("\ncontent", vec![Newline, OtherText("content"), EOF])
 }
 #[test]
-pub fn test_crlf() {
+fn test_crlf() {
     // '\r' + '\n'
     expect_lex("\r\ncontent", vec![Newline, OtherText("content"), EOF])
+}
+
+// Test endash, hyphenminus, emdash
+#[test]
+fn test_valid_hyphen_strings() {
+    expect_lex(
+        r"
+-
+\-
+
+--
+\--
+-\-
+
+---
+\---
+-\--
+--\-
+\-\--
+-\-\-
+\-\-\-
+
+\-\-\-\-\-\-\-\-",
+        vec![
+            Newline,
+            HyphenMinus,
+            Newline,
+            Escaped(Escapable::HyphenMinus),
+            Newline,
+            Newline,
+            // 2-dash combinations
+            EnDash,
+            Newline,
+            // \-- = escaped, single
+            Escaped(Escapable::HyphenMinus),
+            HyphenMinus,
+            Newline,
+            // -\- = single, escaped
+            HyphenMinus,
+            Escaped(Escapable::HyphenMinus),
+            Newline,
+            Newline,
+            // 3-dash combinations
+            EmDash,
+            Newline,
+            // \--- = escaped + double
+            Escaped(Escapable::HyphenMinus),
+            EnDash,
+            Newline,
+            // -\-- = single, escaped, single
+            HyphenMinus,
+            Escaped(Escapable::HyphenMinus),
+            HyphenMinus,
+            Newline,
+            // --\- = double, escaped
+            EnDash,
+            Escaped(Escapable::HyphenMinus),
+            Newline,
+            // \-\-- = escaped, escaped, single
+            Escaped(Escapable::HyphenMinus),
+            Escaped(Escapable::HyphenMinus),
+            HyphenMinus,
+            Newline,
+            // -\-\- = single, escaped, escaped
+            HyphenMinus,
+            Escaped(Escapable::HyphenMinus),
+            Escaped(Escapable::HyphenMinus),
+            Newline,
+            // \-\-\- = three escaped
+            Escaped(Escapable::HyphenMinus),
+            Escaped(Escapable::HyphenMinus),
+            Escaped(Escapable::HyphenMinus),
+            Newline,
+            Newline,
+            // \-\-\-\-\-\-\-\- = seven escaped
+            Escaped(Escapable::HyphenMinus),
+            Escaped(Escapable::HyphenMinus),
+            Escaped(Escapable::HyphenMinus),
+            Escaped(Escapable::HyphenMinus),
+            Escaped(Escapable::HyphenMinus),
+            Escaped(Escapable::HyphenMinus),
+            Escaped(Escapable::HyphenMinus),
+            Escaped(Escapable::HyphenMinus),
+            EOF,
+        ],
+    );
+}
+
+#[test]
+fn test_invalid_hyphen_strings() {
+    expect_lex_err(
+        "----",
+        TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("----"), 4),
+    );
+    expect_lex_err(
+        "-----",
+        TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("-----"), 5),
+    );
+    expect_lex_err(
+        "------",
+        TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("------"), 6),
+    );
+    expect_lex_err(
+        "-------",
+        TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("-------"), 7),
+    );
+    expect_lex_err(
+        "--------",
+        TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("--------"), 8),
+    );
+    expect_lex_err(
+        "---------",
+        TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("---------"), 9),
+    );
+    expect_lex_err(
+        "----------",
+        TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("----------"), 10),
+    );
 }
 
 // TODO test error messages for multibyte?

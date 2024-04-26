@@ -89,7 +89,6 @@ impl TurnipTextParser {
                     py,
                     py_env,
                     &mut file.token_stream,
-                    *file_idx,
                     &file.contents,
                 )
             };

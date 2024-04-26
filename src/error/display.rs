@@ -1,14 +1,15 @@
 //! This module tends to have a lot of long strings which cargo fmt won't automatically handle.
 //! `rustfmt .\src\error.rs --config format_strings=true` is good for this.
 
+/// TODO try https://github.com/brendanzab/codespan instead
+/// Or just do it myself :P
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 
-use crate::{
-    error::interp::BlockModeElem, interpreter::ParsingFile, lexer::LexError, util::ParseSpan,
-};
+use crate::{error::interp::BlockModeElem, interpreter::ParsingFile, util::ParseSpan};
 
 use super::{
     interp::{InlineModeContext, InterpError},
+    lexer::LexError,
     TurnipTextError, UserPythonExecError,
 };
 
@@ -86,9 +87,7 @@ fn annotation_from_parse_span<'a>(
 impl TurnipTextError {
     pub fn snippet<'a>(&'a self) -> Snippet<'a> {
         match self {
-            TurnipTextError::Lex(sources, file_idx, err) => {
-                Self::lex_error_snippet(sources, *file_idx, err)
-            }
+            TurnipTextError::Lex(sources, err) => Self::lex_error_snippet(sources, err),
             TurnipTextError::Interp(sources, err) => Self::interp_error_snippet(sources, err),
             TurnipTextError::UserPython(sources, err) => Self::user_python_snippet(sources, err),
             TurnipTextError::InternalPython(pyerr) => Snippet {
@@ -108,30 +107,34 @@ impl TurnipTextError {
         }
     }
 
-    fn lex_error_snippet<'a>(
-        sources: &'a Vec<ParsingFile>,
-        file_idx: usize,
-        err: &'a LexError,
-    ) -> Snippet<'a> {
-        // TODO - in the event this breaks on non-ASCII/non-single-byte,
-        // it would be nice to print the character somewhere
-        Snippet {
-            title: Some(Annotation {
-                label: Some("Parser error"),
-                id: None,
-                annotation_type: AnnotationType::Error,
-            }),
-            footer: vec![],
-            slices: slices_from_spans(
-                AnnotationType::Error,
-                sources,
-                &[(
-                    ParseSpan::single_char(file_idx, err.pos, err.ch),
-                    "Unexpected character",
-                    None,
-                )],
-            ),
-            opt: Default::default(),
+    fn lex_error_snippet<'a>(sources: &'a Vec<ParsingFile>, err: &'a LexError) -> Snippet<'a> {
+        match err {
+            LexError::TooLongStringOfHyphenMinus(span, _) => Snippet {
+                title: Some(Annotation {
+                    label: Some("Too-long string of hyphen-minus characters"),
+                    id: None,
+                    annotation_type: AnnotationType::Error,
+                }),
+                footer: vec![Annotation {
+                    label: Some(
+                        "The ASCII hyphen character is treated specially by turnip-text. \n\
+                        One is a normal hyphen-minus (U+002D), \n\
+                        two in a row are converted to unicode en-dash U+2013, \n\
+                        three in a row are converted to unicode em-dash U+2014. \n\
+                        Longer strings are not converted at all. \n\
+                        If you want a longer string, escape the hyphens. \
+                        ",
+                    ),
+                    id: None,
+                    annotation_type: AnnotationType::Error,
+                }],
+                slices: slices_from_spans(
+                    AnnotationType::Error,
+                    sources,
+                    &[(*span, "Too-long string here", None)],
+                ),
+                opt: Default::default(),
+            },
         }
     }
 
