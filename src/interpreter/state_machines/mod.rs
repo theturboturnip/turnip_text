@@ -31,7 +31,6 @@ use pyo3::{prelude::*, types::PyDict, PyClass};
 use crate::{
     error::{
         interp::{BlockModeElem, InterpError, MapContextlessResult},
-        lexer::LexError,
         TurnipTextContextlessResult,
     },
     lexer::TTToken,
@@ -196,11 +195,10 @@ impl FileProcessorStack {
         &mut self,
         py: Python,
         py_env: &PyDict,
-        toks: &mut impl Iterator<Item = Result<TTToken, LexError>>,
+        toks: &mut impl Iterator<Item = TTToken>,
         data: &str,
     ) -> TurnipTextContextlessResult<FileEvent> {
         for tok in toks {
-            let tok = tok?;
             match self.process_token(py, py_env, tok, data)? {
                 None => continue,
                 Some((emitted_by_code, TurnipTextSource { name, contents })) => {

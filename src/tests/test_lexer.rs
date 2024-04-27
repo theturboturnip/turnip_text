@@ -1,5 +1,3 @@
-use crate::error::lexer::LexError;
-use crate::interpreter::ParsingFile;
 use crate::lexer::lex;
 
 use crate::lexer::{Escapable, TTToken};
@@ -20,7 +18,7 @@ pub enum TestTTToken<'a> {
     OtherText(&'a str),
     Whitespace(&'a str),
     EOF,
-    HyphenMinus,
+    HyphenMinuses(usize),
     EnDash,
     EmDash,
 }
@@ -40,7 +38,7 @@ impl<'a> TestTTToken<'a> {
             TTToken::OtherText(span) => Self::OtherText(data[span.byte_range()].into()),
             TTToken::Whitespace(span) => Self::Whitespace(data[span.byte_range()].into()),
             TTToken::EOF(_) => Self::EOF,
-            TTToken::HyphenMinus(_) => Self::HyphenMinus,
+            TTToken::HyphenMinuses(_, n) => Self::HyphenMinuses(n),
             TTToken::EnDash(_) => Self::EnDash,
             TTToken::EmDash(_) => Self::EmDash,
         }
@@ -52,7 +50,7 @@ pub fn expect_lex<'a>(data: &str, expected_stok_types: Vec<TestTTToken<'a>>) {
     println!("{:?}", data);
 
     // First step: lex
-    let stoks: Vec<TTToken> = lex(0, data).scan((), |_, x| x.ok()).collect();
+    let stoks: Vec<TTToken> = lex(0, data).collect();
     let stok_types: Vec<TestTTToken> = stoks
         .iter()
         .map(|stok| TestTTToken::from_str_tok(data, *stok))
@@ -61,21 +59,7 @@ pub fn expect_lex<'a>(data: &str, expected_stok_types: Vec<TestTTToken<'a>>) {
     assert_eq!(stok_types, expected_stok_types);
 }
 
-/// Expect a TestLexError from lexing the given string
-pub fn expect_lex_err<'a>(data: &str, expected_err: TestLexError<'a>) {
-    println!("{:?}", data);
-    let res: Vec<LexError> = lex(0, data).scan((), |_, x| x.err()).collect();
-    dbg!(&res);
-    dbg!(&expected_err);
-    assert!(res.len() == 1);
-    let srcs = vec![ParsingFile::new(0, "<string>".to_owned(), data.to_owned())];
-    let actual_err_as_test: TestLexError = (&res[0], &srcs).into();
-    assert_eq!(actual_err_as_test, expected_err);
-}
-
 use TestTTToken::*;
-
-use super::helpers::{TestLexError, TestParseSpan};
 
 #[test]
 fn integration_test() {
@@ -594,9 +578,9 @@ fn test_crlf() {
     expect_lex("\r\ncontent", vec![Newline, OtherText("content"), EOF])
 }
 
-// Test endash, hyphenminus, emdash
+// Test endash, hyphenminuses(1), emdash
 #[test]
-fn test_valid_hyphen_strings() {
+fn test_short_hyphen_strings() {
     expect_lex(
         r"
 -
@@ -617,7 +601,7 @@ fn test_valid_hyphen_strings() {
 \-\-\-\-\-\-\-\-",
         vec![
             Newline,
-            HyphenMinus,
+            HyphenMinuses(1),
             Newline,
             Escaped(Escapable::HyphenMinus),
             Newline,
@@ -627,10 +611,10 @@ fn test_valid_hyphen_strings() {
             Newline,
             // \-- = escaped, single
             Escaped(Escapable::HyphenMinus),
-            HyphenMinus,
+            HyphenMinuses(1),
             Newline,
             // -\- = single, escaped
-            HyphenMinus,
+            HyphenMinuses(1),
             Escaped(Escapable::HyphenMinus),
             Newline,
             Newline,
@@ -642,9 +626,9 @@ fn test_valid_hyphen_strings() {
             EnDash,
             Newline,
             // -\-- = single, escaped, single
-            HyphenMinus,
+            HyphenMinuses(1),
             Escaped(Escapable::HyphenMinus),
-            HyphenMinus,
+            HyphenMinuses(1),
             Newline,
             // --\- = double, escaped
             EnDash,
@@ -653,10 +637,10 @@ fn test_valid_hyphen_strings() {
             // \-\-- = escaped, escaped, single
             Escaped(Escapable::HyphenMinus),
             Escaped(Escapable::HyphenMinus),
-            HyphenMinus,
+            HyphenMinuses(1),
             Newline,
             // -\-\- = single, escaped, escaped
-            HyphenMinus,
+            HyphenMinuses(1),
             Escaped(Escapable::HyphenMinus),
             Escaped(Escapable::HyphenMinus),
             Newline,
@@ -681,35 +665,14 @@ fn test_valid_hyphen_strings() {
 }
 
 #[test]
-fn test_invalid_hyphen_strings() {
-    expect_lex_err(
-        "----",
-        TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("----"), 4),
-    );
-    expect_lex_err(
-        "-----",
-        TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("-----"), 5),
-    );
-    expect_lex_err(
-        "------",
-        TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("------"), 6),
-    );
-    expect_lex_err(
-        "-------",
-        TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("-------"), 7),
-    );
-    expect_lex_err(
-        "--------",
-        TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("--------"), 8),
-    );
-    expect_lex_err(
-        "---------",
-        TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("---------"), 9),
-    );
-    expect_lex_err(
-        "----------",
-        TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("----------"), 10),
-    );
+fn test_long_hyphen_strings() {
+    expect_lex("----", vec![HyphenMinuses(4), EOF]);
+    expect_lex("-----", vec![HyphenMinuses(5), EOF]);
+    expect_lex("------", vec![HyphenMinuses(6), EOF]);
+    expect_lex("-------", vec![HyphenMinuses(7), EOF]);
+    expect_lex("--------", vec![HyphenMinuses(8), EOF]);
+    expect_lex("---------", vec![HyphenMinuses(9), EOF]);
+    expect_lex("----------", vec![HyphenMinuses(10), EOF]);
 }
 
 // TODO test error messages for multibyte?

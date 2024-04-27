@@ -534,7 +534,7 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
             // Other escaped content, lone backslash, hyphens and dashes, and any other text are all treated as content
             TTToken::Escaped(_, _)
             | TTToken::Backslash(_)
-            | TTToken::HyphenMinus(_)
+            | TTToken::HyphenMinuses(..)
             | TTToken::EnDash(_)
             | TTToken::EmDash(_)
             | TTToken::OtherText(_) => {

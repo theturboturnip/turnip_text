@@ -5,11 +5,9 @@ use thiserror::Error;
 use crate::{interpreter::ParsingFile, util::ParseContext};
 
 use self::interp::InterpError;
-use self::lexer::LexError;
 
 mod display;
 pub mod interp;
-pub mod lexer;
 
 pub fn stringify_pyerr(py: Python, pyerr: &PyErr) -> String {
     let value = pyerr.value(py);
@@ -62,8 +60,6 @@ pub enum UserPythonExecError {
 
 #[derive(Error, Debug)]
 pub enum TurnipTextContextlessError {
-    #[error("Syntax Error: {0}")]
-    Lex(LexError),
     #[error("Interpreter Error: {0}")]
     Interp(#[from] Box<InterpError>),
     #[error("Error when executing user-generated Python")]
@@ -81,11 +77,6 @@ impl From<UserPythonExecError> for TurnipTextContextlessError {
         Self::UserPython(Box::new(value))
     }
 }
-impl From<LexError> for TurnipTextContextlessError {
-    fn from(value: LexError) -> Self {
-        Self::Lex(value)
-    }
-}
 impl From<(Python<'_>, PyErr)> for TurnipTextContextlessError {
     fn from(value: (Python, PyErr)) -> Self {
         Self::InternalPython(stringify_pyerr(value.0, &value.1))
@@ -96,8 +87,6 @@ pub type TurnipTextContextlessResult<T> = Result<T, TurnipTextContextlessError>;
 
 #[derive(Error, Debug)]
 pub enum TurnipTextError {
-    #[error("Syntax Error: {1}")]
-    Lex(Vec<ParsingFile>, LexError),
     #[error("Interpreter Error: {1}")]
     Interp(Vec<ParsingFile>, Box<InterpError>),
     #[error("Error when executing user-generated Python")]
@@ -108,7 +97,6 @@ pub enum TurnipTextError {
 impl From<(Vec<ParsingFile>, TurnipTextContextlessError)> for TurnipTextError {
     fn from(value: (Vec<ParsingFile>, TurnipTextContextlessError)) -> Self {
         match value.1 {
-            TurnipTextContextlessError::Lex(err) => Self::Lex(value.0, err),
             TurnipTextContextlessError::Interp(err) => Self::Interp(value.0, err),
             TurnipTextContextlessError::UserPython(err) => Self::UserPython(value.0, err),
             TurnipTextContextlessError::InternalPython(err) => Self::InternalPython(err),

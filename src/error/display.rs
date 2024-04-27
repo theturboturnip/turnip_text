@@ -9,7 +9,6 @@ use crate::{error::interp::BlockModeElem, interpreter::ParsingFile, util::ParseS
 
 use super::{
     interp::{InlineModeContext, InterpError},
-    lexer::LexError,
     TurnipTextError, UserPythonExecError,
 };
 
@@ -87,7 +86,6 @@ fn annotation_from_parse_span<'a>(
 impl TurnipTextError {
     pub fn snippet<'a>(&'a self) -> Snippet<'a> {
         match self {
-            TurnipTextError::Lex(sources, err) => Self::lex_error_snippet(sources, err),
             TurnipTextError::Interp(sources, err) => Self::interp_error_snippet(sources, err),
             TurnipTextError::UserPython(sources, err) => Self::user_python_snippet(sources, err),
             TurnipTextError::InternalPython(pyerr) => Snippet {
@@ -102,37 +100,6 @@ impl TurnipTextError {
                     annotation_type: AnnotationType::Error,
                 }],
                 slices: vec![],
-                opt: Default::default(),
-            },
-        }
-    }
-
-    fn lex_error_snippet<'a>(sources: &'a Vec<ParsingFile>, err: &'a LexError) -> Snippet<'a> {
-        match err {
-            LexError::TooLongStringOfHyphenMinus(span, _) => Snippet {
-                title: Some(Annotation {
-                    label: Some("Too-long string of hyphen-minus characters"),
-                    id: None,
-                    annotation_type: AnnotationType::Error,
-                }),
-                footer: vec![Annotation {
-                    label: Some(
-                        "The ASCII hyphen character is treated specially by turnip-text. \n\
-                        One is a normal hyphen-minus (U+002D), \n\
-                        two in a row are converted to unicode en-dash U+2013, \n\
-                        three in a row are converted to unicode em-dash U+2014. \n\
-                        Longer strings are not converted at all. \n\
-                        If you want a longer string, escape the hyphens. \
-                        ",
-                    ),
-                    id: None,
-                    annotation_type: AnnotationType::Error,
-                }],
-                slices: slices_from_spans(
-                    AnnotationType::Error,
-                    sources,
-                    &[(*span, "Too-long string here", None)],
-                ),
                 opt: Default::default(),
             },
         }

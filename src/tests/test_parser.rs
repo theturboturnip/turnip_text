@@ -2898,7 +2898,7 @@ mod substitution {
     }
 
     #[test]
-    fn test_valid_hyphen_strings() {
+    fn test_short_hyphen_strings() {
         expect_parse(
             r"
     -
@@ -2970,34 +2970,48 @@ mod substitution {
     }
 
     #[test]
-    fn test_invalid_hyphen_strings() {
-        expect_parse_err(
+    fn test_long_hyphen_strings() {
+        expect_parse(
             "----",
-            TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("----"), 4),
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "----",
+            )])])),
         );
-        expect_parse_err(
+        expect_parse(
             "-----",
-            TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("-----"), 5),
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "-----",
+            )])])),
         );
-        expect_parse_err(
+        expect_parse(
             "------",
-            TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("------"), 6),
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "------",
+            )])])),
         );
-        expect_parse_err(
+        expect_parse(
             "-------",
-            TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("-------"), 7),
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "-------",
+            )])])),
         );
-        expect_parse_err(
+        expect_parse(
             "--------",
-            TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("--------"), 8),
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "--------",
+            )])])),
         );
-        expect_parse_err(
+        expect_parse(
             "---------",
-            TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("---------"), 9),
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "---------",
+            )])])),
         );
-        expect_parse_err(
+        expect_parse(
             "----------",
-            TestLexError::TooLongStringOfHyphenMinus(TestParseSpan("----------"), 10),
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "----------",
+            )])])),
         );
     }
 

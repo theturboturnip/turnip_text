@@ -279,7 +279,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
                 // Other escaped content, lone backslash, hyphens and dashes, and any other text are all treated as content
                 TTToken::Escaped(text_span, _)
                 | TTToken::Backslash(text_span)
-                | TTToken::HyphenMinus(text_span)
+                | TTToken::HyphenMinuses(text_span, _)
                 | TTToken::EnDash(text_span)
                 | TTToken::EmDash(text_span)
                 | TTToken::OtherText(text_span) => Ok(ProcStatus::PushProcessor(rc_refcell(
