@@ -94,7 +94,7 @@ pub fn test_inline_code() {
 #[test]
 pub fn test_inline_code_with_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): [[ len((1,2,3)) ]]"#,
+        r#"Number of values in (1,2,3): [- len((1,2,3)) -]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
@@ -105,7 +105,7 @@ pub fn test_inline_code_with_extra_delimiter() {
 #[test]
 pub fn test_inline_code_with_long_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): [[[[[ len((1,2,3)) ]]]]]"#,
+        r#"Number of values in (1,2,3): [---- len((1,2,3)) ----]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
@@ -114,23 +114,11 @@ pub fn test_inline_code_with_long_extra_delimiter() {
 }
 
 #[test]
-pub fn test_inline_code_with_escaped_extra_delimiter() {
-    expect_parse(
-        r#"Number of values in (1,2,3): \[[ len((1,2,3)) ]\]"#,
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            test_text("Number of values in (1,2,3): ["),
-            test_text("3"),
-            test_text("]"),
-        ]])])),
-    )
-}
-
-#[test]
 pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): \[\[ len((1,2,3)) \]\]"#,
+        r#"Number of values in (1,2,3): \[\- len((1,2,3)) \-\]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
-            r#"Number of values in (1,2,3): [[ len((1,2,3)) ]]"#,
+            r#"Number of values in (1,2,3): [- len((1,2,3)) -]"#,
         )])])),
     )
 }
@@ -138,7 +126,7 @@ pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
 #[test]
 pub fn test_inline_list_with_extra_delimiter() {
     expect_parse(
-        r#"Number of values in (1,2,3): [[ len([1,2,3]) ]]"#,
+        r#"Number of values in (1,2,3): [- len([1,2,3]) -]"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Number of values in (1,2,3): "),
             test_text("3"),
@@ -1149,7 +1137,7 @@ mod block_spacing {
     pub fn test_inserted_file_newlines_dont_leak_out() {
         expect_parse_err(
             r#"
-[[
+[-
 f = test_src("""
 Look a test paragraph
 
@@ -1162,7 +1150,7 @@ Look a test paragraph
 
 
 """)
-]]
+-]
 
 [f] and some more content
         "#,
@@ -1178,9 +1166,9 @@ Look a test paragraph
         // We should be able to insert a paragraph and then line break and then insert a file
         expect_parse(
             r#"
-[[
+[-
 f = test_src("""some more content""")
-]]
+-]
 
 content
 
@@ -1194,9 +1182,9 @@ content
         // We shouldn't be able to do that on adjacent lines - the paragraph "captures" any content on the line underneath
         expect_parse_err(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 content
 [f]
@@ -1212,9 +1200,9 @@ content
         // There must be a blank line between inserted file and para
         expect_parse(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f]
 
@@ -1228,9 +1216,9 @@ another paragraph of content
         // We shouldn't be able to two on adjacent lines
         expect_parse_err(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f]
 another paragraph of content
@@ -1243,9 +1231,9 @@ another paragraph of content
         // We shouldn't be able to both on the same line
         expect_parse_err(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f] and some more content
         "#,
@@ -1260,9 +1248,9 @@ f = test_src("""some content""")
         // We must have a blank line between two files
         expect_parse(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f]
 
@@ -1276,9 +1264,9 @@ f = test_src("""some content""")
         // We shouldn't be able to two on adjacent lines
         expect_parse_err(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f]
 [f]
@@ -1291,9 +1279,9 @@ f = test_src("""some content""")
         // We shouldn't be able to two on the same line
         expect_parse_err(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f] [f]
         "#,
@@ -1308,9 +1296,9 @@ f = test_src("""some content""")
         // We must have a blank line between a file and block code
         expect_parse(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f]
 
@@ -1328,9 +1316,9 @@ f = test_src("""some content""")
         // We shouldn't be able to two on adjacent lines
         expect_parse_err(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f]
 [TEST_BLOCK_BUILDER]{
@@ -1345,9 +1333,9 @@ f = test_src("""some content""")
         // We shouldn't be able to two on the same line
         expect_parse_err(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f] [TEST_BLOCK_BUILDER]{
     some other content
@@ -1365,9 +1353,9 @@ f = test_src("""some content""")
         // We must have a blank line between a file and inline code
         expect_parse(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f]
 
@@ -1383,9 +1371,9 @@ f = test_src("""some content""")
         // We shouldn't be able to two on adjacent lines
         expect_parse_err(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f]
 [TEST_INLINE_BUILDER]{some other content}
@@ -1398,9 +1386,9 @@ f = test_src("""some content""")
         // We shouldn't be able to two on the same line
         expect_parse_err(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f] [TEST_INLINE_BUILDER]{some other content}
         "#,
@@ -1416,9 +1404,9 @@ f = test_src("""some content""")
         // We must have a blank line between a file and block scopes
         expect_parse(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f]
 
@@ -1436,9 +1424,9 @@ f = test_src("""some content""")
         // We shouldn't be able to two on adjacent lines
         expect_parse_err(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f]
 {
@@ -1453,9 +1441,9 @@ f = test_src("""some content""")
         // We shouldn't be able to two on the same line
         expect_parse_err(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f]    {
     some other content
@@ -1472,9 +1460,9 @@ f = test_src("""some content""")
         // We must have a blank line between a file and inline scope
         expect_parse(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f]
 
@@ -1490,9 +1478,9 @@ f = test_src("""some content""")
         // We shouldn't be able to two on adjacent lines
         expect_parse_err(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f]
 { some other content }
@@ -1505,9 +1493,9 @@ f = test_src("""some content""")
         // We shouldn't be able to two on the same line
         expect_parse_err(
             r#"
-[[
+[-
 f = test_src("""some content""")
-]]
+-]
 
 [f]    { some other content }
         "#,
@@ -1850,12 +1838,12 @@ mod doc_structure {
     fn test_can_create_header_inner_file() {
         expect_parse(
             r#"
-[[
+[-
 header_in_file = test_src("""[TestDocSegmentHeader(weight=123)]
 
 Content in file!
 """)
-]]
+-]
         Toplevel content!
 
         [header_in_file]
@@ -1882,14 +1870,14 @@ Content in file!
     fn test_cant_create_header_block_scope_in_inner_file() {
         expect_parse_err(
             r#"
-[[
+[-
 header_in_file = test_src("""
 {
     [TestDocSegmentHeader(weight=123)]
 
     Content in file!
 }""")
-]]
+-]
         Toplevel content!
 
         [header_in_file]
@@ -1906,13 +1894,13 @@ header_in_file = test_src("""
     fn test_cant_create_header_inner_file_in_block_scope() {
         expect_parse_err(
             r#"
-[[
+[-
 header_in_file = test_src("""
 [TestDocSegmentHeader(weight=123)]
 
 Content in file!
 """)
-]]
+-]
         Toplevel content!
 
         {
@@ -1999,7 +1987,7 @@ mod inserted_files {
     fn test_nested_inserted_file() {
         expect_parse(
             r#"
-[[
+[-
 f1 = test_src("""
     paragraph 1
 
@@ -2018,7 +2006,7 @@ f3 = test_src("""
 f4 = test_src("""
     paragraph 4
 """)
-]]
+-]
             # Include the first file, which will include the second, then the third etc.
             # None of them have block scopes so they'll all emit paragraphs to the top level
             [f1]
@@ -2036,7 +2024,7 @@ f4 = test_src("""
     fn test_combined_nested_inserted_file_block_scope() {
         expect_parse(
             r#"
-[[
+[-
 f1 = test_src("""
     paragraph 1
 
@@ -2059,7 +2047,7 @@ f3 = test_src("""
 f4 = test_src("""
     paragraph 4
 """)
-]]
+-]
             # Include the first file, which will include the second, then the third etc.
             [f1]
             "#,
@@ -2525,7 +2513,7 @@ mod code_ambiguity {
         // Create a class which is a block scope + inline scope + raw scope builder all in one, and also a block in its own right! See what happens when we create it with no owning responsibilities
         expect_parse(
             r#"
-[[
+[-
 class Super:
     is_block = True
     test_block = BlockScope([])
@@ -2536,7 +2524,7 @@ class Super:
         raise RuntimeError("argh shouldn't run this")
     def build_from_raw(self, raw):
         raise RuntimeError("argh shouldn't run this")
-]]
+-]
 
 [Super()]
 
@@ -2550,7 +2538,7 @@ class Super:
         // Create a class which is a block scope + inline scope + raw scope builder all in one, and also a block in its own right! See what happens when we create it with no owning responsibilities
         expect_parse(
             r#"
-[[
+[-
 class Super:
     is_inline = True
     test_inline = InlineScope([])
@@ -2561,7 +2549,7 @@ class Super:
         raise RuntimeError("argh shouldn't run this")
     def build_from_raw(self, raw):
         raise RuntimeError("argh shouldn't run this")
-]]
+-]
 
 [Super()] and stuff
 
@@ -2580,7 +2568,7 @@ class Super:
         // Assert it returns None.
         expect_parse(
             r#"
-[[
+[-
 class Super:
     is_block = True
     test_block = BlockScope([Paragraph([Sentence([Text("shouldnt see this")])])])
@@ -2591,7 +2579,7 @@ class Super:
         raise RuntimeError("argh shouldn't run this")
     def build_from_raw(self, raw):
         raise RuntimeError("argh shouldn't run this")
-]]
+-]
 
 [Super()]{
     stuff
@@ -2619,7 +2607,7 @@ class Super:
         // Assert it returns the sentinel.
         expect_parse(
             r#"
-[[
+[-
 class Super:
     is_block = True
     test_block = BlockScope([Paragraph([Sentence([Text("shouldnt see this")])])])
@@ -2630,7 +2618,7 @@ class Super:
         return TEST_INLINE
     def build_from_raw(self, raw):
         raise RuntimeError("argh shouldn't run this")
-]]
+-]
 
 [Super()]{ stuff }
 
@@ -2657,7 +2645,7 @@ class Super:
         // Assert it returns the sentinel.
         expect_parse(
             r#"
-[[
+[-
 class Super:
     is_block = True
     test_block = BlockScope([Paragraph([Sentence([Text("shouldnt see this")])])])
@@ -2668,7 +2656,7 @@ class Super:
         raise RuntimeError("argh shouldn't run this")
     def build_from_raw(self, raw):
         return TEST_INLINE_RAW
-]]
+-]
 
 [Super()]#{ stuff }#
 

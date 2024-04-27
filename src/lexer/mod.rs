@@ -287,31 +287,26 @@ impl TTToken {
                 LexerPrefixSeq::CRLF
                 | LexerPrefixSeq::CarriageReturn
                 | LexerPrefixSeq::LineFeed => Ok(Some((state_after_seq, Self::Newline(seq_span)))),
-                // SqrOpen => CodeOpen()
+                // SqrOpen + HyphenMinus * N => CodeOpen(N)
+                // SqrOpen                   => CodeOpen(0)
                 LexerPrefixSeq::SqrOpen => {
-                    // Run will have at least one [, because it's starting with this character.
-                    match Self::parse_n_chars(stream, state, '[')? {
+                    match Self::parse_n_chars(stream, state_after_seq, '-')? {
                         Some((hash_end, n)) => Ok(Some((
                             hash_end,
                             Self::CodeOpen(ParseSpan::from_lex(file_idx, start, hash_end), n),
                         ))),
-                        None => unreachable!(),
+                        // No subsequent hashes, it's a normal scope close
+                        None => Ok(Some((state_after_seq, Self::CodeOpen(seq_span, 0)))),
                     }
                 }
-                // SqrClose => CodeClose
+                // SqrClose => CodeClose(0)
                 LexerPrefixSeq::SqrClose => {
-                    // Run will have at least one ], because it's starting with this character.
-                    match Self::parse_n_chars(stream, state, ']')? {
-                        Some((hash_end, n)) => Ok(Some((
-                            hash_end,
-                            Self::CodeClose(ParseSpan::from_lex(file_idx, start, hash_end), n),
-                        ))),
-                        None => unreachable!(),
-                    }
+                    Ok(Some((state_after_seq, Self::CodeClose(seq_span, 0))))
                 }
-                // SqrOpen => ScopeOpen
+                // SqgOpen => ScopeOpen
                 LexerPrefixSeq::SqgOpen => Ok(Some((state_after_seq, Self::ScopeOpen(seq_span)))),
-                // SqgClose => ScopeClose
+                // SqgClose + Hash * N => RawScopeClose(N)
+                // SqgClose            => ScopeClose
                 LexerPrefixSeq::SqgClose => {
                     match Self::parse_n_chars(stream, state_after_seq, '#')? {
                         Some((hash_end, n)) => Ok(Some((
@@ -357,12 +352,32 @@ impl TTToken {
                     // Run will have at least one -, because it's starting with this character.
                     match Self::parse_n_chars(stream, state, '-')? {
                         Some((hyphens_end, n)) => {
-                            let span = ParseSpan::from_lex(file_idx, start, hyphens_end);
-                            match n {
-                                0 => unreachable!("It would return None in this case"),
-                                2 => Ok(Some((hyphens_end, Self::EnDash(span)))),
-                                3 => Ok(Some((hyphens_end, Self::EmDash(span)))),
-                                1 | _ => Ok(Some((hyphens_end, Self::HyphenMinuses(span, n)))),
+                            let hyphens_span = ParseSpan::from_lex(file_idx, start, hyphens_end);
+                            // if followed by ] it's a code close
+                            let state_after_char_after_hyphens = stream.consumed(hyphens_end, 1);
+                            match stream.peek_at(&hyphens_end) {
+                                Some(']') => Ok(Some((
+                                    state_after_char_after_hyphens,
+                                    Self::CodeClose(
+                                        ParseSpan::from_lex(
+                                            file_idx,
+                                            start,
+                                            state_after_char_after_hyphens,
+                                        ),
+                                        n,
+                                    ),
+                                ))),
+                                _ => match n {
+                                    0 => {
+                                        unreachable!("parse_n_chars would return None in this case")
+                                    }
+                                    2 => Ok(Some((hyphens_end, Self::EnDash(hyphens_span)))),
+                                    3 => Ok(Some((hyphens_end, Self::EmDash(hyphens_span)))),
+                                    1 | _ => Ok(Some((
+                                        hyphens_end,
+                                        Self::HyphenMinuses(hyphens_span, n),
+                                    ))),
+                                },
                             }
                         }
                         None => unreachable!(

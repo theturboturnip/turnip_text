@@ -26,6 +26,24 @@ pub fn test_inline_code() {
         r#"3=[len((1,2,3))]"#,
         vec![
             OtherText("3="),
+            CodeOpen(0),
+            OtherText("len((1,2,3))"),
+            CodeClose(0),
+            EOF,
+        ],
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("3="),
+            test_text("3"),
+        ]])])),
+    )
+}
+
+#[test]
+pub fn test_inline_code_with_extra_delimiter() {
+    expect_lex_parse(
+        r#"3=[-len((1,2,3))-]"#,
+        vec![
+            OtherText("3="),
             CodeOpen(1),
             OtherText("len((1,2,3))"),
             CodeClose(1),
@@ -39,32 +57,14 @@ pub fn test_inline_code() {
 }
 
 #[test]
-pub fn test_inline_code_with_extra_delimiter() {
-    expect_lex_parse(
-        r#"3=[[len((1,2,3))]]"#,
-        vec![
-            OtherText("3="),
-            CodeOpen(2),
-            OtherText("len((1,2,3))"),
-            CodeClose(2),
-            EOF,
-        ],
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            test_text("3="),
-            test_text("3"),
-        ]])])),
-    )
-}
-
-#[test]
 pub fn test_inline_code_with_long_extra_delimiter() {
     expect_lex_parse(
-        r#"3=[[[[[len((1,2,3))]]]]]"#,
+        r#"3=[----len((1,2,3))----]"#,
         vec![
             OtherText("3="),
-            CodeOpen(5),
+            CodeOpen(4),
             OtherText("len((1,2,3))"),
-            CodeClose(5),
+            CodeClose(4),
             EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
@@ -81,9 +81,9 @@ pub fn test_inline_code_with_escaped_extra_delimiter() {
         vec![
             OtherText("3="),
             Escaped(Escapable::SqrOpen),
-            CodeOpen(1),
+            CodeOpen(0),
             OtherText("len((1,2,3))"),
-            CodeClose(1),
+            CodeClose(0),
             Escaped(Escapable::SqrClose),
             EOF,
         ],
@@ -119,16 +119,16 @@ pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
 #[test]
 pub fn test_inline_list_with_extra_delimiter() {
     expect_lex_parse(
-        r#"3=[[len([1,2,3])]]"#,
+        r#"3=[-len([1,2,3])-]"#,
         vec![
             OtherText("3="),
-            CodeOpen(2),
-            OtherText("len("),
             CodeOpen(1),
+            OtherText("len("),
+            CodeOpen(0),
             OtherText("1,2,3"),
-            CodeClose(1),
+            CodeClose(0),
             OtherText(")"),
-            CodeClose(2),
+            CodeClose(1),
             EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
@@ -399,11 +399,11 @@ pub fn test_newline_in_code() {
     expect_lex_parse(
         "[len((1,\r\n2))]",
         vec![
-            CodeOpen(1),
+            CodeOpen(0),
             OtherText("len((1,"),
             Newline,
             OtherText("2))"),
-            CodeClose(1),
+            CodeClose(0),
             EOF,
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(

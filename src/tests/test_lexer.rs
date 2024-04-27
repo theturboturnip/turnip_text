@@ -69,12 +69,12 @@ fn integration_test() {
     expect_lex(
         r#"[quote]{
 According to all [paren]{known} laws of aviation, there is {no way} a bee should be able to fly. \
-The bee, of course, [code]###{flies} anyway because bees [[[emph]]]{don't} care what humans think is [["impossible"]].
+The bee, of course, [code]###{flies} anyway because bees [--emph--]{don't} care what humans think is [-"impossible"-].
 }"#,
         vec![
-            CodeOpen(1),
+            CodeOpen(0),
             txt("quote"),
-            CodeClose(1),
+            CodeClose(0),
             ScopeOpen,
             Newline,
             txt("According"),
@@ -83,9 +83,9 @@ The bee, of course, [code]###{flies} anyway because bees [[[emph]]]{don't} care 
             sp,
             txt("all"),
             sp,
-            CodeOpen(1),
+            CodeOpen(0),
             txt("paren"),
-            CodeClose(1),
+            CodeClose(0),
             ScopeOpen,
             txt("known"),
             ScopeClose,
@@ -129,9 +129,9 @@ The bee, of course, [code]###{flies} anyway because bees [[[emph]]]{don't} care 
             sp,
             txt("course,"),
             sp,
-            CodeOpen(1),
+            CodeOpen(0),
             txt("code"),
-            CodeClose(1),
+            CodeClose(0),
             RawScopeOpen(3),
             txt("flies"),
             ScopeClose,
@@ -142,9 +142,9 @@ The bee, of course, [code]###{flies} anyway because bees [[[emph]]]{don't} care 
             sp,
             txt("bees"),
             sp,
-            CodeOpen(3),
+            CodeOpen(2),
             txt("emph"),
-            CodeClose(3),
+            CodeClose(2),
             ScopeOpen,
             txt("don't"),
             ScopeClose,
@@ -159,9 +159,9 @@ The bee, of course, [code]###{flies} anyway because bees [[[emph]]]{don't} care 
             sp,
             txt("is"),
             sp,
-            CodeOpen(2),
+            CodeOpen(1),
             txt("\"impossible\""),
-            CodeClose(2),
+            CodeClose(1),
             txt("."),
             Newline,
             ScopeClose,
@@ -266,19 +266,19 @@ fn test_code_open() {
     expect_lex(
         r#"
 [
-[[
-[[[
-[[[[[[[
+[-
+[--
+[------
 "#,
         vec![
+            Newline,
+            CodeOpen(0),
             Newline,
             CodeOpen(1),
             Newline,
             CodeOpen(2),
             Newline,
-            CodeOpen(3),
-            Newline,
-            CodeOpen(7),
+            CodeOpen(6),
             Newline,
             EOF,
         ],
@@ -290,19 +290,19 @@ fn test_code_close() {
     expect_lex(
         r#"
 ]
-]]
-]]]
-]]]]]]]
+-]
+--]
+------]
 "#,
         vec![
+            Newline,
+            CodeClose(0),
             Newline,
             CodeClose(1),
             Newline,
             CodeClose(2),
             Newline,
-            CodeClose(3),
-            Newline,
-            CodeClose(7),
+            CodeClose(6),
             Newline,
             EOF,
         ],
@@ -314,11 +314,15 @@ fn test_code_close_owning_inline() {
     expect_lex(
         r#"
 ]{}
-]]{}
-]]]{}
-]]]]]]]{}
+-]{}
+--]{}
+------]{}
 "#,
         vec![
+            Newline,
+            CodeClose(0),
+            ScopeOpen,
+            ScopeClose,
             Newline,
             CodeClose(1),
             ScopeOpen,
@@ -328,11 +332,7 @@ fn test_code_close_owning_inline() {
             ScopeOpen,
             ScopeClose,
             Newline,
-            CodeClose(3),
-            ScopeOpen,
-            ScopeClose,
-            Newline,
-            CodeClose(7),
+            CodeClose(6),
             ScopeOpen,
             ScopeClose,
             Newline,
@@ -346,27 +346,30 @@ fn test_code_close_owning_raw() {
     expect_lex(
         r#"
 ]#{
-]]#{
-]]]#{
-]]]]]]]#{
+-]#{
+--]#{
+------]#{
 ]####{
-]]####{
-]]]####{
-]]]]]]]####{
+-]####{
+--]####{
+------]####{
 "#,
         vec![
             Newline,
+            CodeClose(0),
+            RawScopeOpen(1),
+            Newline,
             CodeClose(1),
             RawScopeOpen(1),
             Newline,
             CodeClose(2),
             RawScopeOpen(1),
             Newline,
-            CodeClose(3),
+            CodeClose(6),
             RawScopeOpen(1),
             Newline,
-            CodeClose(7),
-            RawScopeOpen(1),
+            CodeClose(0),
+            RawScopeOpen(4),
             Newline,
             CodeClose(1),
             RawScopeOpen(4),
@@ -374,10 +377,7 @@ fn test_code_close_owning_raw() {
             CodeClose(2),
             RawScopeOpen(4),
             Newline,
-            CodeClose(3),
-            RawScopeOpen(4),
-            Newline,
-            CodeClose(7),
+            CodeClose(6),
             RawScopeOpen(4),
             Newline,
             EOF,
@@ -391,14 +391,18 @@ fn test_code_close_owning_block() {
         r#"
 ]{
 
-]]{
+-]{
 
-]]]{
+--]{
 
-]]]]]]]{
+------]{
 
 "#,
         vec![
+            Newline,
+            CodeClose(0),
+            ScopeOpen,
+            Newline,
             Newline,
             CodeClose(1),
             ScopeOpen,
@@ -408,11 +412,7 @@ fn test_code_close_owning_block() {
             ScopeOpen,
             Newline,
             Newline,
-            CodeClose(3),
-            ScopeOpen,
-            Newline,
-            Newline,
-            CodeClose(7),
+            CodeClose(6),
             ScopeOpen,
             Newline,
             Newline,
