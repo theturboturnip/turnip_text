@@ -21,7 +21,7 @@ use TestTTToken::*;
 // These tests are condensed versions of the tests in [test_parser] that also sanity-check the tokens generated.
 
 #[test]
-pub fn test_inline_code() {
+fn test_inline_code() {
     expect_lex_parse(
         r#"3=[len((1,2,3))]"#,
         vec![
@@ -39,7 +39,7 @@ pub fn test_inline_code() {
 }
 
 #[test]
-pub fn test_inline_code_with_extra_delimiter() {
+fn test_inline_code_with_extra_delimiter() {
     expect_lex_parse(
         r#"3=[-len((1,2,3))-]"#,
         vec![
@@ -57,7 +57,7 @@ pub fn test_inline_code_with_extra_delimiter() {
 }
 
 #[test]
-pub fn test_inline_code_with_long_extra_delimiter() {
+fn test_inline_code_with_long_extra_delimiter() {
     expect_lex_parse(
         r#"3=[----len((1,2,3))----]"#,
         vec![
@@ -75,7 +75,7 @@ pub fn test_inline_code_with_long_extra_delimiter() {
 }
 
 #[test]
-pub fn test_inline_code_with_escaped_extra_delimiter() {
+fn test_inline_code_with_escaped_extra_delimiter() {
     expect_lex_parse(
         r#"3=\[[len((1,2,3))]\]"#,
         vec![
@@ -96,7 +96,7 @@ pub fn test_inline_code_with_escaped_extra_delimiter() {
 }
 
 #[test]
-pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
+fn test_inline_escaped_code_with_escaped_extra_delimiter() {
     expect_lex_parse(
         r#"3=\[\[ len((1,2,3)) \]\]"#,
         vec![
@@ -117,7 +117,7 @@ pub fn test_inline_escaped_code_with_escaped_extra_delimiter() {
 }
 
 #[test]
-pub fn test_inline_list_with_extra_delimiter() {
+fn test_inline_list_with_extra_delimiter() {
     expect_lex_parse(
         r#"3=[-len([1,2,3])-]"#,
         vec![
@@ -139,7 +139,7 @@ pub fn test_inline_list_with_extra_delimiter() {
 }
 
 #[test]
-pub fn test_block_scope() {
+fn test_block_scope() {
     expect_lex_parse(
         r#"outside
 
@@ -175,7 +175,7 @@ inside 2
 }
 
 #[test]
-pub fn test_raw_scope() {
+fn test_raw_scope() {
     expect_lex_parse(
         "#{It's f&%#ing raw}#",
         vec![
@@ -197,7 +197,7 @@ pub fn test_raw_scope() {
 }
 
 #[test]
-pub fn test_inline_scope() {
+fn test_inline_scope() {
     expect_lex_parse(
         r#"outside {inside}"#,
         vec![
@@ -216,7 +216,7 @@ pub fn test_inline_scope() {
 }
 
 #[test]
-pub fn test_inline_escaped_scope() {
+fn test_inline_escaped_scope() {
     expect_lex_parse(
         r#"outside \{not inside\}"#,
         vec![
@@ -236,7 +236,7 @@ pub fn test_inline_escaped_scope() {
 }
 
 #[test]
-pub fn test_raw_scope_newlines() {
+fn test_raw_scope_newlines() {
     expect_lex_parse(
         "outside #{\ninside\n}#",
         vec![
@@ -258,7 +258,7 @@ pub fn test_raw_scope_newlines() {
 
 /// newlines are converted to \n in all cases in the second tokenization phase, for convenience
 #[test]
-pub fn test_raw_scope_crlf_newlines() {
+fn test_raw_scope_crlf_newlines() {
     expect_lex_parse(
         "outside #{\r\ninside\r\n}#",
         vec![
@@ -279,7 +279,7 @@ pub fn test_raw_scope_crlf_newlines() {
 }
 
 #[test]
-pub fn test_inline_raw_scope() {
+fn test_inline_raw_scope() {
     expect_lex_parse(
         r#"outside #{inside}#"#,
         vec![
@@ -298,7 +298,7 @@ pub fn test_inline_raw_scope() {
 }
 
 #[test]
-pub fn test_inline_raw_escaped_scope() {
+fn test_inline_raw_escaped_scope() {
     expect_lex_parse(
         r#"outside \#\{not inside\}"#,
         vec![
@@ -319,7 +319,7 @@ pub fn test_inline_raw_escaped_scope() {
 }
 
 #[test]
-pub fn test_plain_hashes() {
+fn test_plain_hashes() {
     expect_lex_parse(
         r#"before ####### after"#,
         vec![
@@ -337,7 +337,7 @@ pub fn test_plain_hashes() {
 }
 
 #[test]
-pub fn test_special_with_escaped_backslash() {
+fn test_special_with_escaped_backslash() {
     expect_lex_parse(
         r#"\\#"#,
         vec![Escaped(Escapable::Backslash), Hashes(1), EOF],
@@ -348,7 +348,7 @@ pub fn test_special_with_escaped_backslash() {
 }
 
 #[test]
-pub fn test_escaped_special_with_escaped_backslash() {
+fn test_escaped_special_with_escaped_backslash() {
     expect_lex_parse(
         r#"\\\[not code"#,
         vec![
@@ -366,7 +366,7 @@ pub fn test_escaped_special_with_escaped_backslash() {
 }
 
 #[test]
-pub fn test_escaped_notspecial() {
+fn test_escaped_notspecial() {
     expect_lex_parse(
         r#"\a"#,
         vec![Backslash, OtherText("a"), EOF],
@@ -377,7 +377,7 @@ pub fn test_escaped_notspecial() {
 }
 
 #[test]
-pub fn test_escaped_newline() {
+fn test_escaped_newline() {
     expect_lex_parse(
         r#"escaped \
 newline"#,
@@ -395,7 +395,7 @@ newline"#,
 }
 
 #[test]
-pub fn test_newline_in_code() {
+fn test_newline_in_code() {
     expect_lex_parse(
         "[len((1,\r\n2))]",
         vec![
@@ -413,7 +413,7 @@ pub fn test_newline_in_code() {
 }
 
 #[test]
-pub fn test_block_scope_vs_inline_scope() {
+fn test_block_scope_vs_inline_scope() {
     expect_lex_parse(
         r#"{
 block
