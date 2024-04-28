@@ -319,7 +319,10 @@ impl InlineMode for KnownInlineScopeInlineMode {
 
     fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus> {
         if self.inline_scope.borrow_mut(py).__len__(py) == 0 {
-            unreachable!("KnownInlineScopeInlineMode received a newline with no preceding content - was actually a block scope");
+            unreachable!(
+                "KnownInlineScopeInlineMode received a newline with no preceding content - was \
+                 actually a block scope"
+            );
         } else {
             // If there was content then we were definitely interrupted in the middle of a sentence
             Err(InterpError::SentenceBreakInInlineScope {
@@ -343,7 +346,11 @@ impl InlineMode for KnownInlineScopeInlineMode {
             // TODO test this gets all the tokens up to but not including the inline scope
             Some(InlineModeContext::Paragraph(preceding_para)) => {
                 let mut new = preceding_para.clone();
-                assert!(new.try_combine(self.ctx), "Paragraph, KnownInlineScopeInlineMode don't generate source files, must always receive tokens from the same file");
+                assert!(
+                    new.try_combine(self.ctx),
+                    "Paragraph, KnownInlineScopeInlineMode don't generate source files, must \
+                     always receive tokens from the same file"
+                );
                 InlineModeContext::Paragraph(new)
             }
             // If we aren't part of a paragraph, say the inner builder is in inline mode because of us
@@ -723,9 +730,15 @@ impl TokenProcessor for RawStringProcessor {
         &mut self,
         _code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
-        unreachable!("RawStringProcessor does not spawn an inner code builder, so cannot have a source file emitted inside")
+        unreachable!(
+            "RawStringProcessor does not spawn an inner code builder, so cannot have a source \
+             file emitted inside"
+        )
     }
     fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan) {
-        unreachable!("RawStringProcessor does not spawn an inner code builder, so cannot have a source file emitted inside")
+        unreachable!(
+            "RawStringProcessor does not spawn an inner code builder, so cannot have a source \
+             file emitted inside"
+        )
     }
 }

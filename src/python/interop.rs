@@ -91,7 +91,10 @@ pub fn coerce_to_inline_pytcref<'py>(
         return Ok(PyTcRef::of_unchecked(unescaped_text.as_ref(py)));
     }
     // 6. otherwise fail with TypeError
-    Err(PyTypeError::new_err("Failed to coerce object to Inline: was not an Inline, list of Inline (coercible to InlineScope), str, float, or int."))
+    Err(PyTypeError::new_err(
+        "Failed to coerce object to Inline: was not an Inline, list of Inline (coercible to \
+         InlineScope), str, float, or int.",
+    ))
 }
 
 #[pyfunction]
@@ -157,7 +160,10 @@ pub fn coerce_to_block_pytcref<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResul
         return Ok(PyTcRef::of_unchecked(paragraph.as_ref(py)));
     }
     // 5. otherwise fail with TypeError
-    Err(PyTypeError::new_err("Failed to coerce object to Block: was not a Block, list of Blocks (coercible to BlockScope), Paragraph, Sentence, or coercible to Inline."))
+    Err(PyTypeError::new_err(
+        "Failed to coerce object to Block: was not a Block, list of Blocks (coercible to \
+         BlockScope), Paragraph, Sentence, or coercible to Inline.",
+    ))
 }
 
 #[pyfunction]
@@ -276,7 +282,8 @@ impl BuilderOutcome {
                 (false, false, false) => {
                     let obj_repr = val.repr()?;
                     Err(PyTypeError::new_err(format!(
-                        "Expected None or an object fitting Block, Inline, or Header while handling {}, got {} which fits none of them.",
+                        "Expected None or an object fitting Block, Inline, or Header while \
+                         handling {}, got {} which fits none of them.",
                         context,
                         obj_repr.to_str()?
                     )))
@@ -284,7 +291,8 @@ impl BuilderOutcome {
                 _ => {
                     let obj_repr = val.repr()?;
                     Err(PyTypeError::new_err(format!(
-                        "Expected None or an object fitting Block, Inline, or Header while handling {}, got {} which fits (block? {}) (inline? {}) (header? {}).",
+                        "Expected None or an object fitting Block, Inline, or Header while \
+                         handling {}, got {} which fits (block? {}) (inline? {}) (header? {}).",
                         context,
                         obj_repr.to_str()?,
                         is_block,
@@ -726,10 +734,19 @@ impl DocSegment {
                         Some(subh) => {
                             let subweight = DocSegmentHeader::get_weight(py, subh.as_ref(py))?;
                             if subweight <= weight {
-                                return Err(PyValueError::new_err(format!("Trying to create a DocSegment with weight {weight} but one of the provided subsegments has weight {subweight} which is smaller. Only larger subweights are allowed.")))
+                                return Err(PyValueError::new_err(format!(
+                                    "Trying to create a DocSegment with weight {weight} but one \
+                                     of the provided subsegments has weight {subweight} which is \
+                                     smaller. Only larger subweights are allowed."
+                                )));
                             }
                         }
-                        None => return Err(PyValueError::new_err(format!("Trying to create a DocSegment but a subsegement doesn't have a header. All subsegments must have headers.")))
+                        None => {
+                            return Err(PyValueError::new_err(format!(
+                                "Trying to create a DocSegment but a subsegement doesn't have a \
+                                 header. All subsegments must have headers."
+                            )))
+                        }
                     };
                 }
             }
@@ -774,10 +791,19 @@ impl DocSegment {
                 let weight = DocSegmentHeader::get_weight(py, header.as_ref(py))?;
                 let subweight = DocSegmentHeader::get_weight(py, subheader.as_ref(py))?;
                 if subweight <= weight {
-                    return Err(PyValueError::new_err(format!("Trying to add to a DocSegment with weight {weight} but the provided subsegment has weight {subweight} which is smaller. Only larger subweights are allowed.")))
+                    return Err(PyValueError::new_err(format!(
+                        "Trying to add to a DocSegment with weight {weight} but the provided \
+                         subsegment has weight {subweight} which is smaller. Only larger \
+                         subweights are allowed."
+                    )));
                 }
             }
-            (_, None) => return Err(PyValueError::new_err(format!("Trying to add to a DocSegment but the subsegement doesn't have a header. All subsegments must have headers."))),
+            (_, None) => {
+                return Err(PyValueError::new_err(format!(
+                    "Trying to add to a DocSegment but the subsegement doesn't have a header. All \
+                     subsegments must have headers."
+                )))
+            }
             _ => {}
         };
         self.subsegments.append_checked(subsegment.as_ref(py))

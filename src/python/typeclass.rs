@@ -70,7 +70,8 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
             if !T::fits_typeclass(obj)? {
                 let obj_repr = obj.repr()?;
                 return Err(PyTypeError::new_err(format!(
-                    "Passed list containing object {} into PyTypeclassList constructor -- expected object fitting typeclass {}, didn't get it",
+                    "Passed list containing object {} into PyTypeclassList constructor -- \
+                     expected object fitting typeclass {}, didn't get it",
                     obj_repr.to_str()?,
                     T::NAME
                 )));

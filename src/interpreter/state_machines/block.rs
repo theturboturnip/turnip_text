@@ -215,43 +215,44 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
         // This fulfils the contract for [TokenProcessor::process_token].
         if self.expects_n_blank_lines_after.is_some() {
             match tok {
-                    TTToken::Escaped(span, Escapable::Newline) => {
-                        Err(InterpError::EscapedNewlineOutsideParagraph { newline: span }.into())
-                    }
-                    TTToken::Whitespace(_) => Ok(ProcStatus::Continue),
-                    TTToken::Newline(_) => {
-                        self.expects_n_blank_lines_after =
-                            match std::mem::take(&mut self.expects_n_blank_lines_after) {
-                                Some((0, _)) => {
-                                    unreachable!(
-                                        "should never set expects_n_blank_lines_after = (0, _)"
-                                    )
-                                }
-                                Some((1, _)) => None,
-                                Some((n_lines, ctx)) => Some((n_lines - 1, ctx)),
-                                None => None,
-                            };
-                        Ok(ProcStatus::Continue)
-                    }
-
-                    TTToken::Hashes(_, _) => {
-                        Ok(ProcStatus::PushProcessor(rc_refcell(CommentProcessor::new())))
-                    }
-
-                    // A scope close is not counted as "content" for our sake.
-                    TTToken::ScopeClose(_) => self.inner.on_close_scope(py, tok, data),
-
-                    TTToken::EOF(_) => self.inner.on_eof(py, tok),
-
-                    _ => Err(InterpError::InsufficientBlockSeparation {
-                        last_block: std::mem::take(&mut self.expects_n_blank_lines_after)
-                            .expect(
-                                "This function is only called when self.expects_n_blank_lines_after.is_some()",
-                            )
-                            .1,
-                        next_block_start: BlockModeElem::AnyToken(tok.token_span()),
-                    })?,
+                TTToken::Escaped(span, Escapable::Newline) => {
+                    Err(InterpError::EscapedNewlineOutsideParagraph { newline: span }.into())
                 }
+                TTToken::Whitespace(_) => Ok(ProcStatus::Continue),
+                TTToken::Newline(_) => {
+                    self.expects_n_blank_lines_after =
+                        match std::mem::take(&mut self.expects_n_blank_lines_after) {
+                            Some((0, _)) => {
+                                unreachable!(
+                                    "should never set expects_n_blank_lines_after = (0, _)"
+                                )
+                            }
+                            Some((1, _)) => None,
+                            Some((n_lines, ctx)) => Some((n_lines - 1, ctx)),
+                            None => None,
+                        };
+                    Ok(ProcStatus::Continue)
+                }
+
+                TTToken::Hashes(_, _) => Ok(ProcStatus::PushProcessor(rc_refcell(
+                    CommentProcessor::new(),
+                ))),
+
+                // A scope close is not counted as "content" for our sake.
+                TTToken::ScopeClose(_) => self.inner.on_close_scope(py, tok, data),
+
+                TTToken::EOF(_) => self.inner.on_eof(py, tok),
+
+                _ => Err(InterpError::InsufficientBlockSeparation {
+                    last_block: std::mem::take(&mut self.expects_n_blank_lines_after)
+                        .expect(
+                            "This function is only called when \
+                             self.expects_n_blank_lines_after.is_some()",
+                        )
+                        .1,
+                    next_block_start: BlockModeElem::AnyToken(tok.token_span()),
+                })?,
+            }
         } else {
             match tok {
                 TTToken::Escaped(span, Escapable::Newline) => {

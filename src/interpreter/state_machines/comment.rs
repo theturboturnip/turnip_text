@@ -45,9 +45,15 @@ impl TokenProcessor for CommentProcessor {
         &mut self,
         _code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
-        unreachable!("CommentProcessor does not spawn an inner code builder, so cannot have a source file emitted inside")
+        unreachable!(
+            "CommentProcessor does not spawn an inner code builder, so cannot have a source file \
+             emitted inside"
+        )
     }
     fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan) {
-        unreachable!("CommentProcessor does not spawn an inner code builder, so cannot have a source file emitted inside")
+        unreachable!(
+            "CommentProcessor does not spawn an inner code builder, so cannot have a source file \
+             emitted inside"
+        )
     }
 }

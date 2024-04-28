@@ -1,4 +1,4 @@
-use crate::error::TurnipTextResult;
+use crate::error::{TurnipTextResult, UserPythonCompileMode};
 use crate::interpreter::TurnipTextParser;
 use regex::Regex;
 
@@ -6,6 +6,7 @@ use crate::python::prepare_freethreaded_turniptext_python;
 
 use pyo3::prelude::*;
 
+use std::ffi::CString;
 use std::panic;
 // We need to initialize Python the first time we test
 use std::sync::Once;
@@ -46,15 +47,18 @@ pub fn expect_parse(data: &str, expected_parse: Result<TestDocSegment, TestTurni
         Ok(root) => match (&root, &expected_parse) {
             (Ok(doc), Ok(expected_doc)) => assert_eq!(doc, expected_doc),
             (Err(actual_err), Err(expected_err)) => {
-                let matches = Python::with_gil(|py| {
-                    expected_err.matches(py, &actual_err)
-                });
+                let matches = Python::with_gil(|py| expected_err.matches(py, &actual_err));
                 if !matches {
-                    panic!("assertion failed:\nexpected: {expected_err:?}\n  actual: {actual_err:?}");
+                    panic!(
+                        "assertion failed:\nexpected: {expected_err:?}\n  actual: {actual_err:?}"
+                    );
                 }
             }
-            _ => panic!("assertion failed, expected\n\t{expected_parse:?}\ngot\n\t{root:?}\n(mismatching success)")
-        }
+            _ => panic!(
+                "assertion failed, expected\n\t{expected_parse:?}\ngot\n\t{root:?}\n(mismatching \
+                 success)"
+            ),
+        },
         Err(caught_panic) => panic!("{:?}", caught_panic),
     }
 }
@@ -67,16 +71,25 @@ Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, wh
 It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged.
 It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.
 "#,
-        Ok(
-            test_doc(vec![
-                TestBlock::Paragraph(vec![
-                    test_sentence("Lorem Ipsum is simply dummy text of the printing and typesetting industry."),
-                    test_sentence("Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book."),
-                    test_sentence("It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged."),
-                    test_sentence("It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum."),
-                ])
-            ])
-        )
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![
+            test_sentence(
+                "Lorem Ipsum is simply dummy text of the printing and typesetting industry.",
+            ),
+            test_sentence(
+                "Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, \
+                 when an unknown printer took a galley of type and scrambled it to make a type \
+                 specimen book.",
+            ),
+            test_sentence(
+                "It has survived not only five centuries, but also the leap into electronic \
+                 typesetting, remaining essentially unchanged.",
+            ),
+            test_sentence(
+                "It was popularised in the 1960s with the release of Letraset sheets containing \
+                 Lorem Ipsum passages, and more recently with desktop publishing software like \
+                 Aldus PageMaker including versions of Lorem Ipsum.",
+            ),
+        ])])),
     )
 }
 
@@ -242,7 +255,7 @@ It was the best of the times, it was the blurst of times
 }
 "#,
         TestUserPythonExecError::CoercingBlockScopeBuilder {
-            code: TestParseContext("[", "None", "]"),
+            code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None.*").unwrap(),
         },
     )
@@ -263,7 +276,7 @@ pub fn test_owned_inline_scope_with_non_inline_builder() {
     expect_parse_err(
         r"[None]{special text}",
         TestUserPythonExecError::CoercingInlineScopeBuilder {
-            code: TestParseContext("[", "None", "]"),
+            code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got None.*").unwrap(),
         },
     )
@@ -293,7 +306,7 @@ pub fn test_owned_inline_raw_scope_with_non_raw_builder() {
 import os
 }#"#,
         TestUserPythonExecError::CoercingRawScopeBuilder {
-            code: TestParseContext("[", "None", "]"),
+            code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got None").unwrap(),
         },
     )
@@ -408,7 +421,8 @@ pub fn test_block_scope_close_outside_scope() {
 #[test]
 pub fn test_block_scope_close_outside_scope_after_para() {
     expect_parse_err(
-        "wow some content\nthat could imply the next scope close is in a paragraph i.e. inline mode\n} # not in a scope",
+        "wow some content\nthat could imply the next scope close is in a paragraph i.e. inline \
+         mode\n} # not in a scope",
         TestInterpError::BlockScopeCloseOutsideScope(TestParseSpan("}")),
     )
 }
@@ -650,9 +664,10 @@ pub fn test_not_strip_trailing_whitespace_before_escaped_newline() {
         r#"
 Whitespace is allowed after this \
 because you may need it to split up words in sentences."#,
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![
-            test_sentence("Whitespace is allowed after this because you may need it to split up words in sentences."),
-        ])])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "Whitespace is allowed after this because you may need it to split up words in \
+             sentences.",
+        )])])),
     )
 }
 
@@ -703,8 +718,18 @@ pub fn test_raw_scope_emitting_inline_from_block_level() {
 #[test]
 pub fn test_raw_scope_cant_emit_block_inside_paragraph() {
     expect_parse_err(
-        "Inside a paragraph, you can't [TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#",
-        TestInterpError::CodeEmittedBlockInInlineMode{ inl_mode: TestInlineModeContext::Paragraph(TestParseContext("Inside", " a paragraph, you can't", " ")), code_span: TestParseSpan("[TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#") }
+        "Inside a paragraph, you can't [TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a \
+         block!}#",
+        TestInterpError::CodeEmittedBlockInInlineMode {
+            inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
+                "Inside",
+                " a paragraph, you can't",
+                " ",
+            )),
+            code_span: TestParseSpan(
+                "[TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#",
+            ),
+        },
     )
 }
 
@@ -764,7 +789,7 @@ pub fn test_cant_eval_none_for_block_builder() {
     That doesn't make any sense! The owner can't be None
 }",
         TestUserPythonExecError::CoercingBlockScopeBuilder {
-            code: TestParseContext("[", "None", "]"),
+            code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None").unwrap(),
         },
     )
@@ -777,7 +802,7 @@ pub fn test_cant_assign_for_block_builder() {
     That doesn't make any sense! The owner can't be an abstract concept of x being something
 }",
         TestUserPythonExecError::CoercingBlockScopeBuilder {
-            code: TestParseContext("[", "x = 5", "]"),
+            code_ctx: TestParseContext("[", "x = 5", "]"),
             err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None").unwrap(),
         },
     )
@@ -786,16 +811,24 @@ pub fn test_cant_assign_for_block_builder() {
 #[test]
 pub fn test_cant_assign_for_raw_builder() {
     expect_parse_err(
-        "[x = 5]#{That doesn't make any sense! The owner can't be an abstract concept of x being something}#",
-        TestUserPythonExecError::CoercingRawScopeBuilder { code: TestParseContext ("[", "x = 5", "]"), err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got None").unwrap(), },
+        "[x = 5]#{That doesn't make any sense! The owner can't be an abstract concept of x being \
+         something}#",
+        TestUserPythonExecError::CoercingRawScopeBuilder {
+            code_ctx: TestParseContext("[", "x = 5", "]"),
+            err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got None").unwrap(),
+        },
     )
 }
 
 #[test]
 pub fn test_cant_assign_for_inline_builder() {
     expect_parse_err(
-        "[x = 5]{That doesn't make any sense! The owner can't be an abstract concept of x being something}",
-        TestUserPythonExecError::CoercingInlineScopeBuilder { code: TestParseContext ("[", "x = 5", "]"), err: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got None").unwrap(), }
+        "[x = 5]{That doesn't make any sense! The owner can't be an abstract concept of x being \
+         something}",
+        TestUserPythonExecError::CoercingInlineScopeBuilder {
+            code_ctx: TestParseContext("[", "x = 5", "]"),
+            err: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got None").unwrap(),
+        },
     )
 }
 
@@ -805,8 +838,10 @@ pub fn test_syntax_errs_passed_thru() {
     // Make sure that something invalid as both still returns a SyntaxError
     expect_parse_err(
         "[1invalid]",
-        TestUserPythonExecError::RunningEvalBrackets {
-            code: TestParseContext("[", "1invalid", "]"),
+        TestUserPythonExecError::CompilingEvalBrackets {
+            code_ctx: TestParseContext("[", "1invalid", "]"),
+            code: CString::new("1invalid").unwrap(),
+            mode: UserPythonCompileMode::ExecStmts,
             err: Regex::new(r"^SyntaxError\s*:\s*invalid syntax").unwrap(),
         },
     )
@@ -2305,8 +2340,14 @@ mod flexibility {
     #[test]
     fn test_raw_scope_builder_building_block_in_inline() {
         expect_parse_err(
-            "{wow i'm in an inline context [TEST_RAW_BLOCK_BUILDER]#{ block! }# continuing the inline context}",
-            TestInterpError::CodeEmittedBlockInInlineMode { inl_mode: TestInlineModeContext::InlineScope { scope_start: TestParseSpan("{") }, code_span: TestParseSpan("[TEST_RAW_BLOCK_BUILDER]#{ block! }#") },
+            "{wow i'm in an inline context [TEST_RAW_BLOCK_BUILDER]#{ block! }# continuing the \
+             inline context}",
+            TestInterpError::CodeEmittedBlockInInlineMode {
+                inl_mode: TestInlineModeContext::InlineScope {
+                    scope_start: TestParseSpan("{"),
+                },
+                code_span: TestParseSpan("[TEST_RAW_BLOCK_BUILDER]#{ block! }#"),
+            },
         )
     }
 
@@ -2448,7 +2489,8 @@ mod flexibility {
     #[test]
     fn test_inline_scope_builder_building_none_inside_sentence() {
         expect_parse(
-            "stuff at the start of a sentence [TEST_INLINE_SWALLOWER]{ this is gonna be swallowed }
+            "stuff at the start of a sentence [TEST_INLINE_SWALLOWER]{ this is gonna be swallowed \
+             }
             [TEST_INLINE_SWALLOWER]{ this is gonna be swallowed } stuff at the end of a sentence",
             Ok(test_doc(vec![TestBlock::Paragraph(vec![
                 test_sentence("stuff at the start of a sentence "), // Note that this has the ending space - whitespace content is flushed to the text when the eval-brackets start
@@ -2593,7 +2635,7 @@ class Super:
             "[TEST_BLOCK]{
         }",
             TestUserPythonExecError::CoercingBlockScopeBuilder {
-                code: TestParseContext("[", "TEST_BLOCK", "]"),
+                code_ctx: TestParseContext("[", "TEST_BLOCK", "]"),
                 err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got <FauxBlock.*")
                     .unwrap(),
             },
@@ -2631,7 +2673,7 @@ class Super:
         expect_parse_err(
             "[TEST_INLINE]{}",
             TestUserPythonExecError::CoercingInlineScopeBuilder {
-                code: TestParseContext("[", "TEST_INLINE", "]"),
+                code_ctx: TestParseContext("[", "TEST_INLINE", "]"),
                 err: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got <FauxInline.*")
                     .unwrap(),
             },
@@ -2669,7 +2711,7 @@ class Super:
         expect_parse_err(
             "[TEST_INLINE]#{}#",
             TestUserPythonExecError::CoercingRawScopeBuilder {
-                code: TestParseContext("[", "TEST_INLINE", "]"),
+                code_ctx: TestParseContext("[", "TEST_INLINE", "]"),
                 err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got <FauxInline.*")
                     .unwrap(),
             },
@@ -2863,6 +2905,66 @@ mod overflexibility {
     I really think forcing Correct block spacing is the wrong way to go.
     It's a useful error message when trying to do stupid shit, and certainly putting content directly after a block closes
     */
+
+    /// Code automatic-indent support can sometimes allow code with inconsistent indents, which could lead to issues.
+    /// Prepending `if True` only works for exactly one level of indent.
+    ///
+    /// e.g.
+    /// ```python
+    /// # (1) Supported
+    /// [--
+    ///    code_with_indent
+    /// --]
+    /// # (2) Also supported, because Python doesn't complain about dedenting to zero
+    /// [--
+    ///    code_with_indent
+    /// code_without_indent
+    /// --]
+    /// # (3) Not supported, because the zero-indent resets expectations
+    /// [--
+    ///     code_with_indent
+    /// code_without_indent
+    ///     code_with_indent
+    /// --]
+    /// # (4) Not supported, because Python picks up two non-zero indent levels
+    /// [--
+    ///     code_with_indent
+    ///   code_less_indented
+    /// --]
+    /// ```
+    ///
+    /// Specifically, case (2) is weird.
+    #[test]
+    fn code_incorrect_indent() {
+        expect_parse(
+            r"
+[--
+    indented_x = 3
+
+not_indented_y = 5
+--]
+
+        [indented_x] [not_indented_y]
+        ",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                test_text("3"),
+                test_text(" "),
+                test_text("5"),
+            ]])])),
+        )
+    }
+
+    // A downside of using inner dashes is that negative literals require a space
+    #[test]
+    fn test_code_negative_literal() {
+        expect_parse_err(
+            "[-1]",
+            TestInterpError::EndedInsideCode {
+                code_start: TestParseSpan("[-"),
+                eof_span: TestParseSpan("]"),
+            },
+        )
+    }
 }
 
 /// This module checks two kinds of substitution - the only ones performed on text content.
@@ -3025,5 +3127,434 @@ mod substitution {
                 test_text("7"),
             ]])])),
         )
+    }
+}
+
+mod code {
+    use std::ffi::CString;
+
+    use crate::error::UserPythonCompileMode;
+
+    use super::*;
+
+    // TODO test dashes work, errors reported use the correct open/close?
+    // TODO what happens with empty code
+
+    #[test]
+    fn simple_eval_works() {
+        expect_parse(
+            "[5] ['string']
+            
+            [TEST_BLOCK]",
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![vec![
+                    test_text("5"),
+                    test_text(" "),
+                    test_text("string"),
+                ]]),
+                TestBlock::TestOwnedBlock(vec![]),
+            ])),
+        )
+    }
+    #[test]
+    fn multiline_eval_works() {
+        expect_parse(
+            "There are [len((
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+        ))] elements",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                test_text("There are "),
+                test_text("6"),
+                test_text(" elements"),
+            ]])])),
+        )
+    }
+    #[test]
+    fn raise_in_eval_mode_works() {
+        // Raise a SyntaxError, which a broken compiler might pick up as a compile error, and make sure it's thrown as a runtime error.
+        expect_parse_err(
+            "
+[
+def test():
+    raise SyntaxError()
+]
+        
+        [test()]",
+            TestUserPythonExecError::RunningEvalBrackets {
+                code_ctx: TestParseContext("[", "test()", "]"),
+                code: CString::new("test()").unwrap(),
+                mode: UserPythonCompileMode::EvalExpr,
+                err: Regex::new(r"^SyntaxError\s*:\s*None$").unwrap(),
+            },
+        )
+    }
+    // Code should be trimmed of whitespace on both sides
+    #[test]
+    fn code_trimmed_in_eval_mode() {
+        expect_parse(
+            "[len((1,2,3))      ]",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "3",
+            )])])),
+        );
+        expect_parse(
+            "[     len((1,2,3))]",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "3",
+            )])])),
+        );
+        expect_parse(
+            "[     len((1,2,3))      ]",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "3",
+            )])])),
+        );
+
+        // And with the dashes
+        expect_parse(
+            "[---len((1,2,3))      ---]",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "3",
+            )])])),
+        );
+        expect_parse(
+            "[---     len((1,2,3))---]",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "3",
+            )])])),
+        );
+        expect_parse(
+            "[---     len((1,2,3))      ---]",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "3",
+            )])])),
+        );
+        expect_parse_err(
+            "[     1invalid     ]",
+            TestUserPythonExecError::CompilingEvalBrackets {
+                code_ctx: TestParseContext("[", "     1invalid     ", "]"),
+                // The actual code shouldn't be indented
+                code: CString::new("1invalid").unwrap(),
+                mode: UserPythonCompileMode::ExecStmts,
+                err: Regex::new(r"^SyntaxError\s*:\s*invalid syntax").unwrap(),
+            },
+        )
+    }
+    #[test]
+    fn syntax_error_in_eval_mode_passes_through() {
+        // The assignment support depends on trying to eval() the expression, that failing with a SyntaxError, and then trying to exec() it (and then doing more things if there are indent errors!)
+        // Make sure that something invalid as both still returns a SyntaxError
+        expect_parse_err(
+            "[1invalid]",
+            TestUserPythonExecError::CompilingEvalBrackets {
+                code_ctx: TestParseContext("[", "1invalid", "]"),
+                code: CString::new("1invalid").unwrap(),
+                mode: UserPythonCompileMode::ExecStmts,
+                err: Regex::new(r"^SyntaxError\s*:\s*invalid syntax").unwrap(),
+            },
+        )
+    }
+
+    #[test]
+    fn simple_exec_works() {
+        expect_parse(
+            "[x = 5]
+        
+        [x]",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "5",
+            )])])),
+        )
+    }
+    #[test]
+    fn multiline_exec_works() {
+        expect_parse(
+            "
+            [l = len((
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+            ))]
+            
+            There are [l] elements",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                test_text("There are "),
+                test_text("6"),
+                test_text(" elements"),
+            ]])])),
+        );
+        // Even this counts as a multiline non-indented exec because whitespace is trimmed.
+        // A second statement would be necessary to raise IndentationError when compiled for exec mode,
+        // and thus to pick up the indent guard.
+        // However, comments would force compiling in indented-exec mode because the trim algorithm doesn't account for them.
+        expect_parse(
+            "
+            [
+                l = len((
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                ))
+            ]
+            
+            There are [l] elements",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                test_text("There are "),
+                test_text("6"),
+                test_text(" elements"),
+            ]])])),
+        );
+    }
+    #[test]
+    fn raise_in_exec_mode_works() {
+        // Raise a SyntaxError, which a broken compiler might pick up as a compile error, and make sure it's thrown as a runtime error.
+        expect_parse_err(
+            "
+[
+def test():
+    raise SyntaxError()
+]
+        
+        [x = test()]",
+            TestUserPythonExecError::RunningEvalBrackets {
+                code_ctx: TestParseContext("[", "x = test()", "]"),
+                code: CString::new("x = test()").unwrap(),
+                mode: UserPythonCompileMode::ExecStmts,
+                err: Regex::new(r"^SyntaxError\s*:\s*None$").unwrap(),
+            },
+        )
+    }
+    #[test]
+    fn code_trimmed_in_exec_mode() {
+        expect_parse(
+            "[l = len((1,2,3))      ][l]",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "3",
+            )])])),
+        );
+        expect_parse(
+            "[     l = len((1,2,3))][l]",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "3",
+            )])])),
+        );
+        expect_parse(
+            "[     l = len((1,2,3))      ][l]",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "3",
+            )])])),
+        );
+
+        // And with the dashes
+        expect_parse(
+            "[---l = len((1,2,3))      ---][l]",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "3",
+            )])])),
+        );
+        expect_parse(
+            "[---     l = len((1,2,3))---][l]",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "3",
+            )])])),
+        );
+        expect_parse(
+            "[---     l = len((1,2,3))      ---][l]",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+                "3",
+            )])])),
+        );
+        expect_parse_err(
+            "[     l = 1invalid     ][l]",
+            TestUserPythonExecError::CompilingEvalBrackets {
+                code_ctx: TestParseContext("[", "     l = 1invalid     ", "]"),
+                // The actual code shouldn't be indented
+                code: CString::new("l = 1invalid").unwrap(),
+                mode: UserPythonCompileMode::ExecStmts,
+                err: Regex::new(r"^SyntaxError\s*:\s*invalid syntax").unwrap(),
+            },
+        )
+    }
+    #[test]
+    fn syntax_error_in_exec_mode_passes_through() {
+        // The assignment support depends on trying to eval() the expression, that failing with a SyntaxError, and then trying to exec() it (and then doing more things if there are indent errors!)
+        // Make sure that something invalid as both still returns a SyntaxError
+        expect_parse_err(
+            "[x = 1invalid]",
+            TestUserPythonExecError::CompilingEvalBrackets {
+                code_ctx: TestParseContext("[", "x = 1invalid", "]"),
+                code: CString::new("x = 1invalid").unwrap(),
+                mode: UserPythonCompileMode::ExecStmts,
+                err: Regex::new(r"^SyntaxError\s*:\s*invalid syntax").unwrap(),
+            },
+        );
+        // Even this counts as a multiline non-indented exec because whitespace is trimmed.
+        // A second statement would be necessary to raise IndentationError when compiled for exec mode,
+        // and thus to pick up the indent guard.
+        // However, comments would force compiling in indented-exec mode because the trim algorithm doesn't account for them.
+        expect_parse_err(
+            "[
+                 x = 1invalid
+            ]",
+            TestUserPythonExecError::CompilingEvalBrackets {
+                code_ctx: TestParseContext(
+                    "[",
+                    "\n                 x = 1invalid\n            ",
+                    "]",
+                ),
+                code: CString::new("x = 1invalid").unwrap(),
+                mode: UserPythonCompileMode::ExecStmts,
+                err: Regex::new(r"^SyntaxError\s*:\s*invalid syntax").unwrap(),
+            },
+        );
+    }
+
+    #[test]
+    fn indented_exec_works() {
+        expect_parse(
+            "
+        
+        [
+            indented_x = 5
+            indented_y = 10
+        ]
+        
+        [indented_x] [indented_y]",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                test_text("5"),
+                test_text(" "),
+                test_text("10"),
+            ]])])),
+        )
+    }
+    #[test]
+    fn indented_multiline_exec_works() {
+        expect_parse(
+            "
+            [
+              # wow stuff that means there's still an indent after trimming
+                l = len((
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                ))
+                second_statement_at_nonzero_indent_level_to_force_indent_compile = 0
+            ]
+            
+            There are [l] elements",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+                test_text("There are "),
+                test_text("6"),
+                test_text(" elements"),
+            ]])])),
+        );
+    }
+    #[test]
+    fn raise_in_indented_exec_mode_works() {
+        // Raise a SyntaxError, which a broken compiler might pick up as a compile error, and make sure it's thrown as a runtime error.
+        expect_parse_err(
+            "
+[
+def test():
+    raise SyntaxError()
+]
+        
+        [
+            # force indent-mode
+            x = test()
+        ]",
+            TestUserPythonExecError::RunningEvalBrackets {
+                code_ctx: TestParseContext(
+                    "[",
+                    "\n            # force indent-mode\n            x = test()\n        ",
+                    "]",
+                ),
+                // Code has had if True: appended, and was not trimmed
+                code: CString::new(
+                    "if True:\n\n            # force indent-mode\n            x = test()\n        ",
+                )
+                .unwrap(),
+                mode: UserPythonCompileMode::ExecIndentedStmts,
+                err: Regex::new(r"^SyntaxError\s*:\s*None$").unwrap(),
+            },
+        )
+    }
+    // If indentation is truly broken, we have to expose it to the user. Best to expose the
+    #[test]
+    fn indent_errors_in_indented_exec_mode_pass_through() {
+        expect_parse_err(
+            "[
+            good_indent = 0
+        unindent = 1
+            suddenly_bad_indent = 2
+        ]",
+            TestUserPythonExecError::CompilingEvalBrackets {
+                code_ctx: TestParseContext(
+                    "[",
+                    "\n            good_indent = 0\n        unindent = 1\n            \
+                     suddenly_bad_indent = 2\n        ",
+                    "]",
+                ),
+                code: CString::new(
+                    "if True:\n\n            good_indent = 0\n        unindent = 1\n            \
+                     suddenly_bad_indent = 2\n        ",
+                )
+                .unwrap(),
+                mode: UserPythonCompileMode::ExecIndentedStmts,
+                err: Regex::new(r"^IndentationError").unwrap(),
+            },
+        )
+    }
+    // Indented exec mode should only be triggered by indentation.
+    #[test]
+    fn non_indent_errors_dont_trigger_indented_exec_mode() {
+        // This example actually does trigger indented-exec-mode. I think it's because i'm using a comment as the first line, and I'm pretty sure that makes it parser-specific - introducing two potential errors means I can't predict which one will be thrown first => it's a tossup if IndentationError is thrown first and we go into indented-exec, or if SyntaxError is thrown first and we don't.
+        // expect_parse_err(
+        //     "[
+        //         # commment to prevent trim from eliminating indent
+        //         x = 1invalid
+        //     ]",
+        //     TestUserPythonExecError::CompilingEvalBrackets {
+        //         code_ctx: TestParseContext("[", "\n                # commment to prevent trim from eliminating indent\n                x = 1invalid\n            ", "]"),
+        //         code: CString::new("# commment to prevent trim from eliminating indent\n                x = 1invalid").unwrap(),
+        //         mode: UserPythonCompileMode::ExecIndentedStmts,
+        //         err: Regex::new(r"^SyntaxError\s*:\s*invalid syntax").unwrap(),
+        //     },
+        // );
+        expect_parse_err(
+            "[
+                x = 1invalid
+                second_statement_at_nonzero_indent_level_to_force_indent_compile = 0
+            ]",
+            TestUserPythonExecError::CompilingEvalBrackets {
+                code_ctx: TestParseContext(
+                    "[",
+                    "\n                x = 1invalid\n                \
+                     second_statement_at_nonzero_indent_level_to_force_indent_compile = 0\n            ",
+                    "]",
+                ),
+                code: CString::new(
+                    "x = 1invalid\n                \
+                     second_statement_at_nonzero_indent_level_to_force_indent_compile = 0",
+                )
+                .unwrap(),
+                mode: UserPythonCompileMode::ExecStmts,
+                err: Regex::new(r"^SyntaxError\s*:\s*invalid syntax").unwrap(),
+            },
+        );
     }
 }

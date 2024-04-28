@@ -1,9 +1,11 @@
 //! This module provides helper functions and types for mimicking "real" turnip-text data structures (especially those created in Python) in Rust.
 //! The general usage pattern is to define the expected result of your test with these types, then for harness code to execute the necessary Rust+Python and to then convert those results to these types before comparing.
 
+use std::ffi::CString;
+
 use crate::error::interp::{BlockModeElem, InlineModeContext};
 use crate::error::{interp::InterpError, TurnipTextError};
-use crate::error::{stringify_pyerr, UserPythonExecError};
+use crate::error::{stringify_pyerr, UserPythonCompileMode, UserPythonExecError};
 use crate::interpreter::ParsingFile;
 use regex::Regex;
 
@@ -281,23 +283,31 @@ impl<'a> From<(&'a Box<InterpError>, &'a Vec<ParsingFile>)> for TestInterpError<
 /// The contexts in which you might execute Python on user-generated code or objects
 #[derive(Debug, Clone)]
 pub enum TestUserPythonExecError<'a> {
+    CompilingEvalBrackets {
+        code_ctx: TestParseContext<'a>,
+        code: CString,
+        mode: UserPythonCompileMode,
+        err: Regex,
+    },
     RunningEvalBrackets {
-        code: TestParseContext<'a>,
+        code_ctx: TestParseContext<'a>,
+        code: CString,
+        mode: UserPythonCompileMode,
         err: Regex,
     },
     CoercingNonBuilderEvalBracket {
-        code: TestParseContext<'a>,
+        code_ctx: TestParseContext<'a>,
     },
     CoercingBlockScopeBuilder {
-        code: TestParseContext<'a>,
+        code_ctx: TestParseContext<'a>,
         err: Regex,
     },
     CoercingInlineScopeBuilder {
-        code: TestParseContext<'a>,
+        code_ctx: TestParseContext<'a>,
         err: Regex,
     },
     CoercingRawScopeBuilder {
-        code: TestParseContext<'a>,
+        code_ctx: TestParseContext<'a>,
         err: Regex,
     },
 }
@@ -310,40 +320,63 @@ impl<'a> TestUserPythonExecError<'a> {
     ) -> bool {
         match (self, other) {
             (
-                TestUserPythonExecError::RunningEvalBrackets {
+                TestUserPythonExecError::CompilingEvalBrackets {
+                    code_ctx: l_code_ctx,
                     code: l_code,
+                    mode: l_mode,
                     err: l_err,
                 },
-                UserPythonExecError::RunningEvalBrackets {
+                UserPythonExecError::CompilingEvalBrackets {
+                    code_ctx: r_code_ctx,
                     code: r_code,
+                    mode: r_mode,
                     err: r_err,
                 },
             )
             | (
-                TestUserPythonExecError::CoercingBlockScopeBuilder {
+                TestUserPythonExecError::RunningEvalBrackets {
+                    code_ctx: l_code_ctx,
                     code: l_code,
+                    mode: l_mode,
+                    err: l_err,
+                },
+                UserPythonExecError::RunningEvalBrackets {
+                    code_ctx: r_code_ctx,
+                    code: r_code,
+                    mode: r_mode,
+                    err: r_err,
+                },
+            ) => {
+                (*dbg!(l_code_ctx) == dbg!((r_code_ctx, data).into()))
+                    && (dbg!(l_code) == dbg!(r_code))
+                    && (dbg!(l_mode) == dbg!(r_mode))
+                    && dbg!(l_err).is_match(&dbg!(stringify_pyerr(py, r_err)))
+            }
+            (
+                TestUserPythonExecError::CoercingBlockScopeBuilder {
+                    code_ctx: l_code,
                     err: l_err,
                 },
                 UserPythonExecError::CoercingBlockScopeBuilder {
-                    code: r_code,
+                    code_ctx: r_code,
                     err: r_err,
                     obj: _,
                 },
             )
             | (
                 TestUserPythonExecError::CoercingInlineScopeBuilder {
-                    code: l_code,
+                    code_ctx: l_code,
                     err: l_err,
                 },
                 UserPythonExecError::CoercingInlineScopeBuilder {
-                    code: r_code,
+                    code_ctx: r_code,
                     err: r_err,
                     obj: _,
                 },
             )
             | (
                 TestUserPythonExecError::CoercingRawScopeBuilder {
-                    code: l_code,
+                    code_ctx: l_code,
                     err: l_err,
                 },
                 UserPythonExecError::CoercingRawScopeBuilder {
@@ -357,9 +390,9 @@ impl<'a> TestUserPythonExecError<'a> {
             }
 
             (
-                TestUserPythonExecError::CoercingNonBuilderEvalBracket { code: l_code },
+                TestUserPythonExecError::CoercingNonBuilderEvalBracket { code_ctx: l_code },
                 UserPythonExecError::CoercingNonBuilderEvalBracket {
-                    code: r_code,
+                    code_ctx: r_code,
                     obj: _,
                 },
             ) => *dbg!(l_code) == dbg!((r_code, data).into()),

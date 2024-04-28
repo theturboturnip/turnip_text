@@ -225,8 +225,8 @@ impl TurnipTextError {
                     AnnotationType::Error,
                     sources,
                     &notes,
-                    "Blocks can't be emitted in inline mode. Try opening this scope on a new line, \
-                        with a blank line to separate it from the paragraph.",
+                    "Blocks can't be emitted in inline mode. Try opening this scope on a new \
+                     line, with a blank line to separate it from the paragraph.",
                 )
             }
             CodeEmittedBlockInInlineMode {
@@ -243,13 +243,13 @@ impl TurnipTextError {
                     Some(AnnotationType::Error),
                 ));
                 snippet_from_spans(
-                "A `Block` was returned by code in inline mode.",
-                AnnotationType::Error,
-                sources,
-                &notes,
-                "Blocks can't be emitted in inline mode. Try opening this scope on a new line, \
-                    with a blank line to separate it from the paragraph.",
-            )
+                    "A `Block` was returned by code in inline mode.",
+                    AnnotationType::Error,
+                    sources,
+                    &notes,
+                    "Blocks can't be emitted in inline mode. Try opening this scope on a new \
+                     line, with a blank line to separate it from the paragraph.",
+                )
             }
             CodeEmittedHeaderInInlineMode {
                 inl_mode,
@@ -261,13 +261,12 @@ impl TurnipTextError {
                 Self::push_inline_mode_ctx_note(inl_mode, &mut notes);
                 notes.push((*code_span, "Eval-bracket here", None));
                 snippet_from_spans(
-                    "A `Header` was returned by code in inline mode. \
-                        Headers are block-level only.",
+                    "A `Header` was returned by code in inline mode. Headers are block-level only.",
                     AnnotationType::Error,
                     sources,
                     &notes,
-                    "Make sure to separate any code emitting Header from other content with \
-                        blank lines.",
+                    "Make sure to separate any code emitting Header from other content with blank \
+                     lines.",
                 )
             }
             CodeEmittedHeaderInBlockScope {
@@ -309,7 +308,7 @@ impl TurnipTextError {
                     sources,
                     &notes,
                     "We can't enter a new source file when we're in inline mode - either inside a \
-                         paragraph or an inline scope.",
+                     paragraph or an inline scope.",
                 )
             }
             SentenceBreakInInlineScope {
@@ -429,8 +428,8 @@ impl TurnipTextError {
                 Snippet {
                     title: Some(Annotation {
                         label: Some(
-                            "Insufficient separation between the end of a block and the start of a \
-                            new one.",
+                            "Insufficient separation between the end of a block and the start of \
+                             a new one.",
                         ),
                         id: None,
                         annotation_type: AnnotationType::Error,
@@ -438,17 +437,13 @@ impl TurnipTextError {
                     footer: vec![Annotation {
                         label: Some(
                             "Blocks must be visually separated in turnip-text code. Start the new \
-                            block on a new line. Headers and TurnipTextSource are also block-level \
-                            elements and must also be separated.",
+                             block on a new line. Headers and TurnipTextSource are also \
+                             block-level elements and must also be separated.",
                         ),
                         id: None,
                         annotation_type: AnnotationType::Note,
                     }],
-                    slices: slices_from_spans(
-                        AnnotationType::Note,
-                        sources,
-                        &notes
-                    ),
+                    slices: slices_from_spans(AnnotationType::Note, sources, &notes),
                     opt: Default::default(),
                 }
             }
@@ -459,6 +454,7 @@ impl TurnipTextError {
         sources: &'a Vec<ParsingFile>,
         error: &Box<UserPythonExecError>,
     ) -> Snippet<'a> {
+        dbg!(error);
         todo!()
         /*
                    PythonErr {

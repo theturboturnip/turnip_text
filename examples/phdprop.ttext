@@ -1,3 +1,11 @@
+# TODO make the error for end-inside-code use the last character for EOF token
+[---------
+
+    indent1 = 0
+    indent2 = 1invalid
+    
+---------]
+
 [[
 section=heading1
 subsection=heading2

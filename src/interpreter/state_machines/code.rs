@@ -1,9 +1,11 @@
-use pyo3::{exceptions::PySyntaxError, ffi::Py_None, intern, prelude::*, types::PyDict};
+use std::ffi::CString;
+
+use pyo3::{exceptions::PySyntaxError, intern, prelude::*, types::PyDict, AsPyPointer};
 
 use crate::{
     error::{
         interp::{InterpError, MapContextlessResult},
-        TurnipTextContextlessResult, UserPythonExecError,
+        TurnipTextContextlessResult, UserPythonCompileMode, UserPythonExecError,
     },
     lexer::TTToken,
     python::{
@@ -56,18 +58,16 @@ impl TokenProcessor for CodeProcessor {
                     TTToken::CodeClose(_, n_close_brackets)
                         if n_close_brackets == self.n_closing =>
                     {
-                        let res: &PyAny = eval_or_exec(py, py_env, &self.code).map_err(|err| {
-                            UserPythonExecError::RunningEvalBrackets {
-                                code: self.ctx,
-                                err,
-                            }
-                        })?;
+                        let eval_obj: &PyAny = eval_or_exec(py, py_env, &self.code, self.ctx)?;
 
                         // If we evaluated a TurnipTextSource, it may not be a builder of any kind thus we can finish immediately.
-                        if let Ok(inserted_file) = res.extract::<TurnipTextSource>() {
+                        if let Ok(inserted_file) = eval_obj.extract::<TurnipTextSource>() {
                             Ok(ProcStatus::PopAndNewSource(self.ctx, inserted_file))
                         } else {
-                            self.evaled_code = Some(res.into_py(py));
+                            // Save the evaled object.
+                            // Keep going so we can peek at the next token,
+                            // to see if we need to attach a scope to this object.
+                            self.evaled_code = Some(eval_obj.into_py(py));
                             Ok(ProcStatus::Continue)
                         }
                     }
@@ -134,7 +134,7 @@ impl TokenProcessor for CodeProcessor {
                         let inline =
                             coerce_to_inline_pytcref(py, evaled_result_ref).map_err(|_err| {
                                 UserPythonExecError::CoercingNonBuilderEvalBracket {
-                                    code: self.ctx,
+                                    code_ctx: self.ctx,
                                     obj: evaled_result.clone_ref(py),
                                 }
                             })?;
@@ -156,13 +156,16 @@ impl TokenProcessor for CodeProcessor {
     ) -> TurnipTextContextlessResult<ProcStatus> {
         let evaled_result_ref = self.evaled_code.take().unwrap().into_ref(py);
 
-        let (elem_ctx, elem) = pushed.expect("Should never get a built None - CodeProcessor only spawns AmbiguousScopeProcessor and RawScopeProcessor none of which return None.");
+        let (elem_ctx, elem) = pushed.expect(
+            "Should never get a built None - CodeProcessor only spawns AmbiguousScopeProcessor \
+             and RawScopeProcessor none of which return None.",
+        );
         let built = match elem {
             DocElement::Block(BlockElem::BlockScope(blocks)) => {
                 let builder: PyTcRef<BlockScopeBuilder> =
                     PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
                         .map_err(|err| UserPythonExecError::CoercingBlockScopeBuilder {
-                            code: self.ctx,
+                            code_ctx: self.ctx,
                             obj: evaled_result_ref.to_object(py),
                             err,
                         })?;
@@ -180,7 +183,7 @@ impl TokenProcessor for CodeProcessor {
                 let builder: PyTcRef<InlineScopeBuilder> =
                     PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
                         .map_err(|err| UserPythonExecError::CoercingInlineScopeBuilder {
-                            code: self.ctx,
+                            code_ctx: self.ctx,
                             obj: evaled_result_ref.to_object(py),
                             err,
                         })?;
@@ -235,10 +238,69 @@ impl TokenProcessor for CodeProcessor {
         &mut self,
         _code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
-        unreachable!("CodeProcessor does not spawn an inner code builder, so cannot have a source file emitted inside")
+        unreachable!(
+            "CodeProcessor does not spawn an inner code builder, so cannot have a source file \
+             emitted inside"
+        )
     }
     fn on_emitted_source_closed(&mut self, _inner_source_emitted_by: ParseSpan) {
-        unreachable!("CodeProcessor does not spawn an inner code builder, so cannot have a source file emitted inside")
+        unreachable!(
+            "CodeProcessor does not spawn an inner code builder, so cannot have a source file \
+             emitted inside"
+        )
+    }
+}
+
+/// Tries to compile the given code for the given compile mode.
+/// If the compilation succeeds, runs the code.
+///
+/// Translates compile errors to [UserPythonExecError::CompilingEvalBrackets].
+/// Translates run errors to [UserPythonExecError::RunningEvalBrackets].
+fn try_compile_and_run<'py>(
+    py: Python<'py>,
+    py_env: &'py PyDict,
+    code: &CString,
+    code_ctx: ParseContext,
+    mode: UserPythonCompileMode,
+) -> Result<&'py PyAny, UserPythonExecError> {
+    let compile_mode = match mode {
+        UserPythonCompileMode::EvalExpr => pyo3::ffi::Py_eval_input,
+        UserPythonCompileMode::ExecStmts | UserPythonCompileMode::ExecIndentedStmts => {
+            pyo3::ffi::Py_file_input
+        }
+    };
+
+    unsafe {
+        let code_obj =
+            pyo3::ffi::Py_CompileString(code.as_ptr(), "<string>\0".as_ptr() as _, compile_mode);
+        if code_obj.is_null() {
+            return Err(UserPythonExecError::CompilingEvalBrackets {
+                code_ctx,
+                code: code.clone(),
+                mode,
+                err: PyErr::fetch(py),
+            });
+        }
+        let globals = py_env.as_ptr();
+        let locals = globals;
+        let res_ptr = pyo3::ffi::PyEval_EvalCode(code_obj, globals, locals);
+        pyo3::ffi::Py_DECREF(code_obj);
+
+        let res: PyResult<&PyAny> = py.from_owned_ptr_or_err(res_ptr);
+        // Make sure exec-mode compilations always return None
+        match (mode, &res) {
+            (
+                UserPythonCompileMode::ExecStmts | UserPythonCompileMode::ExecIndentedStmts,
+                Ok(exec_obj),
+            ) => debug_assert!(exec_obj.is_none()),
+            _ => {}
+        }
+        res.map_err(|run_pyerr| UserPythonExecError::RunningEvalBrackets {
+            code_ctx,
+            code: code.clone(),
+            mode,
+            err: run_pyerr,
+        })
     }
 }
 
@@ -246,44 +308,81 @@ pub fn eval_or_exec<'py, 'code>(
     py: Python<'py>,
     py_env: &'py PyDict,
     code: &'code str,
-) -> PyResult<&'py PyAny> {
-    // Python picks up leading whitespace as an incorrect indent.
-    let code = code.trim();
-    // In exec() contexts it would be really nice to allow a toplevel indent (ignoring blank lines when calculating it)
-    // This requires two steps: determining if there is an indent, and removing that indent.
-    // Detecting an indent could be done programmatically *if* PyO3 exposed PyIndentError like it does PySyntaxError,
-    // otherwise we'd have to do our own parsing. The branch manual-indent-injection has some initial regexes for this,
-    // but I realized that doing this detection also requires ignoring comments (they don't count towards indentation)
-    // and I thought that strays too close to actually parsing the python for my liking.
-    // Resolving the indent is another problem: a feature automatically "dedenting" code passed to python -c
-    // exists https://discuss.python.org/t/allowing-indented-code-for-c/44122/1 and proposes appending `if True:` to the start as a stopgap.
-    // textwrap.dedent() also exists but I don't think it's suitable for code.
-    // Thus I have abandoned this quest.
-    let raw_res = match py.eval(code, Some(py_env), None) {
-        Ok(raw_res) => raw_res,
-        Err(error) if error.is_instance_of::<PySyntaxError>(py) => {
-            // Try to exec() it as a statement instead of eval() it as an expression
-            py.run(code, Some(py_env), None)?;
-            // Acquire a Py<PyAny> to Python None, then use into_ref() to convert it into a &PyAny.
-            // This should optimize down to `*Py_None()` because Py<T> and PyAny both boil down to *ffi::Py_Object;
-            // This is so that places that *require* non-None (e.g. NeedBlockBuilder) will always raise an error in the following match statement.
-            // This is safe because Py_None() returns a pointer-to-static.
-            unsafe { Py::<PyAny>::from_borrowed_ptr(py, Py_None()).into_ref(py) }
+    code_ctx: ParseContext,
+) -> Result<&'py PyAny, UserPythonExecError> {
+    // TODO reject the null byte in the turnip-text lexer.
+    let code_trimmed =
+        CString::new(code.trim()).expect("Nul-byte should not be present inside code");
+
+    // First, try to compile the code as a single Python expression.
+    // If that succeeds to compile, run it and return the result.
+    let eval_bracket_res = match try_compile_and_run(
+        py,
+        py_env,
+        &code_trimmed,
+        code_ctx,
+        UserPythonCompileMode::EvalExpr,
+    ) {
+        // If compiling the code in eval mode gave a SyntaxError, try compiling in exec mode.
+        // Compile the trimmed person first so we can do e.g. `[ x = 5 ]`
+        Err(UserPythonExecError::CompilingEvalBrackets { err, .. })
+            if err.is_instance_of::<PySyntaxError>(py) =>
+        {
+            match try_compile_and_run(py, py_env, &code_trimmed, code_ctx, UserPythonCompileMode::ExecStmts) {
+                    // Can't use .is_instance_of::<PyIndentationError> because PyO3 doesn't generate a PyIndentationError type.
+                    Err(UserPythonExecError::CompilingEvalBrackets { err, .. })
+                    // I feel fine expecting Py_CompileString to raise an error with a type with a name.
+                        if err
+                            .get_type(py)
+                            .name()
+                            .expect("Failed to get compile error type name")
+                            == "IndentationError" =>
+                    {
+                        // Compiling the code in exec mode gave an IndentationError.
+                        // Put an if True:\n in front and see if that helps.
+
+                        let code_with_indent_guard = {
+                            // TODO reject the nul-byte in the turnip-text lexer to make this truly safe :)
+                            unsafe {
+                                CString::from_vec_with_nul_unchecked(
+                                    format!("if True:\n{code}\0").into_bytes(),
+                                )
+                            }
+                        };
+                        try_compile_and_run(
+                            py,
+                            py_env,
+                            &code_with_indent_guard,
+                            code_ctx,
+                            UserPythonCompileMode::ExecIndentedStmts,
+                        )
+                    }
+                    other => other
+                }
         }
-        Err(error) => return Err(error),
+        other => other,
     };
-    // If it has __get__, call it.
-    // `property` objects and other data descriptors use this.
-    let getter = intern!(py, "__get__");
-    if raw_res.hasattr(getter)? {
-        // https://docs.python.org/3.8/howto/descriptor.html
-        // "For objects, the machinery is in object.__getattribute__() which transforms b.x into type(b).__dict__['x'].__get__(b, type(b))."
-        //
-        // We're transforming `[x]` into (effectively) `py_env.x`
-        // which should transform into (type(py_env).__dict__['x']).__get__(py_env, type(py_env))
-        // = raw_res.__get__(py_env, type(py_env))
-        raw_res.call_method1(getter, (py_env, py_env.get_type()))
-    } else {
-        Ok(raw_res)
+
+    // TODO eliminate getter
+    match eval_bracket_res {
+        Ok(raw_obj) => {
+            // If it has __get__, call it.
+            // `property` objects and other data descriptors use this.
+            let getter = intern!(py, "__get__");
+            if raw_obj.hasattr(getter).unwrap() {
+                // https://docs.python.org/3.8/howto/descriptor.html
+                // "For objects, the machinery is in object.__getattribute__() which transforms b.x into type(b).__dict__['x'].__get__(b, type(b))."
+                //
+                // We're transforming `[x]` into (effectively) `py_env.x`
+                // which should transform into (type(py_env).__dict__['x']).__get__(py_env, type(py_env))
+                // = raw_res.__get__(py_env, type(py_env))
+                Ok(raw_obj
+                    .call_method1(getter, (py_env, py_env.get_type()))
+                    .unwrap())
+            } else {
+                Ok(raw_obj)
+            }
+        }
+        Err(err) => Err(err),
     }
 }

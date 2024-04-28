@@ -1,3 +1,5 @@
+use std::ffi::CString;
+
 use annotate_snippets::display_list::DisplayList;
 use pyo3::{PyErr, PyObject, Python};
 use thiserror::Error;
@@ -22,35 +24,70 @@ pub fn stringify_pyerr(py: Python, pyerr: &PyErr) -> String {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UserPythonCompileMode {
+    EvalExpr,
+    ExecStmts,
+    ExecIndentedStmts,
+}
+
 /// The contexts in which you might execute Python on user-generated code or objects
 #[derive(Error, Debug)]
 pub enum UserPythonExecError {
+    /// Compiling user-supplied code
+    #[error("Error when compiling code from eval-brackets: {err}")]
+    CompilingEvalBrackets {
+        code_ctx: ParseContext,
+        code: CString,
+        mode: UserPythonCompileMode,
+        err: PyErr,
+    },
     /// Directly running user-supplied code
-    #[error("Error when executing code from eval-brackets")]
-    RunningEvalBrackets { code: ParseContext, err: PyErr },
+    #[error("Error when executing code from eval-brackets: {err}")]
+    RunningEvalBrackets {
+        code_ctx: ParseContext,
+        code: CString,
+        mode: UserPythonCompileMode,
+        err: PyErr,
+    },
     /// Ran user code from an eval-bracket which didn't have an argument attached,
     /// failed to coerce the code result to Block, Inline, Header, or TurnipTextSource
-    #[error("Successfully evaluated eval-brackets, but the output was not None, a TurnipTextSource, a Header, a Block, or coercible to Inline")]
-    CoercingNonBuilderEvalBracket { code: ParseContext, obj: PyObject },
+    #[error(
+        "Successfully evaluated eval-brackets, but the output was not None, a TurnipTextSource, a \
+         Header, a Block, or coercible to Inline"
+    )]
+    CoercingNonBuilderEvalBracket {
+        code_ctx: ParseContext,
+        obj: PyObject,
+    },
     /// Ran user code from an eval-bracket which was followed by a block scope argument,
     /// but failed to coerce the code result to BlockScopeBuilder
-    #[error("Successfully evaluated eval-brackets, constructed a block-scope to provide to a builder, but raised an error when building the inline scope")]
+    #[error(
+        "Successfully evaluated eval-brackets, constructed a block-scope to provide to a builder, \
+         but raised an error when building the inline scope: {err}"
+    )]
     CoercingBlockScopeBuilder {
-        code: ParseContext,
+        code_ctx: ParseContext,
         obj: PyObject,
         err: PyErr,
     },
     /// Ran user code from an eval-bracket which was followed by an inline scope argument,
     /// but failed to coerce the code result to InlineScopeBuilder
-    #[error("Successfully evaluated eval-brackets, constructed an inline-scope to provide to a builder, but raised an error when building the inline scope")]
+    #[error(
+        "Successfully evaluated eval-brackets, constructed an inline-scope to provide to a \
+         builder, but raised an error when building the inline scope: {err}"
+    )]
     CoercingInlineScopeBuilder {
-        code: ParseContext,
+        code_ctx: ParseContext,
         obj: PyObject,
         err: PyErr,
     },
     /// Ran user code from an eval-bracket which was followed by a raw scope argument,
     /// but failed to coerce the code result to RawScopeBuilder
-    #[error("Successfully evaluated eval-brackets, constructed a raw-scope to provide to a builder, but the eval-bracket output was not a RawScopeBuilder")]
+    #[error(
+        "Successfully evaluated eval-brackets, constructed a raw-scope to provide to a builder, \
+         but the eval-bracket output was not a RawScopeBuilder: {err}"
+    )]
     CoercingRawScopeBuilder {
         code: ParseContext,
         obj: PyObject,

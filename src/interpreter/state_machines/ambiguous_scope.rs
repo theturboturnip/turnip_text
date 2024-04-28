@@ -86,7 +86,11 @@ impl TokenProcessor for AmbiguousScopeProcessor {
     ) -> TurnipTextContextlessResult<ProcStatus> {
         match self {
             AmbiguousScopeProcessor::Undecided { .. } => {
-                assert!(pushed.is_none(), "AmbiguousScopeProcessor::Undecided does not push any builders except comments thus cannot receive non-None pushed items");
+                assert!(
+                    pushed.is_none(),
+                    "AmbiguousScopeProcessor::Undecided does not push any builders except \
+                     comments thus cannot receive non-None pushed items"
+                );
                 Ok(ProcStatus::Continue)
             }
             AmbiguousScopeProcessor::Block(block) => {
@@ -104,7 +108,10 @@ impl TokenProcessor for AmbiguousScopeProcessor {
     ) -> TurnipTextContextlessResult<()> {
         match self {
             AmbiguousScopeProcessor::Undecided { .. } => {
-                unreachable!("AmbiguousScopeProcessor::Undecided does not push any builders except comments and thus cannot have source code emitted inside it")
+                unreachable!(
+                    "AmbiguousScopeProcessor::Undecided does not push any builders except \
+                     comments and thus cannot have source code emitted inside it"
+                )
             }
             AmbiguousScopeProcessor::Block(block) => {
                 block.on_emitted_source_inside(code_emitting_source)
@@ -118,7 +125,10 @@ impl TokenProcessor for AmbiguousScopeProcessor {
     fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan) {
         match self {
             AmbiguousScopeProcessor::Undecided { .. } => {
-                unreachable!("AmbiguousScopeProcessor::Undecided does not push any builders except comments and thus cannot have source code emitted inside it")
+                unreachable!(
+                    "AmbiguousScopeProcessor::Undecided does not push any builders except \
+                     comments and thus cannot have source code emitted inside it"
+                )
             }
             AmbiguousScopeProcessor::Block(block) => {
                 block.on_emitted_source_closed(inner_source_emitted_by)
@@ -223,7 +233,11 @@ impl TokenProcessor for InlineLevelAmbiguousScopeProcessor {
     ) -> TurnipTextContextlessResult<ProcStatus> {
         match self {
             InlineLevelAmbiguousScopeProcessor::Undecided { .. } => {
-                assert!(pushed.is_none(), "InlineLevelAmbiguousScopeProcessor::Undecided does not push any builders except comments thus cannot receive non-None pushed items");
+                assert!(
+                    pushed.is_none(),
+                    "InlineLevelAmbiguousScopeProcessor::Undecided does not push any builders \
+                     except comments thus cannot receive non-None pushed items"
+                );
                 Ok(ProcStatus::Continue)
             }
             InlineLevelAmbiguousScopeProcessor::Known(k) => {
@@ -237,15 +251,25 @@ impl TokenProcessor for InlineLevelAmbiguousScopeProcessor {
         code_emitting_source: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         match self {
-            InlineLevelAmbiguousScopeProcessor::Undecided { .. } => unreachable!("InlineLevelAmbiguousScopeProcessor doesn't spawn non-comment builders in Undecided mode, so can't get a source emitted from them"),
-            InlineLevelAmbiguousScopeProcessor::Known(k) => k.on_emitted_source_inside(code_emitting_source),
+            InlineLevelAmbiguousScopeProcessor::Undecided { .. } => unreachable!(
+                "InlineLevelAmbiguousScopeProcessor doesn't spawn non-comment builders in \
+                 Undecided mode, so can't get a source emitted from them"
+            ),
+            InlineLevelAmbiguousScopeProcessor::Known(k) => {
+                k.on_emitted_source_inside(code_emitting_source)
+            }
         }
     }
 
     fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan) {
         match self {
-            InlineLevelAmbiguousScopeProcessor::Undecided { .. } => unreachable!("InlineLevelAmbiguousScopeProcessor doesn't spawn non-comment builders in Undecided mode, so can't get a source emitted from them"),
-            InlineLevelAmbiguousScopeProcessor::Known(k) => k.on_emitted_source_closed(inner_source_emitted_by),
+            InlineLevelAmbiguousScopeProcessor::Undecided { .. } => unreachable!(
+                "InlineLevelAmbiguousScopeProcessor doesn't spawn non-comment builders in \
+                 Undecided mode, so can't get a source emitted from them"
+            ),
+            InlineLevelAmbiguousScopeProcessor::Known(k) => {
+                k.on_emitted_source_closed(inner_source_emitted_by)
+            }
         }
     }
 }

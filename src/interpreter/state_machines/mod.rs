@@ -233,7 +233,10 @@ impl FileProcessorStack {
                     ProcStatus::PopAndReprocessToken(emitted) => {
                         self.emit_elem_in_top_processor(py, py_env, emitted)?
                     }
-                    _ => unreachable!("processor returned a ProcStatus that wasn't PopAndReprocessToken in response to an EOF")
+                    _ => unreachable!(
+                        "processor returned a ProcStatus that wasn't PopAndReprocessToken in \
+                         response to an EOF"
+                    ),
                 }
             }
             Ok(None)
@@ -246,7 +249,10 @@ impl FileProcessorStack {
                     ProcStatus::Pop(_)
                     | ProcStatus::PopAndReprocessToken(_)
                     | ProcStatus::PopAndNewSource(..) => {
-                        unreachable!("processor for previous file returned a Pop* when presented with a token for an inner file")
+                        unreachable!(
+                            "processor for previous file returned a Pop* when presented with a \
+                             token for an inner file"
+                        )
                     }
                     ProcStatus::PushProcessor(processor) => self.stack.push(processor),
                     ProcStatus::Continue => {}
@@ -267,12 +273,20 @@ impl FileProcessorStack {
                             return Ok(None);
                         }
                         ProcStatus::Pop(emitted) => {
-                            self.stack.pop().expect("self.curr_top() returned Pop => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
+                            self.stack.pop().expect(
+                                "self.curr_top() returned Pop => it must be processing a token \
+                                 from the file it was created in => it must be on the stack => \
+                                 the stack must have something on it.",
+                            );
                             self.emit_elem_in_top_processor(py, py_env, emitted)?;
                             return Ok(None);
                         }
                         ProcStatus::PopAndReprocessToken(emitted) => {
-                            self.stack.pop().expect("self.curr_top() returned Pop => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
+                            self.stack.pop().expect(
+                                "self.curr_top() returned Pop => it must be processing a token \
+                                 from the file it was created in => it must be on the stack => \
+                                 the stack must have something on it.",
+                            );
                             self.emit_elem_in_top_processor(py, py_env, emitted)?;
                             if self.stack.is_empty() {
                                 // The token is bubbling up to the next file!
@@ -301,7 +315,11 @@ impl FileProcessorStack {
                             }
                         }
                         ProcStatus::PopAndNewSource(code_emitting_source, src) => {
-                            self.stack.pop().expect("self.curr_top() returned Pop => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
+                            self.stack.pop().expect(
+                                "self.curr_top() returned Pop => it must be processing a token \
+                                 from the file it was created in => it must be on the stack => \
+                                 the stack must have something on it.",
+                            );
                             self.curr_top()
                                 .borrow_mut()
                                 .on_emitted_source_inside(code_emitting_source)?;
@@ -326,7 +344,11 @@ impl FileProcessorStack {
         match action {
             ProcStatus::Continue => Ok(()),
             ProcStatus::Pop(new_emitted) => {
-                self.stack.pop().expect("self.curr_top() returned Pop => it must be processing a token from the file it was created in => it must be on the stack => the stack must have something on it.");
+                self.stack.pop().expect(
+                    "self.curr_top() returned Pop => it must be processing a token from the file \
+                     it was created in => it must be on the stack => the stack must have \
+                     something on it.",
+                );
                 self.emit_elem_in_top_processor(py, py_env, new_emitted)
             }
             ProcStatus::PushProcessor(processor) => {
@@ -387,7 +409,10 @@ impl ProcessorStacks {
 
     pub fn finalize(self, py: Python) -> TurnipTextContextlessResult<Py<DocSegment>> {
         if self.stacks.len() > 0 {
-            panic!("Called finalize() on Processorstacks when there were stacks left - forgot to pop_subfile()?");
+            panic!(
+                "Called finalize() on Processorstacks when there were stacks left - forgot to \
+                 pop_subfile()?"
+            );
         }
         match Rc::try_unwrap(self.top) {
             Err(_) => panic!(),
