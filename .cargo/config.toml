@@ -1,4 +1,5 @@
 [alias]
 # This project requires the "extension-module" feature to be disabled 
 # for any tests to be compiled. This shortcut runs tests with that feature disabled.
-testall = "test --no-default-features"
+# Also, use test-threads=1 for readable output
+testall = "test --no-default-features -- --test-threads=1"
