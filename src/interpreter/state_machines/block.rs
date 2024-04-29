@@ -8,7 +8,7 @@ use crate::{
     interpreter::InterimDocumentStructure,
     lexer::{Escapable, TTToken},
     python::{
-        interop::{BlockScope, DocSegment, DocSegmentHeader},
+        interop::{BlockScope, DocSegmentHeader, Document},
         typeclass::PyTcRef,
     },
     util::{ParseContext, ParseSpan},
@@ -74,7 +74,7 @@ impl BlockLevelProcessor<TopLevelBlockMode> {
             expects_n_blank_lines_after: None,
         })
     }
-    pub fn finalize(mut self, py: Python<'_>) -> TurnipTextContextlessResult<Py<DocSegment>> {
+    pub fn finalize(mut self, py: Python<'_>) -> TurnipTextContextlessResult<Py<Document>> {
         self.inner
             .structure
             .pop_segments_until_less_than(py, i64::MIN)?;

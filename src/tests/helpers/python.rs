@@ -1,5 +1,5 @@
 use crate::python::interop::{
-    BlockScope, DocSegment, DocSegmentHeader, InlineScope, Paragraph, Raw, Sentence, Text,
+    BlockScope, DocSegment, DocSegmentHeader, Document, InlineScope, Paragraph, Raw, Sentence, Text,
 };
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -98,10 +98,14 @@ class TestDummyInlineBuilderFromBlock:
     def build_from_blocks(self, contents):
         return Text(self.dummy_text)
 "#;
-
+#[derive(Debug, PartialEq, Eq)]
+pub struct TestDocument {
+    pub contents: TestBlock,
+    pub segments: Vec<TestDocSegment>,
+}
 #[derive(Debug, PartialEq, Eq)]
 pub struct TestDocSegment {
-    pub header: Option<(i64, Option<TestBlock>, Option<TestInline>)>,
+    pub header: (i64, Option<TestBlock>, Option<TestInline>),
     pub contents: TestBlock,
     pub subsegments: Vec<TestDocSegment>,
 }
@@ -124,11 +128,10 @@ pub enum TestInline {
     /// Test-only - a Python object built from raw text with test_raw_str: str = the raw text
     TestOwnedRaw(String),
 }
-pub fn test_doc(contents: Vec<TestBlock>) -> TestDocSegment {
-    TestDocSegment {
-        header: None,
+pub fn test_doc(contents: Vec<TestBlock>) -> TestDocument {
+    TestDocument {
         contents: TestBlock::BlockScope(contents),
-        subsegments: vec![],
+        segments: vec![],
     }
 }
 pub fn test_sentence(s: impl Into<String>) -> Vec<TestInline> {
@@ -144,14 +147,35 @@ pub fn test_raw_text(s: impl Into<String>) -> TestInline {
 pub trait PyToTest<T> {
     fn as_test(&self, py: Python) -> T;
 }
+impl PyToTest<TestDocument> for PyAny {
+    fn as_test(&self, py: Python) -> TestDocument {
+        if let Ok(document) = self.extract::<Document>() {
+            TestDocument {
+                contents: document.contents.as_ref(py).as_test(py),
+                segments: document
+                    .segments
+                    .list(py)
+                    .iter()
+                    .map(|subseg| subseg.as_test(py))
+                    .collect(),
+            }
+        } else {
+            let repr = match self.repr() {
+                Ok(py_str) => py_str.to_string(),
+                Err(_) => "<couldn't call __repr__>".to_owned(),
+            };
+            panic!("Expected Document, got {repr}")
+        }
+    }
+}
 impl PyToTest<TestDocSegment> for PyAny {
     fn as_test(&self, py: Python) -> TestDocSegment {
         if let Ok(doc_segment) = self.extract::<DocSegment>() {
             TestDocSegment {
-                header: doc_segment.header.map(|header| {
-                    let weight = DocSegmentHeader::get_weight(py, header.as_ref(py))
+                header: {
+                    let weight = DocSegmentHeader::get_weight(py, doc_segment.header.as_ref(py))
                         .expect("Couldn't get_weight of header");
-                    let block_contents = match header.as_ref(py).getattr("test_block") {
+                    let block_contents = match doc_segment.header.as_ref(py).getattr("test_block") {
                         Ok(test_block) => {
                             if test_block.is_none() {
                                 None
@@ -161,7 +185,8 @@ impl PyToTest<TestDocSegment> for PyAny {
                         }
                         Err(_) => None,
                     };
-                    let inline_contents = match header.as_ref(py).getattr("test_inline") {
+                    let inline_contents = match doc_segment.header.as_ref(py).getattr("test_inline")
+                    {
                         Ok(test_inline) => {
                             if test_inline.is_none() {
                                 None
@@ -172,7 +197,7 @@ impl PyToTest<TestDocSegment> for PyAny {
                         Err(_) => None,
                     };
                     (weight, block_contents, inline_contents)
-                }),
+                },
                 contents: doc_segment.contents.as_ref(py).as_test(py),
                 subsegments: doc_segment
                     .subsegments

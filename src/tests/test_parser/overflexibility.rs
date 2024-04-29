@@ -62,14 +62,14 @@ not_indented_y = 5
     )
 }
 
-// A downside of using inner dashes is that negative literals require a space
+// A downside of using inner dashes is that negative literals require a space around them.
 #[test]
 fn test_code_negative_literal() {
     expect_parse_err(
         "[-1]",
         TestInterpError::EndedInsideCode {
             code_start: TestParseSpan("[-"),
-            eof_span: TestParseSpan("]"),
+            eof_span: TestParseSpan(""),
         },
     )
 }

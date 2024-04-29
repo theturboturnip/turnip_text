@@ -31,6 +31,7 @@ from turnip_text import (
     BlockScope,
     DocSegment,
     DocSegmentHeader,
+    Document,
     Inline,
     TurnipTextSource,
     parse_file_native,
@@ -80,7 +81,7 @@ class DocSetup:
     def anchors(self) -> "DocAnchors":
         return self.doc.anchors
 
-    def parse(self) -> DocSegment:
+    def parse(self) -> Document:
         src = self.build_sys.resolve_turnip_text_source(self.doc_project_relative_path)
         return parse_file_native(src, self.doc.__dict__)
 
@@ -100,8 +101,8 @@ class DocMutator(Protocol):
         return []
 
     def _mutate_document(
-        self, doc: "DocState", fmt: "FormatContext", toplevel: DocSegment
-    ) -> DocSegment:
+        self, doc: "DocState", fmt: "FormatContext", toplevel: Document
+    ) -> Document:
         """
         Mutate the toplevel_contents or toplevel_segments to add things as you please.
         You may make a copy and return it

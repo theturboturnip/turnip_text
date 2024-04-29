@@ -26,6 +26,7 @@ impl TokenProcessor for CommentProcessor {
         // When receiving EOF it returns [ProcStatus::PopAndReprocessToken].
         // This fulfils the contract for [TokenProcessor::process_token].
         match tok {
+            // TODO decide if escaped(newline) ends the comment too. By Python rules, it doesn't.
             TTToken::Newline(_) | TTToken::EOF(_) => Ok(ProcStatus::PopAndReprocessToken(None)),
             _ => Ok(ProcStatus::Continue),
         }

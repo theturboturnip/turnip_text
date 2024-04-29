@@ -15,6 +15,8 @@ __all__ = [
     "BlockScope",
     "Inline",
     "InlineScope",
+    "DocSegment",
+    "Document",
     "Paragraph",
     "Raw",
     "Sentence",
@@ -37,6 +39,7 @@ __all__ = [
 from ._native import (  # type: ignore
     BlockScope,
     DocSegment,
+    Document,
     InlineScope,
     Paragraph,
     Raw,
@@ -49,6 +52,8 @@ from ._native import (  # type: ignore
     coerce_to_inline_scope,
 )
 from ._native import parse_file as parse_file_native
+
+# Block, Inline, DocSegmentHeader, and the Builders are all typeclasses that we can't import directly.
 
 
 @runtime_checkable

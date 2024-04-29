@@ -4,7 +4,7 @@
    This requires creating a set of turnip_text.doc.DocPlugin, which define the interface used by inline code inside the document.
    The document may also have metadata which can be retrieved at this point.
    Python creates a DocSetup instance with the relevant plugins and metadata, points it at TurnipTextSource.
-   This creates a DocSegment tree and a mapping of [Anchor, Block] called "floating space". Floating space includes
+   This creates a Document and a mapping of [Anchor, Block] called "floating space". Floating space includes
    e.g. footnotes or figures which may have their definitions "float" from their point-of-definition to different places in the text stream.
 2. Mutating
    The document plugins and language-specific renderer plugins may both want to inject new state into the document once the user has completed it.
@@ -14,7 +14,7 @@
    TODO i haven't decided whether it's sensible to allow plugins to put more things in floating space and hope someone else pulls them out - my instinct is probably not.
    TODO the current system isn't that they actually get shoved back into the document - just that some things are "portals" into floating space for the purposes of visiting and counting.
    The DocSetup is taken as input, alongside a RenderSetup which collates the renderer plugins.
-   This phase creates a final DocSegment tree which is considered "frozen" for the rest of the phase.
+   This phase creates a final Document tree which is considered "frozen" for the rest of the phase.
 3. Visiting and Counting
    Once the document is frozen, the RendererPlugins may want to gather information from them:
    e.g. a citation plugin may need to gather the list of cited works
@@ -53,21 +53,19 @@ def parse_and_emit(
     output_file_name: str,
 ) -> None:
     # Phase 1 - Parsing
-    toplevel_docsegment = doc_setup.parse()
+    document = doc_setup.parse()
 
     # Phase 2 - Mutation
     exported_nodes: Set[Type[Union[Block, Inline, DocSegmentHeader]]] = set()
     exported_countables: Set[str] = set()
 
     def apply_mutation(m: DocMutator) -> None:
-        nonlocal toplevel_docsegment, exported_nodes, exported_countables
+        nonlocal document, exported_nodes, exported_countables
 
         exported_nodes.update(m._doc_nodes())
         exported_countables.update(m._countables())
         # TODO we need to handle mutations differently
-        toplevel_docsegment = m._mutate_document(
-            doc_setup.doc, doc_setup.fmt, toplevel_docsegment
-        )
+        document = m._mutate_document(doc_setup.doc, doc_setup.fmt, document)
 
     for doc_plugin in doc_setup.plugins:
         apply_mutation(doc_plugin)
@@ -101,14 +99,12 @@ def parse_and_emit(
 
     # Phase 3 - Visiting and Counting
     DocumentDfsPass(render_setup.gen_dfs_visitors()).dfs_over_document(
-        toplevel_docsegment,
+        document,
         doc_setup.anchors,
     )
 
     # Phase 4 - Rendering
     # Create the main document render jobs
-    render_setup.register_file_generator_jobs(
-        doc_setup, toplevel_docsegment, output_file_name
-    )
+    render_setup.register_file_generator_jobs(doc_setup, document, output_file_name)
     # Run all the jobs accumulated in the build system.
     doc_setup.build_sys.run_jobs()

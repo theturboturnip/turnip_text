@@ -36,7 +36,7 @@ use crate::{
     lexer::TTToken,
     python::{
         interop::{
-            Block, BlockScope, DocSegment, DocSegmentHeader, Inline, InlineScope, Paragraph, Raw,
+            Block, BlockScope, DocSegmentHeader, Document, Inline, InlineScope, Paragraph, Raw,
             TurnipTextSource,
         },
         typeclass::PyTcRef,
@@ -407,7 +407,7 @@ impl ProcessorStacks {
         }
     }
 
-    pub fn finalize(self, py: Python) -> TurnipTextContextlessResult<Py<DocSegment>> {
+    pub fn finalize(self, py: Python) -> TurnipTextContextlessResult<Py<Document>> {
         if self.stacks.len() > 0 {
             panic!(
                 "Called finalize() on Processorstacks when there were stacks left - forgot to \

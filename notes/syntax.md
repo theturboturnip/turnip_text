@@ -1,4 +1,219 @@
 turnip-text is an opinionated language that aims for formatting in source files to map intuitively to document elements, with a minimum of hardcoded syntax.
+It allows programmability through embedded Python.
+The turnip-text core parser reads in source text, evaluating embedded Python snippets as it goes, to create a Python document tree.
+
+# Initiating a turnip-text parse
+
+Calling `turnip_text.parse_file_native(src, globals)` starts turnip-text parsing the given source file.
+- `src` must be a `TurnipTextSource` instance, not a native Python file object. To create a `TurnipTextSource` instance from a file object, you have three options:
+
+  ```python
+  from turnip_text import TurnipTextSource
+
+  src_direct    = TurnipTextSource(name="some file", contents="turnip-text source code")
+  # Automatically sets name=path, and reads the file into `contents`
+  src_from_file = TurnipTextSource.from_path("path/to/turnip-text.ttext")
+  # Automatically sets name="<string>"
+  src_from_str  = TurnipTextSource.from_str("turnip-text source code")
+  ```
+- `globals` must be a Python `dict`. It is the context in which all code is evaluated.
+
+# The turnip-text document model
+
+The output of `parse_file_native()` is a `Document`.
+A `Document` contains front matter `content`, and a tree of `segments: List[DocSegment]`.
+`DocSegments` are segments of a document with `Header`s, and allow the creation of structured documents.
+For example, a book may consist of a `Document` with frontmatter (acknowledgements, table of contents), chapters, and sections within those chapters.
+Each chapter is a `DocSegment` in `document.segments`, and consists of a `header` (i.e. the chapter title with suitable formatting), further `content` (the content in the chapter before the first section), and `subsegments` (the sections within the chapter).
+
+Each `DocSegment` has a `header` - a Python object fulfilling the requirements of `Header`.
+Python code can create its own kinds of `Header` by declaring a class with a property `is_segment_header: bool = True` and another property `weight: int` which we will discuss later.
+You can also make your custom class a subclass of `Header` to add these properties automatically.
+There are no predefined implementations of this class, you must make your own.
+
+```python
+# Simplified, see __init__.pyi for full declaration
+class Document:
+    content: BlockScope
+    segments: List[DocSegment]
+
+class DocSegment:
+    header: Header
+    contents: BlockScope
+    subsegments: List[DocSegment]
+
+class Header(Protocol):
+    is_segment_header: bool = True
+    weight: int = 0
+```
+
+The `contents` of `Document`s and `DocSegment`s are both `BlockScope` objects: a Python class representing a type-checked list of `Block`s.
+The most basic example of a `Block` is a `Paragraph`, but `BlockScope`s themselves are also `Block`s and can thus nest inside themselves.
+Python code can create its own kinds of `Block` by declaring a class with a property `is_block: bool = True`.
+You can also make your custom class a subclass of `Block` to add this property automatically.
+
+```python
+# Simplified, see __init__.pyi for full declaration
+class Block(Protocol):
+    is_block: bool = True
+
+# BlockScope is like a List[Block] but append-only, and typechecked
+BlockScope = List[Block]
+```
+
+`Paragraph`s are blocks of text, and are usually created by parsing turnip-text source files rather than through Python.
+`Paragraph`s consist of many (at least one) `Sentence`s, and each `Sentence` consists of many (at least one) `Inline` objects.
+The most basic piece of inline content is `Text` representing plain UTF-8 text, but there are also `InlineScope`s (like `BlockScope`, a list of `Inline`) and `Raw` content (created through a "raw scope", which we'll see later).
+Python code can create its own kinds of `Inline` by declaring a class with a property `is_inline: bool = True`.
+You can also make your custom class a subclass of `Inline` to add this property automatically.
+
+```python
+# Paragraph is like a List[Sentence] but append-only, and typechecked
+Paragraph = List[Sentence]
+
+# Sentence is like a List[Inline] but append-only, and typechecked
+Sentence = List[Inline]
+
+class Inline(Protocol):
+    is_inline: bool = True
+
+class Text(Inline):
+    text: str
+class Raw(Inline):
+    data: str
+# InlineScope is like a List[Inline] but append-only, and typechecked
+InlineScope = List[Inline]
+```
+
+By this point the relations between classes should be clear:
+
+- `Document` contains `BlockScope` and `DocSegments`, themselves containing `BlockScope`.
+- `BlockScope`s contain other `Block`s: other `BlockScope`s, custom Python-defined `Block`s, and `Paragraph`s.
+- `Paragraph`s contain `Sentence`s.
+- `Sentence`s contain `Inline`s: plain `Text`, `Raw` content, custom Python-defined `Inline`s, and `InlineScope`s.
+- `InlineScope`s contain other `Inline`s - including themselves. 
+
+# Parsing a turnip-text document
+
+The turnip-text parser starts in *top-level block mode*.
+In all modes, the hash `#` character begins a comment that extends until the end of the line.
+Newlines may be escaped with a backslash `\` to continue the comment into the next line TODO check this.
+
+```python
+Some turnip-text # with a comment \
+the comment continues here
+```
+
+In *block mode*, the parser builds a `BlockScope` Python object out of the things you create.
+As such, it is possible to create `Block`s in this mode: `Paragraph`s, `BlockScope`s, and custom Python-defined `Block` instances.
+
+`Paragraph`s can be created by simply writing text.
+Each line of text is a single `Sentence`.
+Whitespace at the start and end of each line is ignored.
+If a sentence is particularly long, you can escape a newline as with comments.
+You cannot define multiple sentences per line.
+An empty line (which may include a comment) ends the paragraph.
+
+```
+This is a paragraph.
+I can continue a sentence \
+by escaping the following newline.
+
+This is the second paragraph.
+  # Even though a comment is here, the line is "empty".
+
+This is the third paragraph.
+```
+
+`BlockScope`s can be created by opening a scope with a squiggly brace at the start of a line `{` and a newline.
+The scope must be closed with a matching `}` before the end of the file.
+A closing scope will also close any paragraphs-in-progress - although like the opening character, it must occur at the start of the line (ignoring whitespace).
+
+```
+This is a paragraph outside a block scope.
+
+{
+    This is a paragraph inside a block scope!
+
+    # Whitespace between the line-start and the squiggly brace doesn't matter,
+    # this is still a block-scope-open
+    {
+        This is inside a block scope inside a block scope!
+    }
+}
+```
+
+Closing the block scope creates a Python `BlockScope` object and pushes it into the next level up, *emitting* it into the document.
+After a `BlockScope` (or any `Block`) is emitted, no content is allowed until the next line.
+It is good practice to leave a blank line between the end of a block scope and the next content, but it is not required.
+
+```
+{
+    Paragraph inside a block scope
+} # Nothing else is allowed here...
+Content can only start here!
+```
+
+Arbitrary `Block` instances can be inserted (or *emitted* into the document) by opening square brackets `[` `]`, a.k.a. *eval-brackets*.
+The contents of the square brackets (which may contain newlines, no matter where the eval-brackets appear) are captured as text and evaluated as Python with the `globals` passed into `parse_file_native`.
+This means any field `{ 'some_block': SomeBlock() }` in `globals` can be accessed in eval-brackets like `[some_block]`.
+If you want to include square brackets inside the evaluated Python, add the same number of minus/hyphen characters to the inside of the open/close.
+
+```
+# Assuming 'some_block' is a field in `globals`, this will evaluate it.
+[some_block]
+
+# Assuming 'BlockScope' and 'some_block' are fields in `globals`, we can evaluate them.
+# We can create a list inside the eval-brackets by putting - inside them.
+[-BlockScope([some_block])-]
+
+# Any number of - works, as long as they're balanced.
+# If you want to insert "-]" inside your code somewhere, add an extra - to the eval-brackets.
+[---BlockScope([some_block])---]
+
+# Whitespace inside the eval-brackets is trimmed from either side,
+# to allow more readable code inside.
+[---    BlockScope([some_block])  ---]
+
+# Eval-brackets don't have to be expressions, they can also be statements.
+# These cannot emit things into the document, they only mutate internal state.
+[ x = 5 ]
+# Eval-brackets can be multi-line statements, like function definitions:
+[--
+# Eval-brackets can contain comments too!
+def fib(n):
+    if n <= 1:
+        return 1
+    return fib(n - 1) + fib(n - 2)
+--]
+
+# These are evaluated in-order and mutate `globals`, so later statements can use them.
+[fib(x)] # evaluates to fib(5) = 8
+```
+
+Note that the final eval-bracket emits `fib(5) = 8`.
+TODO tests for this
+turnip-text supports limited coercion: if an eval-bracket is an expression which evaluates to a string, it is automatically wrapped in `Text`.
+If it evaluates to a float or an int, those are automatically stringified and converted to `Text`.
+They are converted through `__str__()` so won't have pretty formatting.
+Eagle-eyed readers will have noticed that `Text` isn't a `Block`, it is an `Inline`!
+Eval-brackets may evaluate to four kinds of object:
+
+- `None`, which has no effect on the document
+    - If the eval-bracket is a Python statement e.g. `x = 5` it mutates state but evaluates to `None`
+- A string, float, int or instance of `Inline`, all of which are placed in a `Paragraph` and put the parser in *inline mode*
+- An instance of `Block`, which is only allowed in *block mode* and is emitted into the enclosing `BlockScope`
+- An instance of `Header`, which is only allowed in *top-level block mode* and creates a new `DocSegment`.
+
+TODO emitting header
+
+TODO inline mode
+
+TODO hyphen and en/emdash expansion rules
+
+TODO scopes
+
+# Syntax in detail
 
 ## Code
 
@@ -7,19 +222,27 @@ Code is opened with a square bracket open `[` followed by N minus characters `-`
 Code ends when N minus characters `-`, followed by a square bracket close `]`, are encountered.
 The minuses can be used to disambiguate between a `]` for Python (e.g. closing a list) and the end of the code.
 Text between the open and close (ignoring the minuses, but including newlines and *all whitespace and indentation*) is then captured and evaluated as Python code.
+All newlines are converted to `\n` before evaluating.
 The open and close tokens are colloquially referred to as "eval-brackets".
 
 For flexibility, the code can be evaluated in one of three ways:
 - First, the code is stripped of whitespace on both ends and compiled as a single Python expression.
-    - If this succeeds, the expression is evaluated and the resulting object is emitted into the document.
+    - Expressions e.g. `[1+2]`, `[x]` resolve to a value.
+    - If this succeeds, the expression is evaluated with the globals passed to `parse_file_native`.
 - If that throws a SyntaxError, the code is stripped of whitespace on both ends and compiled as a sequence of Python statements.
+    - Statements e.g. `[x = 5]` mutate state but do not resolve to a value. 
     - This allows multiline statements, function declarations etc. to be executed inside eval-brackets.
-    - If this succeeds, the statements are executed and `None` is emitted into the document.
-- TODO if that throws a SyntaxError, the code is *not* stripped of whitespace and instead surrounded in an `if True:\n` block before being compiled as a sequence of Python statements.
+    - If this succeeds, the statements are executed with the globals passed to `parse_file_native`, and `None` is evaluated.
+- If that throws a SyntaxError, the code is *not* stripped of whitespace and instead surrounded in an `if True:\n` block before being compiled as a sequence of Python statements.
     - This is intended to allow consistently-indented Python code inside eval-brackets.
-        - It may allow inconsistently-indented Python code inside eval-brackets, such as code which begins indented and on later lines is unindented. 
-    - If this succeeds, the statements are executed and `None` is emitted into the document.
+        - It may allow inconsistently-indented Python code inside eval-brackets, such as code which begins indented and on later lines is unindented. You shouldn't do this, and it may break with later versions.
+    - If this succeeds, the statements are executed with the globals passed to `parse_file_native`, and `None` is evaluated.
     - If this fails, the compile error is thrown into the enclosing Python context TODO with the source code attached.
+
+Once the object has been evaluated, there are two possibilities:
+- If the eval-bracket is directly followed by a scope-open, the scope is processed, evaluated into a Python object, and a method is called on the eval-bracket object with the scope-object.
+The return value of that function is emitted into the document.
+- Otherwise, the eval-bracket object is emitted into the document.
 
 ### A note on the choice of disambiguation character
 
@@ -33,13 +256,13 @@ I found this created too much visual noise inside the square brackets.
 
 Minus characters are placed inside, not outside, the square brackets.
 An unfortunate consequence of this is sequences like `[-1]` look valid but aren't - although syntax highlighting should help in that case.
-I decided to place minus characters inside because when they are outside (i.e. participating in text) TODO they expand to hyphens or dashes.
+I decided to place minus characters inside because when they are outside (i.e. participating in text) they expand to hyphens or dashes.
 In order to place a hyphen or dash directly before something from code, the sequence `---[something in code]` is necessary.
-If minuses outside the square brackets were included in the code token, the only way to avoid this would be to escape the minuses e.g. `--\-[something in code]` but then the escaped minus wouldn't be merged into a hyphen.
+If minuses outside the square brackets were included in the code token, the only way to avoid this would be to escape the minuses, e.g. `--\-[something in code]`, but then the escaped minus wouldn't be merged into a hyphen.
 
 Minuses are used inside the square brackets so that it is clear the minuses are disambiguation characters instead of text.
 
-The other possible permutation is hashes outside the square brackets, but that would cause inconsistency when mixing the two e.g. `###[blah]####{raw content}#`.
+The other possible permutation is hashes outside the square brackets, but that would cause inconsistency when mixing eval-brackets with raw scopes e.g. `###[blah]####{raw content}#`.
 
 ## Scopes
 
@@ -77,11 +300,20 @@ There are three kinds of scope:
 ### A note on the placement of raw-scope hashes
 
 I experimented with having the N hashes inside the raw-scope open and close instead of on the outside.
-This would make the parsing more consistent with 
+This would make the parsing more consistent with Block/Inline scopes, which are disambiguated by the newlines inside, and with code.
+However, I felt the inner hashes made it more confusing where the raw capture began, and in this context that's the most important thing, e.g.
+
+```
+{###rawstuff###} vs #{rawstuff}#
+```
+
+## Hyphens
+
+TODO
 
 ## Newlines
 
-# Top-level, Block, Inline modes
-
-The first evaluated file begins in toplevel mode.
-At the toplevel, you can create `Header`s, `Block`s, and `TurnipTextSource` files in code.
+Newlines can be inconsistent between operating systems, and handling some combination of `\r`, `\n`, and `\r\n` is a must.
+turnip-text captures each of these as a Newline token, so supports all of them.
+Newlines are the only exception to raw string capture, as used in raw scopes and eval-brackets, and are always converted to `\n` before exposing them to Python.
+This means all newlines captured in raw scopes, and all newlines inside eval-brackets, are captured

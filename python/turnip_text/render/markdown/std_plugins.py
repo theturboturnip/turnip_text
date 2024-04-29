@@ -18,6 +18,7 @@ from turnip_text import (
     BlockScope,
     DocSegment,
     DocSegmentHeader,
+    Document,
     Inline,
     InlineScope,
     Raw,
@@ -243,9 +244,9 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
         return [FootnoteList]
 
     def _mutate_document(
-        self, doc: DocState, fmt: FormatContext, toplevel: DocSegment
-    ) -> DocSegment:
-        toplevel.push_subsegment(
+        self, doc: DocState, fmt: FormatContext, toplevel: Document
+    ) -> Document:
+        toplevel.push_segment(
             DocSegment(
                 doc.heading1(num=False) @ paragraph_of("Footnotes"),
                 BlockScope([FootnoteList()]),

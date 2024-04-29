@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple, Union, cast
 
-from turnip_text import Block, DocSegment, DocSegmentHeader, Inline
+from turnip_text import Block, DocSegment, DocSegmentHeader, Document, Inline
 from turnip_text.build_system import JobInputFile, JobOutputFile
 from turnip_text.doc import DocSetup
 from turnip_text.helpers import UNSET, MaybeUnset
@@ -339,7 +339,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
     def register_file_generator_jobs(
         self,
         doc_setup: DocSetup,
-        toplevel_segment: DocSegment,
+        document: Document,
         output_file_name: Optional[str],
     ) -> None:
         if self.document_class is UNSET:
@@ -394,7 +394,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
                     self.emitter,
                     write_to,
                 )
-                renderer.emit_document(toplevel_segment)
+                renderer.emit_document(document)
 
         doc_setup.build_sys.register_file_generator(
             render_job,

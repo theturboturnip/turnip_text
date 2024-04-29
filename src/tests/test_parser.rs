@@ -19,14 +19,14 @@ pub fn expect_parse_err<'a, T: Into<TestTurnipError<'a>>>(data: &'a str, expecte
     expect_parse(data, Err(expected_err.into()))
 }
 
-pub fn expect_parse(data: &str, expected_parse: Result<TestDocSegment, TestTurnipError>) {
+pub fn expect_parse(data: &str, expected_parse: Result<TestDocument, TestTurnipError>) {
     // Make sure Python has been set up
     INIT_PYTHON.call_once(prepare_freethreaded_turniptext_python);
 
     // Second step: parse
     // Need to do this safely so that we don't panic inside Python::with_gil.
     // I'm not 100% sure but I'm afraid it will poison the GIL and break subsequent tests.
-    let root: Result<TurnipTextResult<TestDocSegment>, _> = {
+    let root: Result<TurnipTextResult<TestDocument>, _> = {
         // Catch all non-abort panics while running the interpreter
         // and handling the output
         panic::catch_unwind(|| {

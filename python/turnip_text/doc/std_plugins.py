@@ -21,6 +21,7 @@ from turnip_text import (
     BlockScopeBuilder,
     DocSegment,
     DocSegmentHeader,
+    Document,
     Inline,
     InlineScope,
     InlineScopeBuilder,
@@ -236,10 +237,10 @@ class CitationDocPlugin(DocPlugin):
         )
 
     def _mutate_document(
-        self, doc: DocState, fmt: FormatContext, toplevel: DocSegment
-    ) -> DocSegment:
+        self, doc: DocState, fmt: FormatContext, toplevel: Document
+    ) -> Document:
         if not self._has_bib:
-            toplevel.push_subsegment(
+            toplevel.push_segment(
                 DocSegment(
                     doc.heading1(num=False) @ paragraph_of("Bibliography"),
                     BlockScope([Bibliography()]),

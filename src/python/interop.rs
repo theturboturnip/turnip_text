@@ -31,6 +31,7 @@ pub fn turnip_text(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<Paragraph>()?;
     m.add_class::<BlockScope>()?;
     m.add_class::<InlineScope>()?;
+    m.add_class::<Document>()?;
     m.add_class::<DocSegment>()?;
     m.add_class::<TurnipTextSource>()?;
 
@@ -51,7 +52,7 @@ fn parse_file<'py>(
     py: Python<'py>,
     file: TurnipTextSource,
     py_env: &PyDict,
-) -> PyResult<Py<DocSegment>> {
+) -> PyResult<Py<Document>> {
     let parser =
         TurnipTextParser::new(py, file.name, file.contents).map_err(TurnipTextError::to_pyerr)?;
     parser.parse(py, py_env).map_err(TurnipTextError::to_pyerr)
@@ -659,6 +660,39 @@ impl TurnipTextSource {
     }
 }
 
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct Document {
+    pub contents: Py<BlockScope>,
+    pub segments: PyInstanceList<DocSegment>,
+}
+impl Document {
+    pub fn new_rs(contents: Py<BlockScope>, segments: PyInstanceList<DocSegment>) -> Self {
+        Self { contents, segments }
+    }
+}
+#[pymethods]
+impl Document {
+    #[new]
+    pub fn new(contents: Py<BlockScope>, segments: &PyList) -> PyResult<Self> {
+        Ok(Self {
+            contents,
+            segments: PyInstanceList::from(segments)?,
+        })
+    }
+    #[getter]
+    pub fn contents<'py>(&'py self, py: Python<'py>) -> &'py PyAny {
+        self.contents.as_ref(py)
+    }
+    #[getter]
+    pub fn segments<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
+        PyIterator::from_object(py, self.segments.list(py))
+    }
+    pub fn push_segment(&self, py: Python<'_>, segment: Py<DocSegment>) -> PyResult<()> {
+        self.segments.append_checked(segment.as_ref(py))
+    }
+}
+
 /// This is used for implicit structure.
 /// It's created by Python code by emitting a DocSegmentHeader with some Weight, and the Weight is used to implicitly open and close scopes
 ///
@@ -707,50 +741,32 @@ impl TurnipTextSource {
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct DocSegment {
-    pub header: Option<PyTcRef<DocSegmentHeader>>,
+    pub header: PyTcRef<DocSegmentHeader>,
     pub contents: Py<BlockScope>,
     pub subsegments: PyInstanceList<DocSegment>,
 }
 impl DocSegment {
-    pub fn new_no_header(
-        py: Python,
-        contents: Py<BlockScope>,
-        subsegments: PyInstanceList<DocSegment>,
-    ) -> PyResult<Self> {
-        Self::new_checked(py, None, contents, subsegments)
-    }
     pub fn new_checked(
         py: Python,
-        header: Option<PyTcRef<DocSegmentHeader>>,
+        header: PyTcRef<DocSegmentHeader>,
         contents: Py<BlockScope>,
         subsegments: PyInstanceList<DocSegment>,
     ) -> PyResult<Self> {
-        match &header {
-            Some(h) => {
-                let weight = DocSegmentHeader::get_weight(py, h.as_ref(py))?;
-                for subsegment in subsegments.list(py).iter() {
-                    let subsegment: Py<DocSegment> = subsegment.extract()?;
-                    match &subsegment.borrow(py).header {
-                        Some(subh) => {
-                            let subweight = DocSegmentHeader::get_weight(py, subh.as_ref(py))?;
-                            if subweight <= weight {
-                                return Err(PyValueError::new_err(format!(
-                                    "Trying to create a DocSegment with weight {weight} but one \
-                                     of the provided subsegments has weight {subweight} which is \
-                                     smaller. Only larger subweights are allowed."
-                                )));
-                            }
-                        }
-                        None => {
-                            return Err(PyValueError::new_err(format!(
-                                "Trying to create a DocSegment but a subsegement doesn't have a \
-                                 header. All subsegments must have headers."
-                            )))
-                        }
-                    };
-                }
+        let weight = DocSegmentHeader::get_weight(py, header.as_ref(py))?;
+        for subsegment in subsegments.list(py).iter() {
+            let subweight = {
+                let subsegment: Py<DocSegment> = subsegment.extract()?;
+                let subsegment = subsegment.borrow(py);
+                let subheader = subsegment.header.as_ref(py);
+                DocSegmentHeader::get_weight(py, subheader)?
+            };
+            if subweight <= weight {
+                return Err(PyValueError::new_err(format!(
+                    "Trying to create a DocSegment with weight {weight} but one \
+                    of the provided subsegments has weight {subweight} which is \
+                    smaller. Only larger subweights are allowed."
+                )));
             }
-            None => {}
         }
 
         Ok(Self {
@@ -765,17 +781,14 @@ impl DocSegment {
     #[new]
     pub fn new(header: &PyAny, contents: Py<BlockScope>, subsegments: &PyList) -> PyResult<Self> {
         Ok(Self {
-            header: Some(PyTcRef::of_friendly(
-                header,
-                "input to DocSegment __init__",
-            )?),
+            header: PyTcRef::of_friendly(header, "input to DocSegment __init__")?,
             contents,
             subsegments: PyInstanceList::from(subsegments)?,
         })
     }
     #[getter]
-    pub fn header<'py>(&'py self, py: Python<'py>) -> Option<&'py PyAny> {
-        self.header.as_ref().map(|obj| obj.as_ref(py))
+    pub fn header<'py>(&'py self, py: Python<'py>) -> &'py PyAny {
+        self.header.as_ref(py)
     }
     #[getter]
     pub fn contents<'py>(&'py self, py: Python<'py>) -> &'py PyAny {
@@ -786,25 +799,14 @@ impl DocSegment {
         PyIterator::from_object(py, self.subsegments.list(py))
     }
     pub fn push_subsegment(&self, py: Python<'_>, subsegment: Py<DocSegment>) -> PyResult<()> {
-        match (&self.header, &subsegment.borrow(py).header) {
-            (Some(header), Some(subheader)) => {
-                let weight = DocSegmentHeader::get_weight(py, header.as_ref(py))?;
-                let subweight = DocSegmentHeader::get_weight(py, subheader.as_ref(py))?;
-                if subweight <= weight {
-                    return Err(PyValueError::new_err(format!(
-                        "Trying to add to a DocSegment with weight {weight} but the provided \
+        let weight = DocSegmentHeader::get_weight(py, self.header.as_ref(py))?;
+        let subweight = DocSegmentHeader::get_weight(py, subsegment.borrow(py).header.as_ref(py))?;
+        if subweight <= weight {
+            return Err(PyValueError::new_err(format!(
+                "Trying to add to a DocSegment with weight {weight} but the provided \
                          subsegment has weight {subweight} which is smaller. Only larger \
                          subweights are allowed."
-                    )));
-                }
-            }
-            (_, None) => {
-                return Err(PyValueError::new_err(format!(
-                    "Trying to add to a DocSegment but the subsegement doesn't have a header. All \
-                     subsegments must have headers."
-                )))
-            }
-            _ => {}
+            )));
         };
         self.subsegments.append_checked(subsegment.as_ref(py))
     }

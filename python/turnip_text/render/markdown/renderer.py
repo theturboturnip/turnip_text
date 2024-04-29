@@ -3,7 +3,15 @@ from contextlib import contextmanager
 from enum import Enum
 from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple, Type
 
-from turnip_text import Block, DocSegment, DocSegmentHeader, Inline, Paragraph, Text
+from turnip_text import (
+    Block,
+    DocSegment,
+    DocSegmentHeader,
+    Document,
+    Inline,
+    Paragraph,
+    Text,
+)
 from turnip_text.build_system import JobInputFile, JobOutputFile
 from turnip_text.doc import DocAnchors, DocSetup, DocState, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
@@ -294,7 +302,7 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
     def register_file_generator_jobs(
         self,
         doc_setup: DocSetup,
-        toplevel_segment: DocSegment,
+        document: Document,
         output_file_name: Optional[str],
     ) -> None:
         # Make a render job and register it in the build system.
@@ -308,7 +316,7 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
                     write_to,
                     html_mode=self.html_only,
                 )
-                renderer.emit_document(toplevel_segment)
+                renderer.emit_document(document)
 
         default_output_file_name = "document.html" if self.html_only else "document.md"
 

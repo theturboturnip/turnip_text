@@ -30,6 +30,7 @@ from turnip_text import (
     BlockScope,
     DocSegment,
     DocSegmentHeader,
+    Document,
     Inline,
     InlineScope,
     Paragraph,
@@ -203,13 +204,10 @@ class DocumentDfsPass:
     def __init__(self, visitors: List[Tuple[VisitorFilter, VisitorFunc]]) -> None:
         self.visitors = visitors
 
-    def dfs_over_document(
-        self, toplevel_docsegment: DocSegment, anchors: DocAnchors
-    ) -> None:
+    def dfs_over_document(self, document: Document, anchors: DocAnchors) -> None:
         # Floats are parsed when their portals are encountered
-        dfs_queue: List[Block | Inline | DocSegment | DocSegmentHeader] = [
-            toplevel_docsegment
-        ]
+        dfs_queue: List[Block | Inline | DocSegment | DocSegmentHeader] = []
+        dfs_queue.extend(reversed((document.contents, *document.segments)))
         visited_floats: Set[Anchor] = set()
         while dfs_queue:
             node = dfs_queue.pop()
@@ -393,8 +391,9 @@ class Renderer(abc.ABC):
         self.handlers.emit_block_or_inline(b, self, self.fmt)
 
     # This can be overridden by renderers to add stuff at the top level
-    def emit_document(self: Self, doc: DocSegment) -> None:
-        self.emit_segment(doc)
+    def emit_document(self: Self, doc: Document) -> None:
+        self.emit_blockscope(doc.contents)
+        self.emit(*doc.segments)
 
     def emit_segment(self: Self, s: DocSegment) -> None:
         if s.header is None:
@@ -475,7 +474,7 @@ class RenderSetup(abc.ABC, Generic[TRenderer]):
     def register_file_generator_jobs(
         self,
         doc_setup: DocSetup,
-        toplevel_segment: DocSegment,
+        document: Document,
         output_file_name: Optional[str],
     ) -> None:
         """Register the actual job to render the necessary files out from toplevel_segment into doc_setup.build_sys."""

@@ -183,17 +183,16 @@ fn test_raw_scope_builder_building_block_in_inline() {
 fn test_inline_scope_builder_building_header() {
     expect_parse(
         "[TestDocSegmentBuilder()]{ Wowee i wish I had inline content }",
-        Ok(TestDocSegment {
-            header: None,
+        Ok(TestDocument {
             contents: TestBlock::BlockScope(vec![]),
-            subsegments: vec![TestDocSegment {
-                header: Some((
+            segments: vec![TestDocSegment {
+                header: (
                     0,
                     None,
                     Some(TestInline::InlineScope(vec![test_text(
                         "Wowee i wish I had inline content",
                     )])),
-                )),
+                ),
                 contents: TestBlock::BlockScope(vec![]),
                 subsegments: vec![],
             }],
@@ -207,17 +206,16 @@ fn test_block_scope_builder_building_header() {
         "[TestDocSegmentBuilder()]{
         Wowee i wish I had block content
     }",
-        Ok(TestDocSegment {
-            header: None,
+        Ok(TestDocument {
             contents: TestBlock::BlockScope(vec![]),
-            subsegments: vec![TestDocSegment {
-                header: Some((
+            segments: vec![TestDocSegment {
+                header: (
                     0,
                     Some(TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
                         test_sentence("Wowee i wish I had block content"),
                     ])])),
                     None,
-                )),
+                ),
                 contents: TestBlock::BlockScope(vec![]),
                 subsegments: vec![],
             }],
@@ -229,17 +227,16 @@ fn test_block_scope_builder_building_header() {
 fn test_raw_scope_builder_building_header() {
     expect_parse(
         "[TestDocSegmentBuilder()]#{ Wowee i wish I had inline content }#",
-        Ok(TestDocSegment {
-            header: None,
+        Ok(TestDocument {
             contents: TestBlock::BlockScope(vec![]),
-            subsegments: vec![TestDocSegment {
-                header: Some((
+            segments: vec![TestDocSegment {
+                header: (
                     0,
                     None,
                     Some(TestInline::InlineScope(vec![test_raw_text(
                         " Wowee i wish I had inline content ",
                     )])),
-                )),
+                ),
                 contents: TestBlock::BlockScope(vec![]),
                 subsegments: vec![],
             }],

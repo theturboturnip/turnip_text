@@ -3,7 +3,7 @@ use pyo3::{types::PyDict, Py, Python};
 use std::fmt::Debug;
 
 use crate::error::interp::MapContextlessResult;
-use crate::python::interop::{BlockScope, DocSegment, DocSegmentHeader};
+use crate::python::interop::{BlockScope, DocSegment, DocSegmentHeader, Document};
 use crate::python::typeclass::{PyInstanceList, PyTcRef};
 use crate::{
     error::{stringify_pyerr, TurnipTextContextlessResult, TurnipTextError, TurnipTextResult},
@@ -74,7 +74,7 @@ impl TurnipTextParser {
             builders,
         })
     }
-    pub fn parse(mut self, py: Python, py_env: &PyDict) -> TurnipTextResult<Py<DocSegment>> {
+    pub fn parse(mut self, py: Python, py_env: &PyDict) -> TurnipTextResult<Py<Document>> {
         // Call process_tokens until it breaks out returning FileInserted or FileEnded.
         // FileEnded will be returned exactly once more than FileInserted - FileInserted is only returned for subfiles, FileEnded is returned for all subfiles AND the initial file.
         // We handle this because the file stack, Vec<ParsingFile>, and interpreter each have one file's worth of content pushed in initially.
@@ -141,7 +141,7 @@ impl InterimDocumentStructure {
         })
     }
 
-    pub fn finalize(self, py: Python) -> PyResult<Py<DocSegment>> {
+    pub fn finalize(self, py: Python) -> PyResult<Py<Document>> {
         assert_eq!(
             self.segment_stack.len(),
             0,
@@ -149,11 +149,10 @@ impl InterimDocumentStructure {
         );
         Py::new(
             py,
-            DocSegment::new_no_header(
-                py,
+            Document::new_rs(
                 self.toplevel_content.clone(),
                 self.toplevel_segments.clone(),
-            )?,
+            ),
         )
     }
 
@@ -261,7 +260,7 @@ impl InterpDocSegmentState {
     fn finalize(self, py: Python) -> PyResult<Py<DocSegment>> {
         Py::new(
             py,
-            DocSegment::new_checked(py, Some(self.header), self.content, self.subsegments)?,
+            DocSegment::new_checked(py, self.header, self.content, self.subsegments)?,
         )
     }
 }
