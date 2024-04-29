@@ -262,7 +262,6 @@ class CitationDocPlugin(DocPlugin):
     def citeauthor(self, fmt: FormatContext, citekey: str) -> Inline:
         return CiteAuthor(citekey)
 
-    @property
     @stateful
     def bibliography(self, doc: DocState) -> Bibliography:
         self._has_bib = True
@@ -286,7 +285,6 @@ class FootnoteDocPlugin(DocPlugin):
     def _countables(self) -> Sequence[str]:
         return ("footnote",)
 
-    @property
     @stateful
     def footnote(self, doc: DocState) -> InlineScopeBuilder:
         @inline_scope_builder

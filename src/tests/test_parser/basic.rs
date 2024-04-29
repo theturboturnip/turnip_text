@@ -807,13 +807,3 @@ stuff that gets swallowed
         Ok(test_doc(vec![])),
     )
 }
-
-#[test]
-fn test_property_calls_get() {
-    expect_parse(
-        "[TEST_PROPERTY]",
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text(
-            "5",
-        )]])])),
-    )
-}

@@ -1,6 +1,6 @@
 use std::ffi::CString;
 
-use pyo3::{exceptions::PySyntaxError, intern, prelude::*, types::PyDict, AsPyPointer};
+use pyo3::{exceptions::PySyntaxError, prelude::*, types::PyDict, AsPyPointer};
 
 use crate::{
     error::{
@@ -316,7 +316,7 @@ pub fn eval_or_exec<'py, 'code>(
 
     // First, try to compile the code as a single Python expression.
     // If that succeeds to compile, run it and return the result.
-    let eval_bracket_res = match try_compile_and_run(
+    match try_compile_and_run(
         py,
         py_env,
         &code_trimmed,
@@ -361,28 +361,5 @@ pub fn eval_or_exec<'py, 'code>(
                 }
         }
         other => other,
-    };
-
-    // TODO eliminate getter
-    match eval_bracket_res {
-        Ok(raw_obj) => {
-            // If it has __get__, call it.
-            // `property` objects and other data descriptors use this.
-            let getter = intern!(py, "__get__");
-            if raw_obj.hasattr(getter).unwrap() {
-                // https://docs.python.org/3.8/howto/descriptor.html
-                // "For objects, the machinery is in object.__getattribute__() which transforms b.x into type(b).__dict__['x'].__get__(b, type(b))."
-                //
-                // We're transforming `[x]` into (effectively) `py_env.x`
-                // which should transform into (type(py_env).__dict__['x']).__get__(py_env, type(py_env))
-                // = raw_res.__get__(py_env, type(py_env))
-                Ok(raw_obj
-                    .call_method1(getter, (py_env, py_env.get_type()))
-                    .unwrap())
-            } else {
-                Ok(raw_obj)
-            }
-        }
-        Err(err) => Err(err),
     }
 }

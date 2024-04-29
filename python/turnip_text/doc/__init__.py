@@ -48,10 +48,7 @@ __all__ = [
     "FormatContext",
     "anchors",
     "stateful",
-    "stateful_property",
     "stateless",
-    "stateless_property",
-    "BoundProperty",
 ]
 
 TDocPlugin = TypeVar("TDocPlugin", bound="DocPlugin")
@@ -142,8 +139,9 @@ class DocPlugin(DocMutator):
         Define the interface available to the renderer context,
         and thus all eval-brackets in evaluated documents.
 
-        By default, finds all public variables, properties (as `property` objects, without evaluating them),member functions, and static functions.
+        By default, finds all public variables, member functions, and static functions.
         Ignores any fields that begin with _.
+        Ignores properties.
         Based on https://github.com/python/cpython/blob/a0773b89dfe5cd2190d539905dd89e7f6455668e/Lib/inspect.py#L562C5-L562C5.
 
         May be overridden."""
@@ -155,16 +153,16 @@ class DocPlugin(DocMutator):
             if key.startswith("_"):
                 continue
             value = inspect.getattr_static(self, key)
-            if isinstance(value, property):
-                # Hack to make @property @stateless work.
-                stateless = getattr(value.fget, "_stateless", False)
-                interface[key] = BoundProperty(self, value, stateless)
-            elif inspect.ismethoddescriptor(value) or inspect.isdatadescriptor(value):
-                # We want to pass these through to the doc/less context objects directly so they are re-__get__ted each time, but they still need to be bound to this plugin object.
-                # The solution: construct BoundProperty, which binds the internal __get__, __set__, __delete__ to self,
-                # and pass that through as the interface.
-                stateless = getattr(value, "_stateless", False)
-                interface[key] = BoundProperty(self, value, stateless)
+            if (
+                isinstance(value, property)
+                or inspect.ismethoddescriptor(value)
+                or inspect.isdatadescriptor(value)
+            ):
+                # We can't pass properties through - these are used via a Dict which is used as globals() and __get__ wouldn't be called.
+                # If you want to access mutable state, do it through a function.
+                print(
+                    f"Property {key} on {self} is not going to be used in the plugin interface, because we can't enforce calling __get__(). Expose getter and setter functions instead."
+                )
             else:
                 # Use getattr to do everything else as normal e.g. bind methods to the object etc.
                 interface[key] = getattr(self, key)
@@ -185,7 +183,7 @@ class DocPlugin(DocMutator):
 
             for key, value in i.items():
                 # The stateless context only includes:
-                # - properties or other data descriptors, functions, and methods that have been explicitly marked stateless.
+                # - functions and methods that have been explicitly marked stateless.
                 # - class variables which aren't data descriptors (they don't have access to the plugin self and don't have access to __doc.)
 
                 if key in RESERVED_DOC_PLUGIN_EXPORTS:
@@ -195,7 +193,7 @@ class DocPlugin(DocMutator):
                 is_stateless = False
                 if inspect.ismethod(value):
                     is_stateless = getattr(value.__func__, "_stateless", False)
-                elif hasattr(value, "__call__") or hasattr(value, "__get__"):
+                elif hasattr(value, "__call__"):
                     # Callables or data descriptors need to be explicitly marked as stateless
                     is_stateless = getattr(value, "_stateless", False)
                 else:
@@ -241,33 +239,6 @@ class DocPlugin(DocMutator):
         return wrapper
 
     @staticmethod
-    def _stateful_property(
-        f: Callable[Concatenate[TDocPlugin, "DocState", P], T]
-    ) -> property:
-        """
-        An example of stateful property:
-
-        @stateful_property
-        def todo(self, doc: MutableState) -> InlineScopeBuilder:
-            @inline_scope_builder
-            def something_that_mutates_state_by_adding_a_todo(...):
-                ...
-            return something_that_mutates_state_by_adding_a_todo
-
-        doc is always checked to not be frozen when the property is accessed.
-
-        In this example, the lambda which captures __doc may live longer until doc is frozen.
-        It's your responsibility to make sure it doesn't mutate __doc in that case!!
-
-        Note that because property objects have opaque typing, typecheckers can't tell that this
-        returns something of type T. This means if you try to use stateful_property to decorate a function
-        that must match some property defined elsewhere, it won't work.
-        In those cases, you can use @property above @stateful and it all works fine.
-        """
-
-        return property(DocPlugin._stateful(f))
-
-    @staticmethod
     def _stateless(
         f: Callable[Concatenate[TDocPlugin, "FormatContext", P], T]
     ) -> Callable[Concatenate[TDocPlugin, P], T]:
@@ -294,57 +265,10 @@ class DocPlugin(DocMutator):
 
         return wrapper
 
-    @staticmethod
-    def _stateless_property(
-        f: Callable[Concatenate[TDocPlugin, "FormatContext", P], T]
-    ) -> property:
-        """
-        In case you want to use the StatelessContext in a property:
-
-        @stateless_property
-        def bold_or_italic(self, fmt):
-            if random.randint(0, 1) == 1:
-                return fmt.bold
-            else:
-                return fmt.italic
-
-        Note that because property objects have opaque typing, typecheckers can't tell that this
-        returns something of type T. This means if you try to use stateless_property to decorate a function
-        that must match some property defined elsewhere, it won't work.
-        In those cases, you can use @property above @stateless and it all works fine.
-        """
-
-        return property(DocPlugin._stateless(f))
-
 
 # TODO: annoyingly, vscode doesn't auto-import these. Why?
 stateful = DocPlugin._stateful
-stateful_property = DocPlugin._stateful_property
 stateless = DocPlugin._stateless
-stateless_property = DocPlugin._stateless_property
-
-
-class BoundProperty:
-    "Emulate PyProperty_Type() in Objects/descrobject.c, as seen in https://docs.python.org/3.8/howto/descriptor.html"
-
-    _obj_for_data_descriptor: Any
-    _data_descriptor: Any
-    _stateless: bool
-
-    def __init__(self, obj: Any, data_descriptor: Any, stateless: bool) -> None:
-        self._obj_for_data_descriptor = obj
-        self._data_descriptor = data_descriptor
-        self._stateless = stateless
-        self.__doc__ = data_descriptor.__doc__
-
-    def __get__(self, _obj: Any, _ownerclass: Optional[type] = None) -> Any:
-        return self._data_descriptor.__get__(self._obj_for_data_descriptor)
-
-    def __set__(self, _obj: Any, value: Any) -> None:
-        self._data_descriptor.__set__(self._obj_for_data_descriptor, value)
-
-    def __delete__(self, _obj: Any) -> None:
-        self._data_descriptor.__delete__(self._obj_for_data_descriptor)
 
 
 RESERVED_DOC_PLUGIN_EXPORTS = [
