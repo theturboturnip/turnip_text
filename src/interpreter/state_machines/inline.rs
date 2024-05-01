@@ -8,7 +8,7 @@ use crate::{
     interpreter::state_machines::{BlockElem, InlineElem},
     lexer::{Escapable, TTToken},
     python::{
-        interop::{Block, InlineScope, Paragraph, Raw, Sentence, Text},
+        interop::{Block, DocSegmentHeader, InlineScope, Paragraph, Raw, Sentence, Text},
         typeclass::PyTcRef,
     },
     util::{ParseContext, ParseSpan},
@@ -54,6 +54,11 @@ trait InlineMode {
     ) -> TurnipTextContextlessResult<ProcStatus>;
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus>;
 
+    fn err_on_header_from_code(
+        &self,
+        header: PyTcRef<DocSegmentHeader>,
+        header_ctx: ParseContext,
+    ) -> TurnipTextContextlessError;
     fn err_on_block_from_code(
         &self,
         block: PyTcRef<Block>,
@@ -212,6 +217,31 @@ impl InlineMode for ParagraphInlineMode {
             ))))
         } else {
             Err(InterpError::InlineScopeCloseOutsideScope(tok.token_span()).into())
+        }
+    }
+
+    fn err_on_header_from_code(
+        &self,
+        header: PyTcRef<DocSegmentHeader>,
+        header_ctx: ParseContext,
+    ) -> TurnipTextContextlessError {
+        // This must have come from code.
+        if self.start_of_line {
+            // Someone is trying to open a new, separate header and not a header "inside" the paragraph.
+            // Give them a more relevant error message.
+            InterpError::InsufficientBlockSeparation {
+                last_block: BlockModeElem::Para(self.ctx),
+                next_block_start: BlockModeElem::HeaderFromCode(header_ctx.full_span()),
+            }
+            .into()
+        } else {
+            // We're deep inside a paragraph here.
+            InterpError::CodeEmittedHeaderInInlineMode {
+                inl_mode: self.inline_mode_ctx(),
+                header,
+                code_span: header_ctx.full_span(),
+            }
+            .into()
         }
     }
 
@@ -391,6 +421,18 @@ impl InlineMode for KnownInlineScopeInlineMode {
         .into())
     }
 
+    fn err_on_header_from_code(
+        &self,
+        header: PyTcRef<DocSegmentHeader>,
+        header_ctx: ParseContext,
+    ) -> TurnipTextContextlessError {
+        InterpError::CodeEmittedHeaderInInlineMode {
+            inl_mode: self.inline_mode_ctx(),
+            header,
+            code_span: header_ctx.full_span(),
+        }
+        .into()
+    }
     fn err_on_block_from_code(
         &self,
         block: PyTcRef<Block>,
@@ -573,6 +615,7 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
                     .flush_into(py, false, &mut self.inner)?;
                 self.inner.on_close_scope(py, tok, data)
             }
+            // TODO a commented-out line midway through a paragraph shouldn't split the paragraph
             TTToken::Hashes(_, _) => {
                 self.current_building_text
                     .flush_into(py, false, &mut self.inner)?;
@@ -624,12 +667,7 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
             Some((elem_ctx, elem)) => match elem {
                 // Can't get a header or a block in an inline scope
                 DocElement::HeaderFromCode(header) => {
-                    Err(InterpError::CodeEmittedHeaderInInlineMode {
-                        inl_mode: self.inner.inline_mode_ctx(),
-                        header,
-                        code_span: elem_ctx.full_span(),
-                    }
-                    .into())
+                    Err(self.inner.err_on_header_from_code(header, elem_ctx))
                 }
                 DocElement::Block(BlockElem::FromCode(block)) => {
                     Err(self.inner.err_on_block_from_code(block, elem_ctx))

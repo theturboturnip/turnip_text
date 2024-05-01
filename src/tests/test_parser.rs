@@ -13,52 +13,55 @@ use std::sync::Once;
 use super::helpers::*;
 static INIT_PYTHON: Once = Once::new();
 
-/// Run the lexer and parser on a given piece of text, convert the parsed result to our test versions, and compare with the expected result.
-
-pub fn expect_parse_err<'a, T: Into<TestTurnipError<'a>>>(data: &'a str, expected_err: T) {
-    expect_parse(data, Err(expected_err.into()))
-}
-
-pub fn expect_parse(data: &str, expected_parse: Result<TestDocument, TestTurnipError>) {
+fn eval_data(data: &str) -> TurnipTextResult<TestDocument> {
     // Make sure Python has been set up
     INIT_PYTHON.call_once(prepare_freethreaded_turniptext_python);
 
     // Second step: parse
     // Need to do this safely so that we don't panic inside Python::with_gil.
     // I'm not 100% sure but I'm afraid it will poison the GIL and break subsequent tests.
-    let root: Result<TurnipTextResult<TestDocument>, _> = {
-        // Catch all non-abort panics while running the interpreter
-        // and handling the output
-        panic::catch_unwind(|| {
-            Python::with_gil(|py| {
-                let py_env = generate_globals(py).expect("Couldn't generate globals dict");
-                let parser = TurnipTextParser::new(py, "<test>".into(), data.into())?;
-                let root = parser.parse(py, py_env)?;
-                let doc_obj = root.to_object(py);
-                let doc: &PyAny = doc_obj.as_ref(py);
-                Ok(doc.as_test(py))
-            })
+    // Catch all non-abort panics while running the interpreter and handling the output
+    let res_with_panic_err = panic::catch_unwind(|| {
+        Python::with_gil(|py| {
+            let py_env = generate_globals(py).expect("Couldn't generate globals dict");
+            let parser = TurnipTextParser::new(py, "<test>".into(), data.into())?;
+            let root = parser.parse(py, py_env)?;
+            let doc_obj = root.to_object(py);
+            let doc: &PyAny = doc_obj.as_ref(py);
+            Ok(doc.as_test(py))
         })
-        // Unlock mutex
-    };
-    // If any of the python-related code tried to panic, re-panic here now the mutex is unlocked
-    match root {
-        Ok(root) => match (&root, &expected_parse) {
-            (Ok(doc), Ok(expected_doc)) => assert_eq!(doc, expected_doc),
-            (Err(actual_err), Err(expected_err)) => {
-                let matches = Python::with_gil(|py| expected_err.matches(py, &actual_err));
-                if !matches {
-                    panic!(
-                        "assertion failed:\nexpected: {expected_err:?}\n  actual: {actual_err:?}"
-                    );
-                }
+    });
+
+    // If any of the python-related code tried to panic, re-panic here now the   is unlocked
+    res_with_panic_err.unwrap()
+}
+
+pub fn expect_parse_err<'a, T: Into<TestTurnipError<'a>>>(data: &'a str, expected_err: T) {
+    expect_parse(data, Err(expected_err.into()))
+}
+
+pub fn expect_parse_any_ok(data: &str) {
+    let res = eval_data(data);
+    if !res.is_ok() {
+        panic!("Got Err when expected Ok: {res:?}")
+    }
+}
+
+// TODO make this expect TestDocument not Result<TestDocument>
+pub fn expect_parse(data: &str, expected_parse: Result<TestDocument, TestTurnipError>) {
+    let root = eval_data(data);
+    match (&root, &expected_parse) {
+        (Ok(doc), Ok(expected_doc)) => assert_eq!(expected_doc, doc),
+        (Err(actual_err), Err(expected_err)) => {
+            let matches = Python::with_gil(|py| expected_err.matches(py, &actual_err));
+            if !matches {
+                panic!("assertion failed:\nexpected: {expected_err:?}\n  actual: {actual_err:?}");
             }
-            _ => panic!(
-                "assertion failed, expected\n\t{expected_parse:?}\ngot\n\t{root:?}\n(mismatching \
+        }
+        _ => panic!(
+            "assertion failed, expected\n\t{expected_parse:?}\ngot\n\t{root:?}\n(mismatching \
                  success)"
-            ),
-        },
-        Err(caught_panic) => panic!("{:?}", caught_panic),
+        ),
     }
 }
 

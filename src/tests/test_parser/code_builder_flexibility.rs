@@ -182,7 +182,7 @@ fn test_raw_scope_builder_building_block_in_inline() {
 #[test]
 fn test_inline_scope_builder_building_header() {
     expect_parse(
-        "[TestDocSegmentBuilder()]{ Wowee i wish I had inline content }",
+        "[TestHeaderBuilder()]{ Wowee i wish I had inline content }",
         Ok(TestDocument {
             contents: TestBlock::BlockScope(vec![]),
             segments: vec![TestDocSegment {
@@ -203,7 +203,7 @@ fn test_inline_scope_builder_building_header() {
 #[test]
 fn test_block_scope_builder_building_header() {
     expect_parse(
-        "[TestDocSegmentBuilder()]{
+        "[TestHeaderBuilder()]{
         Wowee i wish I had block content
     }",
         Ok(TestDocument {
@@ -226,7 +226,7 @@ fn test_block_scope_builder_building_header() {
 #[test]
 fn test_raw_scope_builder_building_header() {
     expect_parse(
-        "[TestDocSegmentBuilder()]#{ Wowee i wish I had inline content }#",
+        "[TestHeaderBuilder()]#{ Wowee i wish I had inline content }#",
         Ok(TestDocument {
             contents: TestBlock::BlockScope(vec![]),
             segments: vec![TestDocSegment {
@@ -249,16 +249,14 @@ fn test_raw_scope_builder_building_header() {
 #[test]
 fn test_inline_scope_builder_building_header_in_inline_mode_para() {
     expect_parse_err(
-        "And as I was saying [TestDocSegmentBuilder()]{ Wowee i wish I had inline content }",
+        "And as I was saying [TestHeaderBuilder()]{ Wowee i wish I had inline content }",
         TestInterpError::CodeEmittedHeaderInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "And",
                 " as I was saying",
                 " ",
             )),
-            code_span: TestParseSpan(
-                "[TestDocSegmentBuilder()]{ Wowee i wish I had inline content }",
-            ),
+            code_span: TestParseSpan("[TestHeaderBuilder()]{ Wowee i wish I had inline content }"),
         },
     )
 }
@@ -266,7 +264,7 @@ fn test_inline_scope_builder_building_header_in_inline_mode_para() {
 #[test]
 fn test_block_scope_builder_building_header_in_inline() {
     expect_parse_err(
-        "And as I was saying [TestDocSegmentBuilder()]{
+        "And as I was saying [TestHeaderBuilder()]{
             Wowee i wish I had block content
         }",
         TestInterpError::CodeEmittedHeaderInInlineMode {
@@ -276,7 +274,7 @@ fn test_block_scope_builder_building_header_in_inline() {
                 " ",
             )),
             code_span: TestParseSpan(
-                "[TestDocSegmentBuilder()]{
+                "[TestHeaderBuilder()]{
             Wowee i wish I had block content
         }",
             ),
@@ -287,7 +285,7 @@ fn test_block_scope_builder_building_header_in_inline() {
 #[test]
 fn test_raw_scope_builder_building_header_in_inline() {
     expect_parse_err(
-        "And as I was saying [TestDocSegmentBuilder()]#{ Wowee i wish 
+        "And as I was saying [TestHeaderBuilder()]#{ Wowee i wish 
             I had inline 
             and raw
             content }#",
@@ -298,7 +296,7 @@ fn test_raw_scope_builder_building_header_in_inline() {
                 " ",
             )),
             code_span: TestParseSpan(
-                "[TestDocSegmentBuilder()]#{ Wowee i wish 
+                "[TestHeaderBuilder()]#{ Wowee i wish 
             I had inline 
             and raw
             content }#",

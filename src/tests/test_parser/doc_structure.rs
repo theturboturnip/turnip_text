@@ -6,21 +6,21 @@ fn test_many_inner_levels() {
         "
         outside
 
-        [TestDocSegmentHeader(weight=1)]
+        [TestHeader(weight=1)]
 
         light!
 
-        [TestDocSegmentHeader(weight=2)]
+        [TestHeader(weight=2)]
         
-        [TestDocSegmentHeader(weight=30)]
+        [TestHeader(weight=30)]
 
-        [TestDocSegmentHeader(weight=54)]
+        [TestHeader(weight=54)]
         
         middling
 
-        [TestDocSegmentHeader(weight=67)]
+        [TestHeader(weight=67)]
 
-        [TestDocSegmentHeader(weight=100)]
+        [TestHeader(weight=100)]
 
         heAVEY
 
@@ -70,21 +70,21 @@ fn test_bouncing_in_and_out() {
         "
         outside
 
-        [TestDocSegmentHeader(weight=1)]
+        [TestHeader(weight=1)]
 
         light!
 
-        [TestDocSegmentHeader(weight=2)]
+        [TestHeader(weight=2)]
         
-        [TestDocSegmentHeader(weight=30)]
+        [TestHeader(weight=30)]
 
-        [TestDocSegmentHeader(weight=54)]
+        [TestHeader(weight=54)]
         
         middling
 
-        [TestDocSegmentHeader(weight=2)]
+        [TestHeader(weight=2)]
 
-        [TestDocSegmentHeader(weight=20)]
+        [TestHeader(weight=20)]
 
         middling again!
 
@@ -137,15 +137,15 @@ fn test_bouncing_out_from_under() {
         "
         outside
 
-        [TestDocSegmentHeader(weight=10)]
+        [TestHeader(weight=10)]
 
         1st level
 
-        [TestDocSegmentHeader(weight=0)]
+        [TestHeader(weight=0)]
         
         1st level
 
-        [TestDocSegmentHeader(weight=10)]
+        [TestHeader(weight=10)]
 
         2nd level
 
@@ -186,21 +186,21 @@ fn test_negative_weight() {
         "
         outside
 
-        [TestDocSegmentHeader(weight=1)]
+        [TestHeader(weight=1)]
 
         light!
 
-        [TestDocSegmentHeader(weight=2)]
+        [TestHeader(weight=2)]
         
-        [TestDocSegmentHeader(weight=-10)]
+        [TestHeader(weight=-10)]
 
-        [TestDocSegmentHeader(weight=54)]
+        [TestHeader(weight=54)]
         
         middling
 
-        [TestDocSegmentHeader(weight=67)]
+        [TestHeader(weight=67)]
 
-        [TestDocSegmentHeader(weight=100)]
+        [TestHeader(weight=100)]
 
         heAVEY
 
@@ -251,11 +251,11 @@ fn test_negative_weight() {
 fn test_cant_create_header_block_scope() {
     expect_parse_err(
         "{
-    [TestDocSegmentHeader()]
+    [TestHeader()]
     }",
         TestInterpError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
-            code_span: TestParseSpan("[TestDocSegmentHeader()]"),
+            code_span: TestParseSpan("[TestHeader()]"),
         },
     )
 }
@@ -264,7 +264,7 @@ fn test_cant_create_header_block_scope() {
 fn test_cant_build_header_block_scope() {
     expect_parse_err(
         "{
-    [TestDocSegmentBuilder()]{
+    [TestHeaderBuilder()]{
         Sometimes docsegmentheaders can be built, too!
         But if they're in a block scope it shouldn't be allowed :(
     }
@@ -272,7 +272,7 @@ fn test_cant_build_header_block_scope() {
         TestInterpError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
             code_span: TestParseSpan(
-                "[TestDocSegmentBuilder()]{
+                "[TestHeaderBuilder()]{
         Sometimes docsegmentheaders can be built, too!
         But if they're in a block scope it shouldn't be allowed :(
     }",
@@ -285,11 +285,11 @@ fn test_cant_build_header_block_scope() {
 fn test_cant_create_header_block_scope_argument() {
     expect_parse_err(
         "[TEST_BLOCK_BUILDER]{
-    [TestDocSegmentHeader()]
+    [TestHeader()]
     }",
         TestInterpError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
-            code_span: TestParseSpan("[TestDocSegmentHeader()]"),
+            code_span: TestParseSpan("[TestHeader()]"),
         },
     )
 }
@@ -300,7 +300,7 @@ fn test_can_create_header_toplevel_file() {
         "
         Toplevel content!
 
-        [TestDocSegmentHeader(weight=123)]
+        [TestHeader(weight=123)]
         
         More content!",
         Ok(TestDocument {
@@ -323,7 +323,7 @@ fn test_can_create_header_inner_file() {
     expect_parse(
         r#"
 [-
-header_in_file = test_src("""[TestDocSegmentHeader(weight=123)]
+header_in_file = test_src("""[TestHeader(weight=123)]
 
 Content in file!
 """)
@@ -356,7 +356,7 @@ fn test_cant_create_header_block_scope_in_inner_file() {
 [-
 header_in_file = test_src("""
 {
-    [TestDocSegmentHeader(weight=123)]
+    [TestHeader(weight=123)]
 
     Content in file!
 }""")
@@ -368,7 +368,7 @@ header_in_file = test_src("""
         Content outside file!"#,
         TestInterpError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
-            code_span: TestParseSpan("[TestDocSegmentHeader(weight=123)]"),
+            code_span: TestParseSpan("[TestHeader(weight=123)]"),
         },
     )
 }
@@ -379,7 +379,7 @@ fn test_cant_create_header_inner_file_in_block_scope() {
         r#"
 [-
 header_in_file = test_src("""
-[TestDocSegmentHeader(weight=123)]
+[TestHeader(weight=123)]
 
 Content in file!
 """)
@@ -393,7 +393,7 @@ Content in file!
         }"#,
         TestInterpError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
-            code_span: TestParseSpan("[TestDocSegmentHeader(weight=123)]"),
+            code_span: TestParseSpan("[TestHeader(weight=123)]"),
         },
     )
 }
@@ -401,14 +401,14 @@ Content in file!
 #[test]
 fn test_cant_create_header_in_paragraph() {
     expect_parse_err(
-        "And as I was saying [TestDocSegmentHeader()]",
+        "And as I was saying [TestHeader()]",
         TestInterpError::CodeEmittedHeaderInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "And",
                 " as I was saying",
                 " ",
             )),
-            code_span: TestParseSpan("[TestDocSegmentHeader()]"),
+            code_span: TestParseSpan("[TestHeader()]"),
         },
     )
 }
@@ -416,12 +416,12 @@ fn test_cant_create_header_in_paragraph() {
 #[test]
 fn test_cant_create_header_inline() {
     expect_parse_err(
-        "[TEST_BLOCK_BUILDER_FROM_INLINE]{ [TestDocSegmentHeader()] }",
+        "[TEST_BLOCK_BUILDER_FROM_INLINE]{ [TestHeader()] }",
         TestInterpError::CodeEmittedHeaderInInlineMode {
             inl_mode: TestInlineModeContext::InlineScope {
                 scope_start: TestParseSpan("{"),
             },
-            code_span: TestParseSpan("[TestDocSegmentHeader()]"),
+            code_span: TestParseSpan("[TestHeader()]"),
         },
     )
 }

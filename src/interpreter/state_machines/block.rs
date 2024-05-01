@@ -1,3 +1,31 @@
+//! These modules handle block-mode parsing - both at the top level with [TopLevelProcessor] and inside a block scope with [BlockScopeProcessor].
+//! In both cases, all types of Block can be generated.
+//! Opening a scope opens an [AmbiguousScopeProcessor], which either emits [BlockElem::BlockScope] or [InlineElem::InlineScope].
+//! Opening a raw scope opens a [RawStringProcessor].
+//! Comments are allowed.
+//! Escaped newlines are not allowed.
+//! Code is allowed.
+//! - Encountered [BlockElem]s go directly into the document,
+//!   and put the parser into a state where there must be no content until the next newline.
+//!  
+//!   This prevents confusing situations where a paragraph could start on the same line as emitting a block,
+//!   making that block appear to be attached to the paragraph.
+//!   Previously I experimented with requiring a full blank line, but that prevents some clearly visually separated syntax such as
+//!   ```text
+//!   [item]{
+//!     stuff
+//!   }
+//!   [item]{
+//!     more stuff
+//!   }
+//!   ```
+//! - Encountered [InlineElem]s, including Raw from a raw scope, automatically create a new [ParagraphProcessor] which will eventually emit a [BlockElem::Paragraph]
+//! - Encountered [Header]s are only allowed in top-level mode, and are pushed to the document to close old segments/create a new one based on its weight.
+//!   They also put the parser into a state where there must be no content until the next newline.
+//! - Encountered [TurnipTextSource]s are allowed, which means the parser must tolerate receiving tokens from inner files.
+//!   In block-scopes, close-block-scope tokens are only accepted if they come from the same file as the BlockScope started. If they are received from inner files, those inner files must be unbalanced.
+//!   They also put the parser into a state where there must be no content until the next newline.
+
 use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
@@ -24,7 +52,10 @@ use super::{
 };
 
 // Only expose specific implementations of BlockLevelProcessor
+
+/// Block-scope processing with [TopLevelBlockMode].
 pub type TopLevelProcessor = BlockLevelProcessor<TopLevelBlockMode>;
+/// Block-scope processing with [BlockScopeBlockMode].
 pub type BlockScopeProcessor = BlockLevelProcessor<BlockScopeBlockMode>;
 
 /// This struct handles block-mode processing.
@@ -34,7 +65,7 @@ pub type BlockScopeProcessor = BlockLevelProcessor<BlockScopeBlockMode>;
 /// Instead we only implement [TokenProcessor] for `BlockLevelProcessor<T>` if `T` implements BlockMode.
 pub struct BlockLevelProcessor<T> {
     inner: T,
-    expects_n_blank_lines_after: Option<(u8, BlockModeElem)>,
+    expects_n_blank_lines_after: Option<BlockModeElem>,
 }
 
 /// This trait overrides behaviour of the BlockLevelProcessor in specific cases.
@@ -220,17 +251,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
                 }
                 TTToken::Whitespace(_) => Ok(ProcStatus::Continue),
                 TTToken::Newline(_) => {
-                    self.expects_n_blank_lines_after =
-                        match std::mem::take(&mut self.expects_n_blank_lines_after) {
-                            Some((0, _)) => {
-                                unreachable!(
-                                    "should never set expects_n_blank_lines_after = (0, _)"
-                                )
-                            }
-                            Some((1, _)) => None,
-                            Some((n_lines, ctx)) => Some((n_lines - 1, ctx)),
-                            None => None,
-                        };
+                    self.expects_n_blank_lines_after = None;
                     Ok(ProcStatus::Continue)
                 }
 
@@ -244,12 +265,10 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
                 TTToken::EOF(_) => self.inner.on_eof(py, tok),
 
                 _ => Err(InterpError::InsufficientBlockSeparation {
-                    last_block: std::mem::take(&mut self.expects_n_blank_lines_after)
-                        .expect(
-                            "This function is only called when \
+                    last_block: std::mem::take(&mut self.expects_n_blank_lines_after).expect(
+                        "This function is only called when \
                              self.expects_n_blank_lines_after.is_some()",
-                        )
-                        .1,
+                    ),
                     next_block_start: BlockModeElem::AnyToken(tok.token_span()),
                 })?,
             }
@@ -320,7 +339,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
                     // Thus, set expects_blank_line to *two* blank lines i.e. no content on the current line, and then a full line without content
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
                     self.expects_n_blank_lines_after =
-                        Some((2, BlockModeElem::HeaderFromCode(elem_ctx.full_span())));
+                        Some(BlockModeElem::HeaderFromCode(elem_ctx.full_span()));
                     self.inner.on_header(py, header, elem_ctx)
                 }
                 // Blocks must have been received from either
@@ -339,9 +358,9 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
                         .on_block(py, BlockElem::Para(p.clone_ref(py)), elem_ctx)
                 }
                 DocElement::Block(block) => {
-                    // Set expects_blank_line to *two* blank lines i.e. no content on the current line, and then a full line without content
+                    // Set expects_blank_line to one i.e. no content on the current line.
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
-                    self.expects_n_blank_lines_after = Some((2, (elem_ctx, &block).into()));
+                    self.expects_n_blank_lines_after = Some((elem_ctx, &block).into());
                     self.inner.on_block(py, block, elem_ctx)
                 }
                 // If we get an inline, start building a paragraph with it
@@ -366,6 +385,6 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
     fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan) {
         // An inner file must have come from emitted code - a blank line must be seen before any new content after code emitting a file
         self.expects_n_blank_lines_after =
-            Some((2, BlockModeElem::SourceFromCode(inner_source_emitted_by)));
+            Some(BlockModeElem::SourceFromCode(inner_source_emitted_by));
     }
 }

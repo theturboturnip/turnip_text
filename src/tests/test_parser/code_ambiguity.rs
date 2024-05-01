@@ -86,7 +86,7 @@ class Super:
         }",
         TestUserPythonExecError::CoercingBlockScopeBuilder {
             code_ctx: TestParseContext("[", "TEST_BLOCK", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got <FauxBlock.*")
+            err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got <TestOwnedBlock.*")
                 .unwrap(),
         },
     )
@@ -124,8 +124,10 @@ class Super:
         "[TEST_INLINE]{}",
         TestUserPythonExecError::CoercingInlineScopeBuilder {
             code_ctx: TestParseContext("[", "TEST_INLINE", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got <FauxInline.*")
-                .unwrap(),
+            err: Regex::new(
+                r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got <TestOwnedInline.*",
+            )
+            .unwrap(),
         },
     )
 }
@@ -147,7 +149,7 @@ class Super:
     def build_from_inlines(self, inlines):
         raise RuntimeError("argh shouldn't run this")
     def build_from_raw(self, raw):
-        return TEST_INLINE_RAW
+        return TEST_RAW
 -]
 
 [Super()]#{ stuff }#
@@ -162,7 +164,7 @@ class Super:
         "[TEST_INLINE]#{}#",
         TestUserPythonExecError::CoercingRawScopeBuilder {
             code_ctx: TestParseContext("[", "TEST_INLINE", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got <FauxInline.*")
+            err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got <TestOwnedInline.*")
                 .unwrap(),
         },
     )

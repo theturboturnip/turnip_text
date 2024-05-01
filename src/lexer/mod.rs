@@ -43,6 +43,7 @@ pub fn lex(file_idx: usize, data: &str) -> LexedStrIterator {
     }
 
     // Add an EOF unit to the end of the stream, with a zero-length ParseSpan at the end of the final character
+    // TODO make the error for end-inside-code use the last character for EOF token
     let eof_span = match toks.last() {
         Some(last_tok) => {
             let end_of_last_tok = last_tok.token_span().end();
@@ -167,6 +168,7 @@ impl Escapable {
 pub type LexPosn = lexer_rs::StreamCharPos<LineColumnChar>;
 pub type LexToken = TTToken;
 
+// FUTURE consider soft-hyphen
 #[derive(Debug, Copy, Clone)]
 pub enum TTToken {
     /// `\r\n`, `\n`, or `\r`, supports all for windows compatability
@@ -220,7 +222,6 @@ pub enum TTToken {
     /// If I did translate this to Unicode-hyphen then in LaTeX and Markdown I'd
     /// just have to convert it back. For now, hyphen-minus is fine.
     HyphenMinuses(ParseSpan, usize),
-    // TODO consider soft-hyphen
     /// Span of characters not included in [LexerPrefixSeq]
     OtherText(ParseSpan),
     /// String of non-escaped, whitespace, non-[Self::Newline] characters.

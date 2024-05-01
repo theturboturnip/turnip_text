@@ -312,9 +312,77 @@ However, I felt the inner hashes made it more confusing where the raw capture be
 
 TODO
 
-## Newlines
+## Newlines in raw scopes and code
 
 Newlines can be inconsistent between operating systems, and handling some combination of `\r`, `\n`, and `\r\n` is a must.
 turnip-text captures each of these as a Newline token, so supports all of them.
 Newlines are the only exception to raw string capture, as used in raw scopes and eval-brackets, and are always converted to `\n` before exposing them to Python.
 This means all newlines captured in raw scopes, and all newlines inside eval-brackets, are captured
+
+## Newlines in block mode
+
+There was a substantial amount of debate between requiring a *blank* line between block-mode elements, and a *new* line.
+There must be at least a new line between block elements, because otherwise certain situations would be misleading:
+
+```
+[SomeBlock()] could be followed by a paragraph, creating two separated blocks in the output \
+even though in the source code they are adjacent and [emph]{seem} like one paragraph!
+```
+
+The whole point is to make sure separate blocks are visually separated in the source code.
+Paragraphs are in some ways a special case and the justification for expecting a *blank* line, because paragraphs already require a fully blank line to end.
+Requiring a blank line over a newline sounds like a good idea in simple cases:
+
+```
+# These look visually grouped together... kind of
+[SomeHeader()]
+[SomeBlock()]
+
+
+# Aaah, much better!
+[SomeHeader()]
+
+[SomeBlock()]
+```
+
+But consider the case of adjacent block scopes!
+
+```
+{
+    Stuff in scope one
+} # Even with the adjacent line, there's clearly enough visual separation!
+{
+    Stuff in scope two
+}
+```
+
+Well fine, we could change the rules: after emitting a block scope, the requirement is a new line, not a blank line.
+But then we arrive at code-built-from-block-scopes:
+
+```
+[itemize]{
+    [item]{
+        First item
+    }
+    [item]{ # Uh oh...
+        Second item
+    }
+}
+```
+
+The parser can't tell the difference between a block-emitted-from-code-owning-a-block-scope and a block-emitted-from-code, so at best you could say after a block scope or code-emitting-block or code-emitting-header the requirement is a new line - but that's almost everything!
+Those rules feel inconsistent for code-emitting-source.
+If you could filter out specifically block-or-header-emitted-from-code-owning-a-block-scope, then maybe it could work?
+
+```
+[itemize]{
+    [item]{
+        ...   
+    }
+}
+Wow some content that's not separated :)
+```
+
+Ah, bugger.
+Effectively the rule doesn't require blank lines because any rules I come up with that feel right would be hyper-specific, complex to implement, and ultimately it's all down to taste anyway.
+The case of emitting multiple blocks on the *same* line is always misleading, so that isn't allowed, but there's enough wiggle room for adjacent lines that it's better to allow them in all cases then get allowing/disallowing them wrong.

@@ -1,649 +1,552 @@
+//! These are tests for strict blank-line syntax checking - where the parser ensures that there is always a blank line between two block-level elements.
+//! There are five block-level elements:
+//! - Paragraph
+//! - Block scope
+//! - Block emitted from code (which could have used a BlockScopeBuilder, InlineScopeBuilder, or RawBuilder)
+//! - Header emitted from code (which could have used a BlockScopeBuilder, InlineScopeBuilder, or RawBuilder)
+//! - TurnipTextSource emitted from code
+//!
+//! When one is emitted we know exactly what kind it is, but we may not get all the way through parsing the next one.
+//! Thus we have fewer options for what the next one should be:
+//! - Scope-open (which is ambiguously block or inline when opened from block-mode)
+//! - Code-open
+//! - Text content (including raw scopes)
+
+use std::vec;
+
+use const_format::concatcp;
+
 use super::*;
 
-// These are tests for strict blank-line syntax checking - where the parser ensures that there is always a blank line between two blocks.
+const CREATED_PARA: &str = "Bee movie script\nLorem ipsum\n";
+const CREATED_PARA_CTX: TestParseContext =
+    TestParseContext("Bee", " movie script\nLorem ipsum", "\n");
 
-// TODO check separation of headers - they're also block-level elements
+const PARA_STARTING_WITH_SCOPE: &str =
+    "{ wow some stuff in an inline scope }\nand then more of the Bee movie script\n";
+const PARA_STARTING_WITH_INLINE_CODE: &str = "[--TEST_INLINE--] Bee movie script\nlorem\n";
+const PARA_STARTING_WITH_RAW_SCOPE: &str =
+    "####{raw stuff}#### and then even more about bees\nbees, i tell you!\n";
 
-// There should always be a blank line between a paragraph ending and a paragraph starting
-// (otherwise they'd be the same paragraph)
+const CREATED_BSCOPE: &str = "{
+    block_scope_content
+}";
+const CREATED_BSCOPE_CTX: TestParseContext =
+    TestParseContext("{", "\n    block_scope_content\n", "}");
+
+const CREATED_BLOCK_BARE: &str = "[TEST_BLOCK]";
+const CREATED_BLOCK_BARE_SPAN: TestParseSpan = TestParseSpan(CREATED_BLOCK_BARE);
+const CREATED_BLOCK_FROM_BLOCK: &str = "[TestBlockBuilder()]{\nblock_in_block\n}";
+const CREATED_BLOCK_FROM_BLOCK_SPAN: TestParseSpan = TestParseSpan(CREATED_BLOCK_FROM_BLOCK);
+const CREATED_BLOCK_FROM_INLINE: &str = "[TestBlockBuilderFromInline()]{ inline_in_block }";
+const CREATED_BLOCK_FROM_INLINE_SPAN: TestParseSpan = TestParseSpan(CREATED_BLOCK_FROM_INLINE);
+const CREATED_BLOCK_FROM_RAW: &str = "[TestBlockBuilderFromRaw()]#{raw_in_block}#";
+const CREATED_BLOCK_FROM_RAW_SPAN: TestParseSpan = TestParseSpan(CREATED_BLOCK_FROM_RAW);
+
+const CREATED_HEADER_BARE: &str = "[TestHeader(weight=1)]";
+const CREATED_HEADER_BARE_SPAN: TestParseSpan = TestParseSpan(CREATED_HEADER_BARE);
+const CREATED_HEADER_FROM_BLOCK: &str = "[TestHeaderBuilder(weight=1)]{\nblock_in_header\n}";
+const CREATED_HEADER_FROM_BLOCK_SPAN: TestParseSpan = TestParseSpan(CREATED_HEADER_FROM_BLOCK);
+const CREATED_HEADER_FROM_INLINE: &str = "[TestHeaderBuilder(weight=1)]{ inline_in_header }";
+const CREATED_HEADER_FROM_INLINE_SPAN: TestParseSpan = TestParseSpan(CREATED_HEADER_FROM_INLINE);
+const CREATED_HEADER_FROM_RAW: &str = "[TestHeaderBuilder(weight=1)]#{raw_in_header}#";
+const CREATED_HEADER_FROM_RAW_SPAN: TestParseSpan = TestParseSpan(CREATED_HEADER_FROM_RAW);
+
+const CREATED_FILE: &str = "[test_src('beans')]";
+const CREATED_FILE_SPAN: TestParseSpan = TestParseSpan(CREATED_FILE);
+
 #[test]
-fn test_block_sep_para_para() {
+fn test_primitives() {
     expect_parse(
-        "Paragraph one\n has some content\n\nThis is paragraph two",
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![
+        CREATED_PARA,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![
+            test_sentence("Bee movie script"),
+            test_sentence("Lorem ipsum"),
+        ])])),
+    );
+    expect_parse(
+        CREATED_BSCOPE,
+        Ok(test_doc(vec![TestBlock::BlockScope(vec![
+            TestBlock::Paragraph(vec![test_sentence("block_scope_content")]),
+        ])])),
+    );
+    expect_parse(
+        CREATED_BLOCK_BARE,
+        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+    );
+    expect_parse(
+        CREATED_BLOCK_FROM_BLOCK,
+        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![
+            TestBlock::Paragraph(vec![test_sentence("block_in_block")]),
+        ])])),
+    );
+    expect_parse(
+        CREATED_BLOCK_FROM_INLINE,
+        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![
+            TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![test_text(
+                "inline_in_block",
+            )])]]),
+        ])])),
+    );
+    expect_parse(
+        CREATED_BLOCK_FROM_RAW,
+        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![
+            TestBlock::Paragraph(vec![vec![test_raw_text("raw_in_block")]]),
+        ])])),
+    );
+
+    expect_parse(
+        CREATED_HEADER_BARE,
+        Ok(TestDocument {
+            contents: TestBlock::BlockScope(vec![]),
+            segments: vec![TestDocSegment {
+                header: (1, None, None),
+                contents: TestBlock::BlockScope(vec![]),
+                subsegments: vec![],
+            }],
+        }),
+    );
+    expect_parse(
+        CREATED_HEADER_FROM_BLOCK,
+        Ok(TestDocument {
+            contents: TestBlock::BlockScope(vec![]),
+            segments: vec![TestDocSegment {
+                header: (
+                    1,
+                    Some(TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                        test_sentence("block_in_header"),
+                    ])])),
+                    None,
+                ),
+                contents: TestBlock::BlockScope(vec![]),
+                subsegments: vec![],
+            }],
+        }),
+    );
+    expect_parse(
+        CREATED_HEADER_FROM_INLINE,
+        Ok(TestDocument {
+            contents: TestBlock::BlockScope(vec![]),
+            segments: vec![TestDocSegment {
+                header: (
+                    1,
+                    None,
+                    Some(TestInline::InlineScope(vec![test_text("inline_in_header")])),
+                ),
+                contents: TestBlock::BlockScope(vec![]),
+                subsegments: vec![],
+            }],
+        }),
+    );
+    expect_parse(
+        CREATED_HEADER_FROM_RAW,
+        Ok(TestDocument {
+            contents: TestBlock::BlockScope(vec![]),
+            segments: vec![TestDocSegment {
+                header: (
+                    1,
+                    None,
+                    Some(TestInline::InlineScope(vec![test_raw_text(
+                        "raw_in_header",
+                    )])),
+                ),
+                contents: TestBlock::BlockScope(vec![]),
+                subsegments: vec![],
+            }],
+        }),
+    );
+
+    expect_parse(
+        CREATED_FILE,
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "beans",
+        )])])),
+    )
+}
+
+/// This generates test cases for any block-mode-element that
+/// - must be followed directly by a newline before any other element
+/// - don't parse the following element at all if the newline rule is violated
+///
+/// This makes it unsuitable for paragraphs, because in the case of code-emitting-blah
+/// right after a paragraph the parser will parse the code because it may be emitting an inline.
+macro_rules! test_needs_newline {
+    ( $last_block:expr, $last_block_elem:expr) => {
+        #[test]
+        fn to_para_newline() {
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_PARA));
+            expect_parse_any_ok(concatcp!($last_block, "\n", PARA_STARTING_WITH_SCOPE));
+            expect_parse_any_ok(concatcp!($last_block, "\n", PARA_STARTING_WITH_INLINE_CODE));
+            expect_parse_any_ok(concatcp!($last_block, "\n", PARA_STARTING_WITH_RAW_SCOPE));
+
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_PARA),
+                TestInterpError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan(
+                        CREATED_PARA_CTX.0,
+                    )),
+                },
+            );
+            expect_parse_err(
+                concatcp!($last_block, " ", PARA_STARTING_WITH_SCOPE),
+                TestInterpError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
+                },
+            );
+            expect_parse_err(
+                concatcp!($last_block, " ", PARA_STARTING_WITH_INLINE_CODE),
+                TestInterpError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[--")),
+                },
+            );
+            expect_parse_err(
+                concatcp!($last_block, " ", PARA_STARTING_WITH_RAW_SCOPE),
+                TestInterpError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("####{")),
+                },
+            );
+        }
+
+        #[test]
+        fn to_block_scope_newline() {
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_BSCOPE));
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_BSCOPE),
+                TestInterpError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan(
+                        CREATED_BSCOPE_CTX.0,
+                    )),
+                },
+            );
+        }
+
+        #[test]
+        fn to_code_emitting_block() {
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_BLOCK_BARE));
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_BLOCK_FROM_BLOCK));
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_BLOCK_FROM_INLINE));
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_BLOCK_FROM_RAW));
+
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_BLOCK_BARE),
+                TestInterpError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+                },
+            );
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_BLOCK_FROM_BLOCK),
+                TestInterpError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+                },
+            );
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_BLOCK_FROM_INLINE),
+                TestInterpError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+                },
+            );
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_BLOCK_FROM_RAW),
+                TestInterpError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+                },
+            );
+        }
+
+        #[test]
+        fn to_code_emitting_header() {
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_HEADER_BARE));
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_HEADER_FROM_BLOCK));
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_HEADER_FROM_INLINE));
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_HEADER_FROM_RAW));
+
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_HEADER_BARE),
+                TestInterpError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+                },
+            );
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_HEADER_FROM_BLOCK),
+                TestInterpError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+                },
+            );
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_HEADER_FROM_INLINE),
+                TestInterpError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+                },
+            );
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_HEADER_FROM_RAW),
+                TestInterpError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+                },
+            );
+        }
+
+        #[test]
+        fn to_source_blank_line() {
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_FILE));
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_FILE),
+                TestInterpError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+                },
+            );
+        }
+    };
+}
+
+// -------------------------------------
+// Paragraphs
+// -------------------------------------
+// Paragraphs have special interactions with scopes,
+// and need blank lines between themselves and other block-level elements
+// because a fully blank line is needed to end the paragraph.
+// This does not apply to end-scopes for readability.
+mod para {
+    use super::*;
+
+    /// There should always be a blank line between a paragraph ending and a paragraph starting
+    /// (otherwise they'd be the same paragraph)
+    #[test]
+    fn para_to_para_blank_line() {
+        expect_parse(
+            "Paragraph one\n has some content\n\nThis is paragraph two",
+            Ok(test_doc(vec![
+                TestBlock::Paragraph(vec![
+                    test_sentence("Paragraph one"),
+                    test_sentence("has some content"),
+                ]),
+                TestBlock::Paragraph(vec![test_sentence("This is paragraph two")]),
+            ])),
+        );
+        expect_parse(
+            "Paragraph one\nhas some content\nThis isn't paragraph two!",
+            Ok(test_doc(vec![TestBlock::Paragraph(vec![
                 test_sentence("Paragraph one"),
                 test_sentence("has some content"),
-            ]),
-            TestBlock::Paragraph(vec![test_sentence("This is paragraph two")]),
-        ])),
-    );
-    expect_parse(
-        "Paragraph one\nhas some content\nThis isn't paragraph two!",
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![
-            test_sentence("Paragraph one"),
-            test_sentence("has some content"),
-            test_sentence("This isn't paragraph two!"),
-        ])])),
-    )
+                test_sentence("This isn't paragraph two!"),
+            ])])),
+        )
+    }
+
+    /// There needs to be a blank line between a paragraph ending and a block scope starting.
+    /// This seems inconsistent with block-scope-closing - see [para_to_scope_close_adj] - but it *is* consistent with code generating a block - see [para_to_block_code_blank_line] - and that's more important
+    /// because in both the scope-open and code cases you're generating a new block.
+    /// We want to avoid creating new blocks on adjacent lines to creating other blocks, because that implies they're "together" in some way.
+    #[test]
+    fn para_to_scope_open_blank_line() {
+        expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_BSCOPE));
+        expect_parse_err(
+            concatcp!(CREATED_PARA, CREATED_BSCOPE),
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
+            },
+        );
+    }
+
+    /// There does not need to a blank line between a paragraph ending and closing an enclosing block scope
+    /// This should *not* trigger insufficient space - it's fine to close a block scope directly after a paragraph
+    #[test]
+    fn para_to_scope_close_adj() {
+        expect_parse_any_ok(
+            r#"{
+            Paragraph one
+        }"#,
+        );
+    }
+
+    /// There should always be a blank line between a paragraph ending and code-emitting-block
+    #[test]
+    fn para_to_block_code_blank_line() {
+        expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_BLOCK_BARE));
+        expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_BLOCK_FROM_BLOCK));
+        expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_BLOCK_FROM_INLINE));
+        expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_BLOCK_FROM_RAW));
+
+        expect_parse_err(
+            concatcp!(CREATED_PARA, CREATED_BLOCK_BARE),
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
+                next_block_start: TestBlockModeElem::BlockFromCode(CREATED_BLOCK_BARE_SPAN),
+            },
+        );
+        expect_parse_err(
+            concatcp!(CREATED_PARA, CREATED_BLOCK_FROM_BLOCK),
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
+                next_block_start: TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_BLOCK_SPAN),
+            },
+        );
+        expect_parse_err(
+            concatcp!(CREATED_PARA, CREATED_BLOCK_FROM_INLINE),
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
+                next_block_start: TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_INLINE_SPAN),
+            },
+        );
+        expect_parse_err(
+            concatcp!(CREATED_PARA, CREATED_BLOCK_FROM_RAW),
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
+                next_block_start: TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_RAW_SPAN),
+            },
+        );
+    }
+
+    /// There should always be a blank line between a paragraph ending and code-emitting-header
+    #[test]
+    fn para_to_header_code_blank_line() {
+        expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_HEADER_BARE));
+        expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_HEADER_FROM_BLOCK));
+        expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_HEADER_FROM_INLINE));
+        expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_HEADER_FROM_RAW));
+
+        expect_parse_err(
+            concatcp!(CREATED_PARA, CREATED_HEADER_BARE),
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
+                next_block_start: TestBlockModeElem::HeaderFromCode(CREATED_HEADER_BARE_SPAN),
+            },
+        );
+        expect_parse_err(
+            concatcp!(CREATED_PARA, CREATED_HEADER_FROM_BLOCK),
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
+                next_block_start: TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_BLOCK_SPAN),
+            },
+        );
+        expect_parse_err(
+            concatcp!(CREATED_PARA, CREATED_HEADER_FROM_INLINE),
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
+                next_block_start: TestBlockModeElem::HeaderFromCode(
+                    CREATED_HEADER_FROM_INLINE_SPAN,
+                ),
+            },
+        );
+        expect_parse_err(
+            concatcp!(CREATED_PARA, CREATED_HEADER_FROM_RAW),
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
+                next_block_start: TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_RAW_SPAN),
+            },
+        );
+    }
+
+    /// There should always be a blank line between a paragraph ending and code-emitting-source
+    #[test]
+    fn para_to_source_blank_line() {
+        expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_FILE));
+        expect_parse_err(
+            concatcp!(CREATED_PARA, CREATED_FILE),
+            TestInterpError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
+                next_block_start: TestBlockModeElem::SourceFromCode(CREATED_FILE_SPAN),
+            },
+        );
+    }
 }
 
-/// There needs to be a blank line between a paragraph ending and a block scope starting.
-/// This seems inconsistent with block-scope-closing - see [test_block_sep_para_scope_close] - but it *is* consistent with code generating a block - see [test_block_sep_para_code] - and that's more important
-/// because in both the scope-open and code cases you're generating a new block.
-/// We want to avoid creating new blocks on adjacent lines to creating other blocks, because that implies they're "together" in some way.
-#[test]
-fn test_block_sep_para_scope_open() {
-    expect_parse(
-        r#"Paragraph one
+// -------------------------------------
+// Block Scopes
+// -------------------------------------
+// A newline (not a blank line) is required after the end of a block scope before any content can be emitted.
+// This means a new block can be created in the very next line, but not on the same line.
+mod block_scope {
+    use super::*;
 
-            {
-                New Block
-            }"#,
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
-            TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence("New Block")])]),
-        ])),
-    );
-    expect_parse_err(
-        r#"Paragraph one
-            {
-                New Block
-            }"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::Para(TestParseContext("Paragraph", " one", "\n")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
-        },
-    );
-}
-
-// There should always be a blank line between a paragraph ending and code-emitting-block
-// - this is picked up as trying to emit a block inside a paragraph
-#[test]
-fn test_block_sep_para_code() {
-    expect_parse(
-        r#"Paragraph one
-
-            [TEST_BLOCK]"#,
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
-            TestBlock::TestOwnedBlock(vec![]),
-        ])),
-    );
-    expect_parse_err(
-        r#"Paragraph one
-            [TEST_BLOCK]"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::Para(TestParseContext("Paragraph", " one", "\n")),
-            next_block_start: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
-        },
-    )
-}
-
-// There should always be a blank line between a code-emitting-block and a paragraph starting
-#[test]
-fn test_block_sep_code_para() {
-    expect_parse(
-        r#"[TEST_BLOCK]
-
-            Paragraph one"#,
-        Ok(test_doc(vec![
-            TestBlock::TestOwnedBlock(vec![]),
-            TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
-        ])),
-    );
-    expect_parse_err(
-        r#"[TEST_BLOCK] Paragraph one"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("Paragraph")),
-        },
-    );
-    expect_parse_err(
-        r#"[TEST_BLOCK]
-            Paragraph one"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("Paragraph")),
-        },
-    )
-}
-
-// This should *not* trigger insufficient space - it's fine to close a block scope directly after a paragraph
-#[test]
-fn test_block_sep_para_scope_close() {
-    expect_parse(
-        r#"{
-                Paragraph one
-            }"#,
-        Ok(test_doc(vec![TestBlock::BlockScope(vec![
-            TestBlock::Paragraph(vec![test_sentence("Paragraph one")]),
-        ])])),
-    );
-}
-
-// There should need to be a blank line between a scope closing and another scope starting
-#[test]
-fn test_block_sep_scope_scope() {
-    // Expect a full blank line separating two scops
-    expect_parse(
-        r#"{
-            }
-
-            {
-            }"#,
-        Ok(test_doc(vec![
-            TestBlock::BlockScope(vec![]),
-            TestBlock::BlockScope(vec![]),
-        ])),
-    );
-    // Expect an error on no lines separating two scopes
-    expect_parse_err(
-        r#"{
-            } {
-            }"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::BlockScope(TestParseContext("{", "\n            ", "}")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
-        },
-    );
-    expect_parse_err(
-        r#"[TEST_BLOCK_BUILDER]{
-            } {
-            }"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::BlockFromCode(TestParseSpan(
-                "[TEST_BLOCK_BUILDER]{
-            }",
-            )),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
-        },
-    );
-    // Expect an error on one newline separating scopes
-    expect_parse_err(
-        r#"{
-            }
-            {
-            }"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::BlockScope(TestParseContext("{", "\n            ", "}")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
-        },
-    );
-    expect_parse_err(
-        r#"[TEST_BLOCK_BUILDER]{
-            }
-            {
-            }"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::BlockFromCode(TestParseSpan(
-                "[TEST_BLOCK_BUILDER]{
-            }",
-            )),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
-        },
-    )
-}
-
-// There needs to be a blank line between a scope closing and code-emitting-block
-#[test]
-fn test_block_sep_scope_code() {
-    expect_parse(
-        r#"{
-            }
-
-            [TEST_BLOCK]"#,
-        Ok(test_doc(vec![
-            TestBlock::BlockScope(vec![]),
-            TestBlock::TestOwnedBlock(vec![]),
-        ])),
-    );
-    expect_parse_err(
-        r#"{
-            }
-            [TEST_BLOCK]"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::BlockScope(TestParseContext("{", "\n            ", "}")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
-        },
+    test_needs_newline!(
+        CREATED_BSCOPE,
+        TestBlockModeElem::BlockScope(CREATED_BSCOPE_CTX)
     );
 }
 
-// There should always be a blank line between a code-emitting-block and a scope opening
-#[test]
-fn test_block_sep_code_scope() {
-    expect_parse(
-        r#"
-            [TEST_BLOCK]
-
-            {
-            }"#,
-        Ok(test_doc(vec![
-            TestBlock::TestOwnedBlock(vec![]),
-            TestBlock::BlockScope(vec![]),
-        ])),
-    );
-    expect_parse_err(
-        r#"
-            [TEST_BLOCK]
-            {
-            }"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
-        },
-    );
-    expect_parse_err(
-        r#"
-            [TEST_BLOCK]      {
-            }"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
-        },
-    )
+mod code_emitting_block {
+    mod bare {
+        use super::super::*;
+        test_needs_newline!(
+            CREATED_BLOCK_BARE,
+            TestBlockModeElem::BlockFromCode(CREATED_BLOCK_BARE_SPAN)
+        );
+    }
+    mod from_block {
+        use super::super::*;
+        test_needs_newline!(
+            CREATED_BLOCK_FROM_BLOCK,
+            TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_BLOCK_SPAN)
+        );
+    }
+    mod from_inline {
+        use super::super::*;
+        test_needs_newline!(
+            CREATED_BLOCK_FROM_INLINE,
+            TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_INLINE_SPAN)
+        );
+    }
+    mod from_raw {
+        use super::super::*;
+        test_needs_newline!(
+            CREATED_BLOCK_FROM_RAW,
+            TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_RAW_SPAN)
+        );
+    }
 }
 
-// There should always be a blank line between two code-emitting-blocks
-#[test]
-fn test_block_sep_code_code() {
-    expect_parse(
-        r#"
-            [TEST_BLOCK]
-
-            [TEST_BLOCK]"#,
-        Ok(test_doc(vec![
-            TestBlock::TestOwnedBlock(vec![]),
-            TestBlock::TestOwnedBlock(vec![]),
-        ])),
-    );
-    expect_parse_err(
-        r#"
-            [TEST_BLOCK]
-            [TEST_BLOCK]"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
-        },
-    );
-    expect_parse_err(
-        r#"[TEST_BLOCK] [TEST_BLOCK_2]"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
-        },
-    )
+mod code_emitting_header {
+    mod bare {
+        use super::super::*;
+        test_needs_newline!(
+            CREATED_HEADER_BARE,
+            TestBlockModeElem::HeaderFromCode(CREATED_HEADER_BARE_SPAN)
+        );
+    }
+    mod from_block {
+        use super::super::*;
+        test_needs_newline!(
+            CREATED_HEADER_FROM_BLOCK,
+            TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_BLOCK_SPAN)
+        );
+    }
+    mod from_inline {
+        use super::super::*;
+        test_needs_newline!(
+            CREATED_HEADER_FROM_INLINE,
+            TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_INLINE_SPAN)
+        );
+    }
+    mod from_raw {
+        use super::super::*;
+        test_needs_newline!(
+            CREATED_HEADER_FROM_RAW,
+            TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_RAW_SPAN)
+        );
+    }
 }
 
-#[test]
-fn test_inserted_file_newlines_dont_leak_out() {
-    expect_parse_err(
-        r#"
-[-
-f = test_src("""
-Look a test paragraph
+mod code_emitting_source {
+    use super::*;
 
-# These newlines should not count outside of this document
-# i.e. if we follow this insertion with content on the same line, it should still be picked up as an error
-
-
-
-
-
-
-""")
--]
-
-[f] and some more content
-        "#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("and")),
-        },
-    )
-}
-
-#[test]
-fn test_block_sep_para_inserted_file() {
-    // We should be able to insert a paragraph and then line break and then insert a file
-    expect_parse(
-        r#"
-[-
-f = test_src("""some more content""")
--]
-
-content
-
-[f]
-"#,
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![test_sentence("content")]),
-            TestBlock::Paragraph(vec![test_sentence("some more content")]),
-        ])),
+    test_needs_newline!(
+        CREATED_FILE,
+        TestBlockModeElem::SourceFromCode(CREATED_FILE_SPAN)
     );
-    // We shouldn't be able to do that on adjacent lines - the paragraph "captures" any content on the line underneath
-    expect_parse_err(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-content
-[f]
-        "#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::Para(TestParseContext("content", "", "\n")),
-            next_block_start: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
-        },
-    )
-}
-#[test]
-fn test_block_sep_inserted_file_para() {
-    // There must be a blank line between inserted file and para
-    expect_parse(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f]
-
-another paragraph of content
-"#,
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![test_sentence("some content")]),
-            TestBlock::Paragraph(vec![test_sentence("another paragraph of content")]),
-        ])),
-    );
-    // We shouldn't be able to two on adjacent lines
-    expect_parse_err(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f]
-another paragraph of content
-"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("another")),
-        },
-    );
-    // We shouldn't be able to both on the same line
-    expect_parse_err(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f] and some more content
-        "#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("and")),
-        },
-    )
-}
-#[test]
-fn test_block_sep_inserted_file_inserted_file() {
-    // We must have a blank line between two files
-    expect_parse(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f]
-
-[f]
-"#,
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![test_sentence("some content")]),
-            TestBlock::Paragraph(vec![test_sentence("some content")]),
-        ])),
-    );
-    // We shouldn't be able to two on adjacent lines
-    expect_parse_err(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f]
-[f]
-"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
-        },
-    );
-    // We shouldn't be able to two on the same line
-    expect_parse_err(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f] [f]
-        "#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
-        },
-    )
-}
-#[test]
-fn test_block_sep_inserted_file_block_code() {
-    // We must have a blank line between a file and block code
-    expect_parse(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f]
-
-[TEST_BLOCK_BUILDER]{
-    some other content
-}
-"#,
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![test_sentence("some content")]),
-            TestBlock::TestOwnedBlock(vec![TestBlock::Paragraph(vec![test_sentence(
-                "some other content",
-            )])]),
-        ])),
-    );
-    // We shouldn't be able to two on adjacent lines
-    expect_parse_err(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f]
-[TEST_BLOCK_BUILDER]{
-    some other content
-}
-"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
-        },
-    );
-    // We shouldn't be able to two on the same line
-    expect_parse_err(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f] [TEST_BLOCK_BUILDER]{
-    some other content
-}
-        "#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
-        },
-    )
-}
-
-#[test]
-fn test_block_sep_inserted_file_inline_code() {
-    // We must have a blank line between a file and inline code
-    expect_parse(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f]
-
-[TEST_INLINE_BUILDER]{some other content}
-"#,
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![test_sentence("some content")]),
-            TestBlock::Paragraph(vec![vec![TestInline::TestOwnedInline(vec![test_text(
-                "some other content",
-            )])]]),
-        ])),
-    );
-    // We shouldn't be able to two on adjacent lines
-    expect_parse_err(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f]
-[TEST_INLINE_BUILDER]{some other content}
-"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
-        },
-    );
-    // We shouldn't be able to two on the same line
-    expect_parse_err(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f] [TEST_INLINE_BUILDER]{some other content}
-        "#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
-        },
-    )
-}
-
-#[test]
-fn test_block_sep_inserted_file_block_scope() {
-    // We must have a blank line between a file and block scopes
-    expect_parse(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f]
-
-{
-    some other content
-}
-"#,
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![test_sentence("some content")]),
-            TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
-                "some other content",
-            )])]),
-        ])),
-    );
-    // We shouldn't be able to two on adjacent lines
-    expect_parse_err(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f]
-{
-    some other content
-}
-"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
-        },
-    );
-    // We shouldn't be able to two on the same line
-    expect_parse_err(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f]    {
-    some other content
-}
-        "#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
-        },
-    )
-}
-#[test]
-fn test_block_sep_inserted_file_inline_scope() {
-    // We must have a blank line between a file and inline scope
-    expect_parse(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f]
-
-{ some other content }
-"#,
-        Ok(test_doc(vec![
-            TestBlock::Paragraph(vec![test_sentence("some content")]),
-            TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![test_text(
-                "some other content",
-            )])]]),
-        ])),
-    );
-    // We shouldn't be able to two on adjacent lines
-    expect_parse_err(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f]
-{ some other content }
-"#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
-        },
-    );
-    // We shouldn't be able to two on the same line
-    expect_parse_err(
-        r#"
-[-
-f = test_src("""some content""")
--]
-
-[f]    { some other content }
-        "#,
-        TestInterpError::InsufficientBlockSeparation {
-            last_block: TestBlockModeElem::SourceFromCode(TestParseSpan("[f]")),
-            next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
-        },
-    )
 }

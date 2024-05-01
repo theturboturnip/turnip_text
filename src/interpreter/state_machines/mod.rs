@@ -57,12 +57,14 @@ mod inline;
 /// An enum encompassing all the things that can be directly emitted from one Processor to be bubbled up to the previous Processor.
 ///
 /// Doesn't include TurnipTextSource - that is emitted from Python but it needs to bypass everything and go to the top-level interpreter
+#[derive(Debug)]
 enum DocElement {
     Block(BlockElem),
     Inline(InlineElem),
     HeaderFromCode(PyTcRef<DocSegmentHeader>),
 }
 
+#[derive(Debug)]
 enum BlockElem {
     FromCode(PyTcRef<Block>),
     BlockScope(Py<BlockScope>),
@@ -92,6 +94,7 @@ impl From<(ParseContext, &BlockElem)> for BlockModeElem {
     }
 }
 
+#[derive(Debug)]
 enum InlineElem {
     FromCode(PyTcRef<Inline>),
     InlineScope(Py<InlineScope>),
