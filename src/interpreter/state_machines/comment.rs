@@ -2,7 +2,7 @@ use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
     error::TurnipTextContextlessResult,
-    lexer::TTToken,
+    lexer::{Escapable, TTToken},
     util::{ParseContext, ParseSpan},
 };
 
@@ -26,8 +26,12 @@ impl TokenProcessor for CommentProcessor {
         // When receiving EOF it returns [ProcStatus::PopAndReprocessToken].
         // This fulfils the contract for [TokenProcessor::process_token].
         match tok {
-            // TODO decide if escaped(newline) ends the comment too. By Python rules, it doesn't.
-            TTToken::Newline(_) | TTToken::EOF(_) => Ok(ProcStatus::PopAndReprocessToken(None)),
+            // Escaped(Newline) ends the comment.
+            // Python does this too, presumably because escaping a newline has semantic purpose (to keep content in the same expression) and it is nice to be able to add documentation comments to each "not-line" without nuking the following content.
+            // TODO test that escaped newlines are reprocessed correctly in block and inline modes. They should continue lines in paragraphs, be ignored in inline scopes, and throw errors in block modes
+            TTToken::Escaped(_, Escapable::Newline) | TTToken::Newline(_) | TTToken::EOF(_) => {
+                Ok(ProcStatus::PopAndReprocessToken(None))
+            }
             _ => Ok(ProcStatus::Continue),
         }
     }
@@ -37,7 +41,6 @@ impl TokenProcessor for CommentProcessor {
         _py: Python,
         _py_env: &PyDict,
         _pushed: Option<EmittedElement>,
-        // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<ProcStatus> {
         unreachable!("CommentProcessor does not spawn inner builders")
     }

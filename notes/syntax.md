@@ -97,11 +97,12 @@ By this point the relations between classes should be clear:
 
 The turnip-text parser starts in *top-level block mode*.
 In all modes, the hash `#` character begins a comment that extends until the end of the line.
-Newlines may be escaped with a backslash `\` to continue the comment into the next line TODO check this.
+All newlines end the comment, even those escaped with backslash `\`, just like Python.
 
 ```python
-Some turnip-text # with a comment \
-the comment continues here
+Some turnip-text # with a comment
+You can add an escaped newline # the comment will end... \
+and the content will continue.
 ```
 
 In *block mode*, the parser builds a `BlockScope` Python object out of the things you create.
@@ -110,7 +111,7 @@ As such, it is possible to create `Block`s in this mode: `Paragraph`s, `BlockSco
 `Paragraph`s can be created by simply writing text.
 Each line of text is a single `Sentence`.
 Whitespace at the start and end of each line is ignored.
-If a sentence is particularly long, you can escape a newline as with comments.
+If a sentence is particularly long, you can escape the newline unlike with comments.
 You cannot define multiple sentences per line.
 An empty line (which may include a comment) ends the paragraph.
 
