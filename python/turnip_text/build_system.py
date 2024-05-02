@@ -29,7 +29,7 @@ from typing import (
     TypeAlias,
 )
 
-from turnip_text import TurnipTextSource
+from turnip_text import TurnipTextSource, open_turnip_text_source
 
 # TODO right now this doesn't handle ../s. That's probably a good thing.
 ProjectRelativePath = str
@@ -89,7 +89,7 @@ class BuildSystem(abc.ABC):
 
     @abc.abstractmethod
     def resolve_turnip_text_source(
-        self, project_relative_path: ProjectRelativePath
+        self, project_relative_path: ProjectRelativePath, encoding: str = "utf-8"
     ) -> TurnipTextSource: ...
 
     @abc.abstractmethod
@@ -178,10 +178,10 @@ class SimpleBuildSystem(BuildSystem):
         return p
 
     def resolve_turnip_text_source(
-        self, project_relative_path: ProjectRelativePath
+        self, project_relative_path: ProjectRelativePath, encoding: str = "utf-8"
     ) -> TurnipTextSource:
-        return TurnipTextSource.from_path(
-            str(self._resolve_project_relpath(project_relative_path))
+        return open_turnip_text_source(
+            str(self._resolve_project_relpath(project_relative_path)), encoding=encoding
         )
 
     def _resolve_input_file(
@@ -247,12 +247,11 @@ class InMemoryBuildSystem(BuildSystem):
         self.output_files = {}
 
     def resolve_turnip_text_source(
-        self, project_relative_path: str
+        self, project_relative_path: str, encoding: str = "utf-8"
     ) -> TurnipTextSource:
         data = self.input_files.get(project_relative_path)
         if data:
-            # TODO - make it possible to insert a custom "path" into TurnipTextSource
-            return TurnipTextSource.from_string(data.decode("utf-8"))
+            return TurnipTextSource(project_relative_path, data.decode(encoding))
         raise ValueError(f"Input file '{project_relative_path}' doesn't exist")
 
     def _resolve_input_file(self, project_relative_path: str) -> JobInputFile:
@@ -351,11 +350,13 @@ class StackBuildSystem(BuildSystem):
         self._build_systems = build_systems
 
     def resolve_turnip_text_source(
-        self, project_relative_path: str
+        self,
+        project_relative_path: str,
+        encoding: str = "utf-8",
     ) -> TurnipTextSource:
         for b in self._build_systems:
             try:
-                return b.resolve_turnip_text_source(project_relative_path)
+                return b.resolve_turnip_text_source(project_relative_path, encoding)
             except:
                 continue
         raise ValueError(
@@ -400,9 +401,13 @@ class SplitBuildSystem(BuildSystem):
         self._output_build_sys = output_build_sys
 
     def resolve_turnip_text_source(
-        self, project_relative_path: str
+        self,
+        project_relative_path: str,
+        encoding: str = "utf-8",
     ) -> TurnipTextSource:
-        return self._input_build_sys.resolve_turnip_text_source(project_relative_path)
+        return self._input_build_sys.resolve_turnip_text_source(
+            project_relative_path, encoding
+        )
 
     def _resolve_input_file(self, project_relative_path: str) -> JobInputFile:
         return self._input_build_sys._resolve_input_file(project_relative_path)

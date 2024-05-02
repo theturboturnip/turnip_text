@@ -76,6 +76,10 @@ def join_inlines(inlines: Iterable[Inline], joiner: Inline) -> InlineScope:
     """Equivalent of string.join, but for joining any set of Inlines with a joiner Inline"""
     ...
 
+def open_turnip_text_source(path: str, encoding: str = "utf-8") -> TurnipTextSource:
+    """A shortcut for opening a file from a real filesystem as a TurnipTextSource"""
+    ...
+
 # Parsers return a BlockScope of the top-level content, then a Document
 def parse_file_native(file: TurnipTextSource, locals: Dict[str, Any]) -> Document: ...
 def coerce_to_inline(obj: CoercibleToInline) -> Inline: ...
@@ -156,6 +160,15 @@ class Document:
     # TODO does this do correct weight checking
     def push_segment(self, d: DocSegment) -> None: ...
 
+class TextReadable(Protocol):
+    """The protocol expected by TurnipTextSource.from_file().
+
+    Any file obtained through open(path, "r") will be suitable.
+    Files opened in bytes mode e.g. open(path, "rb") are not suitable, because they read out bytes instead of a str.
+    """
+
+    def read(self) -> str: ...
+
 class TurnipTextSource:
     """
     Emit an instance of this class from eval-brackets while in block-mode to start parsing its contents instead.
@@ -163,6 +176,6 @@ class TurnipTextSource:
 
     def __init__(self, name: str, contents: str) -> None: ...
     @staticmethod
-    def from_path(path: str) -> TurnipTextSource: ...
+    def from_file(name: str, file: TextReadable) -> TurnipTextSource: ...
     @staticmethod
     def from_string(contents: str) -> TurnipTextSource: ...

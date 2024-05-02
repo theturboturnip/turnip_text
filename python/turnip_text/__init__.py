@@ -34,6 +34,7 @@ __all__ = [
     "CoercibleToBlockScope",
     "parse_file_native",
     "TurnipTextSource",
+    "open_turnip_text_source",
 ]
 
 from ._native import (  # type: ignore
@@ -128,3 +129,9 @@ def join_inlines(inlines: Iterable[Inline], joiner: Inline) -> InlineScope:
     if new_inlines:
         new_inlines.pop()
     return InlineScope(new_inlines)
+
+
+def open_turnip_text_source(path: str, encoding: str = "utf-8") -> TurnipTextSource:
+    """A shortcut for opening a file from a real filesystem as a TurnipTextSource"""
+    with open(path, "r", encoding=encoding) as file:
+        return TurnipTextSource.from_file(name=path, file=file)

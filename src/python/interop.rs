@@ -640,19 +640,24 @@ impl TurnipTextSource {
         TurnipTextSource { name, contents }
     }
 
-    // TODO remove this and do the parsing in Python. Maybe from_file, using a file object?
-    // That means if people have files in weird encodings, they can use Python to handle them and bundle them into utf-8.
+    /// Take a file object, call read(), expect the output to be a string, and pull the data out as UTF-8
+    /// for turnip-text to process.
+    ///
+    /// Previously this method took a filepath directly and read it using Rust, but that wouldn't handle non-UTF-8-encoded files correctly.
     #[staticmethod]
-    pub fn from_path(path: String) -> PyResult<TurnipTextSource> {
-        let name = std::fs::canonicalize(&path)?;
-        let contents = std::fs::read_to_string(&path)
-            .map_err(|e| error::TurnipTextError::new_err(format!("{e}")))?;
+    pub fn from_file(py: Python, name: String, file_obj: &PyAny) -> PyResult<TurnipTextSource> {
+        let file_contents_str = file_obj
+            .getattr(intern!(py, "read"))?
+            .call0()?
+            .downcast::<PyString>()?;
+
         Ok(TurnipTextSource {
-            name: name.into_os_string().into_string().unwrap_or(path),
-            contents,
+            name,
+            contents: file_contents_str.to_str()?.to_owned(),
         })
     }
 
+    /// Create a TurnipTextSource from a UTF-8 string, automatically naming the file "<string>".
     #[staticmethod]
     pub fn from_string(contents: String) -> TurnipTextSource {
         TurnipTextSource {
