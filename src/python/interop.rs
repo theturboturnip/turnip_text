@@ -428,6 +428,15 @@ impl Text {
     pub fn is_inline(&self) -> bool {
         true
     }
+    fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+        self.0
+            .getattr(py, intern!(py, "__eq__"))?
+            .call1(py, (other.0.as_ref(py),))?
+            .is_true(py)
+    }
+    fn __repr__(&self, py: Python) -> PyResult<String> {
+        Ok(format!("Text({})", self.0.as_ref(py).repr()?.to_str()?))
+    }
 }
 
 /// Represents raw data that should not be escaped for rendering.
@@ -454,6 +463,15 @@ impl Raw {
     #[getter]
     pub fn is_inline(&self) -> bool {
         true
+    }
+    fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+        self.0
+            .getattr(py, intern!(py, "__eq__"))?
+            .call1(py, (other.0.as_ref(py),))?
+            .is_true(py)
+    }
+    fn __repr__(&self, py: Python) -> PyResult<String> {
+        Ok(format!("Raw({})", self.0.as_ref(py).repr()?.to_str()?))
     }
 }
 
@@ -488,6 +506,13 @@ impl Sentence {
 
     pub fn push_inline(&mut self, node: &PyAny) -> PyResult<()> {
         self.0.append_checked(node)
+    }
+
+    fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+        self.0.__eq__(py, &other.0)
+    }
+    fn __repr__(&self, py: Python) -> PyResult<String> {
+        Ok(format!(r#"Sentence({})"#, self.0.__repr__(py)?))
     }
 }
 
@@ -528,6 +553,13 @@ impl Paragraph {
     pub fn push_sentence(&mut self, node: &PyAny) -> PyResult<()> {
         self.0.append_checked(node)
     }
+
+    fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+        self.0.__eq__(py, &other.0)
+    }
+    fn __repr__(&self, py: Python) -> PyResult<String> {
+        Ok(format!(r#"Paragraph({})"#, self.0.__repr__(py)?))
+    }
 }
 
 /// A group of [Block]s inside non-code-preceded squiggly braces
@@ -567,6 +599,13 @@ impl BlockScope {
     pub fn push_block(&mut self, node: &PyAny) -> PyResult<()> {
         self.0.append_checked(node)
     }
+
+    fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+        self.0.__eq__(py, &other.0)
+    }
+    fn __repr__(&self, py: Python) -> PyResult<String> {
+        Ok(format!(r#"BlockScope({})"#, self.0.__repr__(py)?))
+    }
 }
 
 /// A group of [Inline]s inside non-code-preceded squiggly braces
@@ -605,6 +644,13 @@ impl InlineScope {
 
     pub fn push_inline(&mut self, node: &PyAny) -> PyResult<()> {
         self.0.append_checked(node)
+    }
+
+    fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+        self.0.__eq__(py, &other.0)
+    }
+    fn __repr__(&self, py: Python) -> PyResult<String> {
+        Ok(format!(r#"InlineScope({})"#, self.0.__repr__(py)?))
     }
 }
 
@@ -697,6 +743,17 @@ impl Document {
     }
     pub fn push_segment(&self, py: Python<'_>, segment: Py<DocSegment>) -> PyResult<()> {
         self.segments.append_checked(segment.as_ref(py))
+    }
+    fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+        Ok(self.contents.as_ref(py).eq(other.contents.as_ref(py))?
+            && self.segments.__eq__(py, &other.segments)?)
+    }
+    fn __repr__(&self, py: Python) -> PyResult<String> {
+        Ok(format!(
+            r#"Document(contents={}, segments={})"#,
+            self.contents.borrow(py).__repr__(py)?,
+            self.segments.__repr__(py)?
+        ))
     }
 }
 
@@ -816,5 +873,18 @@ impl DocSegment {
             )));
         };
         self.subsegments.append_checked(subsegment.as_ref(py))
+    }
+    pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+        Ok(self.header.as_ref(py).eq(other.header.as_ref(py))?
+            && self.contents.as_ref(py).eq(other.contents.as_ref(py))?
+            && self.subsegments.__eq__(py, &other.subsegments)?)
+    }
+    fn __repr__(&self, py: Python) -> PyResult<String> {
+        Ok(format!(
+            r#"DocSegment(header={}, contents={}, subsegments={})"#,
+            self.header.as_ref(py).str()?.to_str()?,
+            self.contents.borrow(py).__repr__(py)?,
+            self.subsegments.__repr__(py)?
+        ))
     }
 }

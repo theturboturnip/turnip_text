@@ -26,4 +26,6 @@ Y \[ˈʏpsilɔn\], Yen \[jɛn\], Yoga \[ˈjoːgɑ\]
         ),
         segments=[],
     )
+    print(expected_doc)
+    print(doc)
     assert expected_doc == doc

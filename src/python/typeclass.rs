@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use pyo3::{exceptions::PyTypeError, prelude::*, types::PyList, PyClass};
+use pyo3::{exceptions::PyTypeError, intern, prelude::*, types::PyList, PyClass};
 
 pub trait PyTypeclass {
     const NAME: &'static str;
@@ -96,6 +96,21 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
 
     pub fn list<'py>(&'py self, py: Python<'py>) -> &'py PyList {
         self.0.as_ref(py)
+    }
+
+    pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+        self.0
+            .as_ref(py)
+            .getattr(intern!(py, "__eq__"))?
+            .call1((other.0.as_ref(py),))?
+            .is_true()
+    }
+    pub fn __repr__(&self, py: Python) -> PyResult<String> {
+        Ok(format!(
+            "PyTypeclassList<{}>({})",
+            T::NAME,
+            self.0.as_ref(py).str()?.to_str()?
+        ))
     }
 }
 
