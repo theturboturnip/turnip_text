@@ -88,11 +88,15 @@ InlineScope = List[Inline]
 
 By this point the relations between classes should be clear:
 
-- `Document` contains `BlockScope` and `DocSegments`, themselves containing `BlockScope`.
+- `Document` contains `BlockScope` and `DocSegment`s, themselves containing `BlockScope`.
 - `BlockScope`s contain other `Block`s: other `BlockScope`s, custom Python-defined `Block`s, and `Paragraph`s.
 - `Paragraph`s contain `Sentence`s.
 - `Sentence`s contain `Inline`s: plain `Text`, `Raw` content, custom Python-defined `Inline`s, and `InlineScope`s.
-- `InlineScope`s contain other `Inline`s - including themselves. 
+- `InlineScope`s contain other `Inline`s - including themselves.
+
+The concrete classes `Document`, `DocSegment`, `BlockScope`, `Paragraph`, `Sentence`, `InlineScope`, `Text`, and `Raw` are defined in Rust and cannot be subclassed in Python.
+They provide custom `__eq__` and `__repr__` functions for equality checking and debug printing respectively, but cannot be hashed.
+`Block`, `Inline`, and `Header` are _typeclasses_ e.g. patterns that custom classes can fit, and are defined in Python as Protocols that you can subclass.
 
 # Parsing a turnip-text document
 

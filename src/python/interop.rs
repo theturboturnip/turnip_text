@@ -440,15 +440,17 @@ impl Text {
     pub fn is_inline(&self) -> bool {
         true
     }
-    fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+    pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         self.0
             .getattr(py, intern!(py, "__eq__"))?
             .call1(py, (other.0.bind(py),))?
             .is_truthy(py)
     }
-    fn __repr__(&self, py: Python) -> PyResult<String> {
+    pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!("Text({})", self.0.bind(py).repr()?.to_str()?))
     }
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
 }
 
 /// Represents raw data that should not be escaped for rendering.
@@ -476,15 +478,17 @@ impl Raw {
     pub fn is_inline(&self) -> bool {
         true
     }
-    fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+    pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         self.0
             .getattr(py, intern!(py, "__eq__"))?
             .call1(py, (other.0.bind(py),))?
             .is_truthy(py)
     }
-    fn __repr__(&self, py: Python) -> PyResult<String> {
+    pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!("Raw({})", self.0.bind(py).repr()?.to_str()?))
     }
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
 }
 
 /// A sequence of objects that represents a single sentence.
@@ -520,12 +524,14 @@ impl Sentence {
         self.0.append_checked(node)
     }
 
-    fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+    pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         self.0.__eq__(py, &other.0)
     }
-    fn __repr__(&self, py: Python) -> PyResult<String> {
+    pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!(r#"Sentence({})"#, self.0.__repr__(py)?))
     }
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
 }
 
 /// A sequence of [Sentence] that combine to make a complete paragraph.
@@ -566,12 +572,14 @@ impl Paragraph {
         self.0.append_checked(node)
     }
 
-    fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+    pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         self.0.__eq__(py, &other.0)
     }
-    fn __repr__(&self, py: Python) -> PyResult<String> {
+    pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!(r#"Paragraph({})"#, self.0.__repr__(py)?))
     }
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
 }
 
 /// A group of [Block]s inside non-code-preceded squiggly braces
@@ -612,12 +620,14 @@ impl BlockScope {
         self.0.append_checked(node)
     }
 
-    fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+    pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         self.0.__eq__(py, &other.0)
     }
-    fn __repr__(&self, py: Python) -> PyResult<String> {
+    pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!(r#"BlockScope({})"#, self.0.__repr__(py)?))
     }
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
 }
 
 /// A group of [Inline]s inside non-code-preceded squiggly braces
@@ -658,12 +668,14 @@ impl InlineScope {
         self.0.append_checked(node)
     }
 
-    fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+    pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         self.0.__eq__(py, &other.0)
     }
-    fn __repr__(&self, py: Python) -> PyResult<String> {
+    pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!(r#"InlineScope({})"#, self.0.__repr__(py)?))
     }
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
 }
 
 /// A source file for turnip_text parsing.
@@ -758,17 +770,19 @@ impl Document {
     pub fn push_segment(&self, py: Python<'_>, segment: Py<DocSegment>) -> PyResult<()> {
         self.segments.append_checked(segment.bind(py))
     }
-    fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+    pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         Ok(self.contents.bind(py).eq(other.contents.bind(py))?
             && self.segments.__eq__(py, &other.segments)?)
     }
-    fn __repr__(&self, py: Python) -> PyResult<String> {
+    pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!(
             r#"Document(contents={}, segments={})"#,
             self.contents.borrow(py).__repr__(py)?,
             self.segments.__repr__(py)?
         ))
     }
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
 }
 
 /// This is used for implicit structure.
@@ -897,7 +911,7 @@ impl DocSegment {
             && self.contents.bind(py).eq(other.contents.bind(py))?
             && self.subsegments.__eq__(py, &other.subsegments)?)
     }
-    fn __repr__(&self, py: Python) -> PyResult<String> {
+    pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!(
             r#"DocSegment(header={}, contents={}, subsegments={})"#,
             self.header.bind(py).str()?.to_str()?,
@@ -905,4 +919,6 @@ impl DocSegment {
             self.subsegments.__repr__(py)?
         ))
     }
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
 }
