@@ -29,7 +29,6 @@ impl TokenProcessor for CommentProcessor {
         match tok {
             // Escaped(Newline) ends the comment.
             // Python does this too, presumably because escaping a newline has semantic purpose (to keep content in the same expression) and it is nice to be able to add documentation comments to each "not-line" without nuking the following content.
-            // TODO test that escaped newlines are reprocessed correctly in block and inline modes. They should continue lines in paragraphs, be ignored in inline scopes, and throw errors in block modes
             TTToken::Escaped(_, Escapable::Newline) | TTToken::Newline(_) | TTToken::EOF(_) => {
                 Ok(ProcStatus::PopAndReprocessToken(None))
             }

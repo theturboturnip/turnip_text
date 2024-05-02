@@ -42,6 +42,11 @@ trait InlineMode {
 
     fn on_content(&mut self);
 
+    fn on_escaped_newline(
+        &mut self,
+        py: Python,
+        tok: TTToken,
+    ) -> TurnipTextContextlessResult<ProcStatus>;
     fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus>;
     fn on_open_scope(
         &mut self,
@@ -152,20 +157,35 @@ impl InlineMode for ParagraphInlineMode {
         self.start_of_line
     }
 
+    fn on_escaped_newline(
+        &mut self,
+        _py: Python,
+        tok: TTToken,
+    ) -> TurnipTextContextlessResult<ProcStatus> {
+        // Always extend our token span so error messages using it have the full context
+        assert!(
+            self.ctx.try_extend(&tok.token_span()),
+            "ParagraphInlineMode got a token from a different file that it was opened in"
+        );
+        // Swallow whitespace after an escaped newline
+        self.start_of_line = true;
+        Ok(ProcStatus::Continue)
+    }
+
     fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus> {
         // Always extend our token span so error messages using it have the full context
         assert!(
             self.ctx.try_extend(&tok.token_span()),
             "ParagraphInlineMode got a token from a different file that it was opened in"
         );
-        // Text is already folded into the sentence
+        // We can set start_of_line when the sentence has content, if we receive an escaped newline.
+        self.fold_current_sentence_into_paragraph(py)?;
         if self.start_of_line {
             Ok(ProcStatus::PopAndReprocessToken(Some((
                 self.ctx,
                 BlockElem::Para(self.para.clone_ref(py)).into(),
             ))))
         } else {
-            self.fold_current_sentence_into_paragraph(py)?;
             // We're now at the start of the line
             self.start_of_line = true;
             Ok(ProcStatus::Continue)
@@ -350,6 +370,15 @@ impl InlineMode for KnownInlineScopeInlineMode {
         self.start_of_scope
     }
 
+    fn on_escaped_newline(
+        &mut self,
+        _py: Python,
+        _tok: TTToken,
+    ) -> TurnipTextContextlessResult<ProcStatus> {
+        // Swallow whitespace after an escaped newline
+        self.start_of_scope = true;
+        Ok(ProcStatus::Continue)
+    }
     fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus> {
         if self.inline_scope.borrow_mut(py).__len__(py) == 0 {
             unreachable!(
@@ -581,8 +610,8 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
         data: &str,
     ) -> TurnipTextContextlessResult<ProcStatus> {
         match tok {
-            // Escaped newline => "Continue sentence"
-            TTToken::Escaped(_, Escapable::Newline) => Ok(ProcStatus::Continue),
+            // Escaped newline => "Continue sentence", don't flush content because we could join content from the next line into it
+            TTToken::Escaped(_, Escapable::Newline) => self.inner.on_escaped_newline(py, tok),
             // Other escaped content, lone backslash, hyphens and dashes, and any other text are all treated as content
             TTToken::Escaped(_, _)
             | TTToken::Backslash(_)
@@ -618,10 +647,11 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
                     .flush_into(py, false, &mut self.inner)?;
                 self.inner.on_close_scope(py, tok, data)
             }
-            // TODO a commented-out line midway through a paragraph shouldn't split the paragraph
+
             TTToken::Hashes(_, _) => {
-                self.current_building_text
-                    .flush_into(py, false, &mut self.inner)?;
+                // Don't flush content here - the comment likely ends with a newline or EOF, in which case we'd flush, but it could end with an escaped newline in which case we don't flush.
+                // In any case the comment-ender will be passed up to us for reprocessing,
+                // so we don't need to make decisions here.
                 Ok(ProcStatus::PushProcessor(rc_refcell(
                     CommentProcessor::new(),
                 )))

@@ -119,16 +119,26 @@ Whitespace at the start and end of each line is ignored.
 If a sentence is particularly long, you can escape the newline unlike with comments.
 You cannot define multiple sentences per line.
 An empty line (which may include a comment) ends the paragraph.
+Note that if you escape a newline, and then have a blank line, that blank line is included with the previous line (because of the escaped newline) and does not end the paragraph.
+Leading whitespace on all lines is ignored, even after escaped newlines.
+Trailing whitespace is also ignored, except any whitespace between content and an escaped newline.
 
 ```
 This is a paragraph.
-I can continue a sentence \
+I can continue a sentence # with an explanatory comment, even \
 by escaping the following newline.
 
 This is the second paragraph.
-  # Even though a comment is here, the line is "empty".
+# You can comment out lines inside paragraphs, and they don't end the paragraph.
+I'm still in the second paragraph.
 
-This is the third paragraph.
+This is the third paragraph. \
+     
+I'm still in the third paragraph. # The blank line is an extension of the first line, and doesn't end the paragraph
+
+
+    An indented paragraph doesn't pick up the preceding whitespace \
+    even after escaped newlines, but the space between "whitespace" and the escaped newline will remain.
 ```
 
 `BlockScope`s can be created by opening a scope with a squiggly brace at the start of a line `{` and a newline.

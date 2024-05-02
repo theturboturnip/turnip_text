@@ -73,6 +73,9 @@ mod basic;
 /// Tests that block-level elements (Paragraphs, BlockScope, code-emitted-Blocks, code-emitted-Headers, code-emitted-TurnipTextSources) must be separated by a blank line
 mod block_spacing;
 
+/// Tests that comments pass through their ending tokens (newlines, escaped newlines, EOF) properly
+mod comments;
+
 /// Tests that the implicit structure mechanism is working correctly, and that headers can/can't be emitted in various places
 mod doc_structure;
 
@@ -90,6 +93,9 @@ mod scope_ambiguity;
 
 /// Tests for situations that are currently allowed but probably shouldn't be.
 mod overflexibility;
+
+/// Tests for paragraphs and how they handle special constructs like escaped newlines
+mod paragraph;
 
 /// This module checks two kinds of substitution - the only ones performed on text content.
 /// - Newlines, whether they be \r\n or \r or \n, are all translated to \n - even in raw scopes
