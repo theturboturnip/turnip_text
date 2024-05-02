@@ -1,7 +1,8 @@
-use pyo3::{prelude::*, types::PyDict};
+use pyo3::prelude::*;
 
 use crate::{
     error::TurnipTextContextlessResult,
+    interpreter::ParserEnv,
     lexer::{Escapable, TTToken},
     util::{ParseContext, ParseSpan},
 };
@@ -18,7 +19,7 @@ impl TokenProcessor for CommentProcessor {
     fn process_token(
         &mut self,
         _py: Python,
-        _py_env: &PyDict,
+        _py_env: ParserEnv,
         tok: TTToken,
         _data: &str,
     ) -> TurnipTextContextlessResult<ProcStatus> {
@@ -39,7 +40,7 @@ impl TokenProcessor for CommentProcessor {
     fn process_emitted_element(
         &mut self,
         _py: Python,
-        _py_env: &PyDict,
+        _py_env: ParserEnv,
         _pushed: Option<EmittedElement>,
     ) -> TurnipTextContextlessResult<ProcStatus> {
         unreachable!("CommentProcessor does not spawn inner builders")

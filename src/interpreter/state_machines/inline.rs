@@ -1,11 +1,14 @@
-use pyo3::{prelude::*, types::PyDict};
+use pyo3::prelude::*;
 
 use crate::{
     error::{
         interp::{BlockModeElem, InlineModeContext, InterpError, MapContextlessResult},
         TurnipTextContextlessError, TurnipTextContextlessResult,
     },
-    interpreter::state_machines::{BlockElem, InlineElem},
+    interpreter::{
+        state_machines::{BlockElem, InlineElem},
+        ParserEnv,
+    },
     lexer::{Escapable, TTToken},
     python::{
         interop::{Block, DocSegmentHeader, InlineScope, Paragraph, Raw, Sentence, Text},
@@ -68,7 +71,7 @@ trait InlineMode {
     fn on_inline(
         &mut self,
         py: Python,
-        inl: &PyAny,
+        inl: &Bound<'_, PyAny>,
         inl_ctx: ParseContext,
     ) -> TurnipTextContextlessResult<()>;
 }
@@ -84,7 +87,7 @@ pub struct ParagraphInlineMode {
 impl InlineLevelProcessor<ParagraphInlineMode> {
     pub fn new_with_inline(
         py: Python,
-        inline: &PyAny,
+        inline: &Bound<'_, PyAny>,
         inline_ctx: ParseContext,
     ) -> TurnipTextContextlessResult<Self> {
         let current_sentence = py_internal_alloc(py, Sentence::new_empty(py))?;
@@ -133,7 +136,7 @@ impl ParagraphInlineMode {
             // Push the old one into the paragraph
             self.para
                 .borrow_mut(py)
-                .push_sentence(sentence.as_ref(py))
+                .push_sentence(sentence.bind(py))
                 .err_as_internal(py)?;
         }
         Ok(())
@@ -295,7 +298,7 @@ impl InlineMode for ParagraphInlineMode {
     fn on_inline(
         &mut self,
         py: Python,
-        inl: &PyAny,
+        inl: &Bound<'_, PyAny>,
         inl_ctx: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         assert!(
@@ -461,7 +464,7 @@ impl InlineMode for KnownInlineScopeInlineMode {
     fn on_inline(
         &mut self,
         py: Python,
-        inl: &PyAny,
+        inl: &Bound<'_, PyAny>,
         inl_ctx: ParseContext,
     ) -> TurnipTextContextlessResult<()> {
         assert!(
@@ -560,7 +563,7 @@ impl InlineTextState {
                 inner.on_content();
                 inner.on_inline(
                     py,
-                    py_text.as_ref(py),
+                    py_text.bind(py).as_any(),
                     ParseContext::new(last_token, last_token),
                 )
             }
@@ -573,7 +576,7 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
     fn process_token(
         &mut self,
         py: Python,
-        _py_env: &PyDict,
+        _py_env: ParserEnv,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<ProcStatus> {
@@ -660,7 +663,7 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
     fn process_emitted_element(
         &mut self,
         py: Python,
-        _py_env: &PyDict,
+        _py_env: ParserEnv,
         pushed: Option<EmittedElement>,
     ) -> TurnipTextContextlessResult<ProcStatus> {
         match pushed {
@@ -681,7 +684,7 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
                 // If we get an inline, shove it in
                 DocElement::Inline(inline) => {
                     self.inner.on_content();
-                    self.inner.on_inline(py, inline.as_ref(py), elem_ctx)?;
+                    self.inner.on_inline(py, inline.bind(py), elem_ctx)?;
                     Ok(ProcStatus::Continue)
                 }
             },
@@ -723,7 +726,7 @@ impl TokenProcessor for RawStringProcessor {
     fn process_token(
         &mut self,
         py: Python,
-        _py_env: &PyDict,
+        _py_env: ParserEnv,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<ProcStatus> {
@@ -757,7 +760,7 @@ impl TokenProcessor for RawStringProcessor {
     fn process_emitted_element(
         &mut self,
         _py: Python,
-        _py_env: &PyDict,
+        _py_env: ParserEnv,
         _pushed: Option<EmittedElement>,
         // closing_token: TTToken,
     ) -> TurnipTextContextlessResult<ProcStatus> {

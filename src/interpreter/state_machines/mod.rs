@@ -26,7 +26,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use pyo3::{prelude::*, types::PyDict, PyClass};
+use pyo3::{prelude::*, PyClass};
 
 use crate::{
     error::{
@@ -48,7 +48,7 @@ mod ambiguous_scope;
 mod block;
 use block::TopLevelProcessor;
 
-use super::FileEvent;
+use super::{FileEvent, ParserEnv};
 
 mod code;
 mod comment;
@@ -71,11 +71,11 @@ enum BlockElem {
     Para(Py<Paragraph>),
 }
 impl BlockElem {
-    fn as_ref<'py>(&'py self, py: Python<'py>) -> &'py PyAny {
+    fn bind<'py>(&'py self, py: Python<'py>) -> &Bound<'py, PyAny> {
         match self {
-            BlockElem::FromCode(b) => b.as_ref(py),
-            BlockElem::BlockScope(bs) => bs.as_ref(py),
-            BlockElem::Para(p) => p.as_ref(py),
+            BlockElem::FromCode(b) => b.bind(py),
+            BlockElem::BlockScope(bs) => bs.bind(py),
+            BlockElem::Para(p) => p.bind(py),
         }
     }
 }
@@ -101,11 +101,11 @@ enum InlineElem {
     Raw(Py<Raw>),
 }
 impl InlineElem {
-    fn as_ref<'py>(&'py self, py: Python<'py>) -> &'py PyAny {
+    fn bind<'py>(&'py self, py: Python<'py>) -> &Bound<'py, PyAny> {
         match self {
-            InlineElem::FromCode(i) => i.as_ref(py),
-            InlineElem::InlineScope(is) => is.as_ref(py),
-            InlineElem::Raw(r) => r.as_ref(py),
+            InlineElem::FromCode(i) => i.bind(py),
+            InlineElem::InlineScope(is) => is.bind(py),
+            InlineElem::Raw(r) => r.bind(py),
         }
     }
 }
@@ -129,7 +129,7 @@ trait TokenProcessor {
     fn process_token(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        py_env: ParserEnv,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<ProcStatus>;
@@ -138,7 +138,7 @@ trait TokenProcessor {
     fn process_emitted_element(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        py_env: ParserEnv,
         emitted: Option<EmittedElement>,
     ) -> TurnipTextContextlessResult<ProcStatus>;
     /// Called when a processor you pushed returns [ProcStatus::PopAndNewSource].
@@ -197,7 +197,7 @@ impl FileProcessorStack {
     pub fn process_tokens(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        py_env: ParserEnv,
         toks: &mut impl Iterator<Item = TTToken>,
         data: &str,
     ) -> TurnipTextContextlessResult<FileEvent> {
@@ -220,7 +220,7 @@ impl FileProcessorStack {
     fn process_token(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        py_env: ParserEnv,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<Option<(ParseSpan, TurnipTextSource)>> {
@@ -337,7 +337,7 @@ impl FileProcessorStack {
     fn emit_elem_in_top_processor(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        py_env: ParserEnv,
         emitted: Option<EmittedElement>,
     ) -> TurnipTextContextlessResult<()> {
         let action = self

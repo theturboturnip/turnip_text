@@ -1,12 +1,13 @@
 use std::ffi::CString;
 
-use pyo3::{exceptions::PySyntaxError, prelude::*, types::PyDict, AsPyPointer};
+use pyo3::{exceptions::PySyntaxError, prelude::*, types::PyDict};
 
 use crate::{
     error::{
         interp::{InterpError, MapContextlessResult},
         TurnipTextContextlessResult, UserPythonCompileMode, UserPythonExecError,
     },
+    interpreter::ParserEnv,
     lexer::TTToken,
     python::{
         interop::{
@@ -43,7 +44,7 @@ impl TokenProcessor for CodeProcessor {
     fn process_token(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        py_env: ParserEnv,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<ProcStatus> {
@@ -58,7 +59,8 @@ impl TokenProcessor for CodeProcessor {
                     TTToken::CodeClose(_, n_close_brackets)
                         if n_close_brackets == self.n_closing =>
                     {
-                        let eval_obj: &PyAny = eval_or_exec(py, py_env, &self.code, self.ctx)?;
+                        let eval_obj: Bound<'_, PyAny> =
+                            eval_or_exec(py, py_env, &self.code, self.ctx)?;
 
                         // If we evaluated a TurnipTextSource, it may not be a builder of any kind thus we can finish immediately.
                         if let Ok(inserted_file) = eval_obj.extract::<TurnipTextSource>() {
@@ -116,7 +118,7 @@ impl TokenProcessor for CodeProcessor {
                     // If we always coerce to inline, then the wrapping in Paragraph and Sentence happens naturally in the interpreter.
                     // => We check if it's a block, and if it isn't we try to coerce to inline.
 
-                    let evaled_result_ref = evaled_result.as_ref(py);
+                    let evaled_result_ref = evaled_result.bind(py);
 
                     if evaled_result_ref.is_none() {
                         Ok(ProcStatus::PopAndReprocessToken(None))
@@ -151,10 +153,10 @@ impl TokenProcessor for CodeProcessor {
     fn process_emitted_element(
         &mut self,
         py: Python,
-        _py_env: &PyDict,
+        _py_env: ParserEnv,
         pushed: Option<EmittedElement>,
     ) -> TurnipTextContextlessResult<ProcStatus> {
-        let evaled_result_ref = self.evaled_code.take().unwrap().into_ref(py);
+        let evaled_result_ref = self.evaled_code.take().unwrap().into_bound(py);
 
         let (elem_ctx, elem) = pushed.expect(
             "Should never get a built None - CodeProcessor only spawns AmbiguousScopeProcessor \
@@ -163,7 +165,7 @@ impl TokenProcessor for CodeProcessor {
         let built = match elem {
             DocElement::Block(BlockElem::BlockScope(blocks)) => {
                 let builder: PyTcRef<BlockScopeBuilder> =
-                    PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
+                    PyTcRef::of_friendly(&evaled_result_ref, "value returned by eval-bracket")
                         .map_err(|err| UserPythonExecError::CoercingBlockScopeBuilder {
                             code_ctx: self.ctx,
                             obj: evaled_result_ref.to_object(py),
@@ -181,7 +183,7 @@ impl TokenProcessor for CodeProcessor {
             }
             DocElement::Inline(InlineElem::InlineScope(inlines)) => {
                 let builder: PyTcRef<InlineScopeBuilder> =
-                    PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
+                    PyTcRef::of_friendly(&evaled_result_ref, "value returned by eval-bracket")
                         .map_err(|err| UserPythonExecError::CoercingInlineScopeBuilder {
                             code_ctx: self.ctx,
                             obj: evaled_result_ref.to_object(py),
@@ -199,7 +201,7 @@ impl TokenProcessor for CodeProcessor {
             }
             DocElement::Inline(InlineElem::Raw(raw)) => {
                 let builder: PyTcRef<RawScopeBuilder> =
-                    PyTcRef::of_friendly(evaled_result_ref, "value returned by eval-bracket")
+                    PyTcRef::of_friendly(&evaled_result_ref, "value returned by eval-bracket")
                         .map_err(|err| UserPythonExecError::CoercingRawScopeBuilder {
                             code: self.ctx,
                             obj: evaled_result_ref.to_object(py),
@@ -212,7 +214,7 @@ impl TokenProcessor for CodeProcessor {
                     "Code got a built object from a different file that it was opened in"
                 );
 
-                RawScopeBuilder::call_build_from_raw(py, &builder, raw.borrow(py).0.clone_ref(py))
+                RawScopeBuilder::call_build_from_raw(py, builder, raw.borrow(py).0.clone_ref(py))
                     .err_as_internal(py)?
             }
             _ => unreachable!("Invalid combination of requested and actual built element types"),
@@ -258,11 +260,11 @@ impl TokenProcessor for CodeProcessor {
 /// Translates run errors to [UserPythonExecError::RunningEvalBrackets].
 fn try_compile_and_run<'py>(
     py: Python<'py>,
-    py_env: &'py PyDict,
+    py_env: &'py Bound<'py, PyDict>,
     code: &CString,
     code_ctx: ParseContext,
     mode: UserPythonCompileMode,
-) -> Result<&'py PyAny, UserPythonExecError> {
+) -> Result<Bound<'py, PyAny>, UserPythonExecError> {
     let compile_mode = match mode {
         UserPythonCompileMode::EvalExpr => pyo3::ffi::Py_eval_input,
         UserPythonCompileMode::ExecStmts | UserPythonCompileMode::ExecIndentedStmts => {
@@ -286,7 +288,7 @@ fn try_compile_and_run<'py>(
         let res_ptr = pyo3::ffi::PyEval_EvalCode(code_obj, globals, locals);
         pyo3::ffi::Py_DECREF(code_obj);
 
-        let res: PyResult<&PyAny> = py.from_owned_ptr_or_err(res_ptr);
+        let res: PyResult<Bound<'_, PyAny>> = Bound::from_owned_ptr_or_err(py, res_ptr);
         // Make sure exec-mode compilations always return None
         match (mode, &res) {
             (
@@ -306,10 +308,10 @@ fn try_compile_and_run<'py>(
 
 pub fn eval_or_exec<'py, 'code>(
     py: Python<'py>,
-    py_env: &'py PyDict,
+    py_env: &'py Bound<'py, PyDict>,
     code: &'code str,
     code_ctx: ParseContext,
-) -> Result<&'py PyAny, UserPythonExecError> {
+) -> Result<Bound<'py, PyAny>, UserPythonExecError> {
     // The turnip-text lexer rejects the nul-byte so it cannot be found in the code.
     let code_trimmed =
         CString::new(code.trim()).expect("Nul-byte should not be present inside code");
@@ -333,10 +335,10 @@ pub fn eval_or_exec<'py, 'code>(
                     Err(UserPythonExecError::CompilingEvalBrackets { err, .. })
                     // I feel fine expecting Py_CompileString to raise an error with a type with a name.
                         if err
-                            .get_type(py)
+                            .get_type_bound(py)
                             .name()
                             .expect("Failed to get compile error type name")
-                            == "IndentationError" =>
+                            == "builtins.IndentationError" =>
                     {
                         // Compiling the code in exec mode gave an IndentationError.
                         // Put an if True:\n in front and see if that helps.

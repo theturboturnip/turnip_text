@@ -17,7 +17,7 @@ mod error {
 
 #[pymodule]
 #[pyo3(name = "_native")]
-pub fn turnip_text(py: Python<'_>, m: &PyModule) -> PyResult<()> {
+pub fn turnip_text(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_file, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_to_inline, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_to_inline_scope, m)?)?;
@@ -35,7 +35,10 @@ pub fn turnip_text(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<DocSegment>()?;
     m.add_class::<TurnipTextSource>()?;
 
-    m.add("TurnipTextError", py.get_type::<error::TurnipTextError>())?;
+    m.add(
+        "TurnipTextError",
+        py.get_type_bound::<error::TurnipTextError>(),
+    )?;
 
     Ok(())
 }
@@ -51,7 +54,7 @@ impl TurnipTextError {
 fn parse_file<'py>(
     py: Python<'py>,
     file: TurnipTextSource,
-    py_env: &PyDict,
+    py_env: &Bound<'_, PyDict>,
 ) -> PyResult<Py<Document>> {
     let parser =
         TurnipTextParser::new(py, file.name, file.contents).map_err(TurnipTextError::to_pyerr)?;
@@ -59,13 +62,13 @@ fn parse_file<'py>(
 }
 
 #[pyfunction]
-pub fn coerce_to_inline<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResult<PyObject> {
+pub fn coerce_to_inline<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<PyObject> {
     Ok(coerce_to_inline_pytcref(py, obj)?.unbox())
 }
 
 pub fn coerce_to_inline_pytcref<'py>(
     py: Python<'py>,
-    obj: &'py PyAny,
+    obj: &Bound<'py, PyAny>,
 ) -> PyResult<PyTcRef<Inline>> {
     // 1. if it's already Inline, return it
     if let Ok(inl) = PyTcRef::of(obj) {
@@ -74,22 +77,22 @@ pub fn coerce_to_inline_pytcref<'py>(
     // 2. if it's a List of Inline, return InlineScope(it)
     // Here we first check if it's a list, then if so try to create an InlineScope - this will verify if it's a list of Inlines.
     if let Ok(py_list) = obj.downcast::<PyList>() {
-        if let Ok(inline_scope) = InlineScope::new(py, Some(py_list)) {
+        if let Ok(inline_scope) = InlineScope::new(py, Some(&py_list)) {
             let inline_scope = Py::new(py, inline_scope)?;
-            return Ok(PyTcRef::of_unchecked(inline_scope.as_ref(py)));
+            return Ok(PyTcRef::of_unchecked(inline_scope.bind(py)));
         }
     }
     // 3. if it's str, return Text(it)
     if let Ok(py_str) = obj.downcast::<PyString>() {
         let unescaped_text = Py::new(py, Text::new(py_str))?;
-        return Ok(PyTcRef::of_unchecked(unescaped_text.as_ref(py)));
+        return Ok(PyTcRef::of_unchecked(unescaped_text.bind(py)));
     }
     // 4. if it's float, return Text(str(it))
     // 5. if it's int, return Text(str(it))
     if obj.downcast::<PyFloat>().is_ok() || obj.downcast::<PyLong>().is_ok() {
         let str_of_obj = obj.str()?;
-        let unescaped_text = Py::new(py, Text::new(str_of_obj))?;
-        return Ok(PyTcRef::of_unchecked(unescaped_text.as_ref(py)));
+        let unescaped_text = Py::new(py, Text::new(&str_of_obj))?;
+        return Ok(PyTcRef::of_unchecked(unescaped_text.bind(py)));
     }
     // 6. otherwise fail with TypeError
     Err(PyTypeError::new_err(
@@ -99,7 +102,10 @@ pub fn coerce_to_inline_pytcref<'py>(
 }
 
 #[pyfunction]
-pub fn coerce_to_inline_scope<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResult<Py<InlineScope>> {
+pub fn coerce_to_inline_scope<'py>(
+    py: Python<'py>,
+    obj: &Bound<'py, PyAny>,
+) -> PyResult<Py<InlineScope>> {
     // 1. if it's already InlineScope, return it
     if let Ok(inline_scope) = obj.extract() {
         return Ok(inline_scope);
@@ -113,16 +119,19 @@ pub fn coerce_to_inline_scope<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResult
     // 4. otherwise return InlineScope([that])
     return Ok(Py::new(
         py,
-        InlineScope::new(py, Some(PyList::new(py, [obj])))?,
+        InlineScope::new(py, Some(&PyList::new_bound(py, [obj])))?,
     )?);
 }
 
 #[pyfunction]
-pub fn coerce_to_block<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResult<PyObject> {
+pub fn coerce_to_block<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<PyObject> {
     Ok(coerce_to_block_pytcref(py, obj)?.unbox())
 }
 
-pub fn coerce_to_block_pytcref<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResult<PyTcRef<Block>> {
+pub fn coerce_to_block_pytcref<'py>(
+    py: Python<'py>,
+    obj: &Bound<'py, PyAny>,
+) -> PyResult<PyTcRef<Block>> {
     // 1. if it's already Block, return it
     if let Ok(block) = PyTcRef::of(obj) {
         return Ok(block);
@@ -130,18 +139,18 @@ pub fn coerce_to_block_pytcref<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResul
     // 2. if it's a list of Block, wrap it in a BlockScope and return it
     // Here we first check if it's a list, then if so try to create a BlockScope - this will verify if it's a list of Blocks.
     if let Ok(py_list) = obj.downcast::<PyList>() {
-        if let Ok(block_scope) = BlockScope::new(py, Some(py_list)) {
+        if let Ok(block_scope) = BlockScope::new(py, Some(&py_list)) {
             let block_scope = Py::new(py, block_scope)?;
-            return Ok(PyTcRef::of_unchecked(block_scope.as_ref(py)));
+            return Ok(PyTcRef::of_unchecked(block_scope.bind(py)));
         }
     }
     // 3. if it's a Sentence, wrap it in a list -> Paragraph
     if let Ok(sentence) = obj.extract::<Py<Sentence>>() {
         let paragraph = Py::new(
             py,
-            Paragraph::new(py, Some(PyList::new(py, [sentence]).into()))?,
+            Paragraph::new(py, Some(&PyList::new_bound(py, [sentence])))?,
         )?;
-        return Ok(PyTcRef::of_unchecked(paragraph.as_ref(py)));
+        return Ok(PyTcRef::of_unchecked(paragraph.bind(py)));
     }
     // 4. if it can be coerced to an Inline, wrap that in list -> Sentence -> list -> Paragraph and return it
     if let Ok(inl) = coerce_to_inline(py, obj) {
@@ -149,16 +158,16 @@ pub fn coerce_to_block_pytcref<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResul
             py,
             Paragraph::new(
                 py,
-                Some(PyList::new(
+                Some(&PyList::new_bound(
                     py,
                     [Py::new(
                         py,
-                        Sentence::new(py, Some(PyList::new(py, [inl])))?,
+                        Sentence::new(py, Some(&PyList::new_bound(py, [inl])))?,
                     )?],
                 )),
             )?,
         )?;
-        return Ok(PyTcRef::of_unchecked(paragraph.as_ref(py)));
+        return Ok(PyTcRef::of_unchecked(paragraph.bind(py)));
     }
     // 5. otherwise fail with TypeError
     Err(PyTypeError::new_err(
@@ -168,7 +177,10 @@ pub fn coerce_to_block_pytcref<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResul
 }
 
 #[pyfunction]
-pub fn coerce_to_block_scope<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResult<Py<BlockScope>> {
+pub fn coerce_to_block_scope<'py>(
+    py: Python<'py>,
+    obj: &Bound<'py, PyAny>,
+) -> PyResult<Py<BlockScope>> {
     // 1. if it's already a BlockScope, return it
     if let Ok(block_scope) = obj.extract() {
         return Ok(block_scope);
@@ -182,7 +194,7 @@ pub fn coerce_to_block_scope<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResult<
     // 4. otherwise return BlockScope([that])
     return Ok(Py::new(
         py,
-        BlockScope::new(py, Some(PyList::new(py, [obj])))?,
+        BlockScope::new(py, Some(&PyList::new_bound(py, [obj])))?,
     )?);
 }
 
@@ -190,17 +202,17 @@ pub fn coerce_to_block_scope<'py>(py: Python<'py>, obj: &'py PyAny) -> PyResult<
 #[derive(Debug, Clone)]
 pub struct Block {}
 impl Block {
-    fn marker_bool_name(py: Python<'_>) -> &PyString {
+    fn marker_bool_name(py: Python<'_>) -> &Bound<'_, PyString> {
         intern!(py, "is_block")
     }
 }
 impl PyTypeclass for Block {
     const NAME: &'static str = "Block";
 
-    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
+    fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
         let attr_name = Self::marker_bool_name(obj.py());
         if matches!(obj.hasattr(attr_name), Ok(true)) {
-            obj.getattr(attr_name)?.is_true()
+            obj.getattr(attr_name)?.is_truthy()
         } else {
             Ok(false)
         }
@@ -212,17 +224,17 @@ impl PyTypeclass for Block {
 #[derive(Debug, Clone)]
 pub struct Inline {}
 impl Inline {
-    fn marker_bool_name(py: Python<'_>) -> &PyString {
+    fn marker_bool_name(py: Python<'_>) -> &Bound<'_, PyString> {
         intern!(py, "is_inline")
     }
 }
 impl PyTypeclass for Inline {
     const NAME: &'static str = "Inline";
 
-    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
+    fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
         let attr_name = Self::marker_bool_name(obj.py());
         if matches!(obj.hasattr(attr_name), Ok(true)) {
-            obj.getattr(attr_name)?.is_true()
+            obj.getattr(attr_name)?.is_truthy()
         } else {
             Ok(false)
         }
@@ -234,13 +246,13 @@ impl PyTypeclass for Inline {
 #[derive(Debug, Clone)]
 pub struct DocSegmentHeader {}
 impl DocSegmentHeader {
-    fn marker_bool_name(py: Python<'_>) -> &PyString {
+    fn marker_bool_name(py: Python<'_>) -> &Bound<'_, PyString> {
         intern!(py, "is_segment_header")
     }
-    fn weight_field_name(py: Python<'_>) -> &PyString {
+    fn weight_field_name(py: Python<'_>) -> &Bound<'_, PyString> {
         intern!(py, "weight")
     }
-    pub fn get_weight(py: Python<'_>, header: &PyAny) -> PyResult<i64> {
+    pub fn get_weight(py: Python<'_>, header: &Bound<'_, PyAny>) -> PyResult<i64> {
         header
             .getattr(DocSegmentHeader::weight_field_name(py))?
             .extract()
@@ -249,10 +261,10 @@ impl DocSegmentHeader {
 impl PyTypeclass for DocSegmentHeader {
     const NAME: &'static str = "DocSegmentHeader";
 
-    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
+    fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
         let attr_name = Self::marker_bool_name(obj.py());
         if matches!(obj.hasattr(attr_name), Ok(true)) {
-            obj.getattr(attr_name)?.is_true()
+            obj.getattr(attr_name)?.is_truthy()
         } else {
             Ok(false)
         }
@@ -267,7 +279,7 @@ pub enum BuilderOutcome {
     None,
 }
 impl BuilderOutcome {
-    fn of_friendly(val: &PyAny, context: &str) -> PyResult<BuilderOutcome> {
+    fn of_friendly(val: &Bound<'_, PyAny>, context: &str) -> PyResult<BuilderOutcome> {
         if val.is_none() {
             Ok(BuilderOutcome::None)
         } else {
@@ -315,7 +327,7 @@ impl BuilderOutcome {
 #[derive(Debug, Clone)]
 pub struct BlockScopeBuilder {}
 impl BlockScopeBuilder {
-    fn marker_func_name(py: Python<'_>) -> &PyString {
+    fn marker_func_name(py: Python<'_>) -> &Bound<'_, PyString> {
         intern!(py, "build_from_blocks")
     }
     pub fn call_build_from_blocks<'py>(
@@ -324,16 +336,16 @@ impl BlockScopeBuilder {
         blocks: Py<BlockScope>,
     ) -> PyResult<BuilderOutcome> {
         let output = builder
-            .as_ref(py)
+            .bind(py)
             .getattr(Self::marker_func_name(py))?
-            .call1((blocks.as_ref(py),))?;
-        BuilderOutcome::of_friendly(output, "output of .build_from_blocks()")
+            .call1((blocks.bind(py),))?;
+        BuilderOutcome::of_friendly(&output, "output of .build_from_blocks()")
     }
 }
 impl PyTypeclass for BlockScopeBuilder {
     const NAME: &'static str = "BlockScopeBuilder";
 
-    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
+    fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
         obj.hasattr(Self::marker_func_name(obj.py()))
     }
 }
@@ -347,7 +359,7 @@ impl PyTypeclass for BlockScopeBuilder {
 #[derive(Debug, Clone)]
 pub struct InlineScopeBuilder {}
 impl InlineScopeBuilder {
-    fn marker_func_name(py: Python<'_>) -> &PyString {
+    fn marker_func_name(py: Python<'_>) -> &Bound<'_, PyString> {
         intern!(py, "build_from_inlines")
     }
     pub fn call_build_from_inlines<'py>(
@@ -356,16 +368,16 @@ impl InlineScopeBuilder {
         inlines: Py<InlineScope>,
     ) -> PyResult<BuilderOutcome> {
         let output = builder
-            .as_ref(py)
+            .bind(py)
             .getattr(Self::marker_func_name(py))?
-            .call1((inlines.as_ref(py),))?;
-        BuilderOutcome::of_friendly(output, "output of .build_from_inlines()")
+            .call1((inlines.bind(py),))?;
+        BuilderOutcome::of_friendly(&output, "output of .build_from_inlines()")
     }
 }
 impl PyTypeclass for InlineScopeBuilder {
     const NAME: &'static str = "InlineScopeBuilder";
 
-    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
+    fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
         obj.hasattr(Self::marker_func_name(obj.py()))
     }
 }
@@ -379,26 +391,26 @@ impl PyTypeclass for InlineScopeBuilder {
 #[derive(Debug, Clone)]
 pub struct RawScopeBuilder {}
 impl RawScopeBuilder {
-    fn marker_func_name(py: Python<'_>) -> &PyString {
+    fn marker_func_name(py: Python<'_>) -> &Bound<'_, PyString> {
         intern!(py, "build_from_raw")
     }
     /// Calls builder.build_from_raw(raw), could be inline or block
     pub fn call_build_from_raw<'py>(
         py: Python<'py>,
-        builder: &PyTcRef<Self>,
+        builder: PyTcRef<Self>,
         raw: Py<PyString>,
     ) -> PyResult<BuilderOutcome> {
         let output = builder
-            .as_ref(py)
+            .bind(py)
             .getattr(Self::marker_func_name(py))?
             .call1((raw,))?;
-        BuilderOutcome::of_friendly(output, "output of .build_from_raw()")
+        BuilderOutcome::of_friendly(&output, "output of .build_from_raw()")
     }
 }
 impl PyTypeclass for RawScopeBuilder {
     const NAME: &'static str = "RawScopeBuilder";
 
-    fn fits_typeclass(obj: &PyAny) -> PyResult<bool> {
+    fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
         obj.hasattr(Self::marker_func_name(obj.py()))
     }
 }
@@ -411,14 +423,14 @@ impl PyTypeclass for RawScopeBuilder {
 pub struct Text(pub Py<PyString>);
 impl Text {
     pub fn new_rs(py: Python, s: &str) -> Self {
-        Self::new(PyString::new(py, s))
+        Self::new(&PyString::new_bound(py, s))
     }
 }
 #[pymethods]
 impl Text {
     #[new]
-    pub fn new(data: &PyString) -> Self {
-        Self(data.into())
+    pub fn new(data: &Bound<'_, PyString>) -> Self {
+        Self(data.as_unbound().clone())
     }
     #[getter]
     pub fn text(&self) -> PyResult<Py<PyString>> {
@@ -431,11 +443,11 @@ impl Text {
     fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         self.0
             .getattr(py, intern!(py, "__eq__"))?
-            .call1(py, (other.0.as_ref(py),))?
-            .is_true(py)
+            .call1(py, (other.0.bind(py),))?
+            .is_truthy(py)
     }
     fn __repr__(&self, py: Python) -> PyResult<String> {
-        Ok(format!("Text({})", self.0.as_ref(py).repr()?.to_str()?))
+        Ok(format!("Text({})", self.0.bind(py).repr()?.to_str()?))
     }
 }
 
@@ -447,14 +459,14 @@ impl Text {
 pub struct Raw(pub Py<PyString>);
 impl Raw {
     pub fn new_rs(py: Python, s: &str) -> Self {
-        Self::new(PyString::new(py, s).into_py(py))
+        Self::new(PyString::new_bound(py, s))
     }
 }
 #[pymethods]
 impl Raw {
     #[new]
-    pub fn new(data: Py<PyString>) -> Self {
-        Self(data)
+    pub fn new(data: Bound<'_, PyString>) -> Self {
+        Self(data.as_unbound().clone())
     }
     #[getter]
     pub fn data(&self) -> PyResult<Py<PyString>> {
@@ -467,11 +479,11 @@ impl Raw {
     fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         self.0
             .getattr(py, intern!(py, "__eq__"))?
-            .call1(py, (other.0.as_ref(py),))?
-            .is_true(py)
+            .call1(py, (other.0.bind(py),))?
+            .is_truthy(py)
     }
     fn __repr__(&self, py: Python) -> PyResult<String> {
-        Ok(format!("Raw({})", self.0.as_ref(py).repr()?.to_str()?))
+        Ok(format!("Raw({})", self.0.bind(py).repr()?.to_str()?))
     }
 }
 
@@ -490,7 +502,7 @@ impl Sentence {
 impl Sentence {
     #[new]
     #[pyo3(signature = (list=None))]
-    pub fn new(py: Python, list: Option<&PyList>) -> PyResult<Self> {
+    pub fn new(py: Python, list: Option<&Bound<'_, PyList>>) -> PyResult<Self> {
         match list {
             Some(list) => Ok(Self(PyTypeclassList::from(list)?)),
             None => Ok(Self(PyTypeclassList::new(py))),
@@ -500,11 +512,11 @@ impl Sentence {
     pub fn __len__(&self, py: Python) -> usize {
         self.0.list(py).len()
     }
-    pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
-        PyIterator::from_object(py, self.0.list(py))
+    pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyIterator>> {
+        self.0.list(py).as_sequence().iter()
     }
 
-    pub fn push_inline(&mut self, node: &PyAny) -> PyResult<()> {
+    pub fn push_inline(&mut self, node: &Bound<'_, PyAny>) -> PyResult<()> {
         self.0.append_checked(node)
     }
 
@@ -531,7 +543,7 @@ impl Paragraph {
 impl Paragraph {
     #[new]
     #[pyo3(signature = (list=None))]
-    pub fn new(py: Python, list: Option<&PyList>) -> PyResult<Self> {
+    pub fn new(py: Python, list: Option<&Bound<'_, PyList>>) -> PyResult<Self> {
         match list {
             Some(list) => Ok(Self(PyInstanceList::from(list)?)),
             None => Ok(Self(PyInstanceList::new(py))),
@@ -546,11 +558,11 @@ impl Paragraph {
     pub fn __len__(&self, py: Python) -> usize {
         self.0.list(py).len()
     }
-    pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
-        PyIterator::from_object(py, self.0.list(py))
+    pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyIterator>> {
+        self.0.list(py).as_sequence().iter()
     }
 
-    pub fn push_sentence(&mut self, node: &PyAny) -> PyResult<()> {
+    pub fn push_sentence(&mut self, node: &Bound<'_, PyAny>) -> PyResult<()> {
         self.0.append_checked(node)
     }
 
@@ -577,7 +589,7 @@ impl BlockScope {
 impl BlockScope {
     #[new]
     #[pyo3(signature = (list=None))]
-    pub fn new(py: Python, list: Option<&PyList>) -> PyResult<Self> {
+    pub fn new(py: Python, list: Option<&Bound<'_, PyList>>) -> PyResult<Self> {
         match list {
             Some(list) => Ok(Self(PyTypeclassList::from(list)?)),
             None => Ok(Self(PyTypeclassList::new(py))),
@@ -592,11 +604,11 @@ impl BlockScope {
     pub fn __len__(&self, py: Python) -> usize {
         self.0.list(py).len()
     }
-    pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
-        PyIterator::from_object(py, self.0.list(py))
+    pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyIterator>> {
+        self.0.list(py).as_sequence().iter()
     }
 
-    pub fn push_block(&mut self, node: &PyAny) -> PyResult<()> {
+    pub fn push_block(&mut self, node: &Bound<'_, PyAny>) -> PyResult<()> {
         self.0.append_checked(node)
     }
 
@@ -623,7 +635,7 @@ impl InlineScope {
 impl InlineScope {
     #[new]
     #[pyo3(signature = (list=None))]
-    pub fn new(py: Python, list: Option<&PyList>) -> PyResult<Self> {
+    pub fn new(py: Python, list: Option<&Bound<'_, PyList>>) -> PyResult<Self> {
         match list {
             Some(list) => Ok(Self(PyTypeclassList::from(list)?)),
             None => Ok(Self(PyTypeclassList::new(py))),
@@ -638,11 +650,11 @@ impl InlineScope {
     pub fn __len__(&self, py: Python) -> usize {
         self.0.list(py).len()
     }
-    pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
-        PyIterator::from_object(py, self.0.list(py))
+    pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyIterator>> {
+        self.0.list(py).as_sequence().iter()
     }
 
-    pub fn push_inline(&mut self, node: &PyAny) -> PyResult<()> {
+    pub fn push_inline(&mut self, node: &Bound<'_, PyAny>) -> PyResult<()> {
         self.0.append_checked(node)
     }
 
@@ -691,11 +703,13 @@ impl TurnipTextSource {
     ///
     /// Previously this method took a filepath directly and read it using Rust, but that wouldn't handle non-UTF-8-encoded files correctly.
     #[staticmethod]
-    pub fn from_file(py: Python, name: String, file_obj: &PyAny) -> PyResult<TurnipTextSource> {
-        let file_contents_str = file_obj
-            .getattr(intern!(py, "read"))?
-            .call0()?
-            .downcast::<PyString>()?;
+    pub fn from_file(
+        py: Python,
+        name: String,
+        file_obj: &Bound<'_, PyAny>,
+    ) -> PyResult<TurnipTextSource> {
+        let file_contents = file_obj.getattr(intern!(py, "read"))?.call0()?;
+        let file_contents_str = file_contents.downcast::<PyString>()?;
 
         Ok(TurnipTextSource {
             name,
@@ -727,25 +741,25 @@ impl Document {
 #[pymethods]
 impl Document {
     #[new]
-    pub fn new(contents: Py<BlockScope>, segments: &PyList) -> PyResult<Self> {
+    pub fn new(contents: Py<BlockScope>, segments: &Bound<'_, PyList>) -> PyResult<Self> {
         Ok(Self {
             contents,
             segments: PyInstanceList::from(segments)?,
         })
     }
     #[getter]
-    pub fn contents<'py>(&'py self, py: Python<'py>) -> &'py PyAny {
-        self.contents.as_ref(py)
+    pub fn contents<'py>(&'py self, py: Python<'py>) -> &'py Bound<'py, BlockScope> {
+        self.contents.bind(py)
     }
     #[getter]
-    pub fn segments<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
-        PyIterator::from_object(py, self.segments.list(py))
+    pub fn segments<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyIterator>> {
+        self.segments.list(py).as_sequence().iter()
     }
     pub fn push_segment(&self, py: Python<'_>, segment: Py<DocSegment>) -> PyResult<()> {
-        self.segments.append_checked(segment.as_ref(py))
+        self.segments.append_checked(segment.bind(py))
     }
     fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
-        Ok(self.contents.as_ref(py).eq(other.contents.as_ref(py))?
+        Ok(self.contents.bind(py).eq(other.contents.bind(py))?
             && self.segments.__eq__(py, &other.segments)?)
     }
     fn __repr__(&self, py: Python) -> PyResult<String> {
@@ -816,12 +830,12 @@ impl DocSegment {
         contents: Py<BlockScope>,
         subsegments: PyInstanceList<DocSegment>,
     ) -> PyResult<Self> {
-        let weight = DocSegmentHeader::get_weight(py, header.as_ref(py))?;
+        let weight = DocSegmentHeader::get_weight(py, header.bind(py))?;
         for subsegment in subsegments.list(py).iter() {
             let subweight = {
                 let subsegment: Py<DocSegment> = subsegment.extract()?;
                 let subsegment = subsegment.borrow(py);
-                let subheader = subsegment.header.as_ref(py);
+                let subheader = subsegment.header.bind(py);
                 DocSegmentHeader::get_weight(py, subheader)?
             };
             if subweight <= weight {
@@ -843,7 +857,11 @@ impl DocSegment {
 #[pymethods]
 impl DocSegment {
     #[new]
-    pub fn new(header: &PyAny, contents: Py<BlockScope>, subsegments: &PyList) -> PyResult<Self> {
+    pub fn new(
+        header: &Bound<'_, PyAny>,
+        contents: Py<BlockScope>,
+        subsegments: &Bound<'_, PyList>,
+    ) -> PyResult<Self> {
         Ok(Self {
             header: PyTcRef::of_friendly(header, "input to DocSegment __init__")?,
             contents,
@@ -851,20 +869,20 @@ impl DocSegment {
         })
     }
     #[getter]
-    pub fn header<'py>(&'py self, py: Python<'py>) -> &'py PyAny {
-        self.header.as_ref(py)
+    pub fn header<'py>(&'py self, py: Python<'py>) -> &'py Bound<'py, PyAny> {
+        self.header.bind(py)
     }
     #[getter]
-    pub fn contents<'py>(&'py self, py: Python<'py>) -> &'py PyAny {
-        self.contents.as_ref(py)
+    pub fn contents<'py>(&'py self, py: Python<'py>) -> &'py Bound<'py, BlockScope> {
+        self.contents.bind(py)
     }
     #[getter]
-    pub fn subsegments<'py>(&'py self, py: Python<'py>) -> PyResult<&'py PyIterator> {
-        PyIterator::from_object(py, self.subsegments.list(py))
+    pub fn subsegments<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyIterator>> {
+        self.subsegments.list(py).as_sequence().iter()
     }
     pub fn push_subsegment(&self, py: Python<'_>, subsegment: Py<DocSegment>) -> PyResult<()> {
-        let weight = DocSegmentHeader::get_weight(py, self.header.as_ref(py))?;
-        let subweight = DocSegmentHeader::get_weight(py, subsegment.borrow(py).header.as_ref(py))?;
+        let weight = DocSegmentHeader::get_weight(py, self.header.bind(py))?;
+        let subweight = DocSegmentHeader::get_weight(py, subsegment.borrow(py).header.bind(py))?;
         if subweight <= weight {
             return Err(PyValueError::new_err(format!(
                 "Trying to add to a DocSegment with weight {weight} but the provided \
@@ -872,17 +890,17 @@ impl DocSegment {
                          subweights are allowed."
             )));
         };
-        self.subsegments.append_checked(subsegment.as_ref(py))
+        self.subsegments.append_checked(subsegment.bind(py))
     }
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
-        Ok(self.header.as_ref(py).eq(other.header.as_ref(py))?
-            && self.contents.as_ref(py).eq(other.contents.as_ref(py))?
+        Ok(self.header.bind(py).eq(other.header.bind(py))?
+            && self.contents.bind(py).eq(other.contents.bind(py))?
             && self.subsegments.__eq__(py, &other.subsegments)?)
     }
     fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!(
             r#"DocSegment(header={}, contents={}, subsegments={})"#,
-            self.header.as_ref(py).str()?.to_str()?,
+            self.header.bind(py).str()?.to_str()?,
             self.contents.borrow(py).__repr__(py)?,
             self.subsegments.__repr__(py)?
         ))

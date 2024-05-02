@@ -1,10 +1,11 @@
-use pyo3::{prelude::*, types::PyDict};
+use pyo3::prelude::*;
 
 use crate::{
     error::{
         interp::{BlockModeElem, InlineModeContext, InterpError},
         TurnipTextContextlessResult,
     },
+    interpreter::ParserEnv,
     lexer::TTToken,
     util::{ParseContext, ParseSpan},
 };
@@ -30,7 +31,7 @@ impl TokenProcessor for AmbiguousScopeProcessor {
     fn process_token(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        py_env: ParserEnv,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<ProcStatus> {
@@ -81,7 +82,7 @@ impl TokenProcessor for AmbiguousScopeProcessor {
     fn process_emitted_element(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        py_env: ParserEnv,
         pushed: Option<EmittedElement>,
     ) -> TurnipTextContextlessResult<ProcStatus> {
         match self {
@@ -166,7 +167,7 @@ impl TokenProcessor for InlineLevelAmbiguousScopeProcessor {
     fn process_token(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        py_env: ParserEnv,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<ProcStatus> {
@@ -228,7 +229,7 @@ impl TokenProcessor for InlineLevelAmbiguousScopeProcessor {
     fn process_emitted_element(
         &mut self,
         py: Python,
-        py_env: &PyDict,
+        py_env: ParserEnv,
         pushed: Option<EmittedElement>,
     ) -> TurnipTextContextlessResult<ProcStatus> {
         match self {

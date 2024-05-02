@@ -1,7 +1,10 @@
 use std::ffi::CString;
 
 use annotate_snippets::display_list::DisplayList;
-use pyo3::{PyErr, PyObject, Python};
+use pyo3::{
+    types::{PyAnyMethods, PyStringMethods, PyTypeMethods},
+    PyErr, PyObject, Python,
+};
 use thiserror::Error;
 
 use crate::{interpreter::ParsingFile, util::ParseContext};
@@ -12,13 +15,13 @@ mod display;
 pub mod interp;
 
 pub fn stringify_pyerr(py: Python, pyerr: &PyErr) -> String {
-    let value = pyerr.value(py);
-    let type_name = match value.get_type().name() {
-        Ok(name) => name,
-        Err(_) => "Unknown Type",
-    };
-    if let Ok(s) = value.str() {
-        format!("{0} : {1}", type_name, &s.to_string_lossy())
+    let value_bound = pyerr.value_bound(py);
+    // let type_bound = pyerr.get_type_bound(py);
+    if let Ok(s) = value_bound.str() {
+        match value_bound.get_type().qualname() {
+            Ok(name) => format!("{0} : {1}", name, &s.to_string_lossy()),
+            Err(_) => format!("Unknown Error Type : {}", &s.to_string_lossy()),
+        }
     } else {
         "<exception str() failed>".into()
     }

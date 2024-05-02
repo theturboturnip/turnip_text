@@ -25,9 +25,9 @@ fn eval_data(data: &str) -> TurnipTextResult<TestDocument> {
         Python::with_gil(|py| {
             let py_env = generate_globals(py).expect("Couldn't generate globals dict");
             let parser = TurnipTextParser::new(py, "<test>".into(), data.into())?;
-            let root = parser.parse(py, py_env)?;
+            let root = parser.parse(py, &py_env)?;
             let doc_obj = root.to_object(py);
-            let doc: &PyAny = doc_obj.as_ref(py);
+            let doc = doc_obj.bind(py);
             Ok(doc.as_test(py))
         })
     });

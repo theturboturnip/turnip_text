@@ -15,6 +15,8 @@ use self::state_machines::ProcessorStacks;
 
 mod state_machines;
 
+pub type ParserEnv<'a> = &'a Bound<'a, PyDict>;
+
 pub struct ParsingFile {
     name: String,
     contents: String,
@@ -79,7 +81,7 @@ impl TurnipTextParser {
             builders,
         })
     }
-    pub fn parse(mut self, py: Python, py_env: &PyDict) -> TurnipTextResult<Py<Document>> {
+    pub fn parse(mut self, py: Python, py_env: ParserEnv) -> TurnipTextResult<Py<Document>> {
         // Call process_tokens until it breaks out returning FileInserted or FileEnded.
         // FileEnded will be returned exactly once more than FileInserted - FileInserted is only returned for subfiles, FileEnded is returned for all subfiles AND the initial file.
         // We handle this because the file stack, Vec<ParsingFile>, and interpreter each have one file's worth of content pushed in initially.
@@ -167,7 +169,7 @@ impl InterimDocumentStructure {
         header: PyTcRef<DocSegmentHeader>,
     ) -> TurnipTextContextlessResult<()> {
         let subsegment_weight =
-            DocSegmentHeader::get_weight(py, header.as_ref(py)).err_as_internal(py)?;
+            DocSegmentHeader::get_weight(py, header.bind(py)).err_as_internal(py)?;
 
         // If there are items in the segment_stack, pop from self.segment_stack until the toplevel weight < subsegment_weight
         self.pop_segments_until_less_than(py, subsegment_weight)?;
@@ -212,7 +214,7 @@ impl InterimDocumentStructure {
                 // and return that weight
                 Some(x) => {
                     x.subsegments
-                        .append_checked(segment.as_ref(py))
+                        .append_checked(segment.bind(py))
                         .err_as_internal(py)?;
                     x.weight
                 }
@@ -220,7 +222,7 @@ impl InterimDocumentStructure {
                 // The segment stack is now empty.
                 None => {
                     self.toplevel_segments
-                        .append_checked(segment.as_ref(py))
+                        .append_checked(segment.bind(py))
                         .err_as_internal(py)?;
                     return Ok(());
                 }
@@ -230,7 +232,11 @@ impl InterimDocumentStructure {
         Ok(())
     }
 
-    fn push_to_topmost_block(&self, py: Python, block: &PyAny) -> TurnipTextContextlessResult<()> {
+    fn push_to_topmost_block(
+        &self,
+        py: Python,
+        block: &Bound<'_, PyAny>,
+    ) -> TurnipTextContextlessResult<()> {
         // Figure out which block is actually the topmost block.
         // If the block stack has elements, add it to the topmost element.
         // If the block stack is empty, and there are elements on the DocSegment stack, take the topmost element of the DocSegment stack

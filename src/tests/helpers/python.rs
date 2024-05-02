@@ -156,16 +156,16 @@ pub fn test_raw_text(s: impl Into<String>) -> TestInline {
 pub trait PyToTest<T> {
     fn as_test(&self, py: Python) -> T;
 }
-impl PyToTest<TestDocument> for PyAny {
+impl PyToTest<TestDocument> for Bound<'_, PyAny> {
     fn as_test(&self, py: Python) -> TestDocument {
         if let Ok(document) = self.extract::<Document>() {
             TestDocument {
-                contents: document.contents.as_ref(py).as_test(py),
+                contents: document.contents.bind(py).as_any().as_test(py),
                 segments: document
                     .segments
                     .list(py)
                     .iter()
-                    .map(|subseg| subseg.as_test(py))
+                    .map(|subseg| subseg.as_any().as_test(py))
                     .collect(),
             }
         } else {
@@ -177,42 +177,41 @@ impl PyToTest<TestDocument> for PyAny {
         }
     }
 }
-impl PyToTest<TestDocSegment> for PyAny {
+impl PyToTest<TestDocSegment> for Bound<'_, PyAny> {
     fn as_test(&self, py: Python) -> TestDocSegment {
         if let Ok(doc_segment) = self.extract::<DocSegment>() {
             TestDocSegment {
                 header: {
-                    let weight = DocSegmentHeader::get_weight(py, doc_segment.header.as_ref(py))
+                    let weight = DocSegmentHeader::get_weight(py, doc_segment.header.bind(py))
                         .expect("Couldn't get_weight of header");
-                    let block_contents = match doc_segment.header.as_ref(py).getattr("test_block") {
+                    let block_contents = match doc_segment.header.bind(py).getattr("test_block") {
                         Ok(test_block) => {
                             if test_block.is_none() {
                                 None
                             } else {
-                                Some(test_block.as_test(py))
+                                Some(test_block.as_any().as_test(py))
                             }
                         }
                         Err(_) => None,
                     };
-                    let inline_contents = match doc_segment.header.as_ref(py).getattr("test_inline")
-                    {
+                    let inline_contents = match doc_segment.header.bind(py).getattr("test_inline") {
                         Ok(test_inline) => {
                             if test_inline.is_none() {
                                 None
                             } else {
-                                Some(test_inline.as_test(py))
+                                Some(test_inline.as_any().as_test(py))
                             }
                         }
                         Err(_) => None,
                     };
                     (weight, block_contents, inline_contents)
                 },
-                contents: doc_segment.contents.as_ref(py).as_test(py),
+                contents: doc_segment.contents.bind(py).as_any().as_test(py),
                 subsegments: doc_segment
                     .subsegments
                     .list(py)
                     .iter()
-                    .map(|subseg| subseg.as_test(py))
+                    .map(|subseg| subseg.as_any().as_test(py))
                     .collect(),
             }
         } else {
@@ -224,7 +223,7 @@ impl PyToTest<TestDocSegment> for PyAny {
         }
     }
 }
-impl PyToTest<TestBlock> for PyAny {
+impl PyToTest<TestBlock> for Bound<'_, PyAny> {
     fn as_test(&self, py: Python) -> TestBlock {
         if let Ok(block) = self.extract::<BlockScope>() {
             TestBlock::BlockScope(
@@ -232,7 +231,7 @@ impl PyToTest<TestBlock> for PyAny {
                     .0
                     .list(py)
                     .iter()
-                    .map(|obj| PyToTest::as_test(obj, py))
+                    .map(|obj| PyToTest::as_test(&obj, py))
                     .collect(),
             )
         } else if let Ok(para) = self.extract::<Paragraph>() {
@@ -240,7 +239,7 @@ impl PyToTest<TestBlock> for PyAny {
                 para.0
                     .list(py)
                     .iter()
-                    .map(|obj| PyToTest::as_test(obj, py))
+                    .map(|obj| PyToTest::as_test(&obj, py))
                     .collect(),
             )
         } else if let Ok(obj) = self.getattr("test_block") {
@@ -250,7 +249,7 @@ impl PyToTest<TestBlock> for PyAny {
                     .0
                     .list(py)
                     .iter()
-                    .map(|obj| PyToTest::as_test(obj, py))
+                    .map(|obj| PyToTest::as_test(&obj, py))
                     .collect(),
             )
         } else {
@@ -262,14 +261,14 @@ impl PyToTest<TestBlock> for PyAny {
         }
     }
 }
-impl PyToTest<Vec<TestInline>> for PyAny {
+impl PyToTest<Vec<TestInline>> for Bound<'_, PyAny> {
     fn as_test(&self, py: Python) -> Vec<TestInline> {
         if let Ok(sentence) = self.extract::<Sentence>() {
             sentence
                 .0
                 .list(py)
                 .iter()
-                .map(|obj| PyToTest::as_test(obj, py))
+                .map(|obj| PyToTest::as_test(&obj, py))
                 .collect()
         } else {
             let repr = match self.repr() {
@@ -280,20 +279,20 @@ impl PyToTest<Vec<TestInline>> for PyAny {
         }
     }
 }
-impl PyToTest<TestInline> for PyAny {
+impl PyToTest<TestInline> for Bound<'_, PyAny> {
     fn as_test(&self, py: Python) -> TestInline {
         if let Ok(inl) = self.extract::<InlineScope>() {
             TestInline::InlineScope(
                 inl.0
                     .list(py)
                     .iter()
-                    .map(|obj| PyToTest::as_test(obj, py))
+                    .map(|obj| PyToTest::as_test(&obj, py))
                     .collect(),
             )
         } else if let Ok(text) = self.extract::<Text>() {
-            TestInline::Text(text.0.as_ref(py).to_string())
+            TestInline::Text(text.0.bind(py).to_string())
         } else if let Ok(text) = self.extract::<Raw>() {
-            TestInline::Raw(text.0.as_ref(py).to_string())
+            TestInline::Raw(text.0.bind(py).to_string())
         } else if let Ok(obj) = self.getattr("test_inline") {
             TestInline::TestOwnedInline(
                 obj.extract::<InlineScope>()
@@ -301,7 +300,7 @@ impl PyToTest<TestInline> for PyAny {
                     .0
                     .list(py)
                     .iter()
-                    .map(|obj| PyToTest::as_test(obj, py))
+                    .map(|obj| PyToTest::as_test(&obj, py))
                     .collect(),
             )
         } else if let Ok(text) = dbg!(self.getattr("test_raw_str")) {
@@ -320,10 +319,10 @@ impl PyToTest<TestInline> for PyAny {
 ///
 /// Provides `TEST_BLOCK_BUILDER`, `TEST_INLINE_BUILDER`, `TEST_RAW_BUILDER` objects
 /// that can own block, inline, and raw scopes respectively.
-pub fn generate_globals<'interp>(py: Python<'interp>) -> Option<&'interp PyDict> {
-    let globals = PyDict::new(py);
+pub fn generate_globals<'interp>(py: Python<'interp>) -> Option<Bound<'interp, PyDict>> {
+    let globals = PyDict::new_bound(py);
 
-    let result = py.run(GLOBALS_CODE, Some(globals), Some(globals));
+    let result = py.run_bound(GLOBALS_CODE, Some(&globals), Some(&globals));
 
     match result {
         Err(pyerr) => {

@@ -26,14 +26,14 @@
 //!   In block-scopes, close-block-scope tokens are only accepted if they come from the same file as the BlockScope started. If they are received from inner files, those inner files must be unbalanced.
 //!   They also put the parser into a state where there must be no content until the next newline.
 
-use pyo3::{prelude::*, types::PyDict};
+use pyo3::prelude::*;
 
 use crate::{
     error::{
         interp::{BlockModeElem, InterpError, MapContextlessResult},
         TurnipTextContextlessResult,
     },
-    interpreter::InterimDocumentStructure,
+    interpreter::{InterimDocumentStructure, ParserEnv},
     lexer::{Escapable, TTToken},
     python::{
         interop::{BlockScope, DocSegmentHeader, Document},
@@ -148,7 +148,7 @@ impl BlockMode for TopLevelBlockMode {
         block: BlockElem,
         _block_ctx: ParseContext,
     ) -> TurnipTextContextlessResult<ProcStatus> {
-        self.structure.push_to_topmost_block(py, block.as_ref(py))?;
+        self.structure.push_to_topmost_block(py, block.bind(py))?;
         Ok(ProcStatus::Continue)
     }
 }
@@ -209,7 +209,7 @@ impl BlockMode for BlockScopeBlockMode {
     ) -> TurnipTextContextlessResult<ProcStatus> {
         self.block_scope
             .borrow_mut(py)
-            .push_block(block.as_ref(py))
+            .push_block(block.bind(py))
             .err_as_internal(py)?;
         Ok(ProcStatus::Continue)
     }
@@ -235,7 +235,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
     fn process_token(
         &mut self,
         py: Python,
-        _py_env: &PyDict,
+        _py_env: ParserEnv,
         tok: TTToken,
         data: &str,
     ) -> TurnipTextContextlessResult<ProcStatus> {
@@ -326,7 +326,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
     fn process_emitted_element(
         &mut self,
         py: Python,
-        _py_env: &PyDict,
+        _py_env: ParserEnv,
         pushed: Option<EmittedElement>,
     ) -> TurnipTextContextlessResult<ProcStatus> {
         match pushed {
@@ -365,7 +365,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
                 }
                 // If we get an inline, start building a paragraph with it
                 DocElement::Inline(inline) => Ok(ProcStatus::PushProcessor(rc_refcell(
-                    ParagraphProcessor::new_with_inline(py, inline.as_ref(py), elem_ctx)?,
+                    ParagraphProcessor::new_with_inline(py, inline.bind(py), elem_ctx)?,
                 ))),
             },
             None => Ok(ProcStatus::Continue),
