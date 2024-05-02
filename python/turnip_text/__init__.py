@@ -69,7 +69,7 @@ class Block(Protocol):
 
 @runtime_checkable
 class Header(Protocol):
-    is_segment_header: bool = True
+    is_header: bool = True
     weight: int = 0
 
 

@@ -10,7 +10,7 @@ pub const GLOBALS_CODE: &'static str = r#"
 from _native import InlineScope, Text, BlockScope, TurnipTextSource, Paragraph, Sentence, Raw
 
 class TestHeader:
-    is_segment_header = True
+    is_header = True
     weight = 0
     def __init__(self, weight=0, test_block=None, test_inline=None):
         self.weight = weight

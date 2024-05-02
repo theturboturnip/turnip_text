@@ -247,7 +247,7 @@ impl PyTypeclass for Inline {
 pub struct Header {}
 impl Header {
     fn marker_bool_name(py: Python<'_>) -> &Bound<'_, PyString> {
-        intern!(py, "is_segment_header")
+        intern!(py, "is_header")
     }
     fn weight_field_name(py: Python<'_>) -> &Bound<'_, PyString> {
         intern!(py, "weight")

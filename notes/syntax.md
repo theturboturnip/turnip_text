@@ -28,7 +28,7 @@ For example, a book may consist of a `Document` with frontmatter (acknowledgemen
 Each chapter is a `DocSegment` in `document.segments`, and consists of a `header` (i.e. the chapter title with suitable formatting), further `content` (the content in the chapter before the first section), and `subsegments` (the sections within the chapter).
 
 Each `DocSegment` has a `header` - a Python object fulfilling the requirements of `Header`.
-Python code can create its own kinds of `Header` by declaring a class with a property `is_segment_header: bool = True` and another property `weight: int` which we will discuss later.
+Python code can create its own kinds of `Header` by declaring a class with a property `is_header: bool = True` and another property `weight: int` which we will discuss later.
 You can also make your custom class a subclass of `Header` to add these properties automatically.
 There are no predefined implementations of this class, you must make your own.
 
@@ -44,7 +44,7 @@ class DocSegment:
     subsegments: List[DocSegment]
 
 class Header(Protocol):
-    is_segment_header: bool = True
+    is_header: bool = True
     weight: int = 0
 ```
 
