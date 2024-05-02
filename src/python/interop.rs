@@ -718,9 +718,9 @@ impl TurnipTextSource {
     pub fn from_file(
         py: Python,
         name: String,
-        file_obj: &Bound<'_, PyAny>,
+        file: &Bound<'_, PyAny>,
     ) -> PyResult<TurnipTextSource> {
-        let file_contents = file_obj.getattr(intern!(py, "read"))?.call0()?;
+        let file_contents = file.getattr(intern!(py, "read"))?.call0()?;
         let file_contents_str = file_contents.downcast::<PyString>()?;
 
         Ok(TurnipTextSource {
