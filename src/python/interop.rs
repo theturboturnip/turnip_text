@@ -217,6 +217,21 @@ impl PyTypeclass for Block {
             Ok(false)
         }
     }
+
+    fn get_typeclass_err(obj: &Bound<'_, PyAny>, context: &str) -> PyResult<Option<PyErr>> {
+        if Self::fits_typeclass(obj)? {
+            Ok(None)
+        } else {
+            let obj_repr = obj.repr()?;
+            let err = PyTypeError::new_err(format!(
+                "Expected {} to be an instance of {}, but it didn't have property is_block=True. Got {}",
+                context,
+                Self::NAME,
+                obj_repr.to_str()?
+            ));
+            Ok(Some(err))
+        }
+    }
 }
 
 /// Typeclass for objects representing content that stays within a single line/sentence.
@@ -237,6 +252,20 @@ impl PyTypeclass for Inline {
             obj.getattr(attr_name)?.is_truthy()
         } else {
             Ok(false)
+        }
+    }
+    fn get_typeclass_err(obj: &Bound<'_, PyAny>, context: &str) -> PyResult<Option<PyErr>> {
+        if Self::fits_typeclass(obj)? {
+            Ok(None)
+        } else {
+            let obj_repr = obj.repr()?;
+            let err = PyTypeError::new_err(format!(
+                "Expected {} to be an instance of {}, but it didn't have property is_inline=True. Got {}",
+                context,
+                Self::NAME,
+                obj_repr.to_str()?
+            ));
+            Ok(Some(err))
         }
     }
 }
@@ -260,11 +289,75 @@ impl PyTypeclass for Header {
     const NAME: &'static str = "Header";
 
     fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
-        let attr_name = Self::marker_bool_name(obj.py());
-        if matches!(obj.hasattr(attr_name), Ok(true)) {
-            obj.getattr(attr_name)?.is_truthy()
-        } else {
-            Ok(false)
+        let is_header = {
+            let attr_name = Self::marker_bool_name(obj.py());
+            if matches!(obj.hasattr(attr_name), Ok(true)) {
+                obj.getattr(attr_name)?.is_truthy()?
+            } else {
+                false
+            }
+        };
+        let has_weight_i64 = {
+            let attr_name = Self::weight_field_name(obj.py());
+            if matches!(obj.hasattr(Self::weight_field_name(obj.py())), Ok(true)) {
+                obj.getattr(attr_name)?.extract::<i64>().is_ok()
+            } else {
+                false
+            }
+        };
+
+        Ok(is_header && has_weight_i64)
+    }
+    fn get_typeclass_err(obj: &Bound<'_, PyAny>, context: &str) -> PyResult<Option<PyErr>> {
+        let is_header = {
+            let attr_name = Self::marker_bool_name(obj.py());
+            if matches!(obj.hasattr(attr_name), Ok(true)) {
+                obj.getattr(attr_name)?.is_truthy()?
+            } else {
+                false
+            }
+        };
+        let has_weight_i64 = {
+            let attr_name = Self::weight_field_name(obj.py());
+            if matches!(obj.hasattr(Self::weight_field_name(obj.py())), Ok(true)) {
+                obj.getattr(attr_name)?.extract::<i64>().is_ok()
+            } else {
+                false
+            }
+        };
+
+        match (is_header, has_weight_i64) {
+            (true, true) => Ok(None),
+            (false, false) => {
+                let obj_repr = obj.repr()?;
+                let err = PyTypeError::new_err(format!(
+                    "Expected {} to be an instance of {}, but it didn't have the properties `is_header=True` or `weight: int`. Got {}",
+                    context,
+                    Self::NAME,
+                    obj_repr.to_str()?
+                ));
+                Ok(Some(err))
+            }
+            (true, false) => {
+                let obj_repr = obj.repr()?;
+                let err = PyTypeError::new_err(format!(
+                    "Expected {} to be an instance of {}, and it had `is_header=True`, but it didn't have the property `weight: int` (must fit into 64-bit signed int). Got {}",
+                    context,
+                    Self::NAME,
+                    obj_repr.to_str()?
+                ));
+                Ok(Some(err))
+            }
+            (false, true) => {
+                let obj_repr = obj.repr()?;
+                let err = PyTypeError::new_err(format!(
+                    "Expected {} to be an instance of {}, and it had the property `weight: int`, but it didn't have the property `is_header=True`. Got {}",
+                    context,
+                    Self::NAME,
+                    obj_repr.to_str()?
+                ));
+                Ok(Some(err))
+            }
         }
     }
 }
@@ -293,8 +386,7 @@ impl BuilderOutcome {
                 (false, false, false) => {
                     let obj_repr = val.repr()?;
                     Err(PyTypeError::new_err(format!(
-                        "Expected None or an object fitting Block, Inline, or Header while \
-                         handling {}, got {} which fits none of them.",
+                        "Expected {} to be None or an object fitting Block, Inline, or Header - got {} which fits none of them.",
                         context,
                         obj_repr.to_str()?
                     )))
@@ -302,8 +394,8 @@ impl BuilderOutcome {
                 _ => {
                     let obj_repr = val.repr()?;
                     Err(PyTypeError::new_err(format!(
-                        "Expected None or an object fitting Block, Inline, or Header while \
-                         handling {}, got {} which fits (block? {}) (inline? {}) (header? {}).",
+                        "Expected {} to be None or an object fitting Block, Inline, or Header \
+                         - got {} which fits (block? {}) (inline? {}) (header? {}).",
                         context,
                         obj_repr.to_str()?,
                         is_block,
@@ -320,7 +412,7 @@ impl BuilderOutcome {
 ///
 /// Requires a method
 /// ```python
-/// def build_from_blocks(self, blocks: BlockScope) -> Block: ...
+/// def build_from_blocks(self, blocks: BlockScope) -> Block | Inline | Header | None: ...
 /// ```
 #[derive(Debug, Clone)]
 pub struct BlockScopeBuilder {}
@@ -346,13 +438,27 @@ impl PyTypeclass for BlockScopeBuilder {
     fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
         obj.hasattr(Self::marker_func_name(obj.py()))
     }
+    fn get_typeclass_err(obj: &Bound<'_, PyAny>, context: &str) -> PyResult<Option<PyErr>> {
+        if Self::fits_typeclass(obj)? {
+            Ok(None)
+        } else {
+            let obj_repr = obj.repr()?;
+            let err = PyTypeError::new_err(format!(
+                "Expected {} to be an instance of {}, but it didn't have a build_from_blocks() method. Got {}",
+                context,
+                Self::NAME,
+                obj_repr.to_str()?
+            ));
+            Ok(Some(err))
+        }
+    }
 }
 
 /// Typeclass representing the "builder" of an inline scope, which may modify how that scope is rendered.
 ///
 /// Requires a method
 /// ```python
-/// def build_from_inlines(self, inlines: InlineScope) -> Inline: ...
+/// def build_from_inlines(self, inlines: InlineScope) -> Block | Inline | Header | None: ...
 /// ```
 #[derive(Debug, Clone)]
 pub struct InlineScopeBuilder {}
@@ -378,13 +484,27 @@ impl PyTypeclass for InlineScopeBuilder {
     fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
         obj.hasattr(Self::marker_func_name(obj.py()))
     }
+    fn get_typeclass_err(obj: &Bound<'_, PyAny>, context: &str) -> PyResult<Option<PyErr>> {
+        if Self::fits_typeclass(obj)? {
+            Ok(None)
+        } else {
+            let obj_repr = obj.repr()?;
+            let err = PyTypeError::new_err(format!(
+                "Expected {} to be an instance of {}, but it didn't have a build_from_inlines() method. Got {}",
+                context,
+                Self::NAME,
+                obj_repr.to_str()?
+            ));
+            Ok(Some(err))
+        }
+    }
 }
 
 /// Typeclass representing the "builder" of a raw scope, which interprets how that scope is rendered.
 ///
 /// Requires a method
 /// ```python
-/// def build_from_raw(self, raw: str) -> Inline: ...
+/// def build_from_raw(self, raw: str) -> Block | Inline | Header | None: ...
 /// ```
 #[derive(Debug, Clone)]
 pub struct RawScopeBuilder {}
@@ -392,7 +512,7 @@ impl RawScopeBuilder {
     fn marker_func_name(py: Python<'_>) -> &Bound<'_, PyString> {
         intern!(py, "build_from_raw")
     }
-    /// Calls builder.build_from_raw(raw), could be inline or block
+    /// Calls builder.build_from_raw(raw)
     pub fn call_build_from_raw<'py>(
         py: Python<'py>,
         builder: PyTcRef<Self>,
@@ -410,6 +530,20 @@ impl PyTypeclass for RawScopeBuilder {
 
     fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
         obj.hasattr(Self::marker_func_name(obj.py()))
+    }
+    fn get_typeclass_err(obj: &Bound<'_, PyAny>, context: &str) -> PyResult<Option<PyErr>> {
+        if Self::fits_typeclass(obj)? {
+            Ok(None)
+        } else {
+            let obj_repr = obj.repr()?;
+            let err = PyTypeError::new_err(format!(
+                "Expected {} to be an instance of {}, but it didn't have a build_from_raw() method. Got {}",
+                context,
+                Self::NAME,
+                obj_repr.to_str()?
+            ));
+            Ok(Some(err))
+        }
     }
 }
 
@@ -566,8 +700,8 @@ impl Paragraph {
         self.0.list(py).as_sequence().iter()
     }
 
-    pub fn push_sentence(&mut self, node: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.0.append_checked(node)
+    pub fn push_sentence(&mut self, py: Python, sentence: Py<Sentence>) -> PyResult<()> {
+        self.0.append_checked(sentence.bind(py))
     }
 
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {

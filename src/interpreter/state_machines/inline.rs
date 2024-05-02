@@ -141,7 +141,7 @@ impl ParagraphInlineMode {
             // Push the old one into the paragraph
             self.para
                 .borrow_mut(py)
-                .push_sentence(sentence.bind(py))
+                .push_sentence(py, sentence)
                 .err_as_internal(py)?;
         }
         Ok(())

@@ -197,7 +197,10 @@ It was the best of the times, it was the blurst of times
 "#,
         TestUserPythonExecError::CoercingBlockScopeBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None.*").unwrap(),
+            err: Regex::new(
+                r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got None.*",
+            )
+            .unwrap(),
         },
     )
 }
@@ -218,7 +221,10 @@ fn test_owned_inline_scope_with_non_inline_builder() {
         r"[None]{special text}",
         TestUserPythonExecError::CoercingInlineScopeBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got None.*").unwrap(),
+            err: Regex::new(
+                r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*build_from_inlines.*Got None.*",
+            )
+            .unwrap(),
         },
     )
 }
@@ -248,7 +254,8 @@ import os
 }#"#,
         TestUserPythonExecError::CoercingRawScopeBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got None").unwrap(),
+            err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*build_from_raw.*Got None")
+                .unwrap(),
         },
     )
 }
@@ -729,7 +736,10 @@ fn test_cant_eval_none_for_block_builder() {
 }",
         TestUserPythonExecError::CoercingBlockScopeBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None").unwrap(),
+            err: Regex::new(
+                r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got None",
+            )
+            .unwrap(),
         },
     )
 }
@@ -742,7 +752,10 @@ fn test_cant_assign_for_block_builder() {
 }",
         TestUserPythonExecError::CoercingBlockScopeBuilder {
             code_ctx: TestParseContext("[", "x = 5", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got None").unwrap(),
+            err: Regex::new(
+                r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got None",
+            )
+            .unwrap(),
         },
     )
 }
@@ -754,7 +767,8 @@ fn test_cant_assign_for_raw_builder() {
          something}#",
         TestUserPythonExecError::CoercingRawScopeBuilder {
             code_ctx: TestParseContext("[", "x = 5", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got None").unwrap(),
+            err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*build_from_raw.*Got None")
+                .unwrap(),
         },
     )
 }
@@ -766,7 +780,10 @@ fn test_cant_assign_for_inline_builder() {
          something}",
         TestUserPythonExecError::CoercingInlineScopeBuilder {
             code_ctx: TestParseContext("[", "x = 5", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got None").unwrap(),
+            err: Regex::new(
+                r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*build_from_inlines.*Got None",
+            )
+            .unwrap(),
         },
     )
 }

@@ -5,9 +5,6 @@ from turnip_text import *
 class CustomInline:
     is_inline: bool = True
 
-    def __eq__(self, value: object) -> bool:
-        return isinstance(value, CustomInline)
-
 
 # Inline coercion leaves inline instances as-is, coerces lists of inlines to InlineScope, and coerces str, float, and int to Text(str(x))
 # Inline scope coercion leaves InlineScope instances as-is, coerces lists of inlines to InlineScope, coerces standalone Inline instances to InlineScope([inline]), and coerces str, float, and int to InlineScope([Text(str(x))])

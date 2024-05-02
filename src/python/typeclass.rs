@@ -4,7 +4,10 @@ use pyo3::{exceptions::PyTypeError, intern, prelude::*, types::PyList, PyClass};
 
 pub trait PyTypeclass {
     const NAME: &'static str;
+    /// Return true if the given object fits the typeclass
     fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool>;
+    /// Return Some(err) if the given object *doesn't* fit the typeclass, where the error provides a helpful message
+    fn get_typeclass_err(obj: &Bound<'_, PyAny>, context: &str) -> PyResult<Option<PyErr>>;
 }
 
 #[derive(Debug, Clone)]
@@ -14,6 +17,20 @@ impl<T: PyClass> PyTypeclass for PyInstanceTypeclass<T> {
 
     fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
         Ok(obj.is_instance_of::<T>())
+    }
+    fn get_typeclass_err(obj: &Bound<'_, PyAny>, context: &str) -> PyResult<Option<PyErr>> {
+        if obj.is_instance_of::<T>() {
+            Ok(None)
+        } else {
+            let obj_repr = obj.repr()?;
+            let err = PyTypeError::new_err(format!(
+                "Expected {} to be an instance of {}, but it wasn't. Got {}",
+                context,
+                T::NAME,
+                obj_repr.to_str()?
+            ));
+            Ok(Some(err))
+        }
     }
 }
 
@@ -28,17 +45,12 @@ impl<T: PyTypeclass> PyTcRef<T> {
     }
 
     pub fn of_friendly(obj: &Bound<'_, PyAny>, context: &str) -> PyResult<Self> {
-        if T::fits_typeclass(obj)? {
-            Ok(Self(obj.to_object(obj.py()), PhantomData::default()))
-        } else {
-            let obj_repr = obj.repr()?;
-            // TODO make fits_typeclass() return a specific TypeError instead of doing a catch-all here.
-            Err(PyTypeError::new_err(format!(
-                "Expected {} to be an instance of {}, but it wasn't. Got {}",
-                context,
-                T::NAME,
-                obj_repr.to_str()?
-            )))
+        match T::get_typeclass_err(obj, context)? {
+            None => {
+                // It fits the typeclass
+                Ok(Self(obj.to_object(obj.py()), PhantomData::default()))
+            }
+            Some(err) => Err(err),
         }
     }
 
@@ -67,14 +79,8 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
     /// Given a pre-existing Python list, pass in
     pub fn from(list: &Bound<'_, PyList>) -> PyResult<Self> {
         for obj in list {
-            if !T::fits_typeclass(&obj)? {
-                let obj_repr = obj.repr()?;
-                return Err(PyTypeError::new_err(format!(
-                    "Passed list containing object {} into PyTypeclassList constructor -- \
-                     expected object fitting typeclass {}, didn't get it",
-                    obj_repr.to_str()?,
-                    T::NAME
-                )));
+            if let Some(err) = T::get_typeclass_err(&obj, "list element")? {
+                return Err(err);
             }
         }
         Ok(Self(
@@ -83,17 +89,14 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
         ))
     }
 
-    pub fn append_checked(&self, val: &Bound<'_, PyAny>) -> PyResult<()> {
-        if T::fits_typeclass(val)? {
-            self.0.bind(val.py()).append(val)?;
-            Ok(())
-        } else {
-            let obj_repr = val.repr()?;
-            Err(PyTypeError::new_err(format!(
-                "Expected object fitting typeclass {}, didn't get it. Got {}",
-                T::NAME,
-                obj_repr.to_str()?
-            )))
+    pub fn append_checked(&self, obj: &Bound<'_, PyAny>) -> PyResult<()> {
+        match T::get_typeclass_err(obj, "new list element")? {
+            None => {
+                // It fits the typeclass
+                self.0.bind(obj.py()).append(obj)?;
+                Ok(())
+            }
+            Some(err) => Err(err),
         }
     }
 

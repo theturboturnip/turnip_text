@@ -86,7 +86,7 @@ class Super:
         }",
         TestUserPythonExecError::CoercingBlockScopeBuilder {
             code_ctx: TestParseContext("[", "TEST_BLOCK", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*Got <TestOwnedBlock.*")
+            err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got <TestOwnedBlock.*")
                 .unwrap(),
         },
     )
@@ -125,7 +125,7 @@ class Super:
         TestUserPythonExecError::CoercingInlineScopeBuilder {
             code_ctx: TestParseContext("[", "TEST_INLINE", "]"),
             err: Regex::new(
-                r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*Got <TestOwnedInline.*",
+                r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*build_from_inlines.*Got <TestOwnedInline.*",
             )
             .unwrap(),
         },
@@ -164,7 +164,7 @@ class Super:
         "[TEST_INLINE]#{}#",
         TestUserPythonExecError::CoercingRawScopeBuilder {
             code_ctx: TestParseContext("[", "TEST_INLINE", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*Got <TestOwnedInline.*")
+            err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*build_from_raw.*Got <TestOwnedInline.*")
                 .unwrap(),
         },
     )

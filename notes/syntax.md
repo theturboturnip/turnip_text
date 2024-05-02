@@ -221,7 +221,7 @@ Eval-brackets may evaluate to four kinds of object:
 - An instance of `Block`, which is only allowed in *block mode* and is emitted into the enclosing `BlockScope`
 - An instance of `Header`, which is only allowed in *top-level block mode* and creates a new `DocSegment`.
 
-TODO emitting header
+TODO emitting header, weight must fit in signed int64
 
 TODO inline mode
 

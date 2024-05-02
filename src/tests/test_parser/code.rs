@@ -67,21 +67,22 @@ def x():
         }",
         TestUserPythonExecError::CoercingBlockScopeBuilder {
             code_ctx: TestParseContext("[-----", "b'not a scope owner'", "-----]"),
-            err: Regex::new("TypeError").unwrap(),
+            err: Regex::new("TypeError.*instance of BlockScopeBuilder.*build_from_blocks").unwrap(),
         },
     );
     expect_parse_err(
         "[-----b'not a scope owner'-----]{ stuff in a inline scope }",
         TestUserPythonExecError::CoercingInlineScopeBuilder {
             code_ctx: TestParseContext("[-----", "b'not a scope owner'", "-----]"),
-            err: Regex::new("TypeError").unwrap(),
+            err: Regex::new("TypeError.*instance of InlineScopeBuilder.*build_from_inlines")
+                .unwrap(),
         },
     );
     expect_parse_err(
         "[-----b'not a scope owner'-----]###{ stuff in a raw scope }###",
         TestUserPythonExecError::CoercingRawScopeBuilder {
             code_ctx: TestParseContext("[-----", "b'not a scope owner'", "-----]"),
-            err: Regex::new("TypeError").unwrap(),
+            err: Regex::new("TypeError.*instance of RawScopeBuilder.*build_from_raw").unwrap(),
         },
     );
 }
