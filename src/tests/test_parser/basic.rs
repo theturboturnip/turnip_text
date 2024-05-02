@@ -805,3 +805,18 @@ stuff that gets swallowed
         Ok(test_doc(vec![])),
     )
 }
+
+#[test]
+fn test_nul_byte_not_allowed() {
+    expect_parse_err(
+        "diuwabdouwbdoqwbd\0qdwpiqbdjl wb
+    
+    [[-\0----- ]---- #{{{##} qdubwdqwd \n\t\r\r\n\t\0",
+        TestTurnipError::NullByteFoundInSource("<test>"),
+    );
+}
+
+#[test]
+fn test_nul_byte_not_allowed_in_included_src() {
+    expect_parse_err("[--TurnipTextSource(name='WowAnArbitraryFile', contents='diubwduoa\\0iubuobobdqd\\0ijqbdwd')--]", TestTurnipError::NullByteFoundInSource("WowAnArbitraryFile"))
+}

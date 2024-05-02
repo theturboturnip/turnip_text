@@ -1,4 +1,4 @@
-use crate::lexer::lex;
+use crate::lexer::{lex, LexError};
 
 use crate::lexer::{Escapable, TTToken};
 
@@ -50,13 +50,23 @@ pub fn expect_lex<'a>(data: &str, expected_stok_types: Vec<TestTTToken<'a>>) {
     println!("{:?}", data);
 
     // First step: lex
-    let stoks: Vec<TTToken> = lex(0, data).collect();
+    let stoks: Vec<TTToken> = lex(0, data).unwrap().collect();
     let stok_types: Vec<TestTTToken> = stoks
         .iter()
         .map(|stok| TestTTToken::from_str_tok(data, *stok))
         .collect();
 
     assert_eq!(stok_types, expected_stok_types);
+}
+
+pub fn expect_lex_nul_err(data: &str) {
+    match lex(0, data) {
+        Ok(_) => {
+            dbg!(data);
+            panic!("Expected lexer result to be Err(NullByteFound), got a valid lex");
+        }
+        Err(LexError::NullByteFound) => {}
+    }
 }
 
 use TestTTToken::*;
@@ -673,6 +683,17 @@ fn test_long_hyphen_strings() {
     expect_lex("--------", vec![HyphenMinuses(8), EOF]);
     expect_lex("---------", vec![HyphenMinuses(9), EOF]);
     expect_lex("----------", vec![HyphenMinuses(10), EOF]);
+}
+
+#[test]
+fn test_nul_byte_not_allowed() {
+    // Test the nul byte both next to special characters and non-special characters,
+    // because there are two parsing functions that both need to reject it.
+    expect_lex_nul_err(
+        "diuwabdouwbdoqwbd\0qdwpiqbdjl wb
+    
+    [[-\0----- ]---- #{{{##} qdubwdqwd \n\t\r\r\n\t\0",
+    );
 }
 
 // TODO test error messages for multibyte?

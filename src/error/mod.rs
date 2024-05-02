@@ -129,6 +129,8 @@ pub type TurnipTextContextlessResult<T> = Result<T, TurnipTextContextlessError>;
 
 #[derive(Error, Debug)]
 pub enum TurnipTextError {
+    #[error("Found a null byte '\\0' in source '{source_name}', which isn't allowed. This source is probably corrupted, not a text file, or was read with the wrong encoding.")]
+    NullByteFoundInSource { source_name: String },
     #[error("Interpreter Error: {1}")]
     Interp(Vec<ParsingFile>, Box<InterpError>),
     #[error("Error when executing user-generated Python")]

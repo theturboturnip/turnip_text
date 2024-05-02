@@ -310,7 +310,7 @@ pub fn eval_or_exec<'py, 'code>(
     code: &'code str,
     code_ctx: ParseContext,
 ) -> Result<&'py PyAny, UserPythonExecError> {
-    // TODO reject the null byte in the turnip-text lexer.
+    // The turnip-text lexer rejects the nul-byte so it cannot be found in the code.
     let code_trimmed =
         CString::new(code.trim()).expect("Nul-byte should not be present inside code");
 
@@ -342,7 +342,7 @@ pub fn eval_or_exec<'py, 'code>(
                         // Put an if True:\n in front and see if that helps.
 
                         let code_with_indent_guard = {
-                            // TODO reject the nul-byte in the turnip-text lexer to make this truly safe :)
+                            // The turnip-text lexer rejects the nul-byte so it cannot be found in the code.
                             unsafe {
                                 CString::from_vec_with_nul_unchecked(
                                     format!("if True:\n{code}\0").into_bytes(),

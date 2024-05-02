@@ -640,6 +640,8 @@ impl TurnipTextSource {
         TurnipTextSource { name, contents }
     }
 
+    // TODO remove this and do the parsing in Python. Maybe from_file, using a file object?
+    // That means if people have files in weird encodings, they can use Python to handle them and bundle them into utf-8.
     #[staticmethod]
     pub fn from_path(path: String) -> PyResult<TurnipTextSource> {
         let name = std::fs::canonicalize(&path)?;

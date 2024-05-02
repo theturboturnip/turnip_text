@@ -62,6 +62,7 @@ impl<'a> From<(&ParseContext, &'a Vec<ParsingFile>)> for TestParseContext<'a> {
 /// Does not derive
 #[derive(Debug, Clone)]
 pub enum TestTurnipError<'a> {
+    NullByteFoundInSource(&'a str),
     Interp(TestInterpError<'a>),
     UserPython(TestUserPythonExecError<'a>),
     InternalPython(Regex),
@@ -79,6 +80,12 @@ impl<'a> From<TestUserPythonExecError<'a>> for TestTurnipError<'a> {
 impl<'a> TestTurnipError<'a> {
     pub fn matches(&self, py: Python, other: &TurnipTextError) -> bool {
         match (self, other) {
+            (
+                Self::NullByteFoundInSource(l_name),
+                TurnipTextError::NullByteFoundInSource {
+                    source_name: r_name,
+                },
+            ) => dbg!(l_name) == dbg!(r_name),
             (Self::Interp(expected), TurnipTextError::Interp(sources, actual)) => {
                 let actual_as_test: TestInterpError<'_> = (actual, sources).into();
                 *dbg!(expected) == dbg!(actual_as_test)

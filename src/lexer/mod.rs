@@ -30,16 +30,15 @@ impl Iterator for LexedStrIterator {
     }
 }
 /// Right now lexing holds all the tokens in a vector. This sucks, but it's not really avoidable unless we start screwing around with lifetimes inside iterators that match the String in the same field of a struct... argh! :)
-pub fn lex(file_idx: usize, data: &str) -> LexedStrIterator {
-    let lexer = LexerOfStr::<LexPosn, LexToken, NullLexError>::new(data);
+pub fn lex(file_idx: usize, data: &str) -> Result<LexedStrIterator, LexError> {
+    let lexer = LexerOfStr::<LexPosn, LexToken, LexError>::new(data);
 
     let mut toks: Vec<TTToken> = vec![];
     for tok in lexer.iter(&[
         Box::new(|stream, state, ch| TTToken::parse_special(file_idx, stream, state, ch)),
         Box::new(|stream, state, ch| TTToken::parse_other(file_idx, stream, state, ch)),
     ]) {
-        // The lexer is infallible and can never fail
-        toks.push(tok.unwrap())
+        toks.push(tok?)
     }
 
     // Add an EOF unit to the end of the stream, with a zero-length ParseSpan at the end of the final character
@@ -59,12 +58,16 @@ pub fn lex(file_idx: usize, data: &str) -> LexedStrIterator {
     };
     toks.push(TTToken::EOF(eof_span));
 
-    LexedStrIterator::Tokenizing(Box::new(toks.into_iter()))
+    Ok(LexedStrIterator::Tokenizing(Box::new(toks.into_iter())))
 }
 
 /// Sequences that can define the start of a non-text [TTToken]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum LexerPrefixSeq {
+    /// `\0`
+    /// Not actually a prefix, but it's defined here so it interrupts strings of non-special characters.
+    /// Always raises [LexError::NullByteFound]
+    NulByte,
     /// `\r`
     CarriageReturn,
     /// `\n`
@@ -92,6 +95,7 @@ impl LexerPrefixSeq {
     pub fn try_from_char2(ch: char, ch2: Option<char>) -> Option<(Self, usize)> {
         use LexerPrefixSeq::*;
         match ch {
+            '\0' => Some((NulByte, 1)),
             '\r' => match ch2 {
                 Some('\n') => Some((CRLF, 2)),
                 _ => Some((CarriageReturn, 1)),
@@ -236,10 +240,10 @@ impl TTToken {
         stream: &L,
         state: L::State,
         target_ch: char,
-    ) -> LexerParseResult<LexPosn, usize, NullLexError>
+    ) -> LexerParseResult<LexPosn, usize, LexError>
     where
         L: CharStream<LexPosn>,
-        L: Lexer<Token = Self, State = LexPosn, Error = NullLexError>,
+        L: Lexer<Token = Self, State = LexPosn, Error = LexError>,
     {
         if let Some(ch) = stream.peek_at(&state) {
             match stream.do_while(state, ch, &|_, ch| ch == target_ch) {
@@ -255,16 +259,17 @@ impl TTToken {
         stream: &L,
         state: L::State,
         ch: char,
-    ) -> LexerParseResult<LexPosn, Self, NullLexError>
+    ) -> LexerParseResult<LexPosn, Self, LexError>
     where
         L: CharStream<LexPosn>,
-        L: Lexer<Token = Self, State = LexPosn, Error = NullLexError>,
+        L: Lexer<Token = Self, State = LexPosn, Error = LexError>,
     {
         if let Some((seq, n_chars_in_seq)) = LexerPrefixSeq::try_extract(stream, state, ch) {
             let start = state;
             let state_after_seq = stream.consumed(state, n_chars_in_seq);
             let seq_span = ParseSpan::from_lex(file_idx, start, state_after_seq);
             match seq {
+                LexerPrefixSeq::NulByte => Err(LexError::NullByteFound),
                 // Backslash => check if the following character is special, in which case Escaped(), else Backslash()
                 LexerPrefixSeq::Backslash => {
                     match Escapable::try_extract(stream, state_after_seq) {
@@ -410,10 +415,10 @@ impl TTToken {
         stream: &L,
         start: L::State,
         start_ch: char,
-    ) -> LexerParseResult<LexPosn, Self, NullLexError>
+    ) -> LexerParseResult<LexPosn, Self, LexError>
     where
         L: CharStream<LexPosn>,
-        L: Lexer<Token = Self, State = LexPosn, Error = NullLexError>,
+        L: Lexer<Token = Self, State = LexPosn, Error = LexError>,
     {
         // This function moves an `end` stream-state forward until it reaches
         // 1) the end of the stream
@@ -560,13 +565,19 @@ impl TTToken {
     }
 }
 
+/// The lexer must be *mostly* infallible.
+/// There can be *mostly* arbitrary content inside raw scopes, and those still get parsed. The lexer just packages them into tokens.
+/// The one exception is the null character '\0', which is rejected because it indicates the string is not valid UTF-8 text. '\0' is not renderable nor useful to insert directly.
+/// Rejecting it in the lexer also lets the Python code parser unwrap CStrings from tokens without worrying about nul-correctness.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum LexError {
+    #[error("Found a null byte '\\0' in turnip-text source code, which isn't allowed. This source is probably corrupted, not a text file, or was read with the wrong encoding.")]
+    NullByteFound,
+}
 // The lexer library forces us to implement LexerError - effectively a default failure for when none of the parser functions return true - but the turnip text lexer explicitly captures all non-special characters as normal text.
 // The set of handled characters = union(special characters, other characters) = set of all characters
-// Therefore we will never fail to parse.
-// Indeed, the lexer *must* be infallible because there can be truly arbitrary content inside raw scopes, and those still get parsed. The lexer just packages them into tokens.
-#[derive(Debug, Clone, Copy, Error)]
-pub enum NullLexError {}
-impl<P> LexerError<P> for NullLexError {
+// Therefore every character will be handled, even if it is handled with an Err.
+impl<P> LexerError<P> for LexError {
     fn failed_to_parse(_state: P, _ch: char) -> Self {
         unreachable!("The turnip_text lexer cannot fail.")
     }

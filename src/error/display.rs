@@ -86,6 +86,20 @@ fn annotation_from_parse_span<'a>(
 impl TurnipTextError {
     pub fn snippet<'a>(&'a self) -> Snippet<'a> {
         match self {
+            TurnipTextError::NullByteFoundInSource { source_name } => Snippet {
+                title: Some(Annotation {
+                    label: Some("Found a null byte '\\0' in a TurnipTextSource string, which isn't allowed. This source is probably corrupted, not a text file, or was read with the wrong encoding."),
+                    id: None,
+                    annotation_type: AnnotationType::Error,
+                }),
+                footer: vec![Annotation {
+                    label: Some(&source_name),
+                    id: None,
+                    annotation_type: AnnotationType::Error,
+                }],
+                slices: vec![],
+                opt: Default::default(),
+            },
             TurnipTextError::Interp(sources, err) => Self::interp_error_snippet(sources, err),
             TurnipTextError::UserPython(sources, err) => Self::user_python_snippet(sources, err),
             TurnipTextError::InternalPython(pyerr) => Snippet {

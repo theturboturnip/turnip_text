@@ -30,12 +30,17 @@ impl Debug for ParsingFile {
     }
 }
 impl ParsingFile {
-    pub fn new(file_idx: usize, name: String, contents: String) -> Self {
-        Self {
+    pub fn new(file_idx: usize, name: String, contents: String) -> TurnipTextResult<Self> {
+        // Can't use map_err here because the closure can't move out of name if we use name later
+        let token_stream = match lex(file_idx, &contents) {
+            Ok(ts) => ts,
+            Err(_) => return Err(TurnipTextError::NullByteFoundInSource { source_name: name }),
+        };
+        Ok(Self {
             name,
-            token_stream: lex(file_idx, &contents),
             contents,
-        }
+            token_stream,
+        })
     }
 
     pub fn name<'a>(&'a self) -> &'a str {
@@ -64,7 +69,7 @@ pub struct TurnipTextParser {
 }
 impl TurnipTextParser {
     pub fn new(py: Python, file_name: String, file_contents: String) -> TurnipTextResult<Self> {
-        let file = ParsingFile::new(0, file_name, file_contents);
+        let file = ParsingFile::new(0, file_name, file_contents)?;
         let files = vec![file];
         let builders = ProcessorStacks::new(py)
             .map_err(|pyerr| TurnipTextError::InternalPython(stringify_pyerr(py, &pyerr)))?;
@@ -103,7 +108,7 @@ impl TurnipTextParser {
                     contents,
                 } => {
                     let file_idx = self.files.len();
-                    self.files.push(ParsingFile::new(file_idx, name, contents));
+                    self.files.push(ParsingFile::new(file_idx, name, contents)?);
                     self.file_stack.push((Some(emitted_by_code), file_idx));
                     self.builders.push_subfile();
                 }

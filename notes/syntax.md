@@ -11,7 +11,8 @@ Calling `turnip_text.parse_file_native(src, globals)` starts turnip-text parsing
   from turnip_text import TurnipTextSource
 
   src_direct    = TurnipTextSource(name="some file", contents="turnip-text source code")
-  # Automatically sets name=path, and reads the file into `contents`
+  # Automatically sets name=path, and reads the file into `contents` assuming UTF-8.
+  # The file must not have nul bytes '\0'. turnip-text will detect this and raise an error.
   src_from_file = TurnipTextSource.from_path("path/to/turnip-text.ttext")
   # Automatically sets name="<string>"
   src_from_str  = TurnipTextSource.from_str("turnip-text source code")
