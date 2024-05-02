@@ -36,6 +36,9 @@ fn eval_data(data: &str) -> TurnipTextResult<TestDocument> {
     res_with_panic_err.unwrap()
 }
 
+// It would be nice to have expect_ok() which auto-wraps in Ok, but it isn't much different
+// and there are too many tests to port over now.
+
 pub fn expect_parse_err<'a, T: Into<TestTurnipError<'a>>>(data: &'a str, expected_err: T) {
     expect_parse(data, Err(expected_err.into()))
 }
@@ -47,7 +50,6 @@ pub fn expect_parse_any_ok(data: &str) {
     }
 }
 
-// TODO make this expect TestDocument not Result<TestDocument>
 pub fn expect_parse(data: &str, expected_parse: Result<TestDocument, TestTurnipError>) {
     let root = eval_data(data);
     match (&root, &expected_parse) {

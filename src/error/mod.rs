@@ -34,6 +34,11 @@ pub enum UserPythonCompileMode {
 /// The contexts in which you might execute Python on user-generated code or objects
 #[derive(Error, Debug)]
 pub enum UserPythonExecError {
+    // Considered throwing an error here, but I'm not convinced it's common enough to try and detect.
+    // If using e.g. template-generated turnip-text it might be useful?
+    // It would certainly be unholy, but I don't think this error would make it better.
+    // #[error("Found empty eval-brackets, likely not what was intended")]
+    // EmptyEvalBrackets { code_ctx: ParseContext },
     /// Compiling user-supplied code
     #[error("Error when compiling code from eval-brackets: {err}")]
     CompilingEvalBrackets {

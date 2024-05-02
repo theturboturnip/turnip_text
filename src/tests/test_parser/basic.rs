@@ -636,8 +636,6 @@ I'm in a [TEST_BLOCK]",
     )
 }
 
-// TODO test emitting things that can/can't get coerced to inline?
-
 #[test]
 fn test_raw_scope_emitting_block_from_block_level() {
     expect_parse(

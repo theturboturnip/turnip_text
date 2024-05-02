@@ -1,19 +1,5 @@
 use super::*;
 
-// todo
-/*
-
-{
-    In a block scope
-
-    [TEST_BLOCK_BUILDER_FROM_INLINE]{some inline stuff}}
-
-The last } might close the block scope despite being on the same line?
-
-I really think forcing Correct block spacing is the wrong way to go.
-It's a useful error message when trying to do stupid shit, and certainly putting content directly after a block closes
-*/
-
 /// Code automatic-indent support can sometimes allow code with inconsistent indents, which could lead to issues.
 /// Prepending `if True` only works for exactly one level of indent.
 ///

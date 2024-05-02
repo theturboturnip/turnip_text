@@ -3,8 +3,96 @@ use std::ffi::CString;
 use super::*;
 use crate::error::UserPythonCompileMode;
 
-// TODO test dashes work, errors reported use the correct open/close?
-// TODO what happens with empty code
+// The lexer test ensures that dashes inside eval-brackets are tokenized as part of CodeOpen and CodeClose correctly.
+
+#[test]
+fn code_open_close_tokens_reported_correctly() {
+    // Test they work in compilation
+    expect_parse_err(
+        "[-- 1invalid --]",
+        TestUserPythonExecError::CompilingEvalBrackets {
+            code_ctx: TestParseContext("[--", " 1invalid ", "--]"),
+            code: CString::new("1invalid").unwrap(),
+            mode: UserPythonCompileMode::ExecStmts,
+            err: Regex::new("SyntaxError").unwrap(),
+        },
+    );
+    // Test they work when error is in running the code
+    expect_parse_err(
+        "
+[---
+def x():
+    raise ValueError()
+
+x()
+---]
+    ",
+        TestUserPythonExecError::RunningEvalBrackets {
+            code_ctx: TestParseContext(
+                "[---",
+                "\ndef x():\n    raise ValueError()\n\nx()\n",
+                "---]",
+            ),
+            code: CString::new("def x():\n    raise ValueError()\n\nx()").unwrap(),
+            mode: UserPythonCompileMode::ExecStmts,
+            err: Regex::new("ValueError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        "
+[---
+def x():
+    raise ValueError()
+---]
+
+    [----x()----]
+    ",
+        TestUserPythonExecError::RunningEvalBrackets {
+            code_ctx: TestParseContext("[----", "x()", "----]"),
+            code: CString::new("x()").unwrap(),
+            mode: UserPythonCompileMode::EvalExpr,
+            err: Regex::new("ValueError").unwrap(),
+        },
+    );
+    // Test they work when emitting things into the doc
+    expect_parse_err(
+        "[-----b'bytestirng not allowed'-----]",
+        TestUserPythonExecError::CoercingNonBuilderEvalBracket {
+            code_ctx: TestParseContext("[-----", "b'bytestirng not allowed'", "-----]"),
+        },
+    );
+    expect_parse_err(
+        "[-----b'not a scope owner'-----]{
+            stuff in a block scope
+        }",
+        TestUserPythonExecError::CoercingBlockScopeBuilder {
+            code_ctx: TestParseContext("[-----", "b'not a scope owner'", "-----]"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        "[-----b'not a scope owner'-----]{ stuff in a inline scope }",
+        TestUserPythonExecError::CoercingInlineScopeBuilder {
+            code_ctx: TestParseContext("[-----", "b'not a scope owner'", "-----]"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        "[-----b'not a scope owner'-----]###{ stuff in a raw scope }###",
+        TestUserPythonExecError::CoercingRawScopeBuilder {
+            code_ctx: TestParseContext("[-----", "b'not a scope owner'", "-----]"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+}
+
+#[test]
+fn empty_code_is_none() {
+    expect_parse("[]", Ok(test_doc(vec![])));
+    expect_parse("[-  -]", Ok(test_doc(vec![])));
+    expect_parse("[--     --]", Ok(test_doc(vec![])));
+    expect_parse("[---       ---]", Ok(test_doc(vec![])));
+}
 
 #[test]
 fn simple_eval_works() {
@@ -418,4 +506,32 @@ fn non_indent_errors_dont_trigger_indented_exec_mode() {
                 err: Regex::new(r"^SyntaxError\s*:\s*invalid syntax").unwrap(),
             },
         );
+}
+
+#[test]
+fn code_returns_uncoercible_when_emitting_uncoercible() {
+    expect_parse_err(
+        "[-----b'bytestirng not coercible'-----]",
+        TestUserPythonExecError::CoercingNonBuilderEvalBracket {
+            code_ctx: TestParseContext("[-----", "b'bytestirng not coercible'", "-----]"),
+        },
+    );
+    expect_parse_err(
+        "[-----{}-----]",
+        TestUserPythonExecError::CoercingNonBuilderEvalBracket {
+            code_ctx: TestParseContext("[-----", "{}", "-----]"),
+        },
+    );
+    expect_parse_err(
+        "[-----set()-----]",
+        TestUserPythonExecError::CoercingNonBuilderEvalBracket {
+            code_ctx: TestParseContext("[-----", "set()", "-----]"),
+        },
+    );
+    expect_parse_err(
+        "[-----object()-----]",
+        TestUserPythonExecError::CoercingNonBuilderEvalBracket {
+            code_ctx: TestParseContext("[-----", "object()", "-----]"),
+        },
+    );
 }
