@@ -34,7 +34,7 @@ import io
 import os
 from typing import Any, List, Optional, Set, Tuple, Type, TypeVar, Union, overload
 
-from turnip_text import Block, DocSegmentHeader, Inline, TurnipTextSource
+from turnip_text import Block, Header, Inline, TurnipTextSource
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc import DocMutator, DocSetup
 from turnip_text.render import (
@@ -56,7 +56,7 @@ def parse_and_emit(
     document = doc_setup.parse()
 
     # Phase 2 - Mutation
-    exported_nodes: Set[Type[Union[Block, Inline, DocSegmentHeader]]] = set()
+    exported_nodes: Set[Type[Union[Block, Inline, Header]]] = set()
     exported_countables: Set[str] = set()
 
     def apply_mutation(m: DocMutator) -> None:

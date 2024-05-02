@@ -11,7 +11,7 @@ use crate::{
     },
     lexer::{Escapable, TTToken},
     python::{
-        interop::{Block, DocSegmentHeader, InlineScope, Paragraph, Raw, Sentence, Text},
+        interop::{Block, Header, InlineScope, Paragraph, Raw, Sentence, Text},
         typeclass::PyTcRef,
     },
     util::{ParseContext, ParseSpan},
@@ -59,7 +59,7 @@ trait InlineMode {
 
     fn err_on_header_from_code(
         &self,
-        header: PyTcRef<DocSegmentHeader>,
+        header: PyTcRef<Header>,
         header_ctx: ParseContext,
     ) -> TurnipTextContextlessError;
     fn err_on_block_from_code(
@@ -225,7 +225,7 @@ impl InlineMode for ParagraphInlineMode {
 
     fn err_on_header_from_code(
         &self,
-        header: PyTcRef<DocSegmentHeader>,
+        header: PyTcRef<Header>,
         header_ctx: ParseContext,
     ) -> TurnipTextContextlessError {
         // This must have come from code.
@@ -426,7 +426,7 @@ impl InlineMode for KnownInlineScopeInlineMode {
 
     fn err_on_header_from_code(
         &self,
-        header: PyTcRef<DocSegmentHeader>,
+        header: PyTcRef<Header>,
         header_ctx: ParseContext,
     ) -> TurnipTextContextlessError {
         InterpError::CodeEmittedHeaderInInlineMode {

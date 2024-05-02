@@ -3,7 +3,7 @@ use pyo3::{types::PyDict, Py, Python};
 use std::fmt::Debug;
 
 use crate::error::interp::MapContextlessResult;
-use crate::python::interop::{BlockScope, DocSegment, DocSegmentHeader, Document};
+use crate::python::interop::{BlockScope, DocSegment, Document, Header};
 use crate::python::typeclass::{PyInstanceList, PyTcRef};
 use crate::{
     error::{stringify_pyerr, TurnipTextContextlessResult, TurnipTextError, TurnipTextResult},
@@ -166,10 +166,9 @@ impl InterimDocumentStructure {
     fn push_segment_header(
         &mut self,
         py: Python,
-        header: PyTcRef<DocSegmentHeader>,
+        header: PyTcRef<Header>,
     ) -> TurnipTextContextlessResult<()> {
-        let subsegment_weight =
-            DocSegmentHeader::get_weight(py, header.bind(py)).err_as_internal(py)?;
+        let subsegment_weight = Header::get_weight(py, header.bind(py)).err_as_internal(py)?;
 
         // If there are items in the segment_stack, pop from self.segment_stack until the toplevel weight < subsegment_weight
         self.pop_segments_until_less_than(py, subsegment_weight)?;
@@ -254,13 +253,13 @@ impl InterimDocumentStructure {
 
 #[derive(Debug)]
 struct InterpDocSegmentState {
-    header: PyTcRef<DocSegmentHeader>,
+    header: PyTcRef<Header>,
     weight: i64,
     content: Py<BlockScope>,
     subsegments: PyInstanceList<DocSegment>,
 }
 impl InterpDocSegmentState {
-    fn new(py: Python, header: PyTcRef<DocSegmentHeader>, weight: i64) -> PyResult<Self> {
+    fn new(py: Python, header: PyTcRef<Header>, weight: i64) -> PyResult<Self> {
         Ok(Self {
             header,
             weight,

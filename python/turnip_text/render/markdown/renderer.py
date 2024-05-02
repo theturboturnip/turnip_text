@@ -3,15 +3,7 @@ from contextlib import contextmanager
 from enum import Enum
 from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple, Type
 
-from turnip_text import (
-    Block,
-    DocSegment,
-    DocSegmentHeader,
-    Document,
-    Inline,
-    Paragraph,
-    Text,
-)
+from turnip_text import Block, DocSegment, Document, Header, Inline, Paragraph, Text
 from turnip_text.build_system import JobInputFile, JobOutputFile
 from turnip_text.doc import DocAnchors, DocSetup, DocState, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
@@ -274,7 +266,7 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
 
     def known_node_types(
         self,
-    ) -> Iterable[type[Block] | type[Inline] | type[DocSegmentHeader]]:
+    ) -> Iterable[type[Block] | type[Inline] | type[Header]]:
         return self.emitter.renderer_keys()
 
     def known_countables(self) -> Iterable[str]:

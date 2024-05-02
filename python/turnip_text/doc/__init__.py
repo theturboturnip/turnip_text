@@ -30,8 +30,8 @@ from turnip_text import (
     Block,
     BlockScope,
     DocSegment,
-    DocSegmentHeader,
     Document,
+    Header,
     Inline,
     TurnipTextSource,
     parse_file_native,
@@ -91,7 +91,7 @@ class DocMutator(Protocol):
 
     They inherit this interface."""
 
-    def _doc_nodes(self) -> Sequence[Type[Union[Block, Inline, DocSegmentHeader]]]:
+    def _doc_nodes(self) -> Sequence[Type[Union[Block, Inline, Header]]]:
         """
         Tell the Document what nodes this plugin exports
         """

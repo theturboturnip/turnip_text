@@ -17,8 +17,8 @@ from turnip_text import (
     Block,
     BlockScope,
     DocSegment,
-    DocSegmentHeader,
     Document,
+    Header,
     Inline,
     InlineScope,
     Raw,
@@ -240,7 +240,7 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
 
     def _doc_nodes(
         self,
-    ) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
+    ) -> Sequence[type[Block] | type[Inline] | type[Header]]:
         return [FootnoteList]
 
     def _mutate_document(

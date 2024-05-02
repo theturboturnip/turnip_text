@@ -17,7 +17,7 @@ The formatting pass is renderer independent and isn't just passive "for this ver
   - Maybe if the weights were integers - not 10 apart, but 1 apart - then you just subtract from the weight if you then want to push it up. Hell, you could even look at the min/max weight in any given document before the counting phase and use that to correct any structures.
   - LESSON LEARNED FROM ATTEMPT 1: DocSegment can't be subclassed, and has to have the same gather-create pattern that blocks have instead of mutating existing DocSegments.
   - This is because for consistent protection when mutating, we need it to be subclassed, but we can't have it be subclassed because a) that screws with the type dispatch for rendering and b) it makes interacting with them through rust extremely painful
-  - This means we make a typeclass for DocSegmentHeader, allow BlockScopeBuilder or block-level code? to emit it (Inline shit is more difficult to work with), and when it does then it pushes to a queue, like the block scope queue, of things which are only actually finalized and turned into DocSegment when they're closed.
+  - This means we make a typeclass for Header, allow BlockScopeBuilder or block-level code? to emit it (Inline shit is more difficult to work with), and when it does then it pushes to a queue, like the block scope queue, of things which are only actually finalized and turned into DocSegment when they're closed.
   - That means we can't allow documents to emit DocSegment directly.
   - DocSegment can still be checked, mutated, and directly constructed from Python for the ease of mutating in the post-parse phase
 - We want metadata

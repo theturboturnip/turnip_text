@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Iterable, Protocol, Sequence, Union, runtime_checkable
 
-from turnip_text import Block, BlockScope, DocSegmentHeader, Inline, InlineScope
+from turnip_text import Block, BlockScope, Header, Inline, InlineScope
 from turnip_text.doc.anchors import Anchor, Backref
 
 
@@ -40,7 +40,7 @@ class UserAnchorInline(VisitableNode, Inline):
 
 
 @dataclass(frozen=True)
-class UserAnchorDocSegmentHeader(DocSegmentHeader):
+class UserAnchorHeader(Header):
     contents: Iterable[Block | Inline] | None
     anchor: (
         Anchor | None

@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use crate::{
     python::{
-        interop::{Block, DocSegmentHeader},
+        interop::{Block, Header},
         typeclass::PyTcRef,
     },
     util::{ParseContext, ParseSpan},
@@ -74,13 +74,13 @@ pub enum InterpError {
     #[error("Code emitted a Python `Header` in inline mode")]
     CodeEmittedHeaderInInlineMode {
         inl_mode: InlineModeContext,
-        header: PyTcRef<DocSegmentHeader>,
+        header: PyTcRef<Header>,
         code_span: ParseSpan,
     },
     #[error("Code emitted a Header inside a block scope")]
     CodeEmittedHeaderInBlockScope {
         block_scope_start: ParseSpan,
-        header: PyTcRef<DocSegmentHeader>,
+        header: PyTcRef<Header>,
         code_span: ParseSpan,
     },
     #[error("Code emitted a Python `TurnipTextSource` in inline mode")]

@@ -1,5 +1,5 @@
 use crate::python::interop::{
-    BlockScope, DocSegment, DocSegmentHeader, Document, InlineScope, Paragraph, Raw, Sentence, Text,
+    BlockScope, DocSegment, Document, Header, InlineScope, Paragraph, Raw, Sentence, Text,
 };
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -182,7 +182,7 @@ impl PyToTest<TestDocSegment> for Bound<'_, PyAny> {
         if let Ok(doc_segment) = self.extract::<DocSegment>() {
             TestDocSegment {
                 header: {
-                    let weight = DocSegmentHeader::get_weight(py, doc_segment.header.bind(py))
+                    let weight = Header::get_weight(py, doc_segment.header.bind(py))
                         .expect("Couldn't get_weight of header");
                     let block_contents = match doc_segment.header.bind(py).getattr("test_block") {
                         Ok(test_block) => {

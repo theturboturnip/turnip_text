@@ -54,7 +54,7 @@ from ._native import (  # type: ignore
 )
 from ._native import parse_file as parse_file_native
 
-# Block, Inline, DocSegmentHeader, and the Builders are all typeclasses that we can't import directly.
+# Block, Inline, Header, and the Builders are all typeclasses that we can't import directly.
 
 
 @runtime_checkable
@@ -68,31 +68,25 @@ class Block(Protocol):
 
 
 @runtime_checkable
-class DocSegmentHeader(Protocol):
+class Header(Protocol):
     is_segment_header: bool = True
     weight: int = 0
 
 
 class BlockScopeBuilder(abc.ABC):
     @abc.abstractmethod
-    def build_from_blocks(
-        self, bs: BlockScope
-    ) -> Optional[Block | DocSegmentHeader]: ...
+    def build_from_blocks(self, bs: BlockScope) -> Optional[Block | Header]: ...
 
-    def __matmul__(
-        self, maybe_b: "CoercibleToBlockScope"
-    ) -> Optional[Block | DocSegmentHeader]:
+    def __matmul__(self, maybe_b: "CoercibleToBlockScope") -> Optional[Block | Header]:
         bs = coerce_to_block_scope(maybe_b)
         return self.build_from_blocks(bs)
 
 
 class InlineScopeBuilder(abc.ABC):
     @abc.abstractmethod
-    def build_from_inlines(self, inls: InlineScope) -> Inline | DocSegmentHeader: ...
+    def build_from_inlines(self, inls: InlineScope) -> Inline | Header: ...
 
-    def __matmul__(
-        self, maybe_inls: "CoercibleToInlineScope"
-    ) -> Inline | DocSegmentHeader:
+    def __matmul__(self, maybe_inls: "CoercibleToInlineScope") -> Inline | Header:
         inls = coerce_to_inline_scope(maybe_inls)
         return self.build_from_inlines(inls)
 

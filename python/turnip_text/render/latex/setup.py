@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple, Union, cast
 
-from turnip_text import Block, DocSegment, DocSegmentHeader, Document, Inline
+from turnip_text import Block, DocSegment, Document, Header, Inline
 from turnip_text.build_system import JobInputFile, JobOutputFile
 from turnip_text.doc import DocSetup
 from turnip_text.helpers import UNSET, MaybeUnset
@@ -330,7 +330,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
 
     def known_node_types(
         self,
-    ) -> Iterable[type[Block] | type[Inline] | type[DocSegmentHeader]]:
+    ) -> Iterable[type[Block] | type[Inline] | type[Header]]:
         return self.emitter.renderer_keys()
 
     def known_countables(self) -> Iterable[str]:

@@ -5,7 +5,7 @@ from turnip_text import (
     BlockScope,
     BlockScopeBuilder,
     CoercibleToInline,
-    DocSegmentHeader,
+    Header,
     Inline,
     InlineScope,
     InlineScopeBuilder,
@@ -43,16 +43,14 @@ class block_scope_builder(BlockScopeBuilder):
     ```
     """
 
-    func: Callable[[BlockScope], Union[Block, Inline, DocSegmentHeader, None]]
+    func: Callable[[BlockScope], Union[Block, Inline, Header, None]]
 
     def __init__(
-        self, func: Callable[[BlockScope], Union[Block, Inline, DocSegmentHeader, None]]
+        self, func: Callable[[BlockScope], Union[Block, Inline, Header, None]]
     ) -> None:
         self.func = func
 
-    def build_from_blocks(
-        self, b: BlockScope
-    ) -> Union[Block, Inline, DocSegmentHeader, None]:
+    def build_from_blocks(self, b: BlockScope) -> Union[Block, Inline, Header, None]:
         return self.func(b)
 
 
@@ -79,17 +77,17 @@ class inline_scope_builder(InlineScopeBuilder):
     ```
     """
 
-    func: Callable[[InlineScope], Union[Block, Inline, DocSegmentHeader, None]]
+    func: Callable[[InlineScope], Union[Block, Inline, Header, None]]
 
     def __init__(
         self,
-        func: Callable[[InlineScope], Union[Block, Inline, DocSegmentHeader, None]],
+        func: Callable[[InlineScope], Union[Block, Inline, Header, None]],
     ) -> None:
         self.func = func
 
     def build_from_inlines(
         self, inls: InlineScope
-    ) -> Union[Block, Inline, DocSegmentHeader, None]:
+    ) -> Union[Block, Inline, Header, None]:
         return self.func(inls)
 
 
@@ -114,19 +112,17 @@ class raw_scope_builder(RawScopeBuilder):
     ```
     """
 
-    func: Callable[[str], Union[Block, Inline, DocSegmentHeader, None]]
+    func: Callable[[str], Union[Block, Inline, Header, None]]
 
     def __init__(
-        self, func: Callable[[str], Union[Block, Inline, DocSegmentHeader, None]]
+        self, func: Callable[[str], Union[Block, Inline, Header, None]]
     ) -> None:
         self.func = func
 
-    def build_from_raw(self, raw: str) -> Union[Block, Inline, DocSegmentHeader, None]:
+    def build_from_raw(self, raw: str) -> Union[Block, Inline, Header, None]:
         return self.func(raw)
 
-    def __matmul__(
-        self, maybe_str: Any
-    ) -> Union[Block, Inline, DocSegmentHeader, None]:
+    def __matmul__(self, maybe_str: Any) -> Union[Block, Inline, Header, None]:
         if isinstance(maybe_str, str):
             return self.func(maybe_str)
         raise TypeError(

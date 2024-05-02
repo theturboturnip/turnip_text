@@ -20,8 +20,8 @@ from turnip_text import (
     BlockScope,
     BlockScopeBuilder,
     DocSegment,
-    DocSegmentHeader,
     Document,
+    Header,
     Inline,
     InlineScope,
     InlineScopeBuilder,
@@ -35,7 +35,7 @@ from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.user_nodes import (
     NodePortal,
     UserAnchorBlock,
-    UserAnchorDocSegmentHeader,
+    UserAnchorHeader,
     UserBlock,
     UserInline,
     VisitableNode,
@@ -136,7 +136,7 @@ class InlineFormatted(UserInline):
 
 
 @dataclass(frozen=True)
-class StructureBlockHeader(UserAnchorDocSegmentHeader):
+class StructureBlockHeader(UserAnchorHeader):
     contents: BlockScope  # The title of the segment (TODO once the interpreter allows it, make this use InlineScope. See _headingn)
     anchor: Optional[
         Anchor
@@ -149,7 +149,7 @@ class TableOfContents(Block):
     pass
 
 
-# TODO make this a InlineScopeBuilder. Right now an InlineScopeBuilder can't return DocSegmentHeader,
+# TODO make this a InlineScopeBuilder. Right now an InlineScopeBuilder can't return Header,
 # because once you're parsing inline content you're in "inline mode".
 class StructureBlockHeaderGenerator(BlockScopeBuilder):
     doc: DocState
@@ -187,7 +187,7 @@ class StructureBlockHeaderGenerator(BlockScopeBuilder):
 class StructureDocPlugin(DocPlugin):
     def _doc_nodes(
         self,
-    ) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
+    ) -> Sequence[type[Block] | type[Inline] | type[Header]]:
         return (
             StructureBlockHeader,
             # TableOfContents, # TODO
@@ -229,7 +229,7 @@ class CitationDocPlugin(DocPlugin):
 
     def _doc_nodes(
         self,
-    ) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
+    ) -> Sequence[type[Block] | type[Inline] | type[Header]]:
         return (
             Citation,
             CiteAuthor,
@@ -279,7 +279,7 @@ class FootnoteDocPlugin(DocPlugin):
 
     def _doc_nodes(
         self,
-    ) -> Sequence[type[Block] | type[Inline] | type[DocSegmentHeader]]:
+    ) -> Sequence[type[Block] | type[Inline] | type[Header]]:
         return (FootnoteRef, FootnoteContents)
 
     def _countables(self) -> Sequence[str]:

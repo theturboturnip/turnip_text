@@ -265,7 +265,7 @@ fn test_cant_build_header_block_scope() {
     expect_parse_err(
         "{
     [TestHeaderBuilder()]{
-        Sometimes docsegmentheaders can be built, too!
+        Sometimes Headers can be built, too!
         But if they're in a block scope it shouldn't be allowed :(
     }
     }",
@@ -273,7 +273,7 @@ fn test_cant_build_header_block_scope() {
             block_scope_start: TestParseSpan("{"),
             code_span: TestParseSpan(
                 "[TestHeaderBuilder()]{
-        Sometimes docsegmentheaders can be built, too!
+        Sometimes Headers can be built, too!
         But if they're in a block scope it shouldn't be allowed :(
     }",
             ),

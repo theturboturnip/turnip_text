@@ -20,7 +20,7 @@ class Block(Protocol):
     is_block: bool = True
 
 @runtime_checkable
-class DocSegmentHeader(Protocol):
+class Header(Protocol):
     is_segment_header: bool = True
     weight: int = 0
 
@@ -28,10 +28,10 @@ class BlockScopeBuilder(abc.ABC):
     @abc.abstractmethod
     def build_from_blocks(
         self, bs: BlockScope
-    ) -> Union[Block, Inline, DocSegmentHeader, None]: ...
+    ) -> Union[Block, Inline, Header, None]: ...
     def __matmul__(
         self, maybe_b: "CoercibleToBlockScope"
-    ) -> Union[Block, Inline, DocSegmentHeader, None]:
+    ) -> Union[Block, Inline, Header, None]:
         bs = coerce_to_block_scope(maybe_b)
         return self.build_from_blocks(bs)
 
@@ -39,18 +39,16 @@ class InlineScopeBuilder(abc.ABC):
     @abc.abstractmethod
     def build_from_inlines(
         self, inls: InlineScope
-    ) -> Union[Block, Inline, DocSegmentHeader, None]: ...
+    ) -> Union[Block, Inline, Header, None]: ...
     def __matmul__(
         self, maybe_inls: "CoercibleToInlineScope"
-    ) -> Union[Block, Inline, DocSegmentHeader, None]:
+    ) -> Union[Block, Inline, Header, None]:
         inls = coerce_to_inline_scope(maybe_inls)
         return self.build_from_inlines(inls)
 
 @runtime_checkable
 class RawScopeBuilder(Protocol):
-    def build_from_raw(
-        self, raw: str
-    ) -> Union[Block, Inline, DocSegmentHeader, None]: ...
+    def build_from_raw(self, raw: str) -> Union[Block, Inline, Header, None]: ...
 
 # The types that can be coerced into an Inline, in the order they are checked and attempted.
 # List[Inline] is coerced by wrapping it in an InlineScope
@@ -134,12 +132,12 @@ class InlineScope(Inline):
 class DocSegment:
     def __init__(
         self,
-        header: DocSegmentHeader,
+        header: Header,
         contents: BlockScope,
         subsegments: List[DocSegment],
     ): ...
     @property
-    def header(self) -> DocSegmentHeader: ...
+    def header(self) -> Header: ...
     @property
     def contents(self) -> BlockScope: ...
     @property

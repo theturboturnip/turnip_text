@@ -244,8 +244,8 @@ impl PyTypeclass for Inline {
 /// Typeclass representing the header for a document segment, which is rendered before any other element in the segment
 /// and defines how it interacts with other segments through the weight parameter. See [DocSegment].
 #[derive(Debug, Clone)]
-pub struct DocSegmentHeader {}
-impl DocSegmentHeader {
+pub struct Header {}
+impl Header {
     fn marker_bool_name(py: Python<'_>) -> &Bound<'_, PyString> {
         intern!(py, "is_segment_header")
     }
@@ -253,13 +253,11 @@ impl DocSegmentHeader {
         intern!(py, "weight")
     }
     pub fn get_weight(py: Python<'_>, header: &Bound<'_, PyAny>) -> PyResult<i64> {
-        header
-            .getattr(DocSegmentHeader::weight_field_name(py))?
-            .extract()
+        header.getattr(Header::weight_field_name(py))?.extract()
     }
 }
-impl PyTypeclass for DocSegmentHeader {
-    const NAME: &'static str = "DocSegmentHeader";
+impl PyTypeclass for Header {
+    const NAME: &'static str = "Header";
 
     fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
         let attr_name = Self::marker_bool_name(obj.py());
@@ -275,7 +273,7 @@ impl PyTypeclass for DocSegmentHeader {
 pub enum BuilderOutcome {
     Block(PyTcRef<Block>),
     Inline(PyTcRef<Inline>),
-    Header(PyTcRef<DocSegmentHeader>),
+    Header(PyTcRef<Header>),
     None,
 }
 impl BuilderOutcome {
@@ -285,7 +283,7 @@ impl BuilderOutcome {
         } else {
             let is_block = Block::fits_typeclass(val)?;
             let is_inline = Inline::fits_typeclass(val)?;
-            let is_header = DocSegmentHeader::fits_typeclass(val)?;
+            let is_header = Header::fits_typeclass(val)?;
 
             match (is_block, is_inline, is_header) {
                 (true, false, false) => Ok(BuilderOutcome::Block(PyTcRef::of_unchecked(val))),
@@ -786,20 +784,20 @@ impl Document {
 }
 
 /// This is used for implicit structure.
-/// It's created by Python code by emitting a DocSegmentHeader with some Weight, and the Weight is used to implicitly open and close scopes
+/// It's created by Python code by emitting a Header with some Weight, and the Weight is used to implicitly open and close scopes
 ///
 /// ```text
-/// [heading("Blah")] # -> DocSegmentHeader(weight=0)
+/// [heading("Blah")] # -> Header(weight=0)
 ///
 /// # This paragraph is implicitly included as a child of DocSegment().text
 /// some text
 ///
-/// [subheading("Sub-Blah")] # -> DocSegmentHeader(weight=1)
+/// [subheading("Sub-Blah")] # -> Header(weight=1)
 /// # the weight is greater than for the Section -> the subsection is implicitly included as a subsegment of section
 ///
 /// Some other text in a subsection
 ///
-/// [heading("Blah 2")] # -> DocSegmentHeader(weight=0)
+/// [heading("Blah 2")] # -> Header(weight=0)
 /// # the weight is <=subsection -> subsection 1.1 automatically ends, subheading.build_doc_segment() called
 /// # the weight is <=section -> section 1 automatically ends, heading.build_doc_segment() called
 ///
@@ -833,24 +831,24 @@ impl Document {
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct DocSegment {
-    pub header: PyTcRef<DocSegmentHeader>,
+    pub header: PyTcRef<Header>,
     pub contents: Py<BlockScope>,
     pub subsegments: PyInstanceList<DocSegment>,
 }
 impl DocSegment {
     pub fn new_checked(
         py: Python,
-        header: PyTcRef<DocSegmentHeader>,
+        header: PyTcRef<Header>,
         contents: Py<BlockScope>,
         subsegments: PyInstanceList<DocSegment>,
     ) -> PyResult<Self> {
-        let weight = DocSegmentHeader::get_weight(py, header.bind(py))?;
+        let weight = Header::get_weight(py, header.bind(py))?;
         for subsegment in subsegments.list(py).iter() {
             let subweight = {
                 let subsegment: Py<DocSegment> = subsegment.extract()?;
                 let subsegment = subsegment.borrow(py);
                 let subheader = subsegment.header.bind(py);
-                DocSegmentHeader::get_weight(py, subheader)?
+                Header::get_weight(py, subheader)?
             };
             if subweight <= weight {
                 return Err(PyValueError::new_err(format!(
@@ -895,8 +893,8 @@ impl DocSegment {
         self.subsegments.list(py).as_sequence().iter()
     }
     pub fn push_subsegment(&self, py: Python<'_>, subsegment: Py<DocSegment>) -> PyResult<()> {
-        let weight = DocSegmentHeader::get_weight(py, self.header.bind(py))?;
-        let subweight = DocSegmentHeader::get_weight(py, subsegment.borrow(py).header.bind(py))?;
+        let weight = Header::get_weight(py, self.header.bind(py))?;
+        let subweight = Header::get_weight(py, subsegment.borrow(py).header.bind(py))?;
         if subweight <= weight {
             return Err(PyValueError::new_err(format!(
                 "Trying to add to a DocSegment with weight {weight} but the provided \

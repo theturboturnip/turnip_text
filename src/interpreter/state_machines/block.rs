@@ -36,7 +36,7 @@ use crate::{
     interpreter::{InterimDocumentStructure, ParserEnv},
     lexer::{Escapable, TTToken},
     python::{
-        interop::{BlockScope, DocSegmentHeader, Document},
+        interop::{BlockScope, Document, Header},
         typeclass::PyTcRef,
     },
     util::{ParseContext, ParseSpan},
@@ -81,7 +81,7 @@ trait BlockMode {
     fn on_header(
         &mut self,
         py: Python,
-        header: PyTcRef<DocSegmentHeader>,
+        header: PyTcRef<Header>,
         header_ctx: ParseContext,
     ) -> TurnipTextContextlessResult<ProcStatus>;
     fn on_block(
@@ -135,7 +135,7 @@ impl BlockMode for TopLevelBlockMode {
     fn on_header(
         &mut self,
         py: Python,
-        header: PyTcRef<DocSegmentHeader>,
+        header: PyTcRef<Header>,
         _header_ctx: ParseContext,
     ) -> TurnipTextContextlessResult<ProcStatus> {
         self.structure.push_segment_header(py, header)?;
@@ -190,7 +190,7 @@ impl BlockMode for BlockScopeBlockMode {
     fn on_header(
         &mut self,
         _py: Python,
-        header: PyTcRef<DocSegmentHeader>,
+        header: PyTcRef<Header>,
         header_ctx: ParseContext,
     ) -> TurnipTextContextlessResult<ProcStatus> {
         Err(InterpError::CodeEmittedHeaderInBlockScope {

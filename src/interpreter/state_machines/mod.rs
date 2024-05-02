@@ -36,7 +36,7 @@ use crate::{
     lexer::TTToken,
     python::{
         interop::{
-            Block, BlockScope, DocSegmentHeader, Document, Inline, InlineScope, Paragraph, Raw,
+            Block, BlockScope, Document, Header, Inline, InlineScope, Paragraph, Raw,
             TurnipTextSource,
         },
         typeclass::PyTcRef,
@@ -61,7 +61,7 @@ mod inline;
 enum DocElement {
     Block(BlockElem),
     Inline(InlineElem),
-    HeaderFromCode(PyTcRef<DocSegmentHeader>),
+    HeaderFromCode(PyTcRef<Header>),
 }
 
 #[derive(Debug)]

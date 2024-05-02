@@ -29,8 +29,8 @@ from turnip_text import (
     Block,
     BlockScope,
     DocSegment,
-    DocSegmentHeader,
     Document,
+    Header,
     Inline,
     InlineScope,
     Paragraph,
@@ -51,8 +51,8 @@ from turnip_text.render.dyn_dispatch import DynDispatch
 
 T = TypeVar("T")
 TBlockOrInline = TypeVar("TBlockOrInline", bound=Union[Block, Inline])
-THeader = TypeVar("THeader", bound=DocSegmentHeader)
-TVisitable = TypeVar("TVisitable", bound=Union[Block, Inline, DocSegmentHeader])
+THeader = TypeVar("THeader", bound=Header)
+TVisitable = TypeVar("TVisitable", bound=Union[Block, Inline, Header])
 TRenderer = TypeVar("TRenderer", bound="Renderer")
 TRenderer_contra = TypeVar("TRenderer_contra", bound="Renderer", contravariant=True)
 TVisitorOutcome = TypeVar("TVisitorOutcome")
@@ -190,7 +190,7 @@ class EmitterDispatch(Generic[TRenderer_contra]):
             raise NotImplementedError(f"Didn't have renderer for {s.header}")
         f(s.header, s.contents, s.subsegments, renderer, fmt)
 
-    def renderer_keys(self) -> Set[Type[Block | Inline | DocSegmentHeader]]:
+    def renderer_keys(self) -> Set[Type[Block | Inline | Header]]:
         return set(self.block_inline_emitters.keys()).union(self.header_emitters.keys())
 
 
@@ -206,7 +206,7 @@ class DocumentDfsPass:
 
     def dfs_over_document(self, document: Document, anchors: DocAnchors) -> None:
         # Floats are parsed when their portals are encountered
-        dfs_queue: List[Block | Inline | DocSegment | DocSegmentHeader] = []
+        dfs_queue: List[Block | Inline | DocSegment | Header] = []
         dfs_queue.extend(reversed((document.contents, *document.segments)))
         visited_floats: Set[Anchor] = set()
         while dfs_queue:
@@ -219,7 +219,7 @@ class DocumentDfsPass:
 
             # Extract children as a reversed iterator.
             # reversed is important because we pop the last thing in the queue off first.
-            children: Iterable[Block | Inline | DocSegment | DocSegmentHeader]
+            children: Iterable[Block | Inline | DocSegment | Header]
             if isinstance(node, (BlockScope, InlineScope)):
                 children = reversed(tuple(node))
             elif isinstance(node, DocSegment):
@@ -465,7 +465,7 @@ class RenderSetup(abc.ABC, Generic[TRenderer]):
     @abc.abstractmethod
     def known_node_types(
         self,
-    ) -> Iterable[Type[Union[Block, Inline, DocSegmentHeader]]]: ...
+    ) -> Iterable[Type[Union[Block, Inline, Header]]]: ...
 
     @abc.abstractmethod
     def known_countables(self) -> Iterable[str]: ...
