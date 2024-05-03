@@ -180,12 +180,12 @@ If you want to include square brackets inside the evaluated Python, add the same
 [some_block]
 
 # Assuming 'BlockScope' and 'some_block' are fields in `globals`, we can evaluate them.
-# We can create a list inside the eval-brackets by putting - inside them.
-[-BlockScope([some_block])-]
+# If you want to use "]" in your code, add `-` to the insides of the eval brackets.
+[- "The string ]" -]
 
 # Any number of - works, as long as they're balanced.
-# If you want to insert "-]" inside your code somewhere, add an extra - to the eval-brackets.
-[---BlockScope([some_block])---]
+# If you want to use "-]" in your code, add extra `-` to the eval-brackets.
+[--- "The string -]" ---]
 
 # Whitespace inside the eval-brackets is trimmed from either side,
 # to allow more readable code inside.
@@ -217,7 +217,8 @@ Eval-brackets may evaluate to four kinds of object:
 
 - `None`, which has no effect on the document
     - If the eval-bracket is a Python statement e.g. `x = 5` it mutates state but evaluates to `None`
-- A string, float, int or instance of `Inline`, all of which are placed in a `Paragraph` and put the parser in *inline mode*
+- A string, float, int or instance of `Inline`
+    - If the parser was in *block mode*, the coerced `Inline` is placed in a `Paragraph` and parser enters *inline mode*
 - An instance of `Block`, which is only allowed in *block mode* and is emitted into the enclosing `BlockScope`
 - An instance of `Header`, which is only allowed in *top-level block mode* and creates a new `DocSegment`.
 
@@ -246,10 +247,10 @@ For flexibility, the code can be evaluated in one of three ways:
     - Expressions e.g. `[1+2]`, `[x]` resolve to a value.
     - If this succeeds, the expression is evaluated with the globals passed to `parse_file_native`.
 - If that throws a SyntaxError, the code is stripped of whitespace on both ends and compiled as a sequence of Python statements.
-    - Statements e.g. `[x = 5]` mutate state but do not resolve to a value. 
+    - Statements e.g. `[x = 5]` mutate state but do not resolve to a value.
     - This allows multiline statements, function declarations etc. to be executed inside eval-brackets.
     - If this succeeds, the statements are executed with the globals passed to `parse_file_native`, and `None` is evaluated.
-- If that throws a SyntaxError, the code is *not* stripped of whitespace and instead surrounded in an `if True:\n` block before being compiled as a sequence of Python statements.
+- If that throws an IndentationError, the code is *not* stripped of whitespace and instead surrounded in an `if True:\n` block before being compiled as a sequence of Python statements.
     - This is intended to allow consistently-indented Python code inside eval-brackets.
         - It may allow inconsistently-indented Python code inside eval-brackets, such as code which begins indented and on later lines is unindented. You shouldn't do this, and it may break with later versions.
     - If this succeeds, the statements are executed with the globals passed to `parse_file_native`, and `None` is evaluated.
