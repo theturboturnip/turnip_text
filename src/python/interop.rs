@@ -1,4 +1,5 @@
 use pyo3::{
+    create_exception,
     exceptions::{PyTypeError, PyValueError},
     intern,
     prelude::*,
@@ -9,11 +10,7 @@ use crate::interpreter::{error::TTErrorWithContext, TurnipTextParser};
 
 use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
 
-mod error {
-    use pyo3::create_exception;
-
-    create_exception!(_native, TurnipTextError, pyo3::exceptions::PyException);
-}
+create_exception!(_native, TurnipTextError, pyo3::exceptions::PyException);
 
 #[pymodule]
 #[pyo3(name = "_native")]
@@ -35,19 +32,9 @@ pub fn turnip_text(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<DocSegment>()?;
     m.add_class::<TurnipTextSource>()?;
 
-    m.add(
-        "TurnipTextError",
-        py.get_type_bound::<error::TurnipTextError>(),
-    )?;
+    m.add("TurnipTextError", py.get_type_bound::<TurnipTextError>())?;
 
     Ok(())
-}
-
-impl TTErrorWithContext {
-    fn to_pyerr(self) -> PyErr {
-        self.display_cli_feedback();
-        error::TurnipTextError::new_err(format!("{self}"))
-    }
 }
 
 #[pyfunction]
@@ -56,11 +43,10 @@ fn parse_file<'py>(
     file: TurnipTextSource,
     py_env: &Bound<'_, PyDict>,
 ) -> PyResult<Py<Document>> {
-    let parser = TurnipTextParser::new(py, file.name, file.contents)
-        .map_err(TTErrorWithContext::to_pyerr)?;
-    parser
-        .parse(py, py_env)
-        .map_err(TTErrorWithContext::to_pyerr)
+    match TurnipTextParser::oneshot_parse(py, py_env, file) {
+        Ok(doc) => Ok(doc),
+        Err(tterr) => Err(tterr.to_pyerr(py)),
+    }
 }
 
 #[pyfunction]

@@ -54,10 +54,12 @@ def x():
         },
     );
     // Test they work when emitting things into the doc
+    // TODO Test error mesage
     expect_parse_err(
         "[-----b'bytestirng not allowed'-----]",
         TestUserPythonError::CoercingNonBuilderEvalBracket {
             code_ctx: TestParseContext("[-----", "b'bytestirng not allowed'", "-----]"),
+            err: Regex::new("TypeError.*").unwrap(),
         },
     );
     expect_parse_err(
@@ -508,30 +510,35 @@ fn non_indent_errors_dont_trigger_indented_exec_mode() {
         );
 }
 
+// TODO test the error messages are good
 #[test]
 fn code_returns_uncoercible_when_emitting_uncoercible() {
     expect_parse_err(
         "[-----b'bytestirng not coercible'-----]",
         TestUserPythonError::CoercingNonBuilderEvalBracket {
             code_ctx: TestParseContext("[-----", "b'bytestirng not coercible'", "-----]"),
+            err: Regex::new("TypeError.*").unwrap(),
         },
     );
     expect_parse_err(
         "[-----{}-----]",
         TestUserPythonError::CoercingNonBuilderEvalBracket {
             code_ctx: TestParseContext("[-----", "{}", "-----]"),
+            err: Regex::new("TypeError.*").unwrap(),
         },
     );
     expect_parse_err(
         "[-----set()-----]",
         TestUserPythonError::CoercingNonBuilderEvalBracket {
             code_ctx: TestParseContext("[-----", "set()", "-----]"),
+            err: Regex::new("TypeError.*").unwrap(),
         },
     );
     expect_parse_err(
         "[-----object()-----]",
         TestUserPythonError::CoercingNonBuilderEvalBracket {
             code_ctx: TestParseContext("[-----", "object()", "-----]"),
+            err: Regex::new("TypeError.*").unwrap(),
         },
     );
 }

@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 use pyo3::{types::PyDict, Py, Python};
 use std::fmt::Debug;
 
-use crate::python::interop::{BlockScope, DocSegment, Document, Header};
+use crate::python::interop::{BlockScope, DocSegment, Document, Header, TurnipTextSource};
 use crate::python::typeclass::{PyInstanceList, PyTcRef};
 use crate::util::ParseSpan;
 
@@ -70,6 +70,15 @@ pub struct TurnipTextParser {
     builders: ProcessorStacks,
 }
 impl TurnipTextParser {
+    pub fn oneshot_parse(
+        py: Python,
+        py_env: UserPythonEnv,
+        file: TurnipTextSource,
+    ) -> TTResultWithContext<Py<Document>> {
+        let mut parser = Self::new(py, file.name, file.contents)?;
+        parser.parse(py, py_env)
+    }
+
     pub fn new(py: Python, file_name: String, file_contents: String) -> TTResultWithContext<Self> {
         let file = ParsingFile::new(0, file_name, file_contents)?;
         let files = vec![file];

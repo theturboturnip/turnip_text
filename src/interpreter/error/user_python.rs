@@ -44,6 +44,7 @@ pub enum TTUserPythonError {
     CoercingNonBuilderEvalBracket {
         code_ctx: ParseContext,
         obj: PyObject,
+        err: PyErr,
     },
     /// Ran user code from an eval-bracket which was followed by a block scope argument,
     /// but failed to coerce the code result to BlockScopeBuilder

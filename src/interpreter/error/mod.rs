@@ -1,8 +1,8 @@
 use annotate_snippets::display_list::DisplayList;
-use pyo3::PyErr;
+use pyo3::{PyErr, Python};
 use thiserror::Error;
 
-use crate::interpreter::ParsingFile;
+use crate::{interpreter::ParsingFile, python::error::set_cause_and_context};
 
 use self::{syntax::TTSyntaxError, user_python::TTUserPythonError};
 
@@ -63,6 +63,33 @@ impl TTErrorWithContext {
     pub fn display_cli_feedback(&self) {
         let dl = DisplayList::from(self.snippet());
         eprintln!("{}", dl);
+    }
+
+    pub fn to_pyerr(self, py: Python) -> PyErr {
+        let msg = format!("{}", DisplayList::from(self.snippet()));
+        let mut basic_err = crate::python::interop::TurnipTextError::new_err(msg);
+
+        match self {
+            // If the error wasn't related to an actual PyErr, just throw the exception as-is
+            TTErrorWithContext::NullByteFoundInSource { .. } | TTErrorWithContext::Syntax(_, _) => {
+            }
+            // If it *was* related to
+            TTErrorWithContext::UserPython(_, user_python_err) => match *user_python_err {
+                TTUserPythonError::CompilingEvalBrackets { err, .. }
+                | TTUserPythonError::RunningEvalBrackets { err, .. }
+                | TTUserPythonError::CoercingNonBuilderEvalBracket { err, .. }
+                | TTUserPythonError::CoercingBlockScopeBuilder { err, .. }
+                | TTUserPythonError::CoercingInlineScopeBuilder { err, .. }
+                | TTUserPythonError::CoercingRawScopeBuilder { err, .. } => {
+                    set_cause_and_context(py, &mut basic_err, err)
+                }
+            },
+            TTErrorWithContext::InternalPython(err) => {
+                set_cause_and_context(py, &mut basic_err, err)
+            }
+        }
+
+        basic_err
     }
 }
 
