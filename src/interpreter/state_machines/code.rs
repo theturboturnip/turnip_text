@@ -137,11 +137,10 @@ impl TokenProcessor for CodeProcessor {
                         ))))
                     } else {
                         let inline =
-                            coerce_to_inline_pytcref(py, evaled_result_ref).map_err(|err| {
+                            coerce_to_inline_pytcref(py, evaled_result_ref).map_err(|_err| {
                                 TTUserPythonError::CoercingNonBuilderEvalBracket {
                                     code_ctx: self.ctx,
                                     obj: evaled_result.clone_ref(py),
-                                    err,
                                 }
                             })?;
                         Ok(ProcStatus::PopAndReprocessToken(Some((
@@ -205,7 +204,7 @@ impl TokenProcessor for CodeProcessor {
                 let builder: PyTcRef<RawScopeBuilder> =
                     PyTcRef::of_friendly(&evaled_result_ref, "value returned by eval-bracket")
                         .map_err(|err| TTUserPythonError::CoercingRawScopeBuilder {
-                            code: self.ctx,
+                            code_ctx: self.ctx,
                             obj: evaled_result_ref.to_object(py),
                             err,
                         })?;

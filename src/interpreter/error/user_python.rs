@@ -20,7 +20,7 @@ pub enum TTUserPythonError {
     // #[error("Found empty eval-brackets, likely not what was intended")]
     // EmptyEvalBrackets { code_ctx: ParseContext },
     /// Compiling user-supplied code
-    #[error("Error when compiling code from eval-brackets: {err}")]
+    #[error("Error when compiling Python from eval-brackets in mode {mode:?}: {err}")]
     CompilingEvalBrackets {
         code_ctx: ParseContext,
         code: CString,
@@ -44,7 +44,6 @@ pub enum TTUserPythonError {
     CoercingNonBuilderEvalBracket {
         code_ctx: ParseContext,
         obj: PyObject,
-        err: PyErr,
     },
     /// Ran user code from an eval-bracket which was followed by a block scope argument,
     /// but failed to coerce the code result to BlockScopeBuilder
@@ -75,7 +74,7 @@ pub enum TTUserPythonError {
          but the eval-bracket output was not a RawScopeBuilder: {err}"
     )]
     CoercingRawScopeBuilder {
-        code: ParseContext,
+        code_ctx: ParseContext,
         obj: PyObject,
         err: PyErr,
     },

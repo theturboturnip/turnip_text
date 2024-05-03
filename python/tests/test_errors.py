@@ -20,6 +20,12 @@ def nest3_raise_specific():
     nest2_raise_specific()
 
 
+def test_selfcheck():
+    with pytest.raises(RuntimeError) as err_info:
+        nest3_raise_specific()
+    assert err_info.value is SPECIFIC_ERROR
+
+
 def test_error_from_running_user_code_filters_out():
     with pytest.raises(TurnipTextError) as err_info:
         parse_file_native(
@@ -57,9 +63,7 @@ def test_error_from_nested_file_running_user_code_filters_out():
                 """
                 [-import turnip_text as tt-]
                 [-
-                tt.TurnipTextSource.from_string("
-                    [nest3_raise_specific]
-                ")
+                tt.TurnipTextSource.from_string("[nest3_raise_specific()]")
                 -]"""
             ),
             {"nest3_raise_specific": nest3_raise_specific},

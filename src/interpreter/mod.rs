@@ -75,7 +75,7 @@ impl TurnipTextParser {
         py_env: UserPythonEnv,
         file: TurnipTextSource,
     ) -> TTResultWithContext<Py<Document>> {
-        let mut parser = Self::new(py, file.name, file.contents)?;
+        let parser = Self::new(py, file.name, file.contents)?;
         parser.parse(py, py_env)
     }
 

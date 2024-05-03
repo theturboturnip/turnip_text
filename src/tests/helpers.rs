@@ -310,7 +310,6 @@ pub enum TestUserPythonError<'a> {
     },
     CoercingNonBuilderEvalBracket {
         code_ctx: TestParseContext<'a>,
-        err: Regex,
     },
     CoercingBlockScopeBuilder {
         code_ctx: TestParseContext<'a>,
@@ -394,17 +393,6 @@ impl<'a> TestUserPythonError<'a> {
                     err: l_err,
                 },
                 TTUserPythonError::CoercingRawScopeBuilder {
-                    code: r_code,
-                    err: r_err,
-                    obj: _,
-                },
-            )
-            | (
-                TestUserPythonError::CoercingNonBuilderEvalBracket {
-                    code_ctx: l_code,
-                    err: l_err,
-                },
-                TTUserPythonError::CoercingNonBuilderEvalBracket {
                     code_ctx: r_code,
                     err: r_err,
                     obj: _,
@@ -413,6 +401,13 @@ impl<'a> TestUserPythonError<'a> {
                 (*dbg!(l_code) == dbg!((r_code, data).into()))
                     && dbg!(l_err).is_match(&dbg!(stringify_pyerr(py, r_err)))
             }
+            (
+                TestUserPythonError::CoercingNonBuilderEvalBracket { code_ctx: l_code },
+                TTUserPythonError::CoercingNonBuilderEvalBracket {
+                    code_ctx: r_code,
+                    obj: _,
+                },
+            ) => *dbg!(l_code) == dbg!((r_code, data).into()),
             _ => false,
         }
     }

@@ -5,7 +5,10 @@
 /// Or just do it myself :P
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 
-use crate::{interpreter::ParsingFile, util::ParseSpan};
+use crate::{
+    interpreter::{error::user_python::UserPythonCompileMode, ParsingFile},
+    util::ParseSpan,
+};
 
 use super::{
     syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
@@ -464,40 +467,108 @@ impl TTErrorWithContext {
 
     fn user_python_snippet<'a>(
         sources: &'a Vec<ParsingFile>,
-        error: &Box<TTUserPythonError>,
+        err: &Box<TTUserPythonError>,
     ) -> Snippet<'a> {
-        dbg!(error);
-        todo!()
-        /*
-                   PythonErr {
-               ctx,
-               pyerr,
-               code_span,
-           } => Snippet {
-               title: Some(Annotation {
-                   label: Some("Error executing user-defined Python"),
-                   id: None,
-                   annotation_type: AnnotationType::Error,
-               }),
-               footer: vec![
-                   Annotation {
-                       label: Some(ctx.as_str()),
-                       id: None,
-                       annotation_type: AnnotationType::Note,
-                   },
-                   Annotation {
-                       label: Some(pyerr.as_str()),
-                       id: None,
-                       annotation_type: AnnotationType::Error,
-                   },
-               ],
-               slices: slices_from_spans(
-                   AnnotationType::Note,
-                   sources,
-                   &[(code_span, "Code executed here", None)],
-               ),
-               opt: Default::default(),
-           },
-        */
+        dbg!(err);
+        match err.as_ref() {
+            TTUserPythonError::CompilingEvalBrackets {
+                code_ctx,
+                code,
+                mode,
+                err: _,
+            } => snippet_from_spans(
+                "Error when compiling Python from eval-brackets",
+                AnnotationType::Error,
+                sources,
+                &[(
+                    code_ctx.full_span(),
+                    match mode {
+                        UserPythonCompileMode::EvalExpr => "Code compiled as a Python expression",
+                        UserPythonCompileMode::ExecStmts => "Code compiled as Python statements",
+                        UserPythonCompileMode::ExecIndentedStmts => {
+                            "Code compiled as indented Python statements"
+                        }
+                    },
+                    None,
+                )],
+                "TODO include code",
+            ),
+            TTUserPythonError::RunningEvalBrackets {
+                code_ctx,
+                code,
+                mode,
+                err: _,
+            } => snippet_from_spans(
+                "Python from eval-brackets raised an error",
+                AnnotationType::Error,
+                sources,
+                &[(
+                    code_ctx.full_span(),
+                    match mode {
+                        UserPythonCompileMode::EvalExpr => "Code compiled as a Python expression",
+                        UserPythonCompileMode::ExecStmts => "Code compiled as Python statements",
+                        UserPythonCompileMode::ExecIndentedStmts => {
+                            "Code compiled as indented Python statements"
+                        }
+                    },
+                    None,
+                )],
+                "TODO include code",
+            ),
+            TTUserPythonError::CoercingNonBuilderEvalBracket { code_ctx, obj } => {
+                snippet_from_spans(
+                    "Python code evaluated something that couldn't be emitted into the document",
+                    AnnotationType::Error,
+                    sources,
+                    &[(code_ctx.full_span(), "Evaluated this", None)],
+                    "TODO include obj",
+                )
+            }
+            TTUserPythonError::CoercingBlockScopeBuilder {
+                code_ctx,
+                obj,
+                err: _,
+            } => snippet_from_spans(
+                "Python code had a block scope attached but wasn't a BlockScopeBuilder",
+                AnnotationType::Error,
+                sources,
+                &[(
+                    code_ctx.full_span(),
+                    "Evaluated this, it wasn't a BlockScopeBuilder",
+                    None,
+                )],
+                "TODO include obj",
+            ),
+            TTUserPythonError::CoercingInlineScopeBuilder {
+                code_ctx,
+                obj,
+                err: _,
+            } => snippet_from_spans(
+                "Python code had an inline scope attached but wasn't an InlineScopeBuilder",
+                AnnotationType::Error,
+                sources,
+                &[(
+                    code_ctx.full_span(),
+                    "Evaluated this, it wasn't a InlineScopeBuilder",
+                    None,
+                )],
+                "TODO include obj",
+            ),
+            TTUserPythonError::CoercingRawScopeBuilder {
+                code_ctx,
+                obj,
+                err: _,
+            } => snippet_from_spans(
+                "Python code had a raw scope attached but wasn't a RawScopeBuilder",
+                AnnotationType::Error,
+                sources,
+                &[(
+                    code_ctx.full_span(),
+                    "Evaluated this, it wasn't a RawScopeBuilder",
+                    None,
+                )],
+                "TODO include obj",
+            ),
+        }
     }
 }

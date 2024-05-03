@@ -73,11 +73,12 @@ impl TTErrorWithContext {
             // If the error wasn't related to an actual PyErr, just throw the exception as-is
             TTErrorWithContext::NullByteFoundInSource { .. } | TTErrorWithContext::Syntax(_, _) => {
             }
-            // If it *was* related to
+            // If it *was* related to an actual PyErr, set __cause__ and __context__ to point to that error.
             TTErrorWithContext::UserPython(_, user_python_err) => match *user_python_err {
+                // Coercion doesn't have an actual PyError associated with it
+                TTUserPythonError::CoercingNonBuilderEvalBracket { .. } => {}
                 TTUserPythonError::CompilingEvalBrackets { err, .. }
                 | TTUserPythonError::RunningEvalBrackets { err, .. }
-                | TTUserPythonError::CoercingNonBuilderEvalBracket { err, .. }
                 | TTUserPythonError::CoercingBlockScopeBuilder { err, .. }
                 | TTUserPythonError::CoercingInlineScopeBuilder { err, .. }
                 | TTUserPythonError::CoercingRawScopeBuilder { err, .. } => {
