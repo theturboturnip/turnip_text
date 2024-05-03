@@ -33,6 +33,7 @@ __all__ = [
     "CoercibleToBlock",
     "CoercibleToBlockScope",
     "parse_file_native",
+    "TurnipTextError",
     "TurnipTextSource",
     "open_turnip_text_source",
 ]
@@ -46,6 +47,7 @@ from ._native import (  # type: ignore
     Raw,
     Sentence,
     Text,
+    TurnipTextError,
     TurnipTextSource,
     coerce_to_block,
     coerce_to_block_scope,
