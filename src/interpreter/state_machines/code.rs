@@ -10,7 +10,7 @@ use crate::{
             TTResult,
         },
         lexer::TTToken,
-        ParserEnv,
+        UserPythonEnv,
     },
     python::{
         interop::{
@@ -47,7 +47,7 @@ impl TokenProcessor for CodeProcessor {
     fn process_token(
         &mut self,
         py: Python,
-        py_env: ParserEnv,
+        py_env: UserPythonEnv,
         tok: TTToken,
         data: &str,
     ) -> TTResult<ProcStatus> {
@@ -156,7 +156,7 @@ impl TokenProcessor for CodeProcessor {
     fn process_emitted_element(
         &mut self,
         py: Python,
-        _py_env: ParserEnv,
+        _py_env: UserPythonEnv,
         pushed: Option<EmittedElement>,
     ) -> TTResult<ProcStatus> {
         let evaled_result_ref = self.evaled_code.take().unwrap().into_bound(py);

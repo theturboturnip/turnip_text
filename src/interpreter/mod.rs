@@ -15,7 +15,7 @@ mod state_machines;
 use error::{TTErrorWithContext, TTResult, TTResultWithContext};
 use lexer::{lex, LexedStrIterator};
 
-pub type ParserEnv<'a> = &'a Bound<'a, PyDict>;
+pub type UserPythonEnv<'a> = &'a Bound<'a, PyDict>;
 
 pub struct ParsingFile {
     name: String,
@@ -80,7 +80,7 @@ impl TurnipTextParser {
             builders,
         })
     }
-    pub fn parse(mut self, py: Python, py_env: ParserEnv) -> TTResultWithContext<Py<Document>> {
+    pub fn parse(mut self, py: Python, py_env: UserPythonEnv) -> TTResultWithContext<Py<Document>> {
         // Call process_tokens until it breaks out returning FileInserted or FileEnded.
         // FileEnded will be returned exactly once more than FileInserted - FileInserted is only returned for subfiles, FileEnded is returned for all subfiles AND the initial file.
         // We handle this because the file stack, Vec<ParsingFile>, and interpreter each have one file's worth of content pushed in initially.

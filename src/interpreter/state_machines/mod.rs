@@ -64,7 +64,7 @@ mod ambiguous_scope;
 mod block;
 use block::TopLevelProcessor;
 
-use super::{FileEvent, ParserEnv};
+use super::{FileEvent, UserPythonEnv};
 
 mod code;
 mod comment;
@@ -145,7 +145,7 @@ trait TokenProcessor {
     fn process_token(
         &mut self,
         py: Python,
-        py_env: ParserEnv,
+        py_env: UserPythonEnv,
         tok: TTToken,
         data: &str,
     ) -> TTResult<ProcStatus>;
@@ -154,7 +154,7 @@ trait TokenProcessor {
     fn process_emitted_element(
         &mut self,
         py: Python,
-        py_env: ParserEnv,
+        py_env: UserPythonEnv,
         emitted: Option<EmittedElement>,
     ) -> TTResult<ProcStatus>;
     /// Called when a processor you pushed returns [ProcStatus::PopAndNewSource].
@@ -210,7 +210,7 @@ impl FileProcessorStack {
     pub fn process_tokens(
         &mut self,
         py: Python,
-        py_env: ParserEnv,
+        py_env: UserPythonEnv,
         toks: &mut impl Iterator<Item = TTToken>,
         data: &str,
     ) -> TTResult<FileEvent> {
@@ -233,7 +233,7 @@ impl FileProcessorStack {
     fn process_token(
         &mut self,
         py: Python,
-        py_env: ParserEnv,
+        py_env: UserPythonEnv,
         tok: TTToken,
         data: &str,
     ) -> TTResult<Option<(ParseSpan, TurnipTextSource)>> {
@@ -352,7 +352,7 @@ impl FileProcessorStack {
     fn emit_elem_in_top_processor(
         &mut self,
         py: Python,
-        py_env: ParserEnv,
+        py_env: UserPythonEnv,
         emitted: Option<EmittedElement>,
     ) -> TTResult<()> {
         let action = self

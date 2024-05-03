@@ -8,7 +8,7 @@ use crate::{
         },
         lexer::{Escapable, TTToken},
         state_machines::{BlockElem, InlineElem},
-        ParserEnv,
+        UserPythonEnv,
     },
     python::{
         interop::{Block, Header, InlineScope, Paragraph, Raw, Sentence, Text},
@@ -529,7 +529,7 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
     fn process_token(
         &mut self,
         py: Python,
-        _py_env: ParserEnv,
+        _py_env: UserPythonEnv,
         tok: TTToken,
         data: &str,
     ) -> TTResult<ProcStatus> {
@@ -617,7 +617,7 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
     fn process_emitted_element(
         &mut self,
         py: Python,
-        _py_env: ParserEnv,
+        _py_env: UserPythonEnv,
         pushed: Option<EmittedElement>,
     ) -> TTResult<ProcStatus> {
         match pushed {
@@ -677,7 +677,7 @@ impl TokenProcessor for RawStringProcessor {
     fn process_token(
         &mut self,
         py: Python,
-        _py_env: ParserEnv,
+        _py_env: UserPythonEnv,
         tok: TTToken,
         data: &str,
     ) -> TTResult<ProcStatus> {
@@ -711,7 +711,7 @@ impl TokenProcessor for RawStringProcessor {
     fn process_emitted_element(
         &mut self,
         _py: Python,
-        _py_env: ParserEnv,
+        _py_env: UserPythonEnv,
         _pushed: Option<EmittedElement>,
         // closing_token: TTToken,
     ) -> TTResult<ProcStatus> {

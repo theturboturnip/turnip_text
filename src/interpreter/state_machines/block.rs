@@ -35,7 +35,7 @@ use crate::{
             TTResult,
         },
         lexer::{Escapable, TTToken},
-        InterimDocumentStructure, ParserEnv,
+        InterimDocumentStructure, UserPythonEnv,
     },
     python::{
         interop::{BlockScope, Document, Header},
@@ -215,7 +215,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
     fn process_token(
         &mut self,
         py: Python,
-        _py_env: ParserEnv,
+        _py_env: UserPythonEnv,
         tok: TTToken,
         data: &str,
     ) -> TTResult<ProcStatus> {
@@ -308,7 +308,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
     fn process_emitted_element(
         &mut self,
         py: Python,
-        _py_env: ParserEnv,
+        _py_env: UserPythonEnv,
         pushed: Option<EmittedElement>,
     ) -> TTResult<ProcStatus> {
         match pushed {

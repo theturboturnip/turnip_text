@@ -4,7 +4,7 @@ use crate::{
     interpreter::{
         error::TTResult,
         lexer::{Escapable, TTToken},
-        ParserEnv,
+        UserPythonEnv,
     },
     util::{ParseContext, ParseSpan},
 };
@@ -21,7 +21,7 @@ impl TokenProcessor for CommentProcessor {
     fn process_token(
         &mut self,
         _py: Python,
-        _py_env: ParserEnv,
+        _py_env: UserPythonEnv,
         tok: TTToken,
         _data: &str,
     ) -> TTResult<ProcStatus> {
@@ -41,7 +41,7 @@ impl TokenProcessor for CommentProcessor {
     fn process_emitted_element(
         &mut self,
         _py: Python,
-        _py_env: ParserEnv,
+        _py_env: UserPythonEnv,
         _pushed: Option<EmittedElement>,
     ) -> TTResult<ProcStatus> {
         unreachable!("CommentProcessor does not spawn inner builders")
