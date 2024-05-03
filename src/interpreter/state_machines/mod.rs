@@ -1,28 +1,42 @@
-//! The combinatorial explosion of moving between block/inline states hsa gotten too much to handle.
-//! It's also inconvenient - e.g. `[thing]{contents}` may only emit an Inline, even if it's the only thing on the line and looks like it could emit Block, because the parser moves to "inline mode" and can't handle getting a Block out of that.
-//! The correct course of action would be for the code processor to compute the inner inline, pass it into the processor, realize it got a Block out, and emit that block directly.
-//! I'm envisioning a system with a stack of processors: every time a new token is received it's given to the topmost processor on the stack, which can return
-//! - an error, stopping everything
-//! - a completed object, implicitly popping the stack of processors
-//! - a new processor to push to the stack
+//! The interpreter is structured in stacks of separate [TokenProcessor]s.
+//! The interpreter may be handling multiple files at a time  - e.g. if code inside [TurnipTextSource] `A` emits a [TurnipTextSource] `B`, the tokens from `B` must be processed before we can continue in `A`.
+//! In this case `B` is the "enclosed" or "inner" file and `A` is the "enclosing" or "surrounding" or "outer" file.
+//! Each file has a separate [FileProcessorStack] of [TokenProcessor]s, which is initially empty.
+//! [ProcessorStacks] holds all the [FileProcessorStack]s of currently-processing files.
 //!
-//! If a completed object is returned, the processor is popped and the object is passed into the next processor on the stack to be integrated into the contents.
-//! This method is convenient because it handles other alt-states for parsing such as comments and raw strings naturally by putting them on top of the stack!
+//! When a new token arrives, it is processed by either
+//! - the last [TokenProcessor] on the file's stack, if the stack is not empty
+//! - otherwise the topmost [TokenProcessor] for the surrounding file, if there is one
+//!     - as it happens, this must be a [block::BlockScopeProcessor]
+//! - otherwise the very outer [TopLevelProcessor] which is responsible for constructing the final [Document]
 //!
-//! Each file has a separate [FileProcessorstack], which falls back to the topmost processor in the previous file or the topmost processor of the whole document if no containing files have processors.
-//! It's possible to have a tall stack of files where no file is using a processor - e.g. if you have file A include
-//! file B include file C include file D, and you just write paragraphs, files A through C will have empty processor stacks while file D is being processed and paragraphs from file D will bubble right up to the top-level document.
+//! Processing a token can have five results, enumerated in [ProcStatus].
+//! - If the processor is still consuming tokens, [ProcStatus::Continue]
+//! - If the processor encounters a token that requires a state change (e.g. a new open scope token), [ProcStatus::PushProcessor]
+//!     - This pushes a new [TokenProcessor] onto the current file's stack
+//! - If the processor has finished (e.g. a scope processor has consumed a closing scope token), [ProcStatus::Pop]
+//!     - This pops the current [TokenProcessor] from the current file's stack, and must only be returned when processing a token from the same file as the [TokenProcessor]
+//!     - It also *emits* a [DocElement] into the next [TokenProcessor] up. For example, if a [block::BlockScopeProcessor] encounters a content token, it creates a [inline::ParagraphProcessor], and that eventually emits a [BlockElem::Para] for the [block::BlockScopeProcessor] to handle.
+//! - If the processor has finished, but the outer processor is interested in the token, the inner processor returns [ProcStatus::PopAndReprocessToken]
+//!     - This does the same pop and emit, but the next available processor is also given the token and could return [ProcStatus::PopAndReprocessToken] as well!
+//!     - This is used for e.g. comments, which are ended by newlines, escaped newlines, and EOF tokens - all of which are relevant to the next levels up, because the syntax is newline-sensitive
+//! - If the processor has finished, and it wants to emit a new [TurnipTextSource] (i.e. this processor is a [code::CodeProcessor] that evaluated user-python and got a new source), [ProcStatus::PopAndNewSource].
 //!
-//! This processor structure introduces strict newline separation for blocks:
-//! - after eval-bracket-emitting-block-or-header-or-inserted-file-or-none, a blank line must be seen before any content
-//! - after closing a block-level block scope (i.e. ignoring block scopes used as arguments to code producing inline), a blank line must be seen before any content
-//! There's no need to worry about this with paragraphs (double newline required to end the paragraph) and block scope opens/closes (extra newlines between opening new block scopes seems superfluous, opening a block scope requires a newline, block scopes can't be closed mid paragraph)
-//! This means newlines must bubble up through files (blocks inside an inner file are governed by either the top-level document token processor or an enclosing block scope processor, both of which are "the next file up"), and I previously worried that this would mean newlines in an inner file would affect an outer file.
-//! Not so!
-//! Note that the first condition requires that after eval-bracket-emitting-inserted-file, a newline must be seen before any content.
-//! The newline-consuming state of the outer processor is always reset when an inserted file is opened and after an inserted file is closed, so inserted files can't have an inconsistent impact on enclosing files and vice versa.
+//! When a processor returns [ProcStatus::PopAndNewSource], the [FileProcessorStack] calls [TokenProcessor::on_emitted_source_inside] on the enclosing processor.
+//! In some cases, such as for paragraphs and inline scopes, the enclosing processor will return an [Err], blocking the new source because they aren't allowed in those contexts.
+//! If a processor returns [Err] here, it will never receive tokens from other files.
+//! If a processor returns [Ok] here, it will be the "topmost TokenProcessor for the surrounding file" and thus receive tokens from enclosed files.
 //!
-//! TODO update documentation
+//! There are specific requirements and restrictions as to which [ProcStatus] values can be returned when - see [ProcStatus] and [TokenProcessor] documentation for more information.
+//!
+//! ## Context
+//! Previously there was a hardcoded two-level state machine: one for block mode, and one for inline mode,
+//! which only allowed block scopes in block mode (even if they were attached to arbitrary builders!) and inline scopes in inline mode.
+//! This was problematic as e.g. you couldn't build a [Header] from an [InlineScope] -
+//! going into inline mode at any point would put the whole parser into inline mode,
+//! and the [Header] would be rejected (not allowed in inline mode!) once emitted.
+//! This system is more flexible, and elegantly handles the special-case behaviours for raw scopes, eval brackets,
+//! and comments.
 
 use std::{cell::RefCell, rc::Rc};
 
