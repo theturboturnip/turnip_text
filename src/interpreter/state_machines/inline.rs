@@ -2,8 +2,8 @@ use pyo3::prelude::*;
 
 use crate::{
     error::{
-        interp::{BlockModeElem, InlineModeContext, InterpError, MapContextlessResult},
-        TurnipTextContextlessError, TurnipTextContextlessResult,
+        syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
+        TTError, TTResult,
     },
     interpreter::{
         state_machines::{BlockElem, InlineElem},
@@ -42,43 +42,22 @@ trait InlineMode {
 
     fn on_content(&mut self);
 
-    fn on_escaped_newline(
-        &mut self,
-        py: Python,
-        tok: TTToken,
-    ) -> TurnipTextContextlessResult<ProcStatus>;
-    fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus>;
-    fn on_open_scope(
-        &mut self,
-        py: Python,
-        tok: TTToken,
-        data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus>;
-    fn on_close_scope(
-        &mut self,
-        py: Python,
-        tok: TTToken,
-        data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus>;
-    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus>;
+    fn on_escaped_newline(&mut self, py: Python, tok: TTToken) -> TTResult<ProcStatus>;
+    fn on_newline(&mut self, py: Python, tok: TTToken) -> TTResult<ProcStatus>;
+    fn on_open_scope(&mut self, py: Python, tok: TTToken, data: &str) -> TTResult<ProcStatus>;
+    fn on_close_scope(&mut self, py: Python, tok: TTToken, data: &str) -> TTResult<ProcStatus>;
+    fn on_eof(&mut self, py: Python, tok: TTToken) -> TTResult<ProcStatus>;
 
-    fn err_on_header_from_code(
-        &self,
-        header: PyTcRef<Header>,
-        header_ctx: ParseContext,
-    ) -> TurnipTextContextlessError;
-    fn err_on_block_from_code(
-        &self,
-        block: PyTcRef<Block>,
-        block_ctx: ParseContext,
-    ) -> TurnipTextContextlessError;
-    fn err_on_source(&self, src_ctx: ParseContext) -> TurnipTextContextlessError;
+    fn err_on_header_from_code(&self, header: PyTcRef<Header>, header_ctx: ParseContext)
+        -> TTError;
+    fn err_on_block_from_code(&self, block: PyTcRef<Block>, block_ctx: ParseContext) -> TTError;
+    fn err_on_source(&self, src_ctx: ParseContext) -> TTError;
     fn on_inline(
         &mut self,
         py: Python,
         inl: &Bound<'_, PyAny>,
         inl_ctx: ParseContext,
-    ) -> TurnipTextContextlessResult<()>;
+    ) -> TTResult<()>;
 }
 
 /// When encountering inline content at the block level, build a Paragraph block
@@ -94,12 +73,9 @@ impl InlineLevelProcessor<ParagraphInlineMode> {
         py: Python,
         inline: &Bound<'_, PyAny>,
         inline_ctx: ParseContext,
-    ) -> TurnipTextContextlessResult<Self> {
+    ) -> TTResult<Self> {
         let current_sentence = py_internal_alloc(py, Sentence::new_empty(py))?;
-        current_sentence
-            .borrow_mut(py)
-            .push_inline(inline)
-            .err_as_internal(py)?;
+        current_sentence.borrow_mut(py).push_inline(inline)?;
         Ok(Self {
             inner: ParagraphInlineMode {
                 ctx: ParseContext::new(inline_ctx.first_tok(), inline_ctx.last_tok()),
@@ -110,11 +86,7 @@ impl InlineLevelProcessor<ParagraphInlineMode> {
             current_building_text: InlineTextState::new(),
         })
     }
-    pub fn new_with_starting_text(
-        py: Python,
-        text: &str,
-        text_span: ParseSpan,
-    ) -> TurnipTextContextlessResult<Self> {
+    pub fn new_with_starting_text(py: Python, text: &str, text_span: ParseSpan) -> TTResult<Self> {
         Ok(Self {
             inner: ParagraphInlineMode {
                 ctx: ParseContext::new(text_span, text_span),
@@ -127,10 +99,7 @@ impl InlineLevelProcessor<ParagraphInlineMode> {
     }
 }
 impl ParagraphInlineMode {
-    fn fold_current_sentence_into_paragraph(
-        &mut self,
-        py: Python,
-    ) -> TurnipTextContextlessResult<()> {
+    fn fold_current_sentence_into_paragraph(&mut self, py: Python) -> TTResult<()> {
         // If the sentence is empty, don't bother pushing
         if self.current_sentence.borrow(py).__len__(py) > 0 {
             // Swap the current sentence out for a new one
@@ -139,10 +108,7 @@ impl ParagraphInlineMode {
                 py_internal_alloc(py, Sentence::new_empty(py))?,
             );
             // Push the old one into the paragraph
-            self.para
-                .borrow_mut(py)
-                .push_sentence(py, sentence)
-                .err_as_internal(py)?;
+            self.para.borrow_mut(py).push_sentence(py, sentence)?;
         }
         Ok(())
     }
@@ -157,11 +123,7 @@ impl InlineMode for ParagraphInlineMode {
         self.start_of_line
     }
 
-    fn on_escaped_newline(
-        &mut self,
-        _py: Python,
-        tok: TTToken,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    fn on_escaped_newline(&mut self, _py: Python, tok: TTToken) -> TTResult<ProcStatus> {
         // Always extend our token span so error messages using it have the full context
         assert!(
             self.ctx.try_extend(&tok.token_span()),
@@ -172,7 +134,7 @@ impl InlineMode for ParagraphInlineMode {
         Ok(ProcStatus::Continue)
     }
 
-    fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus> {
+    fn on_newline(&mut self, py: Python, tok: TTToken) -> TTResult<ProcStatus> {
         // Always extend our token span so error messages using it have the full context
         assert!(
             self.ctx.try_extend(&tok.token_span()),
@@ -192,7 +154,7 @@ impl InlineMode for ParagraphInlineMode {
         }
     }
 
-    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus> {
+    fn on_eof(&mut self, py: Python, tok: TTToken) -> TTResult<ProcStatus> {
         assert!(
             self.ctx.try_extend(&tok.token_span()),
             "ParagraphInlineMode got a token from a different file that it was opened in"
@@ -206,12 +168,7 @@ impl InlineMode for ParagraphInlineMode {
         ))))
     }
 
-    fn on_open_scope(
-        &mut self,
-        _py: Python,
-        tok: TTToken,
-        _data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    fn on_open_scope(&mut self, _py: Python, tok: TTToken, _data: &str) -> TTResult<ProcStatus> {
         Ok(ProcStatus::PushProcessor(rc_refcell(
             InlineLevelAmbiguousScopeProcessor::new(
                 self.inline_mode_ctx(),
@@ -221,12 +178,7 @@ impl InlineMode for ParagraphInlineMode {
         )))
     }
 
-    fn on_close_scope(
-        &mut self,
-        py: Python,
-        tok: TTToken,
-        _data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    fn on_close_scope(&mut self, py: Python, tok: TTToken, _data: &str) -> TTResult<ProcStatus> {
         // If the closing brace is at the start of the line, it must be for block-scope and we can assume there won't be text afterwards.
         // End the paragraph, and tell the scope above us in the hierarchy to handle the scope close.
         if self.start_of_line {
@@ -239,7 +191,7 @@ impl InlineMode for ParagraphInlineMode {
                 BlockElem::Para(self.para.clone_ref(py)).into(),
             ))))
         } else {
-            Err(InterpError::InlineScopeCloseOutsideScope(tok.token_span()).into())
+            Err(TTSyntaxError::InlineScopeCloseOutsideScope(tok.token_span()).into())
         }
     }
 
@@ -247,19 +199,19 @@ impl InlineMode for ParagraphInlineMode {
         &self,
         header: PyTcRef<Header>,
         header_ctx: ParseContext,
-    ) -> TurnipTextContextlessError {
+    ) -> TTError {
         // This must have come from code.
         if self.start_of_line {
             // Someone is trying to open a new, separate header and not a header "inside" the paragraph.
             // Give them a more relevant error message.
-            InterpError::InsufficientBlockSeparation {
+            TTSyntaxError::InsufficientBlockSeparation {
                 last_block: BlockModeElem::Para(self.ctx),
                 next_block_start: BlockModeElem::HeaderFromCode(header_ctx.full_span()),
             }
             .into()
         } else {
             // We're deep inside a paragraph here.
-            InterpError::CodeEmittedHeaderInInlineMode {
+            TTSyntaxError::CodeEmittedHeaderInInlineMode {
                 inl_mode: self.inline_mode_ctx(),
                 header,
                 code_span: header_ctx.full_span(),
@@ -268,23 +220,19 @@ impl InlineMode for ParagraphInlineMode {
         }
     }
 
-    fn err_on_block_from_code(
-        &self,
-        block: PyTcRef<Block>,
-        block_ctx: ParseContext,
-    ) -> TurnipTextContextlessError {
+    fn err_on_block_from_code(&self, block: PyTcRef<Block>, block_ctx: ParseContext) -> TTError {
         // This must have come from code.
         if self.start_of_line {
             // Someone is trying to open a new, separate block and not a block "inside" the paragraph.
             // Give them a more relevant error message.
-            InterpError::InsufficientBlockSeparation {
+            TTSyntaxError::InsufficientBlockSeparation {
                 last_block: BlockModeElem::Para(self.ctx),
                 next_block_start: BlockModeElem::BlockFromCode(block_ctx.full_span()),
             }
             .into()
         } else {
             // We're deep inside a paragraph here.
-            InterpError::CodeEmittedBlockInInlineMode {
+            TTSyntaxError::CodeEmittedBlockInInlineMode {
                 inl_mode: self.inline_mode_ctx(),
                 block,
                 code_span: block_ctx.full_span(),
@@ -293,17 +241,17 @@ impl InlineMode for ParagraphInlineMode {
         }
     }
 
-    fn err_on_source(&self, src_ctx: ParseContext) -> TurnipTextContextlessError {
+    fn err_on_source(&self, src_ctx: ParseContext) -> TTError {
         if self.start_of_line {
             // Someone is trying to open a new file separately from the paragraph and not "inside" the paragraph.
             // Give them a more relevant error message.
-            InterpError::InsufficientBlockSeparation {
+            TTSyntaxError::InsufficientBlockSeparation {
                 last_block: BlockModeElem::Para(self.ctx),
                 next_block_start: BlockModeElem::SourceFromCode(src_ctx.full_span()),
             }
             .into()
         } else {
-            InterpError::CodeEmittedSourceInInlineMode {
+            TTSyntaxError::CodeEmittedSourceInInlineMode {
                 inl_mode: self.inline_mode_ctx(),
                 code_span: src_ctx.full_span(),
             }
@@ -320,15 +268,12 @@ impl InlineMode for ParagraphInlineMode {
         py: Python,
         inl: &Bound<'_, PyAny>,
         inl_ctx: ParseContext,
-    ) -> TurnipTextContextlessResult<()> {
+    ) -> TTResult<()> {
         assert!(
             self.ctx.try_combine(inl_ctx),
             "ParagraphInlineMode got a token from a different file that it was opened in"
         );
-        self.current_sentence
-            .borrow_mut(py)
-            .push_inline(inl)
-            .err_as_internal(py)?;
+        self.current_sentence.borrow_mut(py).push_inline(inl)?;
         Ok(())
     }
 }
@@ -346,7 +291,7 @@ impl InlineLevelProcessor<KnownInlineScopeInlineMode> {
         py: Python,
         preceding_inline: Option<InlineModeContext>,
         ctx: ParseContext,
-    ) -> TurnipTextContextlessResult<Self> {
+    ) -> TTResult<Self> {
         Ok(Self {
             inner: KnownInlineScopeInlineMode {
                 preceding_inline,
@@ -370,16 +315,12 @@ impl InlineMode for KnownInlineScopeInlineMode {
         self.start_of_scope
     }
 
-    fn on_escaped_newline(
-        &mut self,
-        _py: Python,
-        _tok: TTToken,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    fn on_escaped_newline(&mut self, _py: Python, _tok: TTToken) -> TTResult<ProcStatus> {
         // Swallow whitespace after an escaped newline
         self.start_of_scope = true;
         Ok(ProcStatus::Continue)
     }
-    fn on_newline(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus> {
+    fn on_newline(&mut self, py: Python, tok: TTToken) -> TTResult<ProcStatus> {
         if self.inline_scope.borrow_mut(py).__len__(py) == 0 {
             unreachable!(
                 "KnownInlineScopeInlineMode received a newline with no preceding content - was \
@@ -387,7 +328,7 @@ impl InlineMode for KnownInlineScopeInlineMode {
             );
         } else {
             // If there was content then we were definitely interrupted in the middle of a sentence
-            Err(InterpError::SentenceBreakInInlineScope {
+            Err(TTSyntaxError::SentenceBreakInInlineScope {
                 scope_start: self.ctx.first_tok(),
                 sentence_break: tok.token_span(),
             }
@@ -396,12 +337,7 @@ impl InlineMode for KnownInlineScopeInlineMode {
     }
 
     // TODO test error reporting for nested inline scopes
-    fn on_open_scope(
-        &mut self,
-        _py: Python,
-        tok: TTToken,
-        _data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    fn on_open_scope(&mut self, _py: Python, tok: TTToken, _data: &str) -> TTResult<ProcStatus> {
         let new_scopes_inline_context = match self.preceding_inline {
             // If we're part of a paragraph, the inner scope is part of a paragraph too
             // Just extend the paragraph to include the current token
@@ -428,12 +364,7 @@ impl InlineMode for KnownInlineScopeInlineMode {
             ),
         )))
     }
-    fn on_close_scope(
-        &mut self,
-        py: Python,
-        tok: TTToken,
-        _data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    fn on_close_scope(&mut self, py: Python, tok: TTToken, _data: &str) -> TTResult<ProcStatus> {
         // pending text has already been folded in
         assert!(
             self.ctx.try_extend(&tok.token_span()),
@@ -445,8 +376,8 @@ impl InlineMode for KnownInlineScopeInlineMode {
         ))))
     }
 
-    fn on_eof(&mut self, _py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus> {
-        Err(InterpError::EndedInsideScope {
+    fn on_eof(&mut self, _py: Python, tok: TTToken) -> TTResult<ProcStatus> {
+        Err(TTSyntaxError::EndedInsideScope {
             scope_start: self.ctx.first_tok(),
             eof_span: tok.token_span(),
         }
@@ -457,20 +388,16 @@ impl InlineMode for KnownInlineScopeInlineMode {
         &self,
         header: PyTcRef<Header>,
         header_ctx: ParseContext,
-    ) -> TurnipTextContextlessError {
-        InterpError::CodeEmittedHeaderInInlineMode {
+    ) -> TTError {
+        TTSyntaxError::CodeEmittedHeaderInInlineMode {
             inl_mode: self.inline_mode_ctx(),
             header,
             code_span: header_ctx.full_span(),
         }
         .into()
     }
-    fn err_on_block_from_code(
-        &self,
-        block: PyTcRef<Block>,
-        block_ctx: ParseContext,
-    ) -> TurnipTextContextlessError {
-        InterpError::CodeEmittedBlockInInlineMode {
+    fn err_on_block_from_code(&self, block: PyTcRef<Block>, block_ctx: ParseContext) -> TTError {
+        TTSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: self.inline_mode_ctx(),
             block,
             code_span: block_ctx.full_span(),
@@ -478,8 +405,8 @@ impl InlineMode for KnownInlineScopeInlineMode {
         .into()
     }
 
-    fn err_on_source(&self, src_ctx: ParseContext) -> TurnipTextContextlessError {
-        InterpError::CodeEmittedSourceInInlineMode {
+    fn err_on_source(&self, src_ctx: ParseContext) -> TTError {
+        TTSyntaxError::CodeEmittedSourceInInlineMode {
             inl_mode: self.inline_mode_ctx(),
             code_span: src_ctx.full_span(),
         }
@@ -495,15 +422,12 @@ impl InlineMode for KnownInlineScopeInlineMode {
         py: Python,
         inl: &Bound<'_, PyAny>,
         inl_ctx: ParseContext,
-    ) -> TurnipTextContextlessResult<()> {
+    ) -> TTResult<()> {
         assert!(
             self.ctx.try_combine(inl_ctx),
             "ParagraphInlineMode got a token from a different file that it was opened in"
         );
-        self.inline_scope
-            .borrow_mut(py)
-            .push_inline(inl)
-            .err_as_internal(py)?;
+        self.inline_scope.borrow_mut(py).push_inline(inl)?;
         Ok(())
     }
 }
@@ -560,7 +484,7 @@ impl InlineTextState {
         &mut self,
         py: Python,
         include_whitespace: bool,
-    ) -> TurnipTextContextlessResult<Option<(Py<Text>, ParseSpan)>> {
+    ) -> TTResult<Option<(Py<Text>, ParseSpan)>> {
         if let Some(w) = std::mem::take(&mut self.pending_whitespace) {
             if include_whitespace {
                 self.text.push_str(&w)
@@ -586,7 +510,7 @@ impl InlineTextState {
         py: Python,
         include_whitespace: bool,
         inner: &mut T,
-    ) -> TurnipTextContextlessResult<()> {
+    ) -> TTResult<()> {
         match self.flush(py, include_whitespace)? {
             Some((py_text, last_token)) => {
                 inner.on_content();
@@ -608,7 +532,7 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
         _py_env: ParserEnv,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         match tok {
             // Escaped newline => "Continue sentence", don't flush content because we could join content from the next line into it
             TTToken::Escaped(_, Escapable::Newline) => self.inner.on_escaped_newline(py, tok),
@@ -682,10 +606,10 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
             }
 
             // Can't close a scope for a state we aren't in
-            TTToken::CodeClose(span, _) => Err(InterpError::CodeCloseOutsideCode(span).into()),
+            TTToken::CodeClose(span, _) => Err(TTSyntaxError::CodeCloseOutsideCode(span).into()),
 
             TTToken::RawScopeClose(span, _) => {
-                Err(InterpError::RawScopeCloseOutsideRawScope(span).into())
+                Err(TTSyntaxError::RawScopeCloseOutsideRawScope(span).into())
             }
         }
     }
@@ -695,7 +619,7 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
         py: Python,
         _py_env: ParserEnv,
         pushed: Option<EmittedElement>,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         match pushed {
             Some((elem_ctx, elem)) => match elem {
                 // Can't get a header or a block in an inline scope
@@ -725,10 +649,7 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
         }
     }
 
-    fn on_emitted_source_inside(
-        &mut self,
-        code_emitting_source: ParseContext,
-    ) -> TurnipTextContextlessResult<()> {
+    fn on_emitted_source_inside(&mut self, code_emitting_source: ParseContext) -> TTResult<()> {
         Err(self.inner.err_on_source(code_emitting_source))
     }
 
@@ -759,7 +680,7 @@ impl TokenProcessor for RawStringProcessor {
         _py_env: ParserEnv,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         // This builder does not directly emit new source files, so it cannot receive tokens from inner files.
         // When receiving EOF it returns an error.
         // This fulfils the contract for [TokenProcessor::process_token].
@@ -775,7 +696,7 @@ impl TokenProcessor for RawStringProcessor {
                     InlineElem::Raw(raw).into(),
                 ))))
             }
-            TTToken::EOF(eof_span) => Err(InterpError::EndedInsideRawScope {
+            TTToken::EOF(eof_span) => Err(TTSyntaxError::EndedInsideRawScope {
                 raw_scope_start: self.ctx.first_tok(),
                 eof_span,
             }
@@ -793,14 +714,11 @@ impl TokenProcessor for RawStringProcessor {
         _py_env: ParserEnv,
         _pushed: Option<EmittedElement>,
         // closing_token: TTToken,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         panic!("RawStringProcessor does not spawn inner builders")
     }
 
-    fn on_emitted_source_inside(
-        &mut self,
-        _code_emitting_source: ParseContext,
-    ) -> TurnipTextContextlessResult<()> {
+    fn on_emitted_source_inside(&mut self, _code_emitting_source: ParseContext) -> TTResult<()> {
         unreachable!(
             "RawStringProcessor does not spawn an inner code builder, so cannot have a source \
              file emitted inside"

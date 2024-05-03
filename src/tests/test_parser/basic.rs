@@ -1,7 +1,5 @@
 use std::ffi::CString;
 
-use crate::error::UserPythonCompileMode;
-
 use super::*;
 
 #[test]
@@ -195,7 +193,7 @@ fn test_owned_block_scope_with_non_block_builder() {
 It was the best of the times, it was the blurst of times
 }
 "#,
-        TestUserPythonExecError::CoercingBlockScopeBuilder {
+        TestUserPythonError::CoercingBlockScopeBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(
                 r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got None.*",
@@ -219,7 +217,7 @@ fn test_owned_inline_scope() {
 fn test_owned_inline_scope_with_non_inline_builder() {
     expect_parse_err(
         r"[None]{special text}",
-        TestUserPythonExecError::CoercingInlineScopeBuilder {
+        TestUserPythonError::CoercingInlineScopeBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(
                 r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*build_from_inlines.*Got None.*",
@@ -252,7 +250,7 @@ fn test_owned_inline_raw_scope_with_non_raw_builder() {
         r#"[None]#{
 import os
 }#"#,
-        TestUserPythonExecError::CoercingRawScopeBuilder {
+        TestUserPythonError::CoercingRawScopeBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*build_from_raw.*Got None")
                 .unwrap(),
@@ -346,21 +344,21 @@ fn test_newline_in_code() {
 fn test_code_close_in_text() {
     expect_parse_err(
         "not code ] but closed code",
-        TestInterpError::CodeCloseOutsideCode(TestParseSpan("]")),
+        TestSyntaxError::CodeCloseOutsideCode(TestParseSpan("]")),
     )
 }
 #[test]
 fn test_inline_scope_close_outside_scope() {
     expect_parse_err(
         "not in a scope } but closed scope",
-        TestInterpError::InlineScopeCloseOutsideScope(TestParseSpan("}")),
+        TestSyntaxError::InlineScopeCloseOutsideScope(TestParseSpan("}")),
     )
 }
 #[test]
 fn test_block_scope_close_outside_scope() {
     expect_parse_err(
         "} # not in a scope",
-        TestInterpError::BlockScopeCloseOutsideScope(TestParseSpan("}")),
+        TestSyntaxError::BlockScopeCloseOutsideScope(TestParseSpan("}")),
     )
 }
 // Scope closes at the start of a line directly after a paragraph are treated differently
@@ -371,21 +369,21 @@ fn test_block_scope_close_outside_scope_after_para() {
     expect_parse_err(
         "wow some content\nthat could imply the next scope close is in a paragraph i.e. inline \
          mode\n} # not in a scope",
-        TestInterpError::BlockScopeCloseOutsideScope(TestParseSpan("}")),
+        TestSyntaxError::BlockScopeCloseOutsideScope(TestParseSpan("}")),
     )
 }
 #[test]
 fn test_raw_scope_close_outside_scope() {
     expect_parse_err(
         "text in a scope with a mismatched }### # comment",
-        TestInterpError::RawScopeCloseOutsideRawScope(TestParseSpan("}###")),
+        TestSyntaxError::RawScopeCloseOutsideRawScope(TestParseSpan("}###")),
     )
 }
 #[test]
 fn test_mismatching_raw_scope_close() {
     expect_parse_err(
         "##{ text in a scope with a }#",
-        TestInterpError::EndedInsideRawScope {
+        TestSyntaxError::EndedInsideRawScope {
             raw_scope_start: TestParseSpan("##{"),
             eof_span: TestParseSpan(""),
         },
@@ -395,7 +393,7 @@ fn test_mismatching_raw_scope_close() {
 fn test_ended_inside_code() {
     expect_parse_err(
         "text [code",
-        TestInterpError::EndedInsideCode {
+        TestSyntaxError::EndedInsideCode {
             code_start: TestParseSpan("["),
             eof_span: TestParseSpan(""),
         },
@@ -405,7 +403,7 @@ fn test_ended_inside_code() {
 fn test_ended_inside_raw_scope() {
     expect_parse_err(
         "text #{raw",
-        TestInterpError::EndedInsideRawScope {
+        TestSyntaxError::EndedInsideRawScope {
             raw_scope_start: TestParseSpan("#{"),
             eof_span: TestParseSpan(""),
         },
@@ -415,7 +413,7 @@ fn test_ended_inside_raw_scope() {
 fn test_ended_inside_scope() {
     expect_parse_err(
         "text {scope",
-        TestInterpError::EndedInsideScope {
+        TestSyntaxError::EndedInsideScope {
             scope_start: TestParseSpan("{"),
             eof_span: TestParseSpan(""),
         },
@@ -425,7 +423,7 @@ fn test_ended_inside_scope() {
 fn test_newline_inside_inline_scope() {
     expect_parse_err(
         "text {scope\n",
-        TestInterpError::SentenceBreakInInlineScope {
+        TestSyntaxError::SentenceBreakInInlineScope {
             scope_start: TestParseSpan("{"),
             sentence_break: TestParseSpan("\n"),
         },
@@ -435,7 +433,7 @@ fn test_newline_inside_inline_scope() {
 fn test_block_scope_open_inline_para() {
     expect_parse_err(
         "text {\n",
-        TestInterpError::BlockScopeOpenedInInlineMode {
+        TestSyntaxError::BlockScopeOpenedInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext("text", "", " ")),
             block_scope_open: TestParseSpan("{"),
         },
@@ -447,7 +445,7 @@ fn test_block_scope_open_inline_multiline_para() {
         "1st line
         2nd line
         3rd {\n",
-        TestInterpError::BlockScopeOpenedInInlineMode {
+        TestSyntaxError::BlockScopeOpenedInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "1st",
                 " line\n        2nd line\n        3rd",
@@ -461,7 +459,7 @@ fn test_block_scope_open_inline_multiline_para() {
 fn test_block_scope_open_inline() {
     expect_parse_err(
         "{text {\n",
-        TestInterpError::BlockScopeOpenedInInlineMode {
+        TestSyntaxError::BlockScopeOpenedInInlineMode {
             inl_mode: TestInlineModeContext::InlineScope {
                 scope_start: TestParseSpan("{"),
             },
@@ -473,7 +471,7 @@ fn test_block_scope_open_inline() {
 fn test_eof_inside_block_scope() {
     expect_parse_err(
         "{\n",
-        TestInterpError::EndedInsideScope {
+        TestSyntaxError::EndedInsideScope {
             scope_start: TestParseSpan("{"),
             eof_span: TestParseSpan(""),
         },
@@ -484,7 +482,7 @@ fn test_eof_inside_para_inside_block_scope() {
     // Under some broken parsers the EOF would implicitly end the paragraph but would be stopped there - it wouldn't be picked up by the block scope to emit an error.
     expect_parse_err(
         "{\n paragraph paragraph paragraph EOF",
-        TestInterpError::EndedInsideScope {
+        TestSyntaxError::EndedInsideScope {
             scope_start: TestParseSpan("{"),
             eof_span: TestParseSpan(""),
         },
@@ -632,7 +630,7 @@ fn test_cant_emit_block_from_code_inside_paragraph() {
     expect_parse_err(
         "Lorem ipsum!
 I'm in a [TEST_BLOCK]",
-        TestInterpError::CodeEmittedBlockInInlineMode {
+        TestSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "Lorem",
                 " ipsum!\nI'm in a",
@@ -666,7 +664,7 @@ fn test_raw_scope_cant_emit_block_inside_paragraph() {
     expect_parse_err(
         "Inside a paragraph, you can't [TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a \
          block!}#",
-        TestInterpError::CodeEmittedBlockInInlineMode {
+        TestSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "Inside",
                 " a paragraph, you can't",
@@ -734,7 +732,7 @@ fn test_cant_eval_none_for_block_builder() {
         "[None]{
     That doesn't make any sense! The owner can't be None
 }",
-        TestUserPythonExecError::CoercingBlockScopeBuilder {
+        TestUserPythonError::CoercingBlockScopeBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(
                 r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got None",
@@ -750,7 +748,7 @@ fn test_cant_assign_for_block_builder() {
         "[x = 5]{
     That doesn't make any sense! The owner can't be an abstract concept of x being something
 }",
-        TestUserPythonExecError::CoercingBlockScopeBuilder {
+        TestUserPythonError::CoercingBlockScopeBuilder {
             code_ctx: TestParseContext("[", "x = 5", "]"),
             err: Regex::new(
                 r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got None",
@@ -765,7 +763,7 @@ fn test_cant_assign_for_raw_builder() {
     expect_parse_err(
         "[x = 5]#{That doesn't make any sense! The owner can't be an abstract concept of x being \
          something}#",
-        TestUserPythonExecError::CoercingRawScopeBuilder {
+        TestUserPythonError::CoercingRawScopeBuilder {
             code_ctx: TestParseContext("[", "x = 5", "]"),
             err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*build_from_raw.*Got None")
                 .unwrap(),
@@ -778,7 +776,7 @@ fn test_cant_assign_for_inline_builder() {
     expect_parse_err(
         "[x = 5]{That doesn't make any sense! The owner can't be an abstract concept of x being \
          something}",
-        TestUserPythonExecError::CoercingInlineScopeBuilder {
+        TestUserPythonError::CoercingInlineScopeBuilder {
             code_ctx: TestParseContext("[", "x = 5", "]"),
             err: Regex::new(
                 r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*build_from_inlines.*Got None",
@@ -794,7 +792,7 @@ fn test_syntax_errs_passed_thru() {
     // Make sure that something invalid as both still returns a SyntaxError
     expect_parse_err(
         "[1invalid]",
-        TestUserPythonExecError::CompilingEvalBrackets {
+        TestUserPythonError::CompilingEvalBrackets {
             code_ctx: TestParseContext("[", "1invalid", "]"),
             code: CString::new("1invalid").unwrap(),
             mode: UserPythonCompileMode::ExecStmts,
@@ -829,11 +827,11 @@ fn test_nul_byte_not_allowed() {
         "diuwabdouwbdoqwbd\0qdwpiqbdjl wb
     
     [[-\0----- ]---- #{{{##} qdubwdqwd \n\t\r\r\n\t\0",
-        TestTurnipError::NullByteFoundInSource("<test>"),
+        TestTTErrorWithContext::NullByteFoundInSource("<test>"),
     );
 }
 
 #[test]
 fn test_nul_byte_not_allowed_in_included_src() {
-    expect_parse_err("[--TurnipTextSource(name='WowAnArbitraryFile', contents='diubwduoa\\0iubuobobdqd\\0ijqbdwd')--]", TestTurnipError::NullByteFoundInSource("WowAnArbitraryFile"))
+    expect_parse_err("[--TurnipTextSource(name='WowAnArbitraryFile', contents='diubwduoa\\0iubuobobdqd\\0ijqbdwd')--]", TestTTErrorWithContext::NullByteFoundInSource("WowAnArbitraryFile"))
 }

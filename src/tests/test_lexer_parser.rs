@@ -8,7 +8,7 @@ use super::test_parser::*;
 fn expect_lex_parse<'a>(
     data: &str,
     expected_stok_types: Vec<TestTTToken<'a>>,
-    expected_parse: Result<TestDocument, TestTurnipError>,
+    expected_parse: Result<TestDocument, TestTTErrorWithContext>,
 ) {
     println!("{:?}", data);
 

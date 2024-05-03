@@ -146,7 +146,7 @@ fn code_empty_scopes_are_inline() {
 fn eof_in_inline_scope() {
     expect_parse_err(
         "{ wow some data and then EOF",
-        TestInterpError::EndedInsideScope {
+        TestSyntaxError::EndedInsideScope {
             scope_start: TestParseSpan("{"),
             eof_span: TestParseSpan(""),
         },
@@ -157,7 +157,7 @@ fn eof_in_inline_scope() {
 fn eof_in_block_scope() {
     expect_parse_err(
         "{   \n wow some data and then EOF",
-        TestInterpError::EndedInsideScope {
+        TestSyntaxError::EndedInsideScope {
             scope_start: TestParseSpan("{"),
             eof_span: TestParseSpan(""),
         },

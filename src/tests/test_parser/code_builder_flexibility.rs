@@ -138,7 +138,7 @@ fn test_raw_scope_builder_building_block() {
 fn test_inline_scope_builder_building_block_in_inline() {
     expect_parse_err(
         "{wow i'm in an inline context [TEST_BLOCK_BUILDER_FROM_INLINE]{only inlines :)}}",
-        TestInterpError::CodeEmittedBlockInInlineMode {
+        TestSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: TestInlineModeContext::InlineScope {
                 scope_start: TestParseSpan("{"),
             },
@@ -155,7 +155,7 @@ fn test_block_scope_builder_building_block_in_inline() {
             Stuff
         } continuing the inline context}
     "#,
-        TestInterpError::CodeEmittedBlockInInlineMode {
+        TestSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: TestInlineModeContext::InlineScope {
                 scope_start: TestParseSpan("{"),
             },
@@ -169,7 +169,7 @@ fn test_raw_scope_builder_building_block_in_inline() {
     expect_parse_err(
         "{wow i'm in an inline context [TEST_RAW_BLOCK_BUILDER]#{ block! }# continuing the \
          inline context}",
-        TestInterpError::CodeEmittedBlockInInlineMode {
+        TestSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: TestInlineModeContext::InlineScope {
                 scope_start: TestParseSpan("{"),
             },
@@ -250,7 +250,7 @@ fn test_raw_scope_builder_building_header() {
 fn test_inline_scope_builder_building_header_in_inline_mode_para() {
     expect_parse_err(
         "And as I was saying [TestHeaderBuilder()]{ Wowee i wish I had inline content }",
-        TestInterpError::CodeEmittedHeaderInInlineMode {
+        TestSyntaxError::CodeEmittedHeaderInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "And",
                 " as I was saying",
@@ -267,7 +267,7 @@ fn test_block_scope_builder_building_header_in_inline() {
         "And as I was saying [TestHeaderBuilder()]{
             Wowee i wish I had block content
         }",
-        TestInterpError::CodeEmittedHeaderInInlineMode {
+        TestSyntaxError::CodeEmittedHeaderInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "And",
                 " as I was saying",
@@ -289,7 +289,7 @@ fn test_raw_scope_builder_building_header_in_inline() {
             I had inline 
             and raw
             content }#",
-        TestInterpError::CodeEmittedHeaderInInlineMode {
+        TestSyntaxError::CodeEmittedHeaderInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "And",
                 " as I was saying",

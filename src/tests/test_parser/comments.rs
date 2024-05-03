@@ -17,7 +17,7 @@ fn comment_ending_with_newline_in_block_mode() {
 fn comment_ending_with_escaped_newline_in_block_mode() {
     expect_parse_err(
         "# block mode comment \\\n",
-        TestInterpError::EscapedNewlineOutsideParagraph {
+        TestSyntaxError::EscapedNewlineOutsideParagraph {
             newline: TestParseSpan("\\\n"),
         },
     );
@@ -160,7 +160,7 @@ fn comment_ending_with_escaped_newline_in_paragraph() {
         Sentence 3 # a comment \
         
         [TEST_BLOCK] # The above line was blank, but part of the escaped above line so didn't end the mode"#,
-        TestInterpError::InsufficientBlockSeparation {
+        TestSyntaxError::InsufficientBlockSeparation {
             last_block: TestBlockModeElem::Para(TestParseContext(
                 "Sentence",
                 " 1\n        Sentence 2\n        Sentence 3 # a comment \\\n        ",
@@ -195,7 +195,7 @@ fn comment_ending_with_escaped_newline_in_paragraph() {
         {Sentence 3 # a comment \
         }
         [TEST_BLOCK] # The above line didn't end paragraph mode"#,
-        TestInterpError::InsufficientBlockSeparation {
+        TestSyntaxError::InsufficientBlockSeparation {
             last_block: TestBlockModeElem::Para(TestParseContext(
                 "Sentence",
                 " 1\n        Sentence 2\n        {Sentence 3 # a comment \\\n        }",
@@ -228,7 +228,7 @@ fn comment_not_allowed_in_inline_scope_unless_newline_escaped() {
     // Either the comment ends with an EOF
     expect_parse_err(
         "{ wow some stuff in an inline scope # but the comment eliminates the close-scope token}",
-        TestInterpError::EndedInsideScope {
+        TestSyntaxError::EndedInsideScope {
             scope_start: TestParseSpan("{"),
             eof_span: TestParseSpan(""),
         },
@@ -236,7 +236,7 @@ fn comment_not_allowed_in_inline_scope_unless_newline_escaped() {
     // or with a newline
     expect_parse_err(
         "{ wow some stuff in an inline scope # but the comment eliminates the close-scope token \n",
-        TestInterpError::SentenceBreakInInlineScope {
+        TestSyntaxError::SentenceBreakInInlineScope {
             scope_start: TestParseSpan("{"),
             sentence_break: TestParseSpan("\n"),
         },

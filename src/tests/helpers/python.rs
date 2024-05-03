@@ -334,3 +334,16 @@ pub fn generate_globals<'interp>(py: Python<'interp>) -> Option<Bound<'interp, P
 
     Some(globals)
 }
+
+pub fn stringify_pyerr(py: Python, pyerr: &PyErr) -> String {
+    let value_bound = pyerr.value_bound(py);
+    // let type_bound = pyerr.get_type_bound(py);
+    if let Ok(s) = value_bound.str() {
+        match value_bound.get_type().qualname() {
+            Ok(name) => format!("{0} : {1}", name, &s.to_string_lossy()),
+            Err(_) => format!("Unknown Error Type : {}", &s.to_string_lossy()),
+        }
+    } else {
+        "<exception str() failed>".into()
+    }
+}

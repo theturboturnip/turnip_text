@@ -1,4 +1,4 @@
-use crate::error::TurnipTextResult;
+use crate::error::TTResultWithContext;
 use crate::interpreter::TurnipTextParser;
 use regex::Regex;
 
@@ -13,7 +13,7 @@ use std::sync::Once;
 use super::helpers::*;
 static INIT_PYTHON: Once = Once::new();
 
-fn eval_data(data: &str) -> TurnipTextResult<TestDocument> {
+fn eval_data(data: &str) -> TTResultWithContext<TestDocument> {
     // Make sure Python has been set up
     INIT_PYTHON.call_once(prepare_freethreaded_turniptext_python);
 
@@ -39,7 +39,7 @@ fn eval_data(data: &str) -> TurnipTextResult<TestDocument> {
 // It would be nice to have expect_ok() which auto-wraps in Ok, but it isn't much different
 // and there are too many tests to port over now.
 
-pub fn expect_parse_err<'a, T: Into<TestTurnipError<'a>>>(data: &'a str, expected_err: T) {
+pub fn expect_parse_err<'a, T: Into<TestTTErrorWithContext<'a>>>(data: &'a str, expected_err: T) {
     expect_parse(data, Err(expected_err.into()))
 }
 
@@ -50,7 +50,7 @@ pub fn expect_parse_any_ok(data: &str) {
     }
 }
 
-pub fn expect_parse(data: &str, expected_parse: Result<TestDocument, TestTurnipError>) {
+pub fn expect_parse(data: &str, expected_parse: Result<TestDocument, TestTTErrorWithContext>) {
     let root = eval_data(data);
     match (&root, &expected_parse) {
         (Ok(doc), Ok(expected_doc)) => assert_eq!(expected_doc, doc),

@@ -1,7 +1,6 @@
 use std::ffi::CString;
 
 use super::*;
-use crate::error::UserPythonCompileMode;
 
 // The lexer test ensures that dashes inside eval-brackets are tokenized as part of CodeOpen and CodeClose correctly.
 
@@ -10,7 +9,7 @@ fn code_open_close_tokens_reported_correctly() {
     // Test they work in compilation
     expect_parse_err(
         "[-- 1invalid --]",
-        TestUserPythonExecError::CompilingEvalBrackets {
+        TestUserPythonError::CompilingEvalBrackets {
             code_ctx: TestParseContext("[--", " 1invalid ", "--]"),
             code: CString::new("1invalid").unwrap(),
             mode: UserPythonCompileMode::ExecStmts,
@@ -27,7 +26,7 @@ def x():
 x()
 ---]
     ",
-        TestUserPythonExecError::RunningEvalBrackets {
+        TestUserPythonError::RunningEvalBrackets {
             code_ctx: TestParseContext(
                 "[---",
                 "\ndef x():\n    raise ValueError()\n\nx()\n",
@@ -47,7 +46,7 @@ def x():
 
     [----x()----]
     ",
-        TestUserPythonExecError::RunningEvalBrackets {
+        TestUserPythonError::RunningEvalBrackets {
             code_ctx: TestParseContext("[----", "x()", "----]"),
             code: CString::new("x()").unwrap(),
             mode: UserPythonCompileMode::EvalExpr,
@@ -57,7 +56,7 @@ def x():
     // Test they work when emitting things into the doc
     expect_parse_err(
         "[-----b'bytestirng not allowed'-----]",
-        TestUserPythonExecError::CoercingNonBuilderEvalBracket {
+        TestUserPythonError::CoercingNonBuilderEvalBracket {
             code_ctx: TestParseContext("[-----", "b'bytestirng not allowed'", "-----]"),
         },
     );
@@ -65,14 +64,14 @@ def x():
         "[-----b'not a scope owner'-----]{
             stuff in a block scope
         }",
-        TestUserPythonExecError::CoercingBlockScopeBuilder {
+        TestUserPythonError::CoercingBlockScopeBuilder {
             code_ctx: TestParseContext("[-----", "b'not a scope owner'", "-----]"),
             err: Regex::new("TypeError.*instance of BlockScopeBuilder.*build_from_blocks").unwrap(),
         },
     );
     expect_parse_err(
         "[-----b'not a scope owner'-----]{ stuff in a inline scope }",
-        TestUserPythonExecError::CoercingInlineScopeBuilder {
+        TestUserPythonError::CoercingInlineScopeBuilder {
             code_ctx: TestParseContext("[-----", "b'not a scope owner'", "-----]"),
             err: Regex::new("TypeError.*instance of InlineScopeBuilder.*build_from_inlines")
                 .unwrap(),
@@ -80,7 +79,7 @@ def x():
     );
     expect_parse_err(
         "[-----b'not a scope owner'-----]###{ stuff in a raw scope }###",
-        TestUserPythonExecError::CoercingRawScopeBuilder {
+        TestUserPythonError::CoercingRawScopeBuilder {
             code_ctx: TestParseContext("[-----", "b'not a scope owner'", "-----]"),
             err: Regex::new("TypeError.*instance of RawScopeBuilder.*build_from_raw").unwrap(),
         },
@@ -140,7 +139,7 @@ def test():
 ]
         
         [test()]",
-        TestUserPythonExecError::RunningEvalBrackets {
+        TestUserPythonError::RunningEvalBrackets {
             code_ctx: TestParseContext("[", "test()", "]"),
             code: CString::new("test()").unwrap(),
             mode: UserPythonCompileMode::EvalExpr,
@@ -191,7 +190,7 @@ fn code_trimmed_in_eval_mode() {
     );
     expect_parse_err(
         "[     1invalid     ]",
-        TestUserPythonExecError::CompilingEvalBrackets {
+        TestUserPythonError::CompilingEvalBrackets {
             code_ctx: TestParseContext("[", "     1invalid     ", "]"),
             // The actual code shouldn't be indented
             code: CString::new("1invalid").unwrap(),
@@ -206,7 +205,7 @@ fn syntax_error_in_eval_mode_passes_through() {
     // Make sure that something invalid as both still returns a SyntaxError
     expect_parse_err(
         "[1invalid]",
-        TestUserPythonExecError::CompilingEvalBrackets {
+        TestUserPythonError::CompilingEvalBrackets {
             code_ctx: TestParseContext("[", "1invalid", "]"),
             code: CString::new("1invalid").unwrap(),
             mode: UserPythonCompileMode::ExecStmts,
@@ -282,7 +281,7 @@ def test():
 ]
         
         [x = test()]",
-        TestUserPythonExecError::RunningEvalBrackets {
+        TestUserPythonError::RunningEvalBrackets {
             code_ctx: TestParseContext("[", "x = test()", "]"),
             code: CString::new("x = test()").unwrap(),
             mode: UserPythonCompileMode::ExecStmts,
@@ -332,7 +331,7 @@ fn code_trimmed_in_exec_mode() {
     );
     expect_parse_err(
         "[     l = 1invalid     ][l]",
-        TestUserPythonExecError::CompilingEvalBrackets {
+        TestUserPythonError::CompilingEvalBrackets {
             code_ctx: TestParseContext("[", "     l = 1invalid     ", "]"),
             // The actual code shouldn't be indented
             code: CString::new("l = 1invalid").unwrap(),
@@ -347,7 +346,7 @@ fn syntax_error_in_exec_mode_passes_through() {
     // Make sure that something invalid as both still returns a SyntaxError
     expect_parse_err(
         "[x = 1invalid]",
-        TestUserPythonExecError::CompilingEvalBrackets {
+        TestUserPythonError::CompilingEvalBrackets {
             code_ctx: TestParseContext("[", "x = 1invalid", "]"),
             code: CString::new("x = 1invalid").unwrap(),
             mode: UserPythonCompileMode::ExecStmts,
@@ -362,7 +361,7 @@ fn syntax_error_in_exec_mode_passes_through() {
         "[
                  x = 1invalid
             ]",
-        TestUserPythonExecError::CompilingEvalBrackets {
+        TestUserPythonError::CompilingEvalBrackets {
             code_ctx: TestParseContext("[", "\n                 x = 1invalid\n            ", "]"),
             code: CString::new("x = 1invalid").unwrap(),
             mode: UserPythonCompileMode::ExecStmts,
@@ -428,7 +427,7 @@ def test():
             # force indent-mode
             x = test()
         ]",
-        TestUserPythonExecError::RunningEvalBrackets {
+        TestUserPythonError::RunningEvalBrackets {
             code_ctx: TestParseContext(
                 "[",
                 "\n            # force indent-mode\n            x = test()\n        ",
@@ -453,7 +452,7 @@ fn indent_errors_in_indented_exec_mode_pass_through() {
         unindent = 1
             suddenly_bad_indent = 2
         ]",
-        TestUserPythonExecError::CompilingEvalBrackets {
+        TestUserPythonError::CompilingEvalBrackets {
             code_ctx: TestParseContext(
                 "[",
                 "\n            good_indent = 0\n        unindent = 1\n            \
@@ -491,7 +490,7 @@ fn non_indent_errors_dont_trigger_indented_exec_mode() {
                 x = 1invalid
                 second_statement_at_nonzero_indent_level_to_force_indent_compile = 0
             ]",
-            TestUserPythonExecError::CompilingEvalBrackets {
+            TestUserPythonError::CompilingEvalBrackets {
                 code_ctx: TestParseContext(
                     "[",
                     "\n                x = 1invalid\n                \
@@ -513,25 +512,25 @@ fn non_indent_errors_dont_trigger_indented_exec_mode() {
 fn code_returns_uncoercible_when_emitting_uncoercible() {
     expect_parse_err(
         "[-----b'bytestirng not coercible'-----]",
-        TestUserPythonExecError::CoercingNonBuilderEvalBracket {
+        TestUserPythonError::CoercingNonBuilderEvalBracket {
             code_ctx: TestParseContext("[-----", "b'bytestirng not coercible'", "-----]"),
         },
     );
     expect_parse_err(
         "[-----{}-----]",
-        TestUserPythonExecError::CoercingNonBuilderEvalBracket {
+        TestUserPythonError::CoercingNonBuilderEvalBracket {
             code_ctx: TestParseContext("[-----", "{}", "-----]"),
         },
     );
     expect_parse_err(
         "[-----set()-----]",
-        TestUserPythonExecError::CoercingNonBuilderEvalBracket {
+        TestUserPythonError::CoercingNonBuilderEvalBracket {
             code_ctx: TestParseContext("[-----", "set()", "-----]"),
         },
     );
     expect_parse_err(
         "[-----object()-----]",
-        TestUserPythonExecError::CoercingNonBuilderEvalBracket {
+        TestUserPythonError::CoercingNonBuilderEvalBracket {
             code_ctx: TestParseContext("[-----", "object()", "-----]"),
         },
     );

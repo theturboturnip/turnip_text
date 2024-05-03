@@ -30,8 +30,8 @@ use pyo3::prelude::*;
 
 use crate::{
     error::{
-        interp::{BlockModeElem, InterpError, MapContextlessResult},
-        TurnipTextContextlessResult,
+        syntax::{BlockModeElem, TTSyntaxError},
+        TTResult,
     },
     interpreter::{InterimDocumentStructure, ParserEnv},
     lexer::{Escapable, TTToken},
@@ -70,26 +70,21 @@ pub struct BlockLevelProcessor<T> {
 
 /// This trait overrides behaviour of the BlockLevelProcessor in specific cases.
 trait BlockMode {
-    fn on_close_scope(
-        &mut self,
-        py: Python,
-        tok: TTToken,
-        data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus>;
-    fn on_eof(&mut self, py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus>;
+    fn on_close_scope(&mut self, py: Python, tok: TTToken, data: &str) -> TTResult<ProcStatus>;
+    fn on_eof(&mut self, py: Python, tok: TTToken) -> TTResult<ProcStatus>;
 
     fn on_header(
         &mut self,
         py: Python,
         header: PyTcRef<Header>,
         header_ctx: ParseContext,
-    ) -> TurnipTextContextlessResult<ProcStatus>;
+    ) -> TTResult<ProcStatus>;
     fn on_block(
         &mut self,
         py: Python,
         block: BlockElem,
         block_ctx: ParseContext,
-    ) -> TurnipTextContextlessResult<ProcStatus>;
+    ) -> TTResult<ProcStatus>;
 }
 
 /// At the top level of the document, headers are allowed and manipulate the InterimDocumentStructure.
@@ -105,28 +100,23 @@ impl BlockLevelProcessor<TopLevelBlockMode> {
             expects_n_blank_lines_after: None,
         })
     }
-    pub fn finalize(mut self, py: Python<'_>) -> TurnipTextContextlessResult<Py<Document>> {
+    pub fn finalize(mut self, py: Python<'_>) -> TTResult<Py<Document>> {
         self.inner
             .structure
             .pop_segments_until_less_than(py, i64::MIN)?;
-        self.inner.structure.finalize(py).err_as_internal(py)
+        Ok(self.inner.structure.finalize(py)?)
     }
 }
 impl BlockMode for TopLevelBlockMode {
-    fn on_close_scope(
-        &mut self,
-        _py: Python,
-        tok: TTToken,
-        _data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    fn on_close_scope(&mut self, _py: Python, tok: TTToken, _data: &str) -> TTResult<ProcStatus> {
         // This builder may receive tokens from inner files.
         // It always returns an error.
         // This fulfils the contract for [TokenProcessor::process_token].
-        Err(InterpError::BlockScopeCloseOutsideScope(tok.token_span()).into())
+        Err(TTSyntaxError::BlockScopeCloseOutsideScope(tok.token_span()).into())
     }
 
     // When EOF comes, we don't produce anything to bubble up - there's nothing above us!
-    fn on_eof(&mut self, _py: Python, _tok: TTToken) -> TurnipTextContextlessResult<ProcStatus> {
+    fn on_eof(&mut self, _py: Python, _tok: TTToken) -> TTResult<ProcStatus> {
         // This is the only exception to the contract for [TokenProcessor::process_token].
         // There is never a builder above this one, so there is nothing that can reprocess the token.
         Ok(ProcStatus::Continue)
@@ -137,7 +127,7 @@ impl BlockMode for TopLevelBlockMode {
         py: Python,
         header: PyTcRef<Header>,
         _header_ctx: ParseContext,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         self.structure.push_segment_header(py, header)?;
         Ok(ProcStatus::Continue)
     }
@@ -147,7 +137,7 @@ impl BlockMode for TopLevelBlockMode {
         py: Python,
         block: BlockElem,
         _block_ctx: ParseContext,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         self.structure.push_to_topmost_block(py, block.bind(py))?;
         Ok(ProcStatus::Continue)
     }
@@ -158,19 +148,14 @@ pub struct BlockScopeBlockMode {
     block_scope: Py<BlockScope>,
 }
 impl BlockMode for BlockScopeBlockMode {
-    fn on_close_scope(
-        &mut self,
-        py: Python,
-        tok: TTToken,
-        _data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    fn on_close_scope(&mut self, py: Python, tok: TTToken, _data: &str) -> TTResult<ProcStatus> {
         // This builder may receive tokens from inner files.
         // If it receives a token from an inner file, it returns an error.
         // This fulfils the contract for [TokenProcessor::process_token].
         if !self.ctx.try_extend(&tok.token_span()) {
             // Closing block scope from different file
             // This must be a block-level scope close, because if an unbalanced scope close appeared in inline mode it would already have errored and not bubbled out.
-            Err(InterpError::BlockScopeCloseOutsideScope(tok.token_span()).into())
+            Err(TTSyntaxError::BlockScopeCloseOutsideScope(tok.token_span()).into())
         } else {
             Ok(ProcStatus::Pop(Some((
                 self.ctx,
@@ -179,8 +164,8 @@ impl BlockMode for BlockScopeBlockMode {
         }
     }
 
-    fn on_eof(&mut self, _py: Python, tok: TTToken) -> TurnipTextContextlessResult<ProcStatus> {
-        Err(InterpError::EndedInsideScope {
+    fn on_eof(&mut self, _py: Python, tok: TTToken) -> TTResult<ProcStatus> {
+        Err(TTSyntaxError::EndedInsideScope {
             scope_start: self.ctx.first_tok(),
             eof_span: tok.token_span(),
         }
@@ -192,8 +177,8 @@ impl BlockMode for BlockScopeBlockMode {
         _py: Python,
         header: PyTcRef<Header>,
         header_ctx: ParseContext,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
-        Err(InterpError::CodeEmittedHeaderInBlockScope {
+    ) -> TTResult<ProcStatus> {
+        Err(TTSyntaxError::CodeEmittedHeaderInBlockScope {
             block_scope_start: self.ctx.first_tok(),
             header,
             code_span: header_ctx.full_span(),
@@ -206,20 +191,13 @@ impl BlockMode for BlockScopeBlockMode {
         py: Python,
         block: BlockElem,
         _block_ctx: ParseContext,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
-        self.block_scope
-            .borrow_mut(py)
-            .push_block(block.bind(py))
-            .err_as_internal(py)?;
+    ) -> TTResult<ProcStatus> {
+        self.block_scope.borrow_mut(py).push_block(block.bind(py))?;
         Ok(ProcStatus::Continue)
     }
 }
 impl BlockLevelProcessor<BlockScopeBlockMode> {
-    pub fn new(
-        py: Python,
-        first_tok: ParseSpan,
-        last_tok: ParseSpan,
-    ) -> TurnipTextContextlessResult<Self> {
+    pub fn new(py: Python, first_tok: ParseSpan, last_tok: ParseSpan) -> TTResult<Self> {
         Ok(Self {
             inner: BlockScopeBlockMode {
                 ctx: ParseContext::new(first_tok, last_tok),
@@ -238,7 +216,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
         _py_env: ParserEnv,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         // This builder may receive tokens from inner files.
         // It always returns an error, [ProcStatus::Continue], or [ProcStatus::PushProcessor] on non-EOF tokens
         // as long as [BlockTokenProcessor::on_close_scope] always does the same.
@@ -247,7 +225,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
         if self.expects_n_blank_lines_after.is_some() {
             match tok {
                 TTToken::Escaped(span, Escapable::Newline) => {
-                    Err(InterpError::EscapedNewlineOutsideParagraph { newline: span }.into())
+                    Err(TTSyntaxError::EscapedNewlineOutsideParagraph { newline: span }.into())
                 }
                 TTToken::Whitespace(_) => Ok(ProcStatus::Continue),
                 TTToken::Newline(_) => {
@@ -264,7 +242,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
 
                 TTToken::EOF(_) => self.inner.on_eof(py, tok),
 
-                _ => Err(InterpError::InsufficientBlockSeparation {
+                _ => Err(TTSyntaxError::InsufficientBlockSeparation {
                     last_block: std::mem::take(&mut self.expects_n_blank_lines_after).expect(
                         "This function is only called when \
                              self.expects_n_blank_lines_after.is_some()",
@@ -275,7 +253,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
         } else {
             match tok {
                 TTToken::Escaped(span, Escapable::Newline) => {
-                    Err(InterpError::EscapedNewlineOutsideParagraph { newline: span }.into())
+                    Err(TTSyntaxError::EscapedNewlineOutsideParagraph { newline: span }.into())
                 }
                 TTToken::Whitespace(_) | TTToken::Newline(_) => Ok(ProcStatus::Continue),
 
@@ -310,10 +288,12 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
                     )?,
                 ))),
 
-                TTToken::CodeClose(span, _) => Err(InterpError::CodeCloseOutsideCode(span).into()),
+                TTToken::CodeClose(span, _) => {
+                    Err(TTSyntaxError::CodeCloseOutsideCode(span).into())
+                }
 
                 TTToken::RawScopeClose(span, _) => {
-                    Err(InterpError::RawScopeCloseOutsideRawScope(span).into())
+                    Err(TTSyntaxError::RawScopeCloseOutsideRawScope(span).into())
                 }
 
                 TTToken::ScopeClose(_) => self.inner.on_close_scope(py, tok, data),
@@ -328,7 +308,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
         py: Python,
         _py_env: ParserEnv,
         pushed: Option<EmittedElement>,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         match pushed {
             Some((elem_ctx, elem)) => match elem {
                 DocElement::HeaderFromCode(header) => {
@@ -372,10 +352,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
         }
     }
 
-    fn on_emitted_source_inside(
-        &mut self,
-        _code_emitting_source: ParseContext,
-    ) -> TurnipTextContextlessResult<()> {
+    fn on_emitted_source_inside(&mut self, _code_emitting_source: ParseContext) -> TTResult<()> {
         // The tokens from this file will be passed through directly to us until we open new builders in its stack.
         // Allow the new file to start directly with content if it chooses.
         self.expects_n_blank_lines_after = None;

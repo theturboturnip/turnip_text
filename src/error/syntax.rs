@@ -1,4 +1,3 @@
-use pyo3::{PyResult, Python};
 use thiserror::Error;
 
 use crate::{
@@ -9,8 +8,9 @@ use crate::{
     util::{ParseContext, ParseSpan},
 };
 
-use super::{stringify_pyerr, TurnipTextContextlessError, TurnipTextContextlessResult};
-
+/// Context for errors that take place because the parser was in inline-mode.
+/// Used to indicate why the parser was in inline-mode at that time - either it was inside a Paragraph,
+/// or it was inside an InlineScope
 #[derive(Debug, Clone)]
 pub enum InlineModeContext {
     Paragraph(ParseContext),
@@ -33,9 +33,9 @@ pub enum BlockModeElem {
     AnyToken(ParseSpan),
 }
 
-/// Enumeration of all possible interpreter errors
+/// Enumeration of all possible syntax errors
 #[derive(Debug, Clone, Error)]
-pub enum InterpError {
+pub enum TTSyntaxError {
     #[error("Code close encountered outside of code mode")]
     CodeCloseOutsideCode(ParseSpan),
     #[error("Scope close encountered in block mode when this file had no open block scopes")]
@@ -101,15 +101,4 @@ pub enum InterpError {
         last_block: BlockModeElem,
         next_block_start: BlockModeElem,
     },
-}
-
-pub trait MapContextlessResult<T> {
-    fn err_as_internal(self, py: Python) -> TurnipTextContextlessResult<T>;
-}
-impl<T> MapContextlessResult<T> for PyResult<T> {
-    fn err_as_internal(self, py: Python) -> TurnipTextContextlessResult<T> {
-        self.map_err(|pyerr| {
-            TurnipTextContextlessError::InternalPython(stringify_pyerr(py, &pyerr))
-        })
-    }
 }

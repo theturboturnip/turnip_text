@@ -253,7 +253,7 @@ fn test_cant_create_header_block_scope() {
         "{
     [TestHeader()]
     }",
-        TestInterpError::CodeEmittedHeaderInBlockScope {
+        TestSyntaxError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
             code_span: TestParseSpan("[TestHeader()]"),
         },
@@ -269,7 +269,7 @@ fn test_cant_build_header_block_scope() {
         But if they're in a block scope it shouldn't be allowed :(
     }
     }",
-        TestInterpError::CodeEmittedHeaderInBlockScope {
+        TestSyntaxError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
             code_span: TestParseSpan(
                 "[TestHeaderBuilder()]{
@@ -287,7 +287,7 @@ fn test_cant_create_header_block_scope_argument() {
         "[TEST_BLOCK_BUILDER]{
     [TestHeader()]
     }",
-        TestInterpError::CodeEmittedHeaderInBlockScope {
+        TestSyntaxError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
             code_span: TestParseSpan("[TestHeader()]"),
         },
@@ -366,7 +366,7 @@ header_in_file = test_src("""
         [header_in_file]
         
         Content outside file!"#,
-        TestInterpError::CodeEmittedHeaderInBlockScope {
+        TestSyntaxError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
             code_span: TestParseSpan("[TestHeader(weight=123)]"),
         },
@@ -391,7 +391,7 @@ Content in file!
             
             Content outside file!
         }"#,
-        TestInterpError::CodeEmittedHeaderInBlockScope {
+        TestSyntaxError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
             code_span: TestParseSpan("[TestHeader(weight=123)]"),
         },
@@ -402,7 +402,7 @@ Content in file!
 fn test_cant_create_header_in_paragraph() {
     expect_parse_err(
         "And as I was saying [TestHeader()]",
-        TestInterpError::CodeEmittedHeaderInInlineMode {
+        TestSyntaxError::CodeEmittedHeaderInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "And",
                 " as I was saying",
@@ -417,7 +417,7 @@ fn test_cant_create_header_in_paragraph() {
 fn test_cant_create_header_inline() {
     expect_parse_err(
         "[TEST_BLOCK_BUILDER_FROM_INLINE]{ [TestHeader()] }",
-        TestInterpError::CodeEmittedHeaderInInlineMode {
+        TestSyntaxError::CodeEmittedHeaderInInlineMode {
             inl_mode: TestInlineModeContext::InlineScope {
                 scope_start: TestParseSpan("{"),
             },

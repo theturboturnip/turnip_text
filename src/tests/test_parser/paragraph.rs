@@ -99,7 +99,7 @@ fn escaped_newline_then_blank() {
         Sentence 3 \
         
         [TEST_BLOCK] # The above line was blank, but part of the escaped above line so didn't end the mode"#,
-        TestInterpError::InsufficientBlockSeparation {
+        TestSyntaxError::InsufficientBlockSeparation {
             last_block: TestBlockModeElem::Para(TestParseContext(
                 "Sentence",
                 " 1\n        Sentence 2\n        Sentence 3 \\\n        ",
@@ -134,7 +134,7 @@ fn escaped_newline_then_blank() {
         {Sentence 3 \
         }
         [TEST_BLOCK] # The above line didn't end paragraph mode"#,
-        TestInterpError::InsufficientBlockSeparation {
+        TestSyntaxError::InsufficientBlockSeparation {
             last_block: TestBlockModeElem::Para(TestParseContext(
                 "Sentence",
                 " 1\n        Sentence 2\n        {Sentence 3 \\\n        }",

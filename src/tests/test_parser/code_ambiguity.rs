@@ -84,7 +84,7 @@ class Super:
     expect_parse_err(
         "[TEST_BLOCK]{
         }",
-        TestUserPythonExecError::CoercingBlockScopeBuilder {
+        TestUserPythonError::CoercingBlockScopeBuilder {
             code_ctx: TestParseContext("[", "TEST_BLOCK", "]"),
             err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got <TestOwnedBlock.*")
                 .unwrap(),
@@ -122,7 +122,7 @@ class Super:
     // Test that things that can't build throw errors
     expect_parse_err(
         "[TEST_INLINE]{}",
-        TestUserPythonExecError::CoercingInlineScopeBuilder {
+        TestUserPythonError::CoercingInlineScopeBuilder {
             code_ctx: TestParseContext("[", "TEST_INLINE", "]"),
             err: Regex::new(
                 r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*build_from_inlines.*Got <TestOwnedInline.*",
@@ -162,7 +162,7 @@ class Super:
     // Test that things that can't build throw errors
     expect_parse_err(
         "[TEST_INLINE]#{}#",
-        TestUserPythonExecError::CoercingRawScopeBuilder {
+        TestUserPythonError::CoercingRawScopeBuilder {
             code_ctx: TestParseContext("[", "TEST_INLINE", "]"),
             err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*build_from_raw.*Got <TestOwnedInline.*")
                 .unwrap(),

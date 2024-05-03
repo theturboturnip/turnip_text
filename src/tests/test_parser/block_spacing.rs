@@ -181,7 +181,7 @@ macro_rules! test_needs_newline {
 
             expect_parse_err(
                 concatcp!($last_block, " ", CREATED_PARA),
-                TestInterpError::InsufficientBlockSeparation {
+                TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan(
                         CREATED_PARA_CTX.0,
@@ -190,21 +190,21 @@ macro_rules! test_needs_newline {
             );
             expect_parse_err(
                 concatcp!($last_block, " ", PARA_STARTING_WITH_SCOPE),
-                TestInterpError::InsufficientBlockSeparation {
+                TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
                 },
             );
             expect_parse_err(
                 concatcp!($last_block, " ", PARA_STARTING_WITH_INLINE_CODE),
-                TestInterpError::InsufficientBlockSeparation {
+                TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[--")),
                 },
             );
             expect_parse_err(
                 concatcp!($last_block, " ", PARA_STARTING_WITH_RAW_SCOPE),
-                TestInterpError::InsufficientBlockSeparation {
+                TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("####{")),
                 },
@@ -216,7 +216,7 @@ macro_rules! test_needs_newline {
             expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_BSCOPE));
             expect_parse_err(
                 concatcp!($last_block, " ", CREATED_BSCOPE),
-                TestInterpError::InsufficientBlockSeparation {
+                TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan(
                         CREATED_BSCOPE_CTX.0,
@@ -234,28 +234,28 @@ macro_rules! test_needs_newline {
 
             expect_parse_err(
                 concatcp!($last_block, " ", CREATED_BLOCK_BARE),
-                TestInterpError::InsufficientBlockSeparation {
+                TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
                 },
             );
             expect_parse_err(
                 concatcp!($last_block, " ", CREATED_BLOCK_FROM_BLOCK),
-                TestInterpError::InsufficientBlockSeparation {
+                TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
                 },
             );
             expect_parse_err(
                 concatcp!($last_block, " ", CREATED_BLOCK_FROM_INLINE),
-                TestInterpError::InsufficientBlockSeparation {
+                TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
                 },
             );
             expect_parse_err(
                 concatcp!($last_block, " ", CREATED_BLOCK_FROM_RAW),
-                TestInterpError::InsufficientBlockSeparation {
+                TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
                 },
@@ -271,28 +271,28 @@ macro_rules! test_needs_newline {
 
             expect_parse_err(
                 concatcp!($last_block, " ", CREATED_HEADER_BARE),
-                TestInterpError::InsufficientBlockSeparation {
+                TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
                 },
             );
             expect_parse_err(
                 concatcp!($last_block, " ", CREATED_HEADER_FROM_BLOCK),
-                TestInterpError::InsufficientBlockSeparation {
+                TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
                 },
             );
             expect_parse_err(
                 concatcp!($last_block, " ", CREATED_HEADER_FROM_INLINE),
-                TestInterpError::InsufficientBlockSeparation {
+                TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
                 },
             );
             expect_parse_err(
                 concatcp!($last_block, " ", CREATED_HEADER_FROM_RAW),
-                TestInterpError::InsufficientBlockSeparation {
+                TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
                 },
@@ -304,7 +304,7 @@ macro_rules! test_needs_newline {
             expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_FILE));
             expect_parse_err(
                 concatcp!($last_block, " ", CREATED_FILE),
-                TestInterpError::InsufficientBlockSeparation {
+                TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
                 },
@@ -356,7 +356,7 @@ mod para {
         expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_BSCOPE));
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_BSCOPE),
-            TestInterpError::InsufficientBlockSeparation {
+            TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
                 next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("{")),
             },
@@ -384,28 +384,28 @@ mod para {
 
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_BLOCK_BARE),
-            TestInterpError::InsufficientBlockSeparation {
+            TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
                 next_block_start: TestBlockModeElem::BlockFromCode(CREATED_BLOCK_BARE_SPAN),
             },
         );
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_BLOCK_FROM_BLOCK),
-            TestInterpError::InsufficientBlockSeparation {
+            TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
                 next_block_start: TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_BLOCK_SPAN),
             },
         );
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_BLOCK_FROM_INLINE),
-            TestInterpError::InsufficientBlockSeparation {
+            TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
                 next_block_start: TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_INLINE_SPAN),
             },
         );
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_BLOCK_FROM_RAW),
-            TestInterpError::InsufficientBlockSeparation {
+            TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
                 next_block_start: TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_RAW_SPAN),
             },
@@ -422,21 +422,21 @@ mod para {
 
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_HEADER_BARE),
-            TestInterpError::InsufficientBlockSeparation {
+            TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
                 next_block_start: TestBlockModeElem::HeaderFromCode(CREATED_HEADER_BARE_SPAN),
             },
         );
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_HEADER_FROM_BLOCK),
-            TestInterpError::InsufficientBlockSeparation {
+            TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
                 next_block_start: TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_BLOCK_SPAN),
             },
         );
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_HEADER_FROM_INLINE),
-            TestInterpError::InsufficientBlockSeparation {
+            TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
                 next_block_start: TestBlockModeElem::HeaderFromCode(
                     CREATED_HEADER_FROM_INLINE_SPAN,
@@ -445,7 +445,7 @@ mod para {
         );
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_HEADER_FROM_RAW),
-            TestInterpError::InsufficientBlockSeparation {
+            TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
                 next_block_start: TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_RAW_SPAN),
             },
@@ -458,7 +458,7 @@ mod para {
         expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_FILE));
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_FILE),
-            TestInterpError::InsufficientBlockSeparation {
+            TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
                 next_block_start: TestBlockModeElem::SourceFromCode(CREATED_FILE_SPAN),
             },

@@ -3,9 +3,12 @@
 
 use std::ffi::CString;
 
-use crate::error::interp::{BlockModeElem, InlineModeContext};
-use crate::error::{interp::InterpError, TurnipTextError};
-use crate::error::{stringify_pyerr, UserPythonCompileMode, UserPythonExecError};
+pub use crate::error::user_python::UserPythonCompileMode;
+use crate::error::{
+    syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
+    user_python::TTUserPythonError,
+    TTErrorWithContext,
+};
 use crate::interpreter::ParsingFile;
 use regex::Regex;
 
@@ -61,40 +64,40 @@ impl<'a> From<(&ParseContext, &'a Vec<ParsingFile>)> for TestParseContext<'a> {
 ///
 /// Does not derive
 #[derive(Debug, Clone)]
-pub enum TestTurnipError<'a> {
+pub enum TestTTErrorWithContext<'a> {
     NullByteFoundInSource(&'a str),
-    Interp(TestInterpError<'a>),
-    UserPython(TestUserPythonExecError<'a>),
+    Syntax(TestSyntaxError<'a>),
+    UserPython(TestUserPythonError<'a>),
     InternalPython(Regex),
 }
-impl<'a> From<TestInterpError<'a>> for TestTurnipError<'a> {
-    fn from(value: TestInterpError<'a>) -> Self {
-        Self::Interp(value)
+impl<'a> From<TestSyntaxError<'a>> for TestTTErrorWithContext<'a> {
+    fn from(value: TestSyntaxError<'a>) -> Self {
+        Self::Syntax(value)
     }
 }
-impl<'a> From<TestUserPythonExecError<'a>> for TestTurnipError<'a> {
-    fn from(value: TestUserPythonExecError<'a>) -> Self {
+impl<'a> From<TestUserPythonError<'a>> for TestTTErrorWithContext<'a> {
+    fn from(value: TestUserPythonError<'a>) -> Self {
         Self::UserPython(value)
     }
 }
-impl<'a> TestTurnipError<'a> {
-    pub fn matches(&self, py: Python, other: &TurnipTextError) -> bool {
+impl<'a> TestTTErrorWithContext<'a> {
+    pub fn matches(&self, py: Python, other: &TTErrorWithContext) -> bool {
         match (self, other) {
             (
                 Self::NullByteFoundInSource(l_name),
-                TurnipTextError::NullByteFoundInSource {
+                TTErrorWithContext::NullByteFoundInSource {
                     source_name: r_name,
                 },
             ) => dbg!(l_name) == dbg!(r_name),
-            (Self::Interp(expected), TurnipTextError::Interp(sources, actual)) => {
-                let actual_as_test: TestInterpError<'_> = (actual, sources).into();
+            (Self::Syntax(expected), TTErrorWithContext::Syntax(sources, actual)) => {
+                let actual_as_test: TestSyntaxError<'_> = (actual, sources).into();
                 *dbg!(expected) == dbg!(actual_as_test)
             }
-            (Self::UserPython(l_err), TurnipTextError::UserPython(sources, r_err)) => {
+            (Self::UserPython(l_err), TTErrorWithContext::UserPython(sources, r_err)) => {
                 l_err.matches(py, r_err, sources)
             }
-            (Self::InternalPython(l_pyerr), TurnipTextError::InternalPython(r_pyerr)) => {
-                l_pyerr.is_match(&r_pyerr)
+            (Self::InternalPython(l_pyerr), TTErrorWithContext::InternalPython(r_pyerr)) => {
+                l_pyerr.is_match(&stringify_pyerr(py, r_pyerr))
             }
             _ => false,
         }
@@ -141,7 +144,7 @@ impl<'a> From<(&'a BlockModeElem, &'a Vec<ParsingFile>)> for TestBlockModeElem<'
 
 /// A type mimicking [InterpError] for test purposes
 #[derive(Debug, Clone, PartialEq)]
-pub enum TestInterpError<'a> {
+pub enum TestSyntaxError<'a> {
     CodeCloseOutsideCode(TestParseSpan<'a>),
     BlockScopeCloseOutsideScope(TestParseSpan<'a>),
     InlineScopeCloseOutsideScope(TestParseSpan<'a>),
@@ -190,48 +193,50 @@ pub enum TestInterpError<'a> {
         next_block_start: TestBlockModeElem<'a>,
     },
 }
-impl<'a> From<(&'a Box<InterpError>, &'a Vec<ParsingFile>)> for TestInterpError<'a> {
-    fn from(value: (&'a Box<InterpError>, &'a Vec<ParsingFile>)) -> Self {
+impl<'a> From<(&'a Box<TTSyntaxError>, &'a Vec<ParsingFile>)> for TestSyntaxError<'a> {
+    fn from(value: (&'a Box<TTSyntaxError>, &'a Vec<ParsingFile>)) -> Self {
         match value.0.as_ref() {
-            InterpError::CodeCloseOutsideCode(s) => Self::CodeCloseOutsideCode((s, value.1).into()),
-            InterpError::BlockScopeCloseOutsideScope(s) => {
+            TTSyntaxError::CodeCloseOutsideCode(s) => {
+                Self::CodeCloseOutsideCode((s, value.1).into())
+            }
+            TTSyntaxError::BlockScopeCloseOutsideScope(s) => {
                 Self::BlockScopeCloseOutsideScope((s, value.1).into())
             }
-            InterpError::InlineScopeCloseOutsideScope(s) => {
+            TTSyntaxError::InlineScopeCloseOutsideScope(s) => {
                 Self::InlineScopeCloseOutsideScope((s, value.1).into())
             }
-            InterpError::RawScopeCloseOutsideRawScope(s) => {
+            TTSyntaxError::RawScopeCloseOutsideRawScope(s) => {
                 Self::RawScopeCloseOutsideRawScope((s, value.1).into())
             }
-            InterpError::EndedInsideCode {
+            TTSyntaxError::EndedInsideCode {
                 code_start,
                 eof_span,
             } => Self::EndedInsideCode {
                 code_start: (code_start, value.1).into(),
                 eof_span: (eof_span, value.1).into(),
             },
-            InterpError::EndedInsideRawScope {
+            TTSyntaxError::EndedInsideRawScope {
                 raw_scope_start,
                 eof_span,
             } => Self::EndedInsideRawScope {
                 raw_scope_start: (raw_scope_start, value.1).into(),
                 eof_span: (eof_span, value.1).into(),
             },
-            InterpError::EndedInsideScope {
+            TTSyntaxError::EndedInsideScope {
                 scope_start,
                 eof_span,
             } => Self::EndedInsideScope {
                 scope_start: (scope_start, value.1).into(),
                 eof_span: (eof_span, value.1).into(),
             },
-            InterpError::BlockScopeOpenedInInlineMode {
+            TTSyntaxError::BlockScopeOpenedInInlineMode {
                 inl_mode,
                 block_scope_open,
             } => Self::BlockScopeOpenedInInlineMode {
                 inl_mode: (inl_mode, value.1).into(),
                 block_scope_open: (block_scope_open, value.1).into(),
             },
-            InterpError::CodeEmittedBlockInInlineMode {
+            TTSyntaxError::CodeEmittedBlockInInlineMode {
                 inl_mode,
                 block: _,
                 code_span,
@@ -239,7 +244,7 @@ impl<'a> From<(&'a Box<InterpError>, &'a Vec<ParsingFile>)> for TestInterpError<
                 inl_mode: (inl_mode, value.1).into(),
                 code_span: (code_span, value.1).into(),
             },
-            InterpError::CodeEmittedHeaderInInlineMode {
+            TTSyntaxError::CodeEmittedHeaderInInlineMode {
                 inl_mode,
                 header: _,
                 code_span,
@@ -247,7 +252,7 @@ impl<'a> From<(&'a Box<InterpError>, &'a Vec<ParsingFile>)> for TestInterpError<
                 inl_mode: (inl_mode, value.1).into(),
                 code_span: (code_span, value.1).into(),
             },
-            InterpError::CodeEmittedHeaderInBlockScope {
+            TTSyntaxError::CodeEmittedHeaderInBlockScope {
                 block_scope_start,
                 header: _,
                 code_span,
@@ -255,14 +260,14 @@ impl<'a> From<(&'a Box<InterpError>, &'a Vec<ParsingFile>)> for TestInterpError<
                 block_scope_start: (block_scope_start, value.1).into(),
                 code_span: (code_span, value.1).into(),
             },
-            InterpError::CodeEmittedSourceInInlineMode {
+            TTSyntaxError::CodeEmittedSourceInInlineMode {
                 inl_mode,
                 code_span,
             } => Self::CodeEmittedSourceInInlineMode {
                 inl_mode: (inl_mode, value.1).into(),
                 code_span: (code_span, value.1).into(),
             },
-            InterpError::SentenceBreakInInlineScope {
+            TTSyntaxError::SentenceBreakInInlineScope {
                 scope_start,
                 sentence_break,
             } => Self::SentenceBreakInInlineScope {
@@ -270,12 +275,12 @@ impl<'a> From<(&'a Box<InterpError>, &'a Vec<ParsingFile>)> for TestInterpError<
                 sentence_break: (sentence_break, value.1).into(),
             },
 
-            InterpError::EscapedNewlineOutsideParagraph { newline } => {
+            TTSyntaxError::EscapedNewlineOutsideParagraph { newline } => {
                 Self::EscapedNewlineOutsideParagraph {
                     newline: (newline, value.1).into(),
                 }
             }
-            InterpError::InsufficientBlockSeparation {
+            TTSyntaxError::InsufficientBlockSeparation {
                 last_block,
                 next_block_start,
             } => Self::InsufficientBlockSeparation {
@@ -288,7 +293,7 @@ impl<'a> From<(&'a Box<InterpError>, &'a Vec<ParsingFile>)> for TestInterpError<
 
 /// The contexts in which you might execute Python on user-generated code or objects
 #[derive(Debug, Clone)]
-pub enum TestUserPythonExecError<'a> {
+pub enum TestUserPythonError<'a> {
     CompilingEvalBrackets {
         code_ctx: TestParseContext<'a>,
         code: CString,
@@ -317,22 +322,22 @@ pub enum TestUserPythonExecError<'a> {
         err: Regex,
     },
 }
-impl<'a> TestUserPythonExecError<'a> {
+impl<'a> TestUserPythonError<'a> {
     pub fn matches(
         &self,
         py: Python,
-        other: &'a UserPythonExecError,
+        other: &'a TTUserPythonError,
         data: &'a Vec<ParsingFile>,
     ) -> bool {
         match (self, other) {
             (
-                TestUserPythonExecError::CompilingEvalBrackets {
+                TestUserPythonError::CompilingEvalBrackets {
                     code_ctx: l_code_ctx,
                     code: l_code,
                     mode: l_mode,
                     err: l_err,
                 },
-                UserPythonExecError::CompilingEvalBrackets {
+                TTUserPythonError::CompilingEvalBrackets {
                     code_ctx: r_code_ctx,
                     code: r_code,
                     mode: r_mode,
@@ -340,13 +345,13 @@ impl<'a> TestUserPythonExecError<'a> {
                 },
             )
             | (
-                TestUserPythonExecError::RunningEvalBrackets {
+                TestUserPythonError::RunningEvalBrackets {
                     code_ctx: l_code_ctx,
                     code: l_code,
                     mode: l_mode,
                     err: l_err,
                 },
-                UserPythonExecError::RunningEvalBrackets {
+                TTUserPythonError::RunningEvalBrackets {
                     code_ctx: r_code_ctx,
                     code: r_code,
                     mode: r_mode,
@@ -359,33 +364,33 @@ impl<'a> TestUserPythonExecError<'a> {
                     && dbg!(l_err).is_match(&dbg!(stringify_pyerr(py, r_err)))
             }
             (
-                TestUserPythonExecError::CoercingBlockScopeBuilder {
+                TestUserPythonError::CoercingBlockScopeBuilder {
                     code_ctx: l_code,
                     err: l_err,
                 },
-                UserPythonExecError::CoercingBlockScopeBuilder {
+                TTUserPythonError::CoercingBlockScopeBuilder {
                     code_ctx: r_code,
                     err: r_err,
                     obj: _,
                 },
             )
             | (
-                TestUserPythonExecError::CoercingInlineScopeBuilder {
+                TestUserPythonError::CoercingInlineScopeBuilder {
                     code_ctx: l_code,
                     err: l_err,
                 },
-                UserPythonExecError::CoercingInlineScopeBuilder {
+                TTUserPythonError::CoercingInlineScopeBuilder {
                     code_ctx: r_code,
                     err: r_err,
                     obj: _,
                 },
             )
             | (
-                TestUserPythonExecError::CoercingRawScopeBuilder {
+                TestUserPythonError::CoercingRawScopeBuilder {
                     code_ctx: l_code,
                     err: l_err,
                 },
-                UserPythonExecError::CoercingRawScopeBuilder {
+                TTUserPythonError::CoercingRawScopeBuilder {
                     code: r_code,
                     err: r_err,
                     obj: _,
@@ -396,8 +401,8 @@ impl<'a> TestUserPythonExecError<'a> {
             }
 
             (
-                TestUserPythonExecError::CoercingNonBuilderEvalBracket { code_ctx: l_code },
-                UserPythonExecError::CoercingNonBuilderEvalBracket {
+                TestUserPythonError::CoercingNonBuilderEvalBracket { code_ctx: l_code },
+                TTUserPythonError::CoercingNonBuilderEvalBracket {
                     code_ctx: r_code,
                     obj: _,
                 },

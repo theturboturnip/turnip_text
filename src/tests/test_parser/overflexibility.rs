@@ -53,7 +53,7 @@ not_indented_y = 5
 fn test_code_negative_literal() {
     expect_parse_err(
         "[-1]",
-        TestInterpError::EndedInsideCode {
+        TestSyntaxError::EndedInsideCode {
             code_start: TestParseSpan("[-"),
             eof_span: TestParseSpan(""),
         },

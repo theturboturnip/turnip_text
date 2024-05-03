@@ -5,7 +5,7 @@ use pyo3::{
     types::{PyDict, PyFloat, PyIterator, PyList, PyLong, PyString},
 };
 
-use crate::{error::TurnipTextError, interpreter::TurnipTextParser};
+use crate::{error::TTErrorWithContext, interpreter::TurnipTextParser};
 
 use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
 
@@ -43,7 +43,7 @@ pub fn turnip_text(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-impl TurnipTextError {
+impl TTErrorWithContext {
     fn to_pyerr(self) -> PyErr {
         self.display_cli_feedback();
         error::TurnipTextError::new_err(format!("{self}"))
@@ -56,9 +56,11 @@ fn parse_file<'py>(
     file: TurnipTextSource,
     py_env: &Bound<'_, PyDict>,
 ) -> PyResult<Py<Document>> {
-    let parser =
-        TurnipTextParser::new(py, file.name, file.contents).map_err(TurnipTextError::to_pyerr)?;
-    parser.parse(py, py_env).map_err(TurnipTextError::to_pyerr)
+    let parser = TurnipTextParser::new(py, file.name, file.contents)
+        .map_err(TTErrorWithContext::to_pyerr)?;
+    parser
+        .parse(py, py_env)
+        .map_err(TTErrorWithContext::to_pyerr)
 }
 
 #[pyfunction]

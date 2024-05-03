@@ -44,8 +44,8 @@ use pyo3::{prelude::*, PyClass};
 
 use crate::{
     error::{
-        interp::{BlockModeElem, InterpError, MapContextlessResult},
-        TurnipTextContextlessResult,
+        syntax::{BlockModeElem, TTSyntaxError},
+        TTResult,
     },
     lexer::TTToken,
     python::{
@@ -146,7 +146,7 @@ trait TokenProcessor {
         py_env: ParserEnv,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus>;
+    ) -> TTResult<ProcStatus>;
     /// Handle an emitted element from a processor you pushed.
     /// May only return an error, [ProcStatus::Continue], [ProcStatus::PushProcessor], or [ProcStatus::Pop].
     fn process_emitted_element(
@@ -154,12 +154,9 @@ trait TokenProcessor {
         py: Python,
         py_env: ParserEnv,
         emitted: Option<EmittedElement>,
-    ) -> TurnipTextContextlessResult<ProcStatus>;
+    ) -> TTResult<ProcStatus>;
     /// Called when a processor you pushed returns [ProcStatus::PopAndNewSource].
-    fn on_emitted_source_inside(
-        &mut self,
-        code_emitting_source: ParseContext,
-    ) -> TurnipTextContextlessResult<()>;
+    fn on_emitted_source_inside(&mut self, code_emitting_source: ParseContext) -> TTResult<()>;
     /// Called when a source file emitted by a processor you pushed is closed.
     /// Will not be called if [on_emitted_source_inside] returned an error.
     fn on_emitted_source_closed(&mut self, inner_source_emitted_by: ParseSpan);
@@ -214,7 +211,7 @@ impl FileProcessorStack {
         py_env: ParserEnv,
         toks: &mut impl Iterator<Item = TTToken>,
         data: &str,
-    ) -> TurnipTextContextlessResult<FileEvent> {
+    ) -> TTResult<FileEvent> {
         for tok in toks {
             match self.process_token(py, py_env, tok, data)? {
                 None => continue,
@@ -237,7 +234,7 @@ impl FileProcessorStack {
         py_env: ParserEnv,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<Option<(ParseSpan, TurnipTextSource)>> {
+    ) -> TTResult<Option<(ParseSpan, TurnipTextSource)>> {
         // If processing an EOF we need to flush all processors in the stack and not pass through tokens to self.top()
         if let TTToken::EOF(_) = &tok {
             loop {
@@ -311,15 +308,17 @@ impl FileProcessorStack {
                                     // ScopeClose bubbling out => breaking out into a subfile => not allowed.
                                     // This must be a block-level scope close, because if an unbalanced scope close appeared in inline mode it would already have errored and not bubbled out.
                                     TTToken::ScopeClose(span) => {
-                                        return Err(
-                                            InterpError::BlockScopeCloseOutsideScope(span).into()
+                                        return Err(TTSyntaxError::BlockScopeCloseOutsideScope(
+                                            span,
                                         )
+                                        .into())
                                     }
                                     // Ditto for RawScopeClose
                                     TTToken::RawScopeClose(span, _) => {
-                                        return Err(
-                                            InterpError::RawScopeCloseOutsideRawScope(span).into()
+                                        return Err(TTSyntaxError::RawScopeCloseOutsideRawScope(
+                                            span,
                                         )
+                                        .into())
                                     }
                                     // Let newlines inside a subfile affect outer files, and trust that those outer processors will reset their state correctly when this file ends.
                                     TTToken::Newline(_) => {}
@@ -353,7 +352,7 @@ impl FileProcessorStack {
         py: Python,
         py_env: ParserEnv,
         emitted: Option<EmittedElement>,
-    ) -> TurnipTextContextlessResult<()> {
+    ) -> TTResult<()> {
         let action = self
             .curr_top()
             .borrow_mut()
@@ -424,7 +423,7 @@ impl ProcessorStacks {
         }
     }
 
-    pub fn finalize(self, py: Python) -> TurnipTextContextlessResult<Py<Document>> {
+    pub fn finalize(self, py: Python) -> TTResult<Py<Document>> {
         if self.stacks.len() > 0 {
             panic!(
                 "Called finalize() on Processorstacks when there were stacks left - forgot to \
@@ -441,8 +440,8 @@ impl ProcessorStacks {
 fn py_internal_alloc<T: PyClass>(
     py: Python<'_>,
     value: impl Into<PyClassInitializer<T>>,
-) -> TurnipTextContextlessResult<Py<T>> {
-    Py::new(py, value).err_as_internal(py)
+) -> TTResult<Py<T>> {
+    Ok(Py::new(py, value)?)
 }
 
 fn rc_refcell<T>(t: T) -> Rc<RefCell<T>> {

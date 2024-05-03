@@ -5,11 +5,11 @@
 /// Or just do it myself :P
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 
-use crate::{error::interp::BlockModeElem, interpreter::ParsingFile, util::ParseSpan};
+use crate::{error::syntax::BlockModeElem, interpreter::ParsingFile, util::ParseSpan};
 
 use super::{
-    interp::{InlineModeContext, InterpError},
-    TurnipTextError, UserPythonExecError,
+    syntax::{InlineModeContext, TTSyntaxError},
+    TTErrorWithContext, TTUserPythonError,
 };
 
 fn snippet_from_spans<'a>(
@@ -83,10 +83,10 @@ fn annotation_from_parse_span<'a>(
     }
 }
 
-impl TurnipTextError {
+impl TTErrorWithContext {
     pub fn snippet<'a>(&'a self) -> Snippet<'a> {
         match self {
-            TurnipTextError::NullByteFoundInSource { source_name } => Snippet {
+            TTErrorWithContext::NullByteFoundInSource { source_name } => Snippet {
                 title: Some(Annotation {
                     label: Some("Found a null byte '\\0' in a TurnipTextSource string, which isn't allowed. This source is probably corrupted, not a text file, or was read with the wrong encoding."),
                     id: None,
@@ -100,19 +100,17 @@ impl TurnipTextError {
                 slices: vec![],
                 opt: Default::default(),
             },
-            TurnipTextError::Interp(sources, err) => Self::interp_error_snippet(sources, err),
-            TurnipTextError::UserPython(sources, err) => Self::user_python_snippet(sources, err),
-            TurnipTextError::InternalPython(pyerr) => Snippet {
+            TTErrorWithContext::Syntax(sources, err) => Self::interp_error_snippet(sources, err),
+            TTErrorWithContext::UserPython(sources, err) => Self::user_python_snippet(sources, err),
+            TTErrorWithContext::InternalPython(_pyerr) => Snippet {
                 title: Some(Annotation {
-                    label: Some("Internal Python error"),
+                    label: Some("Internal Python error. Please file a bug report at https://github.com/theturboturnip/turnip_text with the traceback and an example document."),
                     id: None,
                     annotation_type: AnnotationType::Error,
                 }),
-                footer: vec![Annotation {
-                    label: Some(&pyerr),
-                    id: None,
-                    annotation_type: AnnotationType::Error,
-                }],
+                // We don't stringify the PyErr here because this snippet is just context to the actual reraised Python error
+                // FUTURE: If running this as a CLI tool with Python inside, this snippet is the only debug info and it would be good to stringify the PyErr.
+                footer: vec![],
                 slices: vec![],
                 opt: Default::default(),
             },
@@ -145,9 +143,9 @@ impl TurnipTextError {
     }
     fn interp_error_snippet<'a>(
         sources: &'a Vec<ParsingFile>,
-        err: &'a Box<InterpError>,
+        err: &'a Box<TTSyntaxError>,
     ) -> Snippet<'a> {
-        use InterpError::*;
+        use TTSyntaxError::*;
         match err.as_ref() {
             CodeCloseOutsideCode(span) => snippet_from_spans(
                 "Code close token in text mode",
@@ -466,7 +464,7 @@ impl TurnipTextError {
 
     fn user_python_snippet<'a>(
         sources: &'a Vec<ParsingFile>,
-        error: &Box<UserPythonExecError>,
+        error: &Box<TTUserPythonError>,
     ) -> Snippet<'a> {
         dbg!(error);
         todo!()

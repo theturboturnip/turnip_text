@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 
 use crate::{
-    error::TurnipTextContextlessResult,
+    error::TTResult,
     interpreter::ParserEnv,
     lexer::{Escapable, TTToken},
     util::{ParseContext, ParseSpan},
@@ -22,7 +22,7 @@ impl TokenProcessor for CommentProcessor {
         _py_env: ParserEnv,
         tok: TTToken,
         _data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         // This builder does not directly emit new source files, so it cannot receive tokens from inner files.
         // When receiving EOF it returns [ProcStatus::PopAndReprocessToken].
         // This fulfils the contract for [TokenProcessor::process_token].
@@ -41,14 +41,11 @@ impl TokenProcessor for CommentProcessor {
         _py: Python,
         _py_env: ParserEnv,
         _pushed: Option<EmittedElement>,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         unreachable!("CommentProcessor does not spawn inner builders")
     }
 
-    fn on_emitted_source_inside(
-        &mut self,
-        _code_emitting_source: ParseContext,
-    ) -> TurnipTextContextlessResult<()> {
+    fn on_emitted_source_inside(&mut self, _code_emitting_source: ParseContext) -> TTResult<()> {
         unreachable!(
             "CommentProcessor does not spawn an inner code builder, so cannot have a source file \
              emitted inside"

@@ -2,8 +2,8 @@ use pyo3::prelude::*;
 
 use crate::{
     error::{
-        interp::{BlockModeElem, InlineModeContext, InterpError},
-        TurnipTextContextlessResult,
+        syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
+        TTResult,
     },
     interpreter::ParserEnv,
     lexer::TTToken,
@@ -34,7 +34,7 @@ impl TokenProcessor for AmbiguousScopeProcessor {
         py_env: ParserEnv,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         match self {
             AmbiguousScopeProcessor::Undecided { first_tok } => match tok {
                 // This builder does not directly emit new source files, so it cannot receive tokens from inner files
@@ -42,7 +42,7 @@ impl TokenProcessor for AmbiguousScopeProcessor {
                 // When receiving EOF it returns an error.
                 // This fulfils the contract for [TokenProcessor::process_token].
                 TTToken::Whitespace(_) => Ok(ProcStatus::Continue),
-                TTToken::EOF(eof_span) => Err(InterpError::EndedInsideScope {
+                TTToken::EOF(eof_span) => Err(TTSyntaxError::EndedInsideScope {
                     scope_start: *first_tok,
                     eof_span,
                 }
@@ -84,7 +84,7 @@ impl TokenProcessor for AmbiguousScopeProcessor {
         py: Python,
         py_env: ParserEnv,
         pushed: Option<EmittedElement>,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         match self {
             AmbiguousScopeProcessor::Undecided { .. } => {
                 assert!(
@@ -103,10 +103,7 @@ impl TokenProcessor for AmbiguousScopeProcessor {
         }
     }
 
-    fn on_emitted_source_inside(
-        &mut self,
-        code_emitting_source: ParseContext,
-    ) -> TurnipTextContextlessResult<()> {
+    fn on_emitted_source_inside(&mut self, code_emitting_source: ParseContext) -> TTResult<()> {
         match self {
             AmbiguousScopeProcessor::Undecided { .. } => {
                 unreachable!(
@@ -170,7 +167,7 @@ impl TokenProcessor for InlineLevelAmbiguousScopeProcessor {
         py_env: ParserEnv,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         match self {
             InlineLevelAmbiguousScopeProcessor::Undecided {
                 preceding_inline,
@@ -180,14 +177,14 @@ impl TokenProcessor for InlineLevelAmbiguousScopeProcessor {
                 TTToken::Newline(_) => match preceding_inline {
                     InlineModeContext::Paragraph(preceding_para) => {
                         if *start_of_line {
-                            Err(InterpError::InsufficientBlockSeparation {
+                            Err(TTSyntaxError::InsufficientBlockSeparation {
                                 last_block: BlockModeElem::Para(*preceding_para),
                                 // The start of the next block is our *first* token, not the current token - that's just a newline
                                 next_block_start: BlockModeElem::AnyToken(scope_ctx.first_tok()),
                             })?
                         } else {
                             // TODO test the case where you open a paragraph, then in the middle of a line you insert a block-scope-open - the preceding_para context should be the whole para up to the block-scope-open
-                            Err(InterpError::BlockScopeOpenedInInlineMode {
+                            Err(TTSyntaxError::BlockScopeOpenedInInlineMode {
                                 inl_mode: preceding_inline.clone(),
                                 block_scope_open: scope_ctx.first_tok(),
                             })?
@@ -195,7 +192,7 @@ impl TokenProcessor for InlineLevelAmbiguousScopeProcessor {
                     }
                     InlineModeContext::InlineScope { .. } => {
                         // TODO test the case where you open a paragraph, then in the middle of a line you insert a block-scope-open *inside an inline scope* - the preceding_para context should be the whole para including that enclosing inline scope
-                        Err(InterpError::BlockScopeOpenedInInlineMode {
+                        Err(TTSyntaxError::BlockScopeOpenedInInlineMode {
                             inl_mode: preceding_inline.clone(),
                             block_scope_open: scope_ctx.first_tok(),
                         })?
@@ -231,7 +228,7 @@ impl TokenProcessor for InlineLevelAmbiguousScopeProcessor {
         py: Python,
         py_env: ParserEnv,
         pushed: Option<EmittedElement>,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         match self {
             InlineLevelAmbiguousScopeProcessor::Undecided { .. } => {
                 assert!(
@@ -247,10 +244,7 @@ impl TokenProcessor for InlineLevelAmbiguousScopeProcessor {
         }
     }
 
-    fn on_emitted_source_inside(
-        &mut self,
-        code_emitting_source: ParseContext,
-    ) -> TurnipTextContextlessResult<()> {
+    fn on_emitted_source_inside(&mut self, code_emitting_source: ParseContext) -> TTResult<()> {
         match self {
             InlineLevelAmbiguousScopeProcessor::Undecided { .. } => unreachable!(
                 "InlineLevelAmbiguousScopeProcessor doesn't spawn non-comment builders in \

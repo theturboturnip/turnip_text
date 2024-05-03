@@ -4,8 +4,9 @@ use pyo3::{exceptions::PySyntaxError, prelude::*, types::PyDict};
 
 use crate::{
     error::{
-        interp::{InterpError, MapContextlessResult},
-        TurnipTextContextlessResult, UserPythonCompileMode, UserPythonExecError,
+        syntax::TTSyntaxError,
+        user_python::{TTUserPythonError, UserPythonCompileMode},
+        TTResult,
     },
     interpreter::ParserEnv,
     lexer::TTToken,
@@ -47,7 +48,7 @@ impl TokenProcessor for CodeProcessor {
         py_env: ParserEnv,
         tok: TTToken,
         data: &str,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         match &self.evaled_code {
             // If None, we're still parsing the code itself.
             None => {
@@ -73,7 +74,7 @@ impl TokenProcessor for CodeProcessor {
                             Ok(ProcStatus::Continue)
                         }
                     }
-                    TTToken::EOF(eof_span) => Err(InterpError::EndedInsideCode {
+                    TTToken::EOF(eof_span) => Err(TTSyntaxError::EndedInsideCode {
                         code_start: self.ctx.first_tok(),
                         eof_span,
                     })?,
@@ -135,7 +136,7 @@ impl TokenProcessor for CodeProcessor {
                     } else {
                         let inline =
                             coerce_to_inline_pytcref(py, evaled_result_ref).map_err(|_err| {
-                                UserPythonExecError::CoercingNonBuilderEvalBracket {
+                                TTUserPythonError::CoercingNonBuilderEvalBracket {
                                     code_ctx: self.ctx,
                                     obj: evaled_result.clone_ref(py),
                                 }
@@ -155,7 +156,7 @@ impl TokenProcessor for CodeProcessor {
         py: Python,
         _py_env: ParserEnv,
         pushed: Option<EmittedElement>,
-    ) -> TurnipTextContextlessResult<ProcStatus> {
+    ) -> TTResult<ProcStatus> {
         let evaled_result_ref = self.evaled_code.take().unwrap().into_bound(py);
 
         let (elem_ctx, elem) = pushed.expect(
@@ -166,7 +167,7 @@ impl TokenProcessor for CodeProcessor {
             DocElement::Block(BlockElem::BlockScope(blocks)) => {
                 let builder: PyTcRef<BlockScopeBuilder> =
                     PyTcRef::of_friendly(&evaled_result_ref, "value returned by eval-bracket")
-                        .map_err(|err| UserPythonExecError::CoercingBlockScopeBuilder {
+                        .map_err(|err| TTUserPythonError::CoercingBlockScopeBuilder {
                             code_ctx: self.ctx,
                             obj: evaled_result_ref.to_object(py),
                             err,
@@ -178,13 +179,12 @@ impl TokenProcessor for CodeProcessor {
                     "Code got a built object from a different file that it was opened in"
                 );
 
-                BlockScopeBuilder::call_build_from_blocks(py, builder, blocks)
-                    .err_as_internal(py)?
+                BlockScopeBuilder::call_build_from_blocks(py, builder, blocks)?
             }
             DocElement::Inline(InlineElem::InlineScope(inlines)) => {
                 let builder: PyTcRef<InlineScopeBuilder> =
                     PyTcRef::of_friendly(&evaled_result_ref, "value returned by eval-bracket")
-                        .map_err(|err| UserPythonExecError::CoercingInlineScopeBuilder {
+                        .map_err(|err| TTUserPythonError::CoercingInlineScopeBuilder {
                             code_ctx: self.ctx,
                             obj: evaled_result_ref.to_object(py),
                             err,
@@ -196,13 +196,12 @@ impl TokenProcessor for CodeProcessor {
                     "Code got a built object from a different file that it was opened in"
                 );
 
-                InlineScopeBuilder::call_build_from_inlines(py, builder, inlines)
-                    .err_as_internal(py)?
+                InlineScopeBuilder::call_build_from_inlines(py, builder, inlines)?
             }
             DocElement::Inline(InlineElem::Raw(raw)) => {
                 let builder: PyTcRef<RawScopeBuilder> =
                     PyTcRef::of_friendly(&evaled_result_ref, "value returned by eval-bracket")
-                        .map_err(|err| UserPythonExecError::CoercingRawScopeBuilder {
+                        .map_err(|err| TTUserPythonError::CoercingRawScopeBuilder {
                             code: self.ctx,
                             obj: evaled_result_ref.to_object(py),
                             err,
@@ -214,8 +213,7 @@ impl TokenProcessor for CodeProcessor {
                     "Code got a built object from a different file that it was opened in"
                 );
 
-                RawScopeBuilder::call_build_from_raw(py, builder, raw.borrow(py).0.clone_ref(py))
-                    .err_as_internal(py)?
+                RawScopeBuilder::call_build_from_raw(py, builder, raw.borrow(py).0.clone_ref(py))?
             }
             _ => unreachable!("Invalid combination of requested and actual built element types"),
         };
@@ -236,10 +234,7 @@ impl TokenProcessor for CodeProcessor {
         }
     }
 
-    fn on_emitted_source_inside(
-        &mut self,
-        _code_emitting_source: ParseContext,
-    ) -> TurnipTextContextlessResult<()> {
+    fn on_emitted_source_inside(&mut self, _code_emitting_source: ParseContext) -> TTResult<()> {
         unreachable!(
             "CodeProcessor does not spawn an inner code builder, so cannot have a source file \
              emitted inside"
@@ -264,7 +259,7 @@ fn try_compile_and_run<'py>(
     code: &CString,
     code_ctx: ParseContext,
     mode: UserPythonCompileMode,
-) -> Result<Bound<'py, PyAny>, UserPythonExecError> {
+) -> Result<Bound<'py, PyAny>, TTUserPythonError> {
     let compile_mode = match mode {
         UserPythonCompileMode::EvalExpr => pyo3::ffi::Py_eval_input,
         UserPythonCompileMode::ExecStmts | UserPythonCompileMode::ExecIndentedStmts => {
@@ -276,7 +271,7 @@ fn try_compile_and_run<'py>(
         let code_obj =
             pyo3::ffi::Py_CompileString(code.as_ptr(), "<string>\0".as_ptr() as _, compile_mode);
         if code_obj.is_null() {
-            return Err(UserPythonExecError::CompilingEvalBrackets {
+            return Err(TTUserPythonError::CompilingEvalBrackets {
                 code_ctx,
                 code: code.clone(),
                 mode,
@@ -297,7 +292,7 @@ fn try_compile_and_run<'py>(
             ) => debug_assert!(exec_obj.is_none()),
             _ => {}
         }
-        res.map_err(|run_pyerr| UserPythonExecError::RunningEvalBrackets {
+        res.map_err(|run_pyerr| TTUserPythonError::RunningEvalBrackets {
             code_ctx,
             code: code.clone(),
             mode,
@@ -311,7 +306,7 @@ pub fn eval_or_exec<'py, 'code>(
     py_env: &'py Bound<'py, PyDict>,
     code: &'code str,
     code_ctx: ParseContext,
-) -> Result<Bound<'py, PyAny>, UserPythonExecError> {
+) -> Result<Bound<'py, PyAny>, TTUserPythonError> {
     // The turnip-text lexer rejects the nul-byte so it cannot be found in the code.
     let code_trimmed =
         CString::new(code.trim()).expect("Nul-byte should not be present inside code");
@@ -327,12 +322,12 @@ pub fn eval_or_exec<'py, 'code>(
     ) {
         // If compiling the code in eval mode gave a SyntaxError, try compiling in exec mode.
         // Compile the trimmed person first so we can do e.g. `[ x = 5 ]`
-        Err(UserPythonExecError::CompilingEvalBrackets { err, .. })
+        Err(TTUserPythonError::CompilingEvalBrackets { err, .. })
             if err.is_instance_of::<PySyntaxError>(py) =>
         {
             match try_compile_and_run(py, py_env, &code_trimmed, code_ctx, UserPythonCompileMode::ExecStmts) {
                     // Can't use .is_instance_of::<PyIndentationError> because PyO3 doesn't generate a PyIndentationError type.
-                    Err(UserPythonExecError::CompilingEvalBrackets { err, .. })
+                    Err(TTUserPythonError::CompilingEvalBrackets { err, .. })
                     // I feel fine expecting Py_CompileString to raise an error with a type with a name.
                         if err
                             .get_type_bound(py)
