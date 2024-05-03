@@ -29,12 +29,14 @@
 use pyo3::prelude::*;
 
 use crate::{
-    error::{
-        syntax::{BlockModeElem, TTSyntaxError},
-        TTResult,
+    interpreter::{
+        error::{
+            syntax::{BlockModeElem, TTSyntaxError},
+            TTResult,
+        },
+        lexer::{Escapable, TTToken},
+        InterimDocumentStructure, ParserEnv,
     },
-    interpreter::{InterimDocumentStructure, ParserEnv},
-    lexer::{Escapable, TTToken},
     python::{
         interop::{BlockScope, Document, Header},
         typeclass::PyTcRef,

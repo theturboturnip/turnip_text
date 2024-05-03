@@ -5,10 +5,10 @@
 /// Or just do it myself :P
 use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
 
-use crate::{error::syntax::BlockModeElem, interpreter::ParsingFile, util::ParseSpan};
+use crate::{interpreter::ParsingFile, util::ParseSpan};
 
 use super::{
-    syntax::{InlineModeContext, TTSyntaxError},
+    syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
     TTErrorWithContext, TTUserPythonError,
 };
 

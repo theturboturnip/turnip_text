@@ -1,6 +1,6 @@
-use crate::lexer::{lex, LexError};
+use crate::interpreter::lexer::{lex, LexError};
 
-use crate::lexer::{Escapable, TTToken};
+use crate::interpreter::lexer::{Escapable, TTToken};
 
 /// A type mimicking [TTToken] for test purposes
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

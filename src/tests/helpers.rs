@@ -3,13 +3,15 @@
 
 use std::ffi::CString;
 
-pub use crate::error::user_python::UserPythonCompileMode;
-use crate::error::{
-    syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
-    user_python::TTUserPythonError,
-    TTErrorWithContext,
+pub use crate::interpreter::error::user_python::UserPythonCompileMode;
+use crate::interpreter::{
+    error::{
+        syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
+        user_python::TTUserPythonError,
+        TTErrorWithContext,
+    },
+    ParsingFile,
 };
-use crate::interpreter::ParsingFile;
 use regex::Regex;
 
 use crate::util::{ParseContext, ParseSpan};

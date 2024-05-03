@@ -1,5 +1,4 @@
-use crate::error::TTResultWithContext;
-use crate::interpreter::TurnipTextParser;
+use crate::interpreter::{error::TTResultWithContext, TurnipTextParser};
 use regex::Regex;
 
 use crate::python::prepare_freethreaded_turniptext_python;

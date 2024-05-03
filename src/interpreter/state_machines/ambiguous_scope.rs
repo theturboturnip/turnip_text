@@ -1,12 +1,14 @@
 use pyo3::prelude::*;
 
 use crate::{
-    error::{
-        syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
-        TTResult,
+    interpreter::{
+        error::{
+            syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
+            TTResult,
+        },
+        lexer::TTToken,
+        ParserEnv,
     },
-    interpreter::ParserEnv,
-    lexer::TTToken,
     util::{ParseContext, ParseSpan},
 };
 

@@ -4,15 +4,16 @@ use std::fmt::Debug;
 
 use crate::python::interop::{BlockScope, DocSegment, Document, Header};
 use crate::python::typeclass::{PyInstanceList, PyTcRef};
-use crate::{
-    error::{TTErrorWithContext, TTResult, TTResultWithContext},
-    lexer::{lex, LexedStrIterator},
-    util::ParseSpan,
-};
+use crate::util::ParseSpan;
 
 use self::state_machines::ProcessorStacks;
 
+pub mod error;
+pub(crate) mod lexer; // pub(crate) for testing
 mod state_machines;
+
+use error::{TTErrorWithContext, TTResult, TTResultWithContext};
+use lexer::{lex, LexedStrIterator};
 
 pub type ParserEnv<'a> = &'a Bound<'a, PyDict>;
 

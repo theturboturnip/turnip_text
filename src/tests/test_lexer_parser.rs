@@ -1,4 +1,4 @@
-use crate::lexer::Escapable;
+use crate::interpreter::lexer::Escapable;
 
 use super::helpers::*;
 use super::test_lexer::*;

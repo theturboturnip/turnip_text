@@ -3,13 +3,15 @@ use std::ffi::CString;
 use pyo3::{exceptions::PySyntaxError, prelude::*, types::PyDict};
 
 use crate::{
-    error::{
-        syntax::TTSyntaxError,
-        user_python::{TTUserPythonError, UserPythonCompileMode},
-        TTResult,
+    interpreter::{
+        error::{
+            syntax::TTSyntaxError,
+            user_python::{TTUserPythonError, UserPythonCompileMode},
+            TTResult,
+        },
+        lexer::TTToken,
+        ParserEnv,
     },
-    interpreter::ParserEnv,
-    lexer::TTToken,
     python::{
         interop::{
             coerce_to_inline_pytcref, BlockScopeBuilder, BuilderOutcome, InlineScopeBuilder,

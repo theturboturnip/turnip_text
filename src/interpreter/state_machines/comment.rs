@@ -1,9 +1,11 @@
 use pyo3::prelude::*;
 
 use crate::{
-    error::TTResult,
-    interpreter::ParserEnv,
-    lexer::{Escapable, TTToken},
+    interpreter::{
+        error::TTResult,
+        lexer::{Escapable, TTToken},
+        ParserEnv,
+    },
     util::{ParseContext, ParseSpan},
 };
 

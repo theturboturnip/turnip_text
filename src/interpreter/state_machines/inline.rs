@@ -1,15 +1,15 @@
 use pyo3::prelude::*;
 
 use crate::{
-    error::{
-        syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
-        TTError, TTResult,
-    },
     interpreter::{
+        error::{
+            syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
+            TTError, TTResult,
+        },
+        lexer::{Escapable, TTToken},
         state_machines::{BlockElem, InlineElem},
         ParserEnv,
     },
-    lexer::{Escapable, TTToken},
     python::{
         interop::{Block, Header, InlineScope, Paragraph, Raw, Sentence, Text},
         typeclass::PyTcRef,

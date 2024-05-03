@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use lexer_rs::{PosnInCharStream, UserPosn};
 
-use crate::lexer::LexPosn;
+use crate::interpreter::lexer::LexPosn;
 
 /// Helper struct representing the position of a character in a file, as both:
 /// - Byte offset of the start of the UTF-8 code point

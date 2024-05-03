@@ -43,11 +43,13 @@ use std::{cell::RefCell, rc::Rc};
 use pyo3::{prelude::*, PyClass};
 
 use crate::{
-    error::{
-        syntax::{BlockModeElem, TTSyntaxError},
-        TTResult,
+    interpreter::{
+        error::{
+            syntax::{BlockModeElem, TTSyntaxError},
+            TTResult,
+        },
+        lexer::TTToken,
     },
-    lexer::TTToken,
     python::{
         interop::{
             Block, BlockScope, Document, Header, Inline, InlineScope, Paragraph, Raw,
