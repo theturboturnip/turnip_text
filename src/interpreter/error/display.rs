@@ -132,7 +132,10 @@ fn detailed_syntax_message(py: Python, err: &TTSyntaxError) -> Diagnostic<usize>
         InlineScopeCloseOutsideScope(span) => error_diag(
             "Scope-close token found in inline-mode when no inline scopes are open",
             vec![prim_label_of(span, "Scope-close here")],
-            into_vec!["If you want to use '}' in text, try escaping it with a backslash '\\}'",],
+            into_vec![
+                "If you want to use '}' in text, try escaping it with a backslash '\\}'",
+                "If you meant to end an enclosing block-scope, put the '}' on a separate line.",
+            ],
         ),
         RawScopeCloseOutsideRawScope(span) => error_diag(
             "Raw-scope-close token found when no raw scope is open",
