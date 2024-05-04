@@ -54,7 +54,6 @@ def x():
         },
     );
     // Test they work when emitting things into the doc
-    // TODO Test error mesage
     expect_parse_err(
         "[-----b'bytestirng not allowed'-----]",
         TestUserPythonError::CoercingNonBuilderEvalBracket {
@@ -509,7 +508,6 @@ fn non_indent_errors_dont_trigger_indented_exec_mode() {
         );
 }
 
-// TODO test the error messages are good
 #[test]
 fn code_returns_uncoercible_when_emitting_uncoercible() {
     expect_parse_err(

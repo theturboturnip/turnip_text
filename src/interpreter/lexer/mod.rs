@@ -42,7 +42,7 @@ pub fn lex(file_idx: usize, data: &str) -> Result<LexedStrIterator, LexError> {
     }
 
     // Add an EOF unit to the end of the stream, with a zero-length ParseSpan at the end of the final character
-    // TODO make the error for end-inside-code use the last character for EOF token
+    // Codespan error reporting displays this properly.
     let eof_span = match toks.last() {
         Some(last_tok) => {
             let end_of_last_tok = last_tok.token_span().end();
