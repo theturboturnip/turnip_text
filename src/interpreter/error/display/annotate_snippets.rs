@@ -3,14 +3,17 @@
 
 /// TODO try https://github.com/brendanzab/codespan instead
 /// Or just do it myself :P
-use annotate_snippets::snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation};
+use annotate_snippets::{
+    display_list::DisplayList,
+    snippet::{Annotation, AnnotationType, Slice, Snippet, SourceAnnotation},
+};
 
 use crate::{
     interpreter::{error::user_python::UserPythonCompileMode, ParsingFile},
     util::ParseSpan,
 };
 
-use super::{
+use super::super::{
     syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
     TTErrorWithContext, TTUserPythonError,
 };
@@ -86,8 +89,12 @@ fn annotation_from_parse_span<'a>(
     }
 }
 
+pub fn detailed_message_of(err: &TTErrorWithContext) -> String {
+    format!("{}", DisplayList::from(err.snippet()))
+}
+
 impl TTErrorWithContext {
-    pub fn snippet<'a>(&'a self) -> Snippet<'a> {
+    fn snippet<'a>(&'a self) -> Snippet<'a> {
         match self {
             TTErrorWithContext::NullByteFoundInSource { source_name } => Snippet {
                 title: Some(Annotation {
@@ -341,7 +348,7 @@ impl TTErrorWithContext {
                  scope first with '}', or make it a block scope by opening a newline directly \
                  after the opening squiggly brace.",
             ),
-            EscapedNewlineOutsideParagraph { newline } => snippet_from_spans(
+            EscapedNewlineInBlockMode { newline } => snippet_from_spans(
                 "A backslash-escaped newline, which means 'continue the sentence', was found \
                  outside a paragraph with no sentence to continue.",
                 AnnotationType::Error,

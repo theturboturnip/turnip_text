@@ -17,7 +17,7 @@ fn comment_ending_with_newline_in_block_mode() {
 fn comment_ending_with_escaped_newline_in_block_mode() {
     expect_parse_err(
         "# block mode comment \\\n",
-        TestSyntaxError::EscapedNewlineOutsideParagraph {
+        TestSyntaxError::EscapedNewlineInBlockMode {
             newline: TestParseSpan("\\\n"),
         },
     );

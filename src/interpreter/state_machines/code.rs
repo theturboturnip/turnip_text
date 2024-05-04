@@ -121,6 +121,8 @@ impl TokenProcessor for CodeProcessor {
                     // If we always coerce to inline, then the wrapping in Paragraph and Sentence happens naturally in the interpreter.
                     // => We check if it's a block, and if it isn't we try to coerce to inline.
 
+                    // TODO check if it fits multiple typeclasses?
+
                     let evaled_result_ref = evaled_result.bind(py);
 
                     if evaled_result_ref.is_none() {

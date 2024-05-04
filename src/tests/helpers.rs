@@ -187,7 +187,7 @@ pub enum TestSyntaxError<'a> {
         scope_start: TestParseSpan<'a>,
         sentence_break: TestParseSpan<'a>,
     },
-    EscapedNewlineOutsideParagraph {
+    EscapedNewlineInBlockMode {
         newline: TestParseSpan<'a>,
     },
     InsufficientBlockSeparation {
@@ -277,8 +277,8 @@ impl<'a> From<(&'a Box<TTSyntaxError>, &'a Vec<ParsingFile>)> for TestSyntaxErro
                 sentence_break: (sentence_break, value.1).into(),
             },
 
-            TTSyntaxError::EscapedNewlineOutsideParagraph { newline } => {
-                Self::EscapedNewlineOutsideParagraph {
+            TTSyntaxError::EscapedNewlineInBlockMode { newline } => {
+                Self::EscapedNewlineInBlockMode {
                     newline: (newline, value.1).into(),
                 }
             }

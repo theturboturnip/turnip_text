@@ -227,7 +227,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
         if self.expects_n_blank_lines_after.is_some() {
             match tok {
                 TTToken::Escaped(span, Escapable::Newline) => {
-                    Err(TTSyntaxError::EscapedNewlineOutsideParagraph { newline: span }.into())
+                    Err(TTSyntaxError::EscapedNewlineInBlockMode { newline: span }.into())
                 }
                 TTToken::Whitespace(_) => Ok(ProcStatus::Continue),
                 TTToken::Newline(_) => {
@@ -255,7 +255,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
         } else {
             match tok {
                 TTToken::Escaped(span, Escapable::Newline) => {
-                    Err(TTSyntaxError::EscapedNewlineOutsideParagraph { newline: span }.into())
+                    Err(TTSyntaxError::EscapedNewlineInBlockMode { newline: span }.into())
                 }
                 TTToken::Whitespace(_) | TTToken::Newline(_) => Ok(ProcStatus::Continue),
 

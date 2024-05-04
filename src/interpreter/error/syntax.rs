@@ -95,7 +95,7 @@ pub enum TTSyntaxError {
         sentence_break: ParseSpan,
     },
     #[error("Escaped newline (used for sentence continuation) found outside paragraph")]
-    EscapedNewlineOutsideParagraph { newline: ParseSpan },
+    EscapedNewlineInBlockMode { newline: ParseSpan },
     #[error("Insufficient separation between blocks")]
     InsufficientBlockSeparation {
         last_block: BlockModeElem,

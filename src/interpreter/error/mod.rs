@@ -1,4 +1,3 @@
-use annotate_snippets::display_list::DisplayList;
 use pyo3::{PyErr, Python};
 use thiserror::Error;
 
@@ -7,6 +6,8 @@ use crate::{interpreter::ParsingFile, python::error::set_cause_and_context};
 use self::{syntax::TTSyntaxError, user_python::TTUserPythonError};
 
 mod display;
+use display::detailed_message_of;
+
 pub mod syntax;
 pub mod user_python;
 
@@ -60,14 +61,9 @@ impl From<(Vec<ParsingFile>, TTError)> for TTErrorWithContext {
     }
 }
 impl TTErrorWithContext {
-    pub fn display_cli_feedback(&self) {
-        let dl = DisplayList::from(self.snippet());
-        eprintln!("{}", dl);
-    }
-
     pub fn to_pyerr(self, py: Python) -> PyErr {
-        let msg = format!("{}", DisplayList::from(self.snippet()));
-        let mut basic_err = crate::python::interop::TurnipTextError::new_err(msg);
+        let mut basic_err =
+            crate::python::interop::TurnipTextError::new_err(detailed_message_of(py, &self));
 
         match self {
             // If the error wasn't related to an actual PyErr, just throw the exception as-is
