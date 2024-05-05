@@ -183,7 +183,7 @@ pub enum TestSyntaxError<'a> {
     },
     CodeEmittedHeaderInBlockScope {
         block_scope_start: TestParseSpan<'a>,
-        code_span: TestParseSpan<'a>, // TODO should include argument to code_span separately
+        code_span: TestParseSpan<'a>,
     },
     CodeEmittedSourceInInlineMode {
         inl_mode: TestInlineModeContext<'a>,

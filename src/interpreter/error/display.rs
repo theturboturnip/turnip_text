@@ -316,6 +316,9 @@ fn detailed_syntax_message(py: Python, err: &TTSyntaxError) -> Diagnostic<usize>
         CodeEmittedHeaderInBlockScope {
             block_scope_start,
             header,
+            // FUTURE could rework code displaying to not include the argument.
+            // For example, it could include code start, code end/scope start, scope end...
+            // then codespan won't need to print the whole argument which could be long.
             code_span,
         } => error_diag(
             "A `Header` was emitted by code inside a block scope.",
