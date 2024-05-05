@@ -49,10 +49,7 @@ pub fn lex(file_idx: usize, data: &str) -> Result<LexedStrIterator, LexError> {
             ParseSpan::new(file_idx, end_of_last_tok, end_of_last_tok)
         }
         None => {
-            let zero_posn = ParsePosn {
-                byte_ofs: 0,
-                char_ofs: 0,
-            };
+            let zero_posn = ParsePosn { byte_ofs: 0 };
             ParseSpan::new(file_idx, zero_posn, zero_posn)
         }
     };

@@ -56,7 +56,7 @@ def x():
     // Test they work when emitting things into the doc
     expect_parse_err(
         "[-----b'bytestirng not allowed'-----]",
-        TestUserPythonError::CoercingNonBuilderEvalBracket {
+        TestUserPythonError::CoercingEvalBracketToElement {
             code_ctx: TestParseContext("[-----", "b'bytestirng not allowed'", "-----]"),
         },
     );
@@ -64,24 +64,30 @@ def x():
         "[-----b'not a scope owner'-----]{
             stuff in a block scope
         }",
-        TestUserPythonError::CoercingBlockScopeBuilder {
+        TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[-----", "b'not a scope owner'", "-----]"),
             err: Regex::new("TypeError.*instance of BlockScopeBuilder.*build_from_blocks").unwrap(),
+            scope_open: TestParseSpan("{"),
+            build_mode: UserPythonBuildMode::FromBlock,
         },
     );
     expect_parse_err(
         "[-----b'not a scope owner'-----]{ stuff in a inline scope }",
-        TestUserPythonError::CoercingInlineScopeBuilder {
+        TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[-----", "b'not a scope owner'", "-----]"),
             err: Regex::new("TypeError.*instance of InlineScopeBuilder.*build_from_inlines")
                 .unwrap(),
+            scope_open: TestParseSpan("{"),
+            build_mode: UserPythonBuildMode::FromInline,
         },
     );
     expect_parse_err(
         "[-----b'not a scope owner'-----]###{ stuff in a raw scope }###",
-        TestUserPythonError::CoercingRawScopeBuilder {
+        TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[-----", "b'not a scope owner'", "-----]"),
             err: Regex::new("TypeError.*instance of RawScopeBuilder.*build_from_raw").unwrap(),
+            scope_open: TestParseSpan("###{"),
+            build_mode: UserPythonBuildMode::FromRaw,
         },
     );
 }
@@ -512,25 +518,25 @@ fn non_indent_errors_dont_trigger_indented_exec_mode() {
 fn code_returns_uncoercible_when_emitting_uncoercible() {
     expect_parse_err(
         "[-----b'bytestirng not coercible'-----]",
-        TestUserPythonError::CoercingNonBuilderEvalBracket {
+        TestUserPythonError::CoercingEvalBracketToElement {
             code_ctx: TestParseContext("[-----", "b'bytestirng not coercible'", "-----]"),
         },
     );
     expect_parse_err(
         "[-----{}-----]",
-        TestUserPythonError::CoercingNonBuilderEvalBracket {
+        TestUserPythonError::CoercingEvalBracketToElement {
             code_ctx: TestParseContext("[-----", "{}", "-----]"),
         },
     );
     expect_parse_err(
         "[-----set()-----]",
-        TestUserPythonError::CoercingNonBuilderEvalBracket {
+        TestUserPythonError::CoercingEvalBracketToElement {
             code_ctx: TestParseContext("[-----", "set()", "-----]"),
         },
     );
     expect_parse_err(
         "[-----object()-----]",
-        TestUserPythonError::CoercingNonBuilderEvalBracket {
+        TestUserPythonError::CoercingEvalBracketToElement {
             code_ctx: TestParseContext("[-----", "object()", "-----]"),
         },
     );

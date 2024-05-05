@@ -45,7 +45,7 @@ use crate::{
 };
 
 use super::{
-    ambiguous_scope::AmbiguousScopeProcessor,
+    ambiguous_scope::{AmbiguousScopeProcessor, NoResolveCallbacks},
     code::CodeProcessor,
     comment::CommentProcessor,
     inline::{ParagraphProcessor, RawStringProcessor},
@@ -269,7 +269,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
                 )),
 
                 TTToken::ScopeOpen(start_span) => Ok(ProcStatus::PushProcessor(rc_refcell(
-                    AmbiguousScopeProcessor::new(start_span),
+                    AmbiguousScopeProcessor::new(start_span, NoResolveCallbacks()),
                 ))),
 
                 TTToken::RawScopeOpen(start_span, n_opening) => Ok(ProcStatus::PushProcessor(

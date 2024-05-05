@@ -350,52 +350,6 @@ impl PyTypeclass for Header {
     }
 }
 
-/// The possible options that can be returned by a builder.
-pub enum BuilderOutcome {
-    Block(PyTcRef<Block>),
-    Inline(PyTcRef<Inline>),
-    Header(PyTcRef<Header>),
-    None,
-}
-impl BuilderOutcome {
-    fn of_friendly(val: &Bound<'_, PyAny>, context: &str) -> PyResult<BuilderOutcome> {
-        if val.is_none() {
-            Ok(BuilderOutcome::None)
-        } else {
-            let is_block = Block::fits_typeclass(val)?;
-            let is_inline = Inline::fits_typeclass(val)?;
-            let is_header = Header::fits_typeclass(val)?;
-
-            match (is_block, is_inline, is_header) {
-                (true, false, false) => Ok(BuilderOutcome::Block(PyTcRef::of_unchecked(val))),
-                (false, true, false) => Ok(BuilderOutcome::Inline(PyTcRef::of_unchecked(val))),
-                (false, false, true) => Ok(BuilderOutcome::Header(PyTcRef::of_unchecked(val))),
-
-                (false, false, false) => {
-                    let obj_repr = val.repr()?;
-                    Err(PyTypeError::new_err(format!(
-                        "Expected {} to be None or an object fitting Block, Inline, or Header - got {} which fits none of them.",
-                        context,
-                        obj_repr.to_str()?
-                    )))
-                }
-                _ => {
-                    let obj_repr = val.repr()?;
-                    Err(PyTypeError::new_err(format!(
-                        "Expected {} to be None or an object fitting Block, Inline, or Header \
-                         - got {} which fits (block? {}) (inline? {}) (header? {}).",
-                        context,
-                        obj_repr.to_str()?,
-                        is_block,
-                        is_inline,
-                        is_header
-                    )))
-                }
-            }
-        }
-    }
-}
-
 /// Typeclass representing the "builder" of a block scope, which may modify how that scope is rendered.
 ///
 /// Requires a method
@@ -412,12 +366,11 @@ impl BlockScopeBuilder {
         py: Python<'py>,
         builder: PyTcRef<Self>,
         blocks: Py<BlockScope>,
-    ) -> PyResult<BuilderOutcome> {
-        let output = builder
+    ) -> PyResult<Bound<'py, PyAny>> {
+        builder
             .bind(py)
             .getattr(Self::marker_func_name(py))?
-            .call1((blocks.bind(py),))?;
-        BuilderOutcome::of_friendly(&output, "output of .build_from_blocks()")
+            .call1((blocks.bind(py),))
     }
 }
 impl PyTypeclass for BlockScopeBuilder {
@@ -458,12 +411,11 @@ impl InlineScopeBuilder {
         py: Python<'py>,
         builder: PyTcRef<Self>,
         inlines: Py<InlineScope>,
-    ) -> PyResult<BuilderOutcome> {
-        let output = builder
+    ) -> PyResult<Bound<'py, PyAny>> {
+        builder
             .bind(py)
             .getattr(Self::marker_func_name(py))?
-            .call1((inlines.bind(py),))?;
-        BuilderOutcome::of_friendly(&output, "output of .build_from_inlines()")
+            .call1((inlines.bind(py),))
     }
 }
 impl PyTypeclass for InlineScopeBuilder {
@@ -505,12 +457,11 @@ impl RawScopeBuilder {
         py: Python<'py>,
         builder: PyTcRef<Self>,
         raw: Py<PyString>,
-    ) -> PyResult<BuilderOutcome> {
-        let output = builder
+    ) -> PyResult<Bound<'py, PyAny>> {
+        builder
             .bind(py)
             .getattr(Self::marker_func_name(py))?
-            .call1((raw,))?;
-        BuilderOutcome::of_friendly(&output, "output of .build_from_raw()")
+            .call1((raw,))
     }
 }
 impl PyTypeclass for RawScopeBuilder {

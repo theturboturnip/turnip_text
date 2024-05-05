@@ -10,13 +10,11 @@ use crate::interpreter::lexer::LexPosn;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParsePosn {
     pub byte_ofs: usize,
-    pub char_ofs: usize,
 }
 impl From<LexPosn> for ParsePosn {
     fn from(p: LexPosn) -> Self {
         ParsePosn {
             byte_ofs: p.byte_ofs(),
-            char_ofs: p.pos().char_ofs(),
         }
     }
 }
@@ -62,9 +60,6 @@ impl ParseSpan {
             start: self.start,
             end: other.end,
         }
-    }
-    pub fn annotate_snippets_range(&self) -> (usize, usize) {
-        (self.start.char_ofs, self.end.char_ofs)
     }
     pub fn file_idx(&self) -> usize {
         self.file_idx

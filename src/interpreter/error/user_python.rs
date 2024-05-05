@@ -2,13 +2,20 @@ use pyo3::prelude::*;
 use std::ffi::CString;
 use thiserror::Error;
 
-use crate::util::ParseContext;
+use crate::util::{ParseContext, ParseSpan};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserPythonCompileMode {
     EvalExpr,
     ExecStmts,
     ExecIndentedStmts,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UserPythonBuildMode {
+    FromBlock,
+    FromInline,
+    FromRaw,
 }
 
 /// The contexts in which you might execute Python on user-generated code or objects
@@ -37,44 +44,51 @@ pub enum TTUserPythonError {
     },
     /// Ran user code from an eval-bracket which didn't have an argument attached,
     /// failed to coerce the code result to Block, Inline, Header, or TurnipTextSource
+    /// FUTURE this should have a PyErr associated with it, but right now that would mostly be a TypeError just about coercing to Inline and not anything else
     #[error(
         "Successfully evaluated eval-brackets, but the output was not None, a TurnipTextSource, a \
          Header, a Block, or coercible to Inline"
     )]
-    CoercingNonBuilderEvalBracket {
+    CoercingEvalBracketToElement {
         code_ctx: ParseContext,
         obj: PyObject,
     },
-    /// Ran user code from an eval-bracket which was followed by a block scope argument,
-    /// but failed to coerce the code result to BlockScopeBuilder
+    /// Ran user code from an eval-bracket, needed that to be a builder, didn't get it
     #[error(
-        "Successfully evaluated eval-brackets, constructed a block-scope to provide to a builder, \
-         but raised an error when building the inline scope: {err}"
-    )]
-    CoercingBlockScopeBuilder {
+            "Successfully evaluated eval-brackets, attached scope implied {build_mode:?} builder but the eval-bracket output didn't fit: {err}"
+        )]
+    CoercingEvalBracketToBuilder {
         code_ctx: ParseContext,
+        scope_open: ParseSpan,
         obj: PyObject,
+        build_mode: UserPythonBuildMode,
         err: PyErr,
     },
-    /// Ran user code from an eval-bracket which was followed by an inline scope argument,
-    /// but failed to coerce the code result to InlineScopeBuilder
+    /// Ran user code from an eval-bracket which was followed by a scope argument,
+    /// but an error was raised while building
     #[error(
-        "Successfully evaluated eval-brackets, constructed an inline-scope to provide to a \
-         builder, but raised an error when building the inline scope: {err}"
+        "Successfully evaluated eval-brackets, constructed an argument to provide to a \
+         builder {build_mode:?}, but raised an error when building: {err}"
     )]
-    CoercingInlineScopeBuilder {
+    Building {
         code_ctx: ParseContext,
-        obj: PyObject,
+        arg_ctx: ParseContext,
+        builder: PyObject,
+        build_mode: UserPythonBuildMode,
         err: PyErr,
     },
-    /// Ran user code from an eval-bracket which was followed by a raw scope argument,
-    /// but failed to coerce the code result to RawScopeBuilder
+    /// Ran user code from an eval-bracket which had an argument attached,
+    /// successfully used the argument to build something, but
+    /// the result was not None, Block, Inline, or Header
     #[error(
-        "Successfully evaluated eval-brackets, constructed a raw-scope to provide to a builder, \
-         but the eval-bracket output was not a RawScopeBuilder: {err}"
+        "Successfully evaluated eval-brackets and built an object with the result, \
+        but the output was not None, a Header, a Block, or an Inline"
     )]
-    CoercingRawScopeBuilder {
+    CoercingBuildResultToElement {
         code_ctx: ParseContext,
+        arg_ctx: ParseContext,
+        // FUTURE build_mode
+        builder: PyObject,
         obj: PyObject,
         err: PyErr,
     },

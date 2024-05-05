@@ -17,19 +17,38 @@ use super::{
     rc_refcell, EmittedElement, ProcStatus, TokenProcessor,
 };
 
+pub trait OnResolveAmbiguousScope {
+    fn got_block_scope(self, py: Python, scope_open: ParseSpan) -> TTResult<()>;
+    fn got_inline_scope(self, py: Python, scope_open: ParseSpan) -> TTResult<()>;
+}
+
+pub struct NoResolveCallbacks();
+impl OnResolveAmbiguousScope for NoResolveCallbacks {
+    fn got_block_scope(self, _py: Python, _scope_open: ParseSpan) -> TTResult<()> {
+        Ok(())
+    }
+
+    fn got_inline_scope(self, _py: Python, _scope_open: ParseSpan) -> TTResult<()> {
+        Ok(())
+    }
+}
+
 /// This builder is initially started with a ScopeOpen token that may be a block scope open (followed by "\s*\n") or an inline scope open (followed by \s*[^\n]).
 /// It starts out [AmbiguousScopeProcessor::Undecided], then based on the following tokens either decides on [AmbiguousScopeProcessor::Block] or [AmbiguousScopeProcessor::Inline] and from then on acts as exactly [BlockScopeProcessor] or [KnownInlineScopeProcessor] respectfully.
-pub enum AmbiguousScopeProcessor {
-    Undecided { first_tok: ParseSpan },
+pub enum AmbiguousScopeProcessor<T: OnResolveAmbiguousScope> {
+    Undecided { first_tok: ParseSpan, callbacks: T },
     Block(BlockScopeProcessor),
     Inline(KnownInlineScopeProcessor),
 }
-impl AmbiguousScopeProcessor {
-    pub fn new(first_tok: ParseSpan) -> Self {
-        Self::Undecided { first_tok }
+impl<T: OnResolveAmbiguousScope> AmbiguousScopeProcessor<T> {
+    pub fn new(first_tok: ParseSpan, callbacks: T) -> Self {
+        Self::Undecided {
+            first_tok,
+            callbacks,
+        }
     }
 }
-impl TokenProcessor for AmbiguousScopeProcessor {
+impl<T: OnResolveAmbiguousScope> TokenProcessor for AmbiguousScopeProcessor<T> {
     fn process_token(
         &mut self,
         py: Python,
@@ -38,7 +57,10 @@ impl TokenProcessor for AmbiguousScopeProcessor {
         data: &str,
     ) -> TTResult<ProcStatus> {
         match self {
-            AmbiguousScopeProcessor::Undecided { first_tok } => match tok {
+            AmbiguousScopeProcessor::Undecided {
+                first_tok,
+                callbacks: _,
+            } => match tok {
                 // This builder does not directly emit new source files, so it cannot receive tokens from inner files
                 // while in the Undecided state.
                 // When receiving EOF it returns an error.
@@ -49,17 +71,28 @@ impl TokenProcessor for AmbiguousScopeProcessor {
                     eof_span,
                 }
                 .into()),
+                TTToken::Hashes(_, _) => Ok(ProcStatus::PushProcessor(rc_refcell(
+                    CommentProcessor::new(),
+                ))),
+                // Got a newline, so it's a block scope
                 TTToken::Newline(last_tok) => {
                     // Transition to a block builder
                     let block_builder = BlockScopeProcessor::new(py, *first_tok, last_tok)?;
                     // Block builder doesn't need to process the newline token specifically
                     // Swap ourselves out with the new state "i am a block builder"
-                    let _ = std::mem::replace(self, AmbiguousScopeProcessor::Block(block_builder));
+                    let scope_start_tok = *first_tok;
+                    let undecided =
+                        std::mem::replace(self, AmbiguousScopeProcessor::Block(block_builder));
+                    // call the callback to check if that's OK
+                    // the old version of us must be Undecided
+                    match undecided {
+                        AmbiguousScopeProcessor::Undecided { callbacks, .. } => {
+                            callbacks.got_block_scope(py, scope_start_tok)?
+                        }
+                        _ => unreachable!(),
+                    }
                     Ok(ProcStatus::Continue)
                 }
-                TTToken::Hashes(_, _) => Ok(ProcStatus::PushProcessor(rc_refcell(
-                    CommentProcessor::new(),
-                ))),
                 _ => {
                     // Transition to an inline builder
                     let mut inline_builder = KnownInlineScopeProcessor::new(
@@ -71,8 +104,17 @@ impl TokenProcessor for AmbiguousScopeProcessor {
                     // Make sure it knows about the new token
                     let res = inline_builder.process_token(py, py_env, tok, data)?;
                     // Swap ourselves out with the new state "i am an inline builder"
-                    let _ =
+                    let scope_start_tok = *first_tok;
+                    let undecided =
                         std::mem::replace(self, AmbiguousScopeProcessor::Inline(inline_builder));
+                    // call the callback to check if that's OK
+                    // the old version of us must be Undecided
+                    match undecided {
+                        AmbiguousScopeProcessor::Undecided { callbacks, .. } => {
+                            callbacks.got_inline_scope(py, scope_start_tok)?
+                        }
+                        _ => unreachable!(),
+                    }
                     Ok(res)
                 }
             },

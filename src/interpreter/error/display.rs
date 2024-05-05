@@ -2,7 +2,7 @@ use crate::{
     interpreter::{
         error::{
             syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
-            user_python::{TTUserPythonError, UserPythonCompileMode},
+            user_python::{TTUserPythonError, UserPythonBuildMode, UserPythonCompileMode},
             TTErrorWithContext,
         },
         ParsingFile,
@@ -514,7 +514,7 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                 notes,
             )
         }
-        CoercingNonBuilderEvalBracket { code_ctx, obj } => error_diag(
+        CoercingEvalBracketToElement { code_ctx, obj } => error_diag(
             "Python code produced an unsupported object",
             vec![prim_label_of(
                 &code_ctx.full_span(),
@@ -532,70 +532,111 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                 ),
             ],
         ),
-        CoercingBlockScopeBuilder {
+        // TODO BlockScopeBuilder => BuilderFromBlockScope?
+        CoercingEvalBracketToBuilder {
             code_ctx,
+            scope_open,
+            build_mode,
+            obj,
+            err: _,
+        } => {
+            let (argument_name, builder_type) = match build_mode {
+                UserPythonBuildMode::FromBlock => ("a block scope", "a BlockScopeBuilder"),
+                UserPythonBuildMode::FromInline => ("an inline scope", "an InlineScopeBuilder"),
+                UserPythonBuildMode::FromRaw => ("a raw scope", "a RawScopeBuilder"),
+            };
+            error_diag(
+                format!("Python code attached to {argument_name} didn't produce {builder_type}"),
+                vec![
+                    prim_label_of(
+                        &code_ctx.full_span(),
+                        format!("Object produced here wasn't {builder_type}"),
+                    ),
+                    sec_label_of(scope_open, "Scope attached here"),
+                ],
+                into_vec![
+                    format!(
+                        "If eval-brackets are attached to {argument_name}, the produced object \
+                         must be a {builder_type}"
+                    ),
+                    format!(
+                        "Instead, the eval-brackets produced {}",
+                        obj.bind(py)
+                            .str()
+                            .map_or("<stringification failed>".into(), |pystring| pystring
+                                .to_string())
+                    ),
+                ],
+            )
+        }
+        Building {
+            code_ctx,
+            arg_ctx,
+            build_mode,
+            builder,
+            err,
+        } => {
+            let (builder_type, builder_function) = match build_mode {
+                UserPythonBuildMode::FromBlock => ("BlockScopeBuilder", ".build_from_blocks()"),
+                UserPythonBuildMode::FromInline => ("InlineScopeBuilder", ".build_from_inlines()"),
+                UserPythonBuildMode::FromRaw => ("RawScopeBuilder", ".build_from_raw()"),
+            };
+            error_diag(
+                format!(
+                    "{} raised when building an object from an evaluated {builder_type}",
+                    err.get_type_bound(py).to_string(),
+                ),
+                vec![
+                    prim_label_of(&code_ctx.full_span(), "Code created a builder..."),
+                    sec_label_of(&arg_ctx.full_span(), "...and took this argument"),
+                ],
+                into_vec![
+                    format!(
+                        "The code successfully evaluated to the builder {}",
+                        builder
+                            .bind(py)
+                            .str()
+                            .map_or("<stringification failed>".into(), |pystring| pystring
+                                .to_string())
+                    ),
+                    format!(
+                        "Calling {builder_function} on this object with the scope argument raised \
+                         an error"
+                    ),
+                ],
+            )
+        }
+        CoercingBuildResultToElement {
+            code_ctx,
+            arg_ctx,
+            builder,
             obj,
             err: _,
         } => error_diag(
-            "Python code attached to a block scope didn't produce a BlockScopeBuilder",
-            vec![prim_label_of(
-                &code_ctx.full_span(),
-                "Object produced here wasn't a BlockScopeBuilder",
-            )],
-            into_vec![
-                "If eval-brackets are attached to a block scope, the produced object must be a \
-                 BlockScopeBuilder.",
-                format!(
-                    "Instead, Python emitted {}",
-                    obj.bind(py)
-                        .str()
-                        .map_or("<stringification failed>".into(), |pystring| pystring
-                            .to_string())
-                ),
+            "Python code created a builder, and built a new object that isn't supported",
+            vec![
+                prim_label_of(&code_ctx.full_span(), "Code created a builder..."),
+                sec_label_of(&arg_ctx.full_span(), "...and took this argument"),
             ],
-        ),
-        CoercingInlineScopeBuilder {
-            code_ctx,
-            obj,
-            err: _,
-        } => error_diag(
-            "Python code attached to an inline scope didn't produce a InlineScopeBuilder",
-            vec![prim_label_of(
-                &code_ctx.full_span(),
-                "Object produced here wasn't a InlineScopeBuilder",
-            )],
             into_vec![
-                "If eval-brackets are attached to an inline scope, the produced object must be a \
-                 InlineScopeBuilder.",
                 format!(
-                    "Instead, Python emitted {}",
+                    "The code successfully evaluated to the builder {}",
+                    builder
+                        .bind(py)
+                        .str()
+                        .map_or("<stringification failed>".into(), |pystring| pystring
+                            .to_string())
+                ),
+                format!(
+                    "The builder took a scope argument and successfully built {},\nbut it wasn't \
+                     of a supported type.",
                     obj.bind(py)
                         .str()
                         .map_or("<stringification failed>".into(), |pystring| pystring
                             .to_string())
                 ),
-            ],
-        ),
-        CoercingRawScopeBuilder {
-            code_ctx,
-            obj,
-            err: _,
-        } => error_diag(
-            "Python code attached to a raw scope didn't produce a RawScopeBuilder",
-            vec![prim_label_of(
-                &code_ctx.full_span(),
-                "Object produced here wasn't a RawScopeBuilder",
-            )],
-            into_vec![
-                "If eval-brackets are attached to a raw scope, the produced object must be a \
-                 RawScopeBuilder.",
-                format!(
-                    "Instead, Python emitted {}",
-                    obj.bind(py)
-                        .str()
-                        .map_or("<stringification failed>".into(), |pystring| pystring
-                            .to_string())
-                ),
+                "To emit an object into the document it must be None, a Header, a Block, or an \
+                 Inline.",
             ],
         ),
     }

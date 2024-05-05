@@ -193,12 +193,14 @@ fn test_owned_block_scope_with_non_block_builder() {
 It was the best of the times, it was the blurst of times
 }
 "#,
-        TestUserPythonError::CoercingBlockScopeBuilder {
+        TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(
                 r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got None.*",
             )
             .unwrap(),
+            scope_open: TestParseSpan("{"),
+            build_mode: UserPythonBuildMode::FromBlock,
         },
     )
 }
@@ -217,12 +219,14 @@ fn test_owned_inline_scope() {
 fn test_owned_inline_scope_with_non_inline_builder() {
     expect_parse_err(
         r"[None]{special text}",
-        TestUserPythonError::CoercingInlineScopeBuilder {
+        TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(
                 r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*build_from_inlines.*Got None.*",
             )
             .unwrap(),
+            scope_open: TestParseSpan("{"),
+            build_mode: UserPythonBuildMode::FromInline,
         },
     )
 }
@@ -250,10 +254,12 @@ fn test_owned_inline_raw_scope_with_non_raw_builder() {
         r#"[None]#{
 import os
 }#"#,
-        TestUserPythonError::CoercingRawScopeBuilder {
+        TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*build_from_raw.*Got None")
                 .unwrap(),
+            scope_open: TestParseSpan("#{"),
+            build_mode: UserPythonBuildMode::FromRaw,
         },
     )
 }
@@ -732,12 +738,14 @@ fn test_cant_eval_none_for_block_builder() {
         "[None]{
     That doesn't make any sense! The owner can't be None
 }",
-        TestUserPythonError::CoercingBlockScopeBuilder {
+        TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(
                 r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got None",
             )
             .unwrap(),
+            scope_open: TestParseSpan("{"),
+            build_mode: UserPythonBuildMode::FromBlock,
         },
     )
 }
@@ -748,12 +756,14 @@ fn test_cant_assign_for_block_builder() {
         "[x = 5]{
     That doesn't make any sense! The owner can't be an abstract concept of x being something
 }",
-        TestUserPythonError::CoercingBlockScopeBuilder {
+        TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[", "x = 5", "]"),
             err: Regex::new(
                 r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got None",
             )
             .unwrap(),
+            scope_open: TestParseSpan("{"),
+            build_mode: UserPythonBuildMode::FromBlock,
         },
     )
 }
@@ -763,10 +773,12 @@ fn test_cant_assign_for_raw_builder() {
     expect_parse_err(
         "[x = 5]#{That doesn't make any sense! The owner can't be an abstract concept of x being \
          something}#",
-        TestUserPythonError::CoercingRawScopeBuilder {
+        TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[", "x = 5", "]"),
             err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*build_from_raw.*Got None")
                 .unwrap(),
+            scope_open: TestParseSpan("#{"),
+            build_mode: UserPythonBuildMode::FromRaw,
         },
     )
 }
@@ -776,12 +788,14 @@ fn test_cant_assign_for_inline_builder() {
     expect_parse_err(
         "[x = 5]{That doesn't make any sense! The owner can't be an abstract concept of x being \
          something}",
-        TestUserPythonError::CoercingInlineScopeBuilder {
+        TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[", "x = 5", "]"),
             err: Regex::new(
                 r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*build_from_inlines.*Got None",
             )
             .unwrap(),
+            scope_open: TestParseSpan("{"),
+            build_mode: UserPythonBuildMode::FromInline,
         },
     )
 }

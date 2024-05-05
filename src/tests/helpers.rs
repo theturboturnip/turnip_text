@@ -3,7 +3,7 @@
 
 use std::ffi::CString;
 
-pub use crate::interpreter::error::user_python::UserPythonCompileMode;
+pub use crate::interpreter::error::user_python::{UserPythonBuildMode, UserPythonCompileMode};
 use crate::interpreter::{
     error::{
         syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
@@ -308,19 +308,24 @@ pub enum TestUserPythonError<'a> {
         mode: UserPythonCompileMode,
         err: Regex,
     },
-    CoercingNonBuilderEvalBracket {
+    CoercingEvalBracketToElement {
         code_ctx: TestParseContext<'a>,
     },
-    CoercingBlockScopeBuilder {
+    CoercingEvalBracketToBuilder {
         code_ctx: TestParseContext<'a>,
+        scope_open: TestParseSpan<'a>,
+        build_mode: UserPythonBuildMode,
         err: Regex,
     },
-    CoercingInlineScopeBuilder {
+    Building {
         code_ctx: TestParseContext<'a>,
+        arg_ctx: TestParseContext<'a>,
+        build_mode: UserPythonBuildMode,
         err: Regex,
     },
-    CoercingRawScopeBuilder {
+    CoercingBuildResultToElement {
         code_ctx: TestParseContext<'a>,
+        arg_ctx: TestParseContext<'a>,
         err: Regex,
     },
 }
@@ -366,44 +371,66 @@ impl<'a> TestUserPythonError<'a> {
                     && dbg!(l_err).is_match(&dbg!(stringify_pyerr(py, r_err)))
             }
             (
-                TestUserPythonError::CoercingBlockScopeBuilder {
+                TestUserPythonError::CoercingEvalBracketToBuilder {
                     code_ctx: l_code,
+                    scope_open: l_arg,
+                    build_mode: l_build_mode,
                     err: l_err,
                 },
-                TTUserPythonError::CoercingBlockScopeBuilder {
+                TTUserPythonError::CoercingEvalBracketToBuilder {
                     code_ctx: r_code,
+                    scope_open: r_arg,
                     err: r_err,
                     obj: _,
-                },
-            )
-            | (
-                TestUserPythonError::CoercingInlineScopeBuilder {
-                    code_ctx: l_code,
-                    err: l_err,
-                },
-                TTUserPythonError::CoercingInlineScopeBuilder {
-                    code_ctx: r_code,
-                    err: r_err,
-                    obj: _,
-                },
-            )
-            | (
-                TestUserPythonError::CoercingRawScopeBuilder {
-                    code_ctx: l_code,
-                    err: l_err,
-                },
-                TTUserPythonError::CoercingRawScopeBuilder {
-                    code_ctx: r_code,
-                    err: r_err,
-                    obj: _,
+                    build_mode: r_build_mode,
                 },
             ) => {
                 (*dbg!(l_code) == dbg!((r_code, data).into()))
+                    && (*dbg!(l_arg) == dbg!((r_arg, data).into()))
+                    && (dbg!(l_build_mode) == dbg!(r_build_mode))
                     && dbg!(l_err).is_match(&dbg!(stringify_pyerr(py, r_err)))
             }
             (
-                TestUserPythonError::CoercingNonBuilderEvalBracket { code_ctx: l_code },
-                TTUserPythonError::CoercingNonBuilderEvalBracket {
+                TestUserPythonError::Building {
+                    code_ctx: l_code,
+                    arg_ctx: l_arg,
+                    build_mode: l_build_mode,
+                    err: l_err,
+                },
+                TTUserPythonError::Building {
+                    code_ctx: r_code,
+                    arg_ctx: r_arg,
+                    err: r_err,
+                    builder: _,
+                    build_mode: r_build_mode,
+                },
+            ) => {
+                (*dbg!(l_code) == dbg!((r_code, data).into()))
+                    && (*dbg!(l_arg) == dbg!((r_arg, data).into()))
+                    && (dbg!(l_build_mode) == dbg!(r_build_mode))
+                    && dbg!(l_err).is_match(&dbg!(stringify_pyerr(py, r_err)))
+            }
+            (
+                TestUserPythonError::CoercingBuildResultToElement {
+                    code_ctx: l_code,
+                    arg_ctx: l_arg,
+                    err: l_err,
+                },
+                TTUserPythonError::CoercingBuildResultToElement {
+                    code_ctx: r_code,
+                    arg_ctx: r_arg,
+                    builder: _,
+                    obj: _,
+                    err: r_err,
+                },
+            ) => {
+                (*dbg!(l_code) == dbg!((r_code, data).into()))
+                    && (*dbg!(l_arg) == dbg!((r_arg, data).into()))
+                    && dbg!(l_err).is_match(&dbg!(stringify_pyerr(py, r_err)))
+            }
+            (
+                TestUserPythonError::CoercingEvalBracketToElement { code_ctx: l_code },
+                TTUserPythonError::CoercingEvalBracketToElement {
                     code_ctx: r_code,
                     obj: _,
                 },

@@ -1,12 +1,16 @@
 use std::ffi::CString;
 
-use pyo3::{exceptions::PySyntaxError, prelude::*, types::PyDict};
+use pyo3::{
+    exceptions::{PySyntaxError, PyTypeError},
+    prelude::*,
+    types::PyDict,
+};
 
 use crate::{
     interpreter::{
         error::{
             syntax::TTSyntaxError,
-            user_python::{TTUserPythonError, UserPythonCompileMode},
+            user_python::{TTUserPythonError, UserPythonBuildMode, UserPythonCompileMode},
             TTResult,
         },
         lexer::TTToken,
@@ -14,17 +18,18 @@ use crate::{
     },
     python::{
         interop::{
-            coerce_to_inline_pytcref, BlockScopeBuilder, BuilderOutcome, InlineScopeBuilder,
+            coerce_to_inline_pytcref, Block, BlockScopeBuilder, Header, Inline, InlineScopeBuilder,
             RawScopeBuilder, TurnipTextSource,
         },
-        typeclass::PyTcRef,
+        typeclass::{PyTcRef, PyTypeclass},
     },
     util::{ParseContext, ParseSpan},
 };
 
 use super::{
-    ambiguous_scope::AmbiguousScopeProcessor, inline::RawStringProcessor, rc_refcell, BlockElem,
-    DocElement, EmittedElement, InlineElem, ProcStatus, TokenProcessor,
+    ambiguous_scope::{AmbiguousScopeProcessor, OnResolveAmbiguousScope},
+    inline::RawStringProcessor,
+    rc_refcell, BlockElem, DocElement, EmittedElement, InlineElem, ProcStatus, TokenProcessor,
 };
 
 pub struct CodeProcessor {
@@ -89,13 +94,36 @@ impl TokenProcessor for CodeProcessor {
             }
             // Parse one token after the code ends to see what we should do.
             Some(evaled_result) => match tok {
-                // A scope open could be for a block scope or inline scope - we accept either, so use the BlockLevelAmbiguousScope
+                // A scope open could be for a block scope or inline scope - we accept either, but use callbacks to check which one is opened.
+                // The callbacks are [ScopeKindChecker] which make sure the builder is the right kind right when the scope resolves.
                 TTToken::ScopeOpen(start_span) => Ok(ProcStatus::PushProcessor(rc_refcell(
-                    AmbiguousScopeProcessor::new(start_span),
+                    AmbiguousScopeProcessor::new(
+                        start_span,
+                        ScopeKindChecker {
+                            code_ctx: self.ctx,
+                            builder: evaled_result.clone_ref(py),
+                        },
+                    ),
                 ))),
-                TTToken::RawScopeOpen(start_span, n_opening) => Ok(ProcStatus::PushProcessor(
-                    rc_refcell(RawStringProcessor::new(start_span, n_opening)),
-                )),
+                TTToken::RawScopeOpen(start_span, n_opening) => {
+                    // Try coercing the builder to RawScopeBuilder. If it doesn't work, raise an error.
+                    PyTcRef::<RawScopeBuilder>::of_friendly(
+                        evaled_result.bind(py),
+                        "value returned by eval-bracket",
+                    )
+                    .map_err(|err| {
+                        TTUserPythonError::CoercingEvalBracketToBuilder {
+                            code_ctx: self.ctx,
+                            scope_open: tok.token_span(),
+                            obj: evaled_result.clone_ref(py),
+                            build_mode: UserPythonBuildMode::FromRaw,
+                            err,
+                        }
+                    })?;
+                    Ok(ProcStatus::PushProcessor(rc_refcell(
+                        RawStringProcessor::new(start_span, n_opening),
+                    )))
+                }
 
                 _ => {
                     // We didn't encounter any scope openers, so we know we don't need to build anything.
@@ -140,7 +168,7 @@ impl TokenProcessor for CodeProcessor {
                     } else {
                         let inline =
                             coerce_to_inline_pytcref(py, evaled_result_ref).map_err(|_err| {
-                                TTUserPythonError::CoercingNonBuilderEvalBracket {
+                                TTUserPythonError::CoercingEvalBracketToElement {
                                     code_ctx: self.ctx,
                                     obj: evaled_result.clone_ref(py),
                                 }
@@ -167,74 +195,78 @@ impl TokenProcessor for CodeProcessor {
             "Should never get a built None - CodeProcessor only spawns AmbiguousScopeProcessor \
              and RawScopeProcessor none of which return None.",
         );
+        // TODO test TTUserPythonError::Building is used
         let built = match elem {
             DocElement::Block(BlockElem::BlockScope(blocks)) => {
-                let builder: PyTcRef<BlockScopeBuilder> =
-                    PyTcRef::of_friendly(&evaled_result_ref, "value returned by eval-bracket")
-                        .map_err(|err| TTUserPythonError::CoercingBlockScopeBuilder {
-                            code_ctx: self.ctx,
-                            obj: evaled_result_ref.to_object(py),
-                            err,
-                        })?;
+                let builder = PyTcRef::<BlockScopeBuilder>::of(&evaled_result_ref).expect("The AmbiguousScopeProcessor callbacks must have checked this was a BlockScopeBuilder.");
 
-                // Now that we know coersion is a success, update the code span
-                assert!(
-                    self.ctx.try_combine(elem_ctx),
-                    "Code got a built object from a different file that it was opened in"
-                );
-
-                BlockScopeBuilder::call_build_from_blocks(py, builder, blocks)?
+                BlockScopeBuilder::call_build_from_blocks(py, builder, blocks).map_err(|err| {
+                    TTUserPythonError::Building {
+                        code_ctx: self.ctx,
+                        arg_ctx: elem_ctx,
+                        builder: evaled_result_ref.as_unbound().clone_ref(py),
+                        build_mode: UserPythonBuildMode::FromBlock,
+                        err,
+                    }
+                })?
             }
             DocElement::Inline(InlineElem::InlineScope(inlines)) => {
-                let builder: PyTcRef<InlineScopeBuilder> =
-                    PyTcRef::of_friendly(&evaled_result_ref, "value returned by eval-bracket")
-                        .map_err(|err| TTUserPythonError::CoercingInlineScopeBuilder {
-                            code_ctx: self.ctx,
-                            obj: evaled_result_ref.to_object(py),
-                            err,
-                        })?;
+                let builder = PyTcRef::<InlineScopeBuilder>::of(&evaled_result_ref).expect("The AmbiguousScopeProcessor callbacks must have checked this was a InlineScopeBuilder.");
 
-                // Now that we know coersion is a success, update the code span
-                assert!(
-                    self.ctx.try_combine(elem_ctx),
-                    "Code got a built object from a different file that it was opened in"
-                );
-
-                InlineScopeBuilder::call_build_from_inlines(py, builder, inlines)?
+                InlineScopeBuilder::call_build_from_inlines(py, builder, inlines).map_err(
+                    |err| TTUserPythonError::Building {
+                        code_ctx: self.ctx,
+                        arg_ctx: elem_ctx,
+                        builder: evaled_result_ref.as_unbound().clone_ref(py),
+                        build_mode: UserPythonBuildMode::FromInline,
+                        err,
+                    },
+                )?
             }
             DocElement::Inline(InlineElem::Raw(raw)) => {
-                let builder: PyTcRef<RawScopeBuilder> =
-                    PyTcRef::of_friendly(&evaled_result_ref, "value returned by eval-bracket")
-                        .map_err(|err| TTUserPythonError::CoercingRawScopeBuilder {
-                            code_ctx: self.ctx,
-                            obj: evaled_result_ref.to_object(py),
-                            err,
-                        })?;
+                let builder = PyTcRef::<RawScopeBuilder>::of(&evaled_result_ref)
+                    .expect("We checked this was a RawScopeBuilder when we got the first token.");
 
-                // Now that we know coersion is a success, update the code span
-                assert!(
-                    self.ctx.try_combine(elem_ctx),
-                    "Code got a built object from a different file that it was opened in"
-                );
-
-                RawScopeBuilder::call_build_from_raw(py, builder, raw.borrow(py).0.clone_ref(py))?
+                RawScopeBuilder::call_build_from_raw(py, builder, raw.borrow(py).0.clone_ref(py))
+                    .map_err(|err| TTUserPythonError::Building {
+                        code_ctx: self.ctx,
+                        arg_ctx: elem_ctx,
+                        builder: evaled_result_ref.as_unbound().clone_ref(py),
+                        build_mode: UserPythonBuildMode::FromRaw,
+                        err,
+                    })?
             }
             _ => unreachable!("Invalid combination of requested and actual built element types"),
         };
+        // Check the BuildOutcome was correct, if not raise a consistent TTUserPythonError
+        let built = BuildOutcome::of(&built).map_err(|pyerr| {
+            TTUserPythonError::CoercingBuildResultToElement {
+                code_ctx: self.ctx,
+                arg_ctx: elem_ctx,
+                builder: evaled_result_ref.into(),
+                obj: built.into(),
+                err: pyerr,
+            }
+        })?;
+        // Now that we know coersion is a success, update the code span
+        assert!(
+            self.ctx.try_combine(elem_ctx),
+            "Code got a built object from a different file that it was opened in"
+        );
         match built {
-            BuilderOutcome::Block(block) => Ok(ProcStatus::Pop(Some((
+            BuildOutcome::Block(block) => Ok(ProcStatus::Pop(Some((
                 self.ctx,
                 BlockElem::FromCode(block).into(),
             )))),
-            BuilderOutcome::Inline(inline) => Ok(ProcStatus::Pop(Some((
+            BuildOutcome::Inline(inline) => Ok(ProcStatus::Pop(Some((
                 self.ctx,
                 InlineElem::FromCode(inline).into(),
             )))),
-            BuilderOutcome::Header(header) => Ok(ProcStatus::Pop(Some((
+            BuildOutcome::Header(header) => Ok(ProcStatus::Pop(Some((
                 self.ctx,
                 DocElement::HeaderFromCode(header),
             )))),
-            BuilderOutcome::None => Ok(ProcStatus::Pop(None)),
+            BuildOutcome::None => Ok(ProcStatus::Pop(None)),
         }
     }
 
@@ -252,11 +284,94 @@ impl TokenProcessor for CodeProcessor {
     }
 }
 
+/// Handles callbacks from the [AmbiguousScopeProcessor] while checking the builder object to see if the scope it resolves to is valid
+struct ScopeKindChecker {
+    code_ctx: ParseContext,
+    builder: PyObject,
+}
+impl OnResolveAmbiguousScope for ScopeKindChecker {
+    fn got_block_scope(self, py: Python, scope_open: ParseSpan) -> TTResult<()> {
+        // Try coercing the builder to BlockScopeBuilder. If it doesn't work, raise an error.
+        PyTcRef::<BlockScopeBuilder>::of_friendly(
+            self.builder.bind(py),
+            "value returned by eval-bracket",
+        )
+        .map_err(|err| TTUserPythonError::CoercingEvalBracketToBuilder {
+            code_ctx: self.code_ctx,
+            scope_open,
+            obj: self.builder,
+            build_mode: UserPythonBuildMode::FromBlock,
+            err,
+        })?;
+        Ok(())
+    }
+
+    fn got_inline_scope(self, py: Python, scope_open: ParseSpan) -> TTResult<()> {
+        // Try coercing the builder to InlineScopeBuilder. If it doesn't work, raise an error.
+        PyTcRef::<InlineScopeBuilder>::of_friendly(
+            self.builder.bind(py),
+            "value returned by eval-bracket",
+        )
+        .map_err(|err| TTUserPythonError::CoercingEvalBracketToBuilder {
+            code_ctx: self.code_ctx,
+            scope_open,
+            obj: self.builder,
+            build_mode: UserPythonBuildMode::FromInline,
+            err,
+        })?;
+        Ok(())
+    }
+}
+
+/// The possible options that can be returned by a builder.
+pub enum BuildOutcome {
+    Block(PyTcRef<Block>),
+    Inline(PyTcRef<Inline>),
+    Header(PyTcRef<Header>),
+    None,
+}
+impl BuildOutcome {
+    fn of(val: &Bound<'_, PyAny>) -> PyResult<BuildOutcome> {
+        if val.is_none() {
+            Ok(BuildOutcome::None)
+        } else {
+            let is_block = Block::fits_typeclass(val)?;
+            let is_inline = Inline::fits_typeclass(val)?;
+            let is_header = Header::fits_typeclass(val)?;
+
+            match (is_block, is_inline, is_header) {
+                (true, false, false) => Ok(BuildOutcome::Block(PyTcRef::of_unchecked(val))),
+                (false, true, false) => Ok(BuildOutcome::Inline(PyTcRef::of_unchecked(val))),
+                (false, false, true) => Ok(BuildOutcome::Header(PyTcRef::of_unchecked(val))),
+
+                (false, false, false) => {
+                    let obj_repr = val.repr()?;
+                    Err(PyTypeError::new_err(format!(
+                        "Expected build result to be None or an object fitting Block, Inline, or Header - got {} which fits none of them.",
+                        obj_repr.to_str()?
+                    )))
+                }
+                _ => {
+                    let obj_repr = val.repr()?;
+                    Err(PyTypeError::new_err(format!(
+                        "Expected build result to be None or an object fitting Block, Inline, or Header \
+                         - got {} which fits (block? {}) (inline? {}) (header? {}).",
+                        obj_repr.to_str()?,
+                        is_block,
+                        is_inline,
+                        is_header
+                    )))
+                }
+            }
+        }
+    }
+}
+
 /// Tries to compile the given code for the given compile mode.
 /// If the compilation succeeds, runs the code.
 ///
-/// Translates compile errors to [UserPythonExecError::CompilingEvalBrackets].
-/// Translates run errors to [UserPythonExecError::RunningEvalBrackets].
+/// Translates compile errors to [TTUserPythonError::CompilingEvalBrackets].
+/// Translates run errors to [TTUserPythonError::RunningEvalBrackets].
 fn try_compile_and_run<'py>(
     py: Python<'py>,
     py_env: &'py Bound<'py, PyDict>,
