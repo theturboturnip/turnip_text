@@ -17,13 +17,13 @@ use super::{BlockLevelProcessor, BlockMode};
 
 /// At the top level of the document, headers are allowed and manipulate the InterimDocumentStructure.
 pub struct TopLevelBlockMode {
-    structure: InterimDocumentStructure,
+    structure: InterimDocument,
 }
 impl BlockLevelProcessor<TopLevelBlockMode> {
     pub fn new(py: Python) -> PyResult<Self> {
         Ok(Self {
             inner: TopLevelBlockMode {
-                structure: InterimDocumentStructure::new(py)?,
+                structure: InterimDocument::new(py)?,
             },
             expects_n_blank_lines_after: None,
         })
@@ -73,16 +73,16 @@ impl BlockMode for TopLevelBlockMode {
 
 /// Provides a simple interface to a [Document] in-progress
 /// FUTURE could merge into the TopLevelBlock mode but that might make code less clean
-pub struct InterimDocumentStructure {
+pub struct InterimDocument {
     /// Top level content of the document
     /// All text leading up to the first DocSegment
     toplevel_content: Py<BlockScope>,
     /// The top level segments
     toplevel_segments: PyInstanceList<DocSegment>,
     /// The stack of DocSegments leading up to the current doc segment.
-    segment_stack: Vec<InterpDocSegmentState>,
+    segment_stack: Vec<InterimDocSegment>,
 }
-impl InterimDocumentStructure {
+impl InterimDocument {
     pub fn new(py: Python) -> PyResult<Self> {
         Ok(Self {
             toplevel_content: Py::new(py, BlockScope::new_empty(py))?,
@@ -114,7 +114,7 @@ impl InterimDocumentStructure {
 
         // We know the thing at the top of the segment stack has a weight < subsegment_weight
         // Push pending segment state to the stack
-        let subsegment = InterpDocSegmentState::new(py, header, subsegment_weight)?;
+        let subsegment = InterimDocSegment::new(py, header, subsegment_weight)?;
         self.segment_stack.push(subsegment);
 
         Ok(())
@@ -175,13 +175,13 @@ impl InterimDocumentStructure {
 }
 
 #[derive(Debug)]
-struct InterpDocSegmentState {
+struct InterimDocSegment {
     header: PyTcRef<Header>,
-    weight: i64,
+    weight: i64, // cached from `header.weight` in Python
     content: Py<BlockScope>,
     subsegments: PyInstanceList<DocSegment>,
 }
-impl InterpDocSegmentState {
+impl InterimDocSegment {
     fn new(py: Python, header: PyTcRef<Header>, weight: i64) -> PyResult<Self> {
         Ok(Self {
             header,
