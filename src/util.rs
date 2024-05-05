@@ -6,7 +6,6 @@ use crate::interpreter::lexer::LexPosn;
 
 /// Helper struct representing the position of a character in a file, as both:
 /// - Byte offset of the start of the UTF-8 code point
-/// - Character offset because some error libraries need this
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParsePosn {
     pub byte_ofs: usize,
@@ -20,7 +19,13 @@ impl From<LexPosn> for ParsePosn {
 }
 
 /// Helper struct representing a span of characters between `start` (inclusive) and `end` (exclusive) in a file
-/// TODO this is big and shouldn't be Copy
+///
+/// ## Considering shrinking
+/// This is kinda big, but we can't shrink it without lowering the size of `start`.
+/// Because it has `usize` fields, the align is `sizeof(usize)`, and the size has to be padded to the align
+/// (at least it does in C.)
+/// So any optimization has to remove `sizeof(usize)`, my only idea was to make `end` a byte-delta = u8
+/// but even then it would still get padded out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParseSpan {
     file_idx: usize,
