@@ -1,6 +1,7 @@
 pub mod error;
 pub mod interop;
 pub mod typeclass;
+pub mod util;
 
 /// Prepare an embedded Python interpreter with our module.
 ///

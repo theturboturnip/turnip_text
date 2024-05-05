@@ -347,6 +347,7 @@ impl<'a> TestUserPythonError<'a> {
                 TTUserPythonError::CompilingEvalBrackets {
                     code_ctx: r_code_ctx,
                     code: r_code,
+                    code_n_hyphens: _, // Assume this is covered by the code_ctx
                     mode: r_mode,
                     err: r_err,
                 },

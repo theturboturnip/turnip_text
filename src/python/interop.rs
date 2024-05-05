@@ -598,6 +598,9 @@ impl Sentence {
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         self.0.__eq__(py, &other.0)
     }
+    pub fn __str__(&self, py: Python) -> PyResult<String> {
+        Ok(format!("Sentence(<{} inlines>)", self.0.list(py).len()))
+    }
     pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!(r#"Sentence({})"#, self.0.__repr__(py)?))
     }
@@ -645,6 +648,9 @@ impl Paragraph {
 
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         self.0.__eq__(py, &other.0)
+    }
+    pub fn __str__(&self, py: Python) -> PyResult<String> {
+        Ok(format!("Paragraph(<{} sentences>)", self.0.list(py).len()))
     }
     pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!(r#"Paragraph({})"#, self.0.__repr__(py)?))
@@ -694,6 +700,9 @@ impl BlockScope {
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         self.0.__eq__(py, &other.0)
     }
+    pub fn __str__(&self, py: Python) -> PyResult<String> {
+        Ok(format!("BlockScope(<{} blocks>)", self.0.list(py).len()))
+    }
     pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!(r#"BlockScope({})"#, self.0.__repr__(py)?))
     }
@@ -741,6 +750,9 @@ impl InlineScope {
 
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         self.0.__eq__(py, &other.0)
+    }
+    pub fn __str__(&self, py: Python) -> PyResult<String> {
+        Ok(format!("InlineScope(<{} inlines>)", self.0.list(py).len()))
     }
     pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!(r#"InlineScope({})"#, self.0.__repr__(py)?))
@@ -844,6 +856,13 @@ impl Document {
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         Ok(self.contents.bind(py).eq(other.contents.bind(py))?
             && self.segments.__eq__(py, &other.segments)?)
+    }
+    pub fn __str__(&self, py: Python) -> PyResult<String> {
+        Ok(format!(
+            r#"Document(contents={}, segments={})"#,
+            self.contents.borrow(py).__str__(py)?,
+            self.segments.__repr__(py)?
+        ))
     }
     pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!(
@@ -981,6 +1000,14 @@ impl DocSegment {
         Ok(self.header.bind(py).eq(other.header.bind(py))?
             && self.contents.bind(py).eq(other.contents.bind(py))?
             && self.subsegments.__eq__(py, &other.subsegments)?)
+    }
+    pub fn __str__(&self, py: Python) -> PyResult<String> {
+        Ok(format!(
+            r#"DocSegment(header={}, contents={}, subsegments={})"#,
+            self.header.bind(py).str()?.to_str()?,
+            self.contents.borrow(py).__str__(py)?,
+            self.subsegments.__repr__(py)?
+        ))
     }
     pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!(

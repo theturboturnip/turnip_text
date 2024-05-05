@@ -235,6 +235,7 @@ class DocPlugin(DocMutator):
 
         wrapper._stateful = True  # type: ignore
         wrapper.__doc__ = f.__doc__
+        wrapper.__name__ = f"stateful wrapper of function {f.__name__}()"
 
         return wrapper
 
@@ -262,6 +263,7 @@ class DocPlugin(DocMutator):
 
         wrapper._stateless = True  # type: ignore
         wrapper.__doc__ = f.__doc__
+        wrapper.__name__ = f"stateless wrapper of function {f.__name__}()"
 
         return wrapper
 

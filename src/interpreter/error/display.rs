@@ -7,6 +7,14 @@ use crate::{
         },
         ParsingFile,
     },
+    python::{
+        interop::{
+            Block, BlockScopeBuilder, Header, Inline, InlineScopeBuilder, RawScopeBuilder,
+            TurnipTextSource,
+        },
+        typeclass::PyTypeclass,
+        util::{get_docstring, get_name, stringify_py},
+    },
     util::ParseSpan,
 };
 use codespan_reporting::{
@@ -14,7 +22,11 @@ use codespan_reporting::{
     files::SimpleFiles,
     term::{emit, termcolor::Buffer, Config, DisplayStyle},
 };
-use pyo3::prelude::*;
+use pyo3::{
+    exceptions::PySyntaxError,
+    prelude::*,
+    types::{PyFloat, PyLong, PyString},
+};
 
 // This uses codespan_reporting functions to split each file into lines.
 // This function is not guaranteed to match how the lexer handles newlines, but it should be close enough.
@@ -255,11 +267,7 @@ fn detailed_syntax_message(py: Python, err: &TTSyntaxError) -> Diagnostic<usize>
             labels.push(prim_label_of(code_span, "Header emitted by code here"));
             let mut notes = vec![format!(
                 "Emitted an object '{}', which implements `Header`",
-                header
-                    .bind(py)
-                    .str()
-                    .map_or("<stringification failed>".into(), |pystring| pystring
-                        .to_string())
+                stringify_py(header.bind(py))
             )];
             match inl_mode {
                 InlineModeContext::Paragraph(_) => {
@@ -288,11 +296,7 @@ fn detailed_syntax_message(py: Python, err: &TTSyntaxError) -> Diagnostic<usize>
             into_vec![
                 format!(
                     "Emitted an object '{}', which implements `Header`",
-                    header
-                        .bind(py)
-                        .str()
-                        .map_or("<stringification failed>".into(), |pystring| pystring
-                            .to_string())
+                    stringify_py(header.bind(py))
                 ),
                 "Headers are only allowed at the top level of the document,\nnot inside block \
                  scopes.",
@@ -428,6 +432,7 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
     match err {
         CompilingEvalBrackets {
             code_ctx,
+            code_n_hyphens,
             code,
             mode,
             err,
@@ -436,18 +441,18 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
             match mode {
                 UserPythonCompileMode::EvalExpr => {
                     notes.push(format!(
-                        "Trying to compile the following code as a Python expression raised {}",
+                        "Trying to compile the following code as a Python expression raised {}.",
                         err.get_type_bound(py).to_string()
                     ));
                 }
                 UserPythonCompileMode::ExecStmts => {
                     notes.push(
                         "Trying to compile the following code as a Python expression raised \
-                         SyntaxError."
+                         SyntaxError, "
                             .into(),
                     );
                     notes.push(format!(
-                        "Trying to compile it as at least one Python statement raised {}",
+                        "then trying to compile it as at least one Python statement raised {}.",
                         err.get_type_bound(py).to_string()
                     ));
                 }
@@ -457,10 +462,26 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                             .into(),
                     );
                     notes.push(format!(
-                        "Attached 'if True:' to the front to fix it, but compiling that raised {}",
+                        "Attached 'if True:' to the front to fix it, but compiling that raised {}.",
                         err.get_type_bound(py).to_string()
                     ));
                 }
+            }
+            // Brittle test for if it's due to bad bracketing
+            // e.g. the code `[  len([1, 2, 3])  ]` is going to be pythonized as `len([1, 2, 3` - the leading whitespace will be trimmed, the ']' inside the code will close the Python early.
+            // This won't happen if you're using [- -], because the only way that can fail is if you have -] in python and I'm pretty sure that's not valid syntax.
+            if *code_n_hyphens == 0
+                && err.is_instance_of::<PySyntaxError>(py)
+                && stringify_py(err.value_bound(py)).contains("'[' was never closed")
+            {
+                notes.push(
+                    "This may be because the code is closed early by a ']' character.".into(),
+                );
+                notes.push(
+                    "To use '[' ']' inside Python, place '-' directly before and after the eval-brackets."
+                        .into(),
+                );
+                notes.push("e.g. '[- len([1, 2, 3]) -]'".into())
             }
             notes.push(format!(
                 "Compiled code:\n{}",
@@ -514,24 +535,51 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                 notes,
             )
         }
-        CoercingEvalBracketToElement { code_ctx, obj } => error_diag(
-            "Python code produced an unsupported object",
-            vec![prim_label_of(
-                &code_ctx.full_span(),
-                "Object produced from this code",
-            )],
-            into_vec![
+        CoercingEvalBracketToElement { code_ctx, obj } => {
+            let obj = obj.bind(py);
+            let mut notes = into_vec![
                 "To emit an object into the document it must be None, a TurnipTextSource, a \
                  Header, a Block, or an Inline.",
-                format!(
-                    "Instead, Python emitted {}",
-                    obj.bind(py)
-                        .str()
-                        .map_or("<stringification failed>".into(), |pystring| pystring
-                            .to_string())
-                ),
-            ],
-        ),
+            ];
+            // Print the name if it has one, always print stringification
+            // Decided against trying qualname - that will usually come across in stringification
+            if let Some(name) = get_name(obj) {
+                notes.push(format!("Instead, Python emitted '{name}'"));
+                notes.push(format!("which is '{}'", stringify_py(obj)));
+            } else {
+                notes.push(format!("Instead, Python emitted '{}'", stringify_py(obj)));
+            }
+            // Print the docstring if it has one
+            if let Some(doc) = get_docstring(obj) {
+                notes.push(format!("which had a docstring:\n{}", doc));
+            }
+            // If it's callable, suggest calling it
+            if obj.is_callable() {
+                notes.push("This object is callable - try calling it?".into());
+            }
+            // If it's a different builder, suggest building with the correct argument
+            if matches!(BlockScopeBuilder::fits_typeclass(obj), Ok(true)) {
+                notes.push(
+                    "This object fits BlockScopeBuilder - try attaching a block scope?".into(),
+                );
+            }
+            if matches!(InlineScopeBuilder::fits_typeclass(obj), Ok(true)) {
+                notes.push(
+                    "This object fits InlineScopeBuilder - try attaching an inline scope?".into(),
+                );
+            }
+            if matches!(RawScopeBuilder::fits_typeclass(obj), Ok(true)) {
+                notes.push("This object fits RawScopeBuilder - try attaching a raw scope?".into());
+            }
+            error_diag(
+                "Python code produced an unsupported object",
+                vec![prim_label_of(
+                    &code_ctx.full_span(),
+                    "Object produced from this code",
+                )],
+                notes,
+            )
+        }
         // TODO BlockScopeBuilder => BuilderFromBlockScope?
         CoercingEvalBracketToBuilder {
             code_ctx,
@@ -540,11 +588,68 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
             obj,
             err: _,
         } => {
+            let obj = obj.bind(py);
             let (argument_name, builder_type) = match build_mode {
                 UserPythonBuildMode::FromBlock => ("a block scope", "a BlockScopeBuilder"),
                 UserPythonBuildMode::FromInline => ("an inline scope", "an InlineScopeBuilder"),
                 UserPythonBuildMode::FromRaw => ("a raw scope", "a RawScopeBuilder"),
             };
+            let mut notes = into_vec![format!(
+                "If eval-brackets are attached to {argument_name}, the produced object \
+                     must be a {builder_type}"
+            ),];
+            // Print the name if it has one, always print stringification
+            // Decided against trying qualname - that will usually come across in stringification
+            if let Some(name) = get_name(obj) {
+                notes.push(format!("Instead, Python emitted '{name}'"));
+                notes.push(format!("which is '{}'", stringify_py(obj)));
+            } else {
+                notes.push(format!("Instead, Python emitted '{}'", stringify_py(obj)));
+            }
+            // Print the docstring if it has one
+            if let Some(doc) = get_docstring(obj) {
+                notes.push(format!("which had a docstring:\n{}", doc));
+            }
+            // If it's a DocElement by itself, suggest removing the argument
+            if matches!(Header::fits_typeclass(obj), Ok(true)) {
+                notes.push("The builder does fit Header, try removing the argument".into());
+            }
+            if matches!(Block::fits_typeclass(obj), Ok(true)) {
+                notes.push("The builder does fit Block, try removing the argument".into());
+            }
+            if matches!(Inline::fits_typeclass(obj), Ok(true)) {
+                notes.push("The builder does fit Inline, try removing the argument".into());
+            }
+            if obj.is_exact_instance_of::<PyString>()
+                || obj.is_exact_instance_of::<PyLong>()
+                || obj.is_exact_instance_of::<PyFloat>()
+            {
+                notes.push("The builder is coercible to Inline, try removing the argument".into());
+            }
+            if obj.is_exact_instance_of::<TurnipTextSource>() {
+                notes.push("The builder is a TurnipTextSource, try removing the argument".into());
+            }
+            // If it's callable, suggest calling it
+            if obj.is_callable() {
+                notes.push("This object is callable - try calling it to get a builder?".into());
+            }
+            // If it's a different builder, suggest building with the correct argument
+            if matches!(BlockScopeBuilder::fits_typeclass(obj), Ok(true)) {
+                notes.push(
+                    "The builder does fit BlockScopeBuilder, try attaching a block scope instead"
+                        .into(),
+                );
+            }
+            if matches!(InlineScopeBuilder::fits_typeclass(obj), Ok(true)) {
+                notes.push("The builder does fit InlineScopeBuilder, try attaching an inline scope instead".into());
+            }
+            if matches!(RawScopeBuilder::fits_typeclass(obj), Ok(true)) {
+                notes.push(
+                    "The builder does fit RawScopeBuilder, try attaching a raw scope instead"
+                        .into(),
+                );
+            }
+
             error_diag(
                 format!("Python code attached to {argument_name} didn't produce {builder_type}"),
                 vec![
@@ -554,19 +659,7 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                     ),
                     sec_label_of(scope_open, "Scope attached here"),
                 ],
-                into_vec![
-                    format!(
-                        "If eval-brackets are attached to {argument_name}, the produced object \
-                         must be a {builder_type}"
-                    ),
-                    format!(
-                        "Instead, the eval-brackets produced {}",
-                        obj.bind(py)
-                            .str()
-                            .map_or("<stringification failed>".into(), |pystring| pystring
-                                .to_string())
-                    ),
-                ],
+                notes,
             )
         }
         Building {
@@ -593,11 +686,7 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                 into_vec![
                     format!(
                         "The code successfully evaluated to the builder {}",
-                        builder
-                            .bind(py)
-                            .str()
-                            .map_or("<stringification failed>".into(), |pystring| pystring
-                                .to_string())
+                        stringify_py(builder.bind(py))
                     ),
                     format!(
                         "Calling {builder_function} on this object with the scope argument raised \
@@ -621,19 +710,12 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
             into_vec![
                 format!(
                     "The code successfully evaluated to the builder {}",
-                    builder
-                        .bind(py)
-                        .str()
-                        .map_or("<stringification failed>".into(), |pystring| pystring
-                            .to_string())
+                    stringify_py(builder.bind(py))
                 ),
                 format!(
                     "The builder took a scope argument and successfully built {},\nbut it wasn't \
                      of a supported type.",
-                    obj.bind(py)
-                        .str()
-                        .map_or("<stringification failed>".into(), |pystring| pystring
-                            .to_string())
+                    stringify_py(obj.bind(py))
                 ),
                 "To emit an object into the document it must be None, a Header, a Block, or an \
                  Inline.",

@@ -30,6 +30,8 @@ pub enum TTUserPythonError {
     #[error("Error when compiling Python from eval-brackets in mode {mode:?}: {err}")]
     CompilingEvalBrackets {
         code_ctx: ParseContext,
+        /// The number of '-' characters inside `[--- ---]`
+        code_n_hyphens: usize,
         code: CString,
         mode: UserPythonCompileMode,
         err: PyErr,

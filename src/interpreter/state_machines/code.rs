@@ -68,7 +68,7 @@ impl TokenProcessor for CodeProcessor {
                         if n_close_brackets == self.n_closing =>
                     {
                         let eval_obj: Bound<'_, PyAny> =
-                            eval_or_exec(py, py_env, &self.code, self.ctx)?;
+                            eval_or_exec(py, py_env, &self.code, self.ctx, n_close_brackets)?;
 
                         // If we evaluated a TurnipTextSource, it may not be a builder of any kind thus we can finish immediately.
                         if let Ok(inserted_file) = eval_obj.extract::<TurnipTextSource>() {
@@ -377,6 +377,7 @@ fn try_compile_and_run<'py>(
     py_env: &'py Bound<'py, PyDict>,
     code: &CString,
     code_ctx: ParseContext,
+    code_n_hyphens: usize,
     mode: UserPythonCompileMode,
 ) -> Result<Bound<'py, PyAny>, TTUserPythonError> {
     let compile_mode = match mode {
@@ -392,6 +393,7 @@ fn try_compile_and_run<'py>(
         if code_obj.is_null() {
             return Err(TTUserPythonError::CompilingEvalBrackets {
                 code_ctx,
+                code_n_hyphens,
                 code: code.clone(),
                 mode,
                 err: PyErr::fetch(py),
@@ -425,6 +427,7 @@ pub fn eval_or_exec<'py, 'code>(
     py_env: &'py Bound<'py, PyDict>,
     code: &'code str,
     code_ctx: ParseContext,
+    code_n_hyphens: usize,
 ) -> Result<Bound<'py, PyAny>, TTUserPythonError> {
     // The turnip-text lexer rejects the nul-byte so it cannot be found in the code.
     let code_trimmed =
@@ -437,6 +440,7 @@ pub fn eval_or_exec<'py, 'code>(
         py_env,
         &code_trimmed,
         code_ctx,
+        code_n_hyphens,
         UserPythonCompileMode::EvalExpr,
     ) {
         // If compiling the code in eval mode gave a SyntaxError, try compiling in exec mode.
@@ -444,7 +448,8 @@ pub fn eval_or_exec<'py, 'code>(
         Err(TTUserPythonError::CompilingEvalBrackets { err, .. })
             if err.is_instance_of::<PySyntaxError>(py) =>
         {
-            match try_compile_and_run(py, py_env, &code_trimmed, code_ctx, UserPythonCompileMode::ExecStmts) {
+            match try_compile_and_run(py, py_env, &code_trimmed, code_ctx, code_n_hyphens,UserPythonCompileMode::ExecStmts) {
+        
                     // Can't use .is_instance_of::<PyIndentationError> because PyO3 doesn't generate a PyIndentationError type.
                     Err(TTUserPythonError::CompilingEvalBrackets { err, .. })
                     // I feel fine expecting Py_CompileString to raise an error with a type with a name.
@@ -470,7 +475,7 @@ pub fn eval_or_exec<'py, 'code>(
                             py_env,
                             &code_with_indent_guard,
                             code_ctx,
-                            UserPythonCompileMode::ExecIndentedStmts,
+                            code_n_hyphens,UserPythonCompileMode::ExecIndentedStmts,
                         )
                     }
                     other => other
