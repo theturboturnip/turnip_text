@@ -46,11 +46,11 @@ class TestInlineBuilder:
         return TestOwnedInline(contents)
 
 class TestRawInlineBuilder:
-    def build_from_raw(self, raw_str):
-        return TestOwnedRaw(raw_str)
+    def build_from_raw(self, raw):
+        return TestOwnedRaw(raw.data)
 
 class TestRawBlockBuilder:
-    def build_from_raw(self, raw_str):
+    def build_from_raw(self, raw):
         return TEST_BLOCK
 
 TEST_BLOCK_BUILDER = TestBlockBuilder()
@@ -82,7 +82,7 @@ class TestHeaderBuilder:
     def build_from_inlines(self, contents):
         return TestHeader(weight=self.weight, test_inline=contents)
     def build_from_raw(self, raw):
-        return TestHeader(weight=self.weight, test_inline=InlineScope([Raw(raw)]))
+        return TestHeader(weight=self.weight, test_inline=InlineScope([raw]))
 
 def test_src(contents):
     return TurnipTextSource.from_string(contents)
@@ -92,7 +92,7 @@ class TestBlockBuilderFromInline:
         return TestOwnedBlock(BlockScope([Paragraph([Sentence([contents])])]))
 class TestBlockBuilderFromRaw:
     def build_from_raw(self, raw):
-        return TestOwnedBlock(BlockScope([Paragraph([Sentence([Raw(raw)])])]))
+        return TestOwnedBlock(BlockScope([Paragraph([Sentence([raw])])]))
 
 TEST_BLOCK_BUILDER_FROM_INLINE = TestBlockBuilderFromInline()
 

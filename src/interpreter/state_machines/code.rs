@@ -227,7 +227,7 @@ impl TokenProcessor for CodeProcessor {
                 let builder = PyTcRef::<RawScopeBuilder>::of(&evaled_result_ref)
                     .expect("We checked this was a RawScopeBuilder when we got the first token.");
 
-                RawScopeBuilder::call_build_from_raw(py, builder, raw.borrow(py).0.clone_ref(py))
+                RawScopeBuilder::call_build_from_raw(py, builder, raw)
                     .map_err(|err| TTUserPythonError::Building {
                         code_ctx: self.ctx,
                         arg_ctx: elem_ctx,

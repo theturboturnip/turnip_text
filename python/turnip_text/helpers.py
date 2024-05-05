@@ -10,6 +10,7 @@ from turnip_text import (
     InlineScope,
     InlineScopeBuilder,
     Paragraph,
+    Raw,
     RawScopeBuilder,
     Sentence,
     coerce_to_inline,
@@ -112,18 +113,18 @@ class raw_scope_builder(RawScopeBuilder):
     ```
     """
 
-    func: Callable[[str], Union[Block, Inline, Header, None]]
+    func: Callable[[Raw], Union[Block, Inline, Header, None]]
 
     def __init__(
-        self, func: Callable[[str], Union[Block, Inline, Header, None]]
+        self, func: Callable[[Raw], Union[Block, Inline, Header, None]]
     ) -> None:
         self.func = func
 
-    def build_from_raw(self, raw: str) -> Union[Block, Inline, Header, None]:
+    def build_from_raw(self, raw: Raw) -> Union[Block, Inline, Header, None]:
         return self.func(raw)
 
     def __matmul__(self, maybe_str: Any) -> Union[Block, Inline, Header, None]:
-        if isinstance(maybe_str, str):
+        if isinstance(maybe_str, Raw):
             return self.func(maybe_str)
         raise TypeError(
             f"Invoked RawScopeBuilder on {maybe_str}, which wasn't a string"

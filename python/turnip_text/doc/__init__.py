@@ -34,7 +34,7 @@ from turnip_text import (
     Header,
     Inline,
     TurnipTextSource,
-    parse_file_native,
+    parse_file,
 )
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc.anchors import Anchor, Backref
@@ -80,7 +80,7 @@ class DocSetup:
 
     def parse(self) -> Document:
         src = self.build_sys.resolve_turnip_text_source(self.doc_project_relative_path)
-        return parse_file_native(src, self.doc.__dict__)
+        return parse_file(src, self.doc.__dict__)
 
     def freeze(self) -> None:
         self.doc._frozen = True

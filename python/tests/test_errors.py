@@ -28,7 +28,7 @@ def test_selfcheck():
 
 def test_error_from_running_user_code_filters_out():
     with pytest.raises(TurnipTextError) as err_info:
-        parse_file_native(
+        parse_file(
             TurnipTextSource.from_string("[raise ValueError()]"),
             {},
         )
@@ -38,7 +38,7 @@ def test_error_from_running_user_code_filters_out():
 
 def test_error_from_env_running_user_code_filters_out():
     with pytest.raises(TurnipTextError) as err_info:
-        parse_file_native(
+        parse_file(
             TurnipTextSource.from_string("[raise_specific_error()]"),
             {"raise_specific_error": raise_specific_error},
         )
@@ -48,7 +48,7 @@ def test_error_from_env_running_user_code_filters_out():
 
 def test_error_from_nested_env_running_user_code_filters_out():
     with pytest.raises(TurnipTextError) as err_info:
-        parse_file_native(
+        parse_file(
             TurnipTextSource.from_string("[nest3_raise_specific()]"),
             {"nest3_raise_specific": nest3_raise_specific},
         )
@@ -58,7 +58,7 @@ def test_error_from_nested_env_running_user_code_filters_out():
 
 def test_error_from_nested_file_running_user_code_filters_out():
     with pytest.raises(TurnipTextError) as err_info:
-        parse_file_native(
+        parse_file(
             TurnipTextSource.from_string(
                 """
                 [-import turnip_text as tt-]

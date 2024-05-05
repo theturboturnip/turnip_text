@@ -368,7 +368,9 @@ impl PyTypeclass for Header {
     }
 }
 
-/// Typeclass representing the "builder" of a block scope, which may modify how that scope is rendered.
+// FUTURE BlockScopeBuilder => BuilderFromBlockScope?
+/// Typeclass representing a "builder" which takes a BlockScope and produces a new DocElement.
+/// Doesn't typecheck the output of the build method, that's done in [`crate::interpreter::state_machines::code`]
 ///
 /// Requires a method
 /// ```python
@@ -413,8 +415,9 @@ impl PyTypeclass for BlockScopeBuilder {
     }
 }
 
-/// Typeclass representing the "builder" of an inline scope, which may modify how that scope is rendered.
-///
+/// Typeclass representing a "builder" which takes an InlineScope and produces a new DocElement.
+////// Doesn't typecheck the output of the build method, that's done in [`crate::interpreter::state_machines::code`]
+
 /// Requires a method
 /// ```python
 /// def build_from_inlines(self, inlines: InlineScope) -> Block | Inline | Header | None: ...
@@ -458,11 +461,12 @@ impl PyTypeclass for InlineScopeBuilder {
     }
 }
 
-/// Typeclass representing the "builder" of a raw scope, which interprets how that scope is rendered.
-///
+/// Typeclass representing a "builder" which takes a Raw scope and produces a new DocElement.
+////// Doesn't typecheck the output of the build method, that's done in [`crate::interpreter::state_machines::code`]
+
 /// Requires a method
 /// ```python
-/// def build_from_raw(self, raw: str) -> Block | Inline | Header | None: ...
+/// def build_from_raw(self, raw: Raw) -> Block | Inline | Header | None: ...
 /// ```
 #[derive(Debug, Clone)]
 pub struct RawScopeBuilder {}
@@ -474,7 +478,7 @@ impl RawScopeBuilder {
     pub fn call_build_from_raw<'py>(
         py: Python<'py>,
         builder: PyTcRef<Self>,
-        raw: Py<PyString>,
+        raw: Py<Raw>,
     ) -> PyResult<Bound<'py, PyAny>> {
         builder
             .bind(py)

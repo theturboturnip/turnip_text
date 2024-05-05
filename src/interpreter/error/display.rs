@@ -610,7 +610,6 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                 notes,
             )
         }
-        // TODO BlockScopeBuilder => BuilderFromBlockScope?
         CoercingEvalBracketToBuilder {
             code_ctx,
             scope_open,

@@ -12,7 +12,7 @@ Y \[ˈʏpsilɔn\], Yen \[jɛn\], Yoga \[ˈjoːgɑ\]
         initial_value=str(original_src.encode(encoding="utf-8"), encoding="utf-8")
     )
     src = TurnipTextSource.from_file("<test>", utf8)
-    doc = parse_file_native(src, {})
+    doc = parse_file(src, {})
     expected_doc = Document(
         contents=BlockScope(
             [
@@ -39,7 +39,7 @@ Y \[ˈʏpsilɔn\], Yen \[jɛn\], Yoga \[ˈjoːgɑ\]
         initial_value=str(original_src.encode(encoding="utf-16be"), encoding="utf-16be")
     )
     src = TurnipTextSource.from_file("<test>", utf8)
-    doc = parse_file_native(src, {})
+    doc = parse_file(src, {})
     expected_doc = Document(
         contents=BlockScope(
             [
@@ -70,7 +70,7 @@ Dﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝﾞﾟ
         )
     )
     src = TurnipTextSource.from_file("<test>", utf8)
-    doc = parse_file_native(src, {})
+    doc = parse_file(src, {})
     # Even comparing the doc to one generated from UTF-8 should work
     expected_doc = Document(
         contents=BlockScope(

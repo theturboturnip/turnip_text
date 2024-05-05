@@ -41,7 +41,7 @@ def test_inline_coercion_of_float():
 
 
 def test_inline_coercion_of_int():
-    # Use an integer too large for rust to use directly
+    # Use an integer too large for rust to use natively
     i = 737481293873132131293972839821398293
     assert coerce_to_inline(i) == Text(f"{i}")
     assert coerce_to_inline_scope(i) == InlineScope([Text(f"{i}")])
@@ -122,7 +122,7 @@ def test_block_coercion_of_float():
 
 
 def test_block_coercion_of_int():
-    # Use an integer too large for rust to use directly
+    # Use an integer too large for rust to use natively
     i = 737481293873132131293972839821398293
     assert coerce_to_block(i) == Paragraph([Sentence([Text(f"{i}")])])
     assert coerce_to_block_scope(i) == BlockScope(

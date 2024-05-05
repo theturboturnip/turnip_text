@@ -166,11 +166,15 @@ def test_docsegment_must_hold_header():
 
     class IsHeaderWithTooPositiveWeight:
         is_header = True
-        weight = 9223372036854775808  # This is an integer but it doesn't fit
+        weight = (
+            9223372036854775808  # This is an integer but it doesn't fit in Rust i64
+        )
 
     class IsHeaderWithTooNegativeWeight:
         is_header = True
-        weight = -9223372036854775809  # This is an integer but it doesn't fit
+        weight = (
+            -9223372036854775809
+        )  # This is an integer but it doesn't fit in Rust i64
 
     with pytest.raises(
         TypeError,

@@ -32,7 +32,7 @@ __all__ = [
     "CoercibleToInlineScope",
     "CoercibleToBlock",
     "CoercibleToBlockScope",
-    "parse_file_native",
+    "parse_file",
     "TurnipTextError",
     "TurnipTextSource",
     "open_turnip_text_source",
@@ -53,8 +53,8 @@ from ._native import (  # type: ignore
     coerce_to_block_scope,
     coerce_to_inline,
     coerce_to_inline_scope,
+    parse_file,
 )
-from ._native import parse_file as parse_file_native
 
 # Block, Inline, Header, and the Builders are all typeclasses that we can't import directly.
 
