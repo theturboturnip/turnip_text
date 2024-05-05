@@ -1,25 +1,25 @@
-turnip-text is an opinionated language that aims for formatting in source files to map intuitively to document elements, with a minimum of hardcoded syntax.
+turnip_text is an opinionated language that aims for formatting in source files to map intuitively to document elements, with a minimum of hardcoded syntax.
 It allows programmability through embedded Python.
-The turnip-text core parser reads in source text, evaluating embedded Python snippets as it goes, to create a Python document tree.
+The turnip_text core parser reads in source text, evaluating embedded Python snippets as it goes, to create a Python document tree.
 
-# Initiating a turnip-text parse
+# Initiating a turnip_text parse
 
-Calling `turnip_text.parse_file_native(src, globals)` starts turnip-text parsing the given source file.
+Calling `turnip_text.parse_file_native(src, globals)` starts turnip_text parsing the given source file.
 - `src` must be a `TurnipTextSource` instance, not a native Python file object. To create a `TurnipTextSource` instance from a file object, you have three options:
 
   ```python
   from turnip_text import TurnipTextSource
 
-  src_direct    = TurnipTextSource(name="some file", contents="turnip-text source code")
+  src_direct    = TurnipTextSource(name="some file", contents="turnip_text source code")
   # Automatically sets name=path, and reads the file into `contents` assuming UTF-8.
-  # The file must not have nul bytes '\0'. turnip-text will detect this and raise an error.
-  src_from_file = TurnipTextSource.from_path("path/to/turnip-text.ttext")
+  # The file must not have nul bytes '\0'. turnip_text will detect this and raise an error.
+  src_from_file = TurnipTextSource.from_path("path/to/turnip_text.ttext")
   # Automatically sets name="<string>"
-  src_from_str  = TurnipTextSource.from_str("turnip-text source code")
+  src_from_str  = TurnipTextSource.from_str("turnip_text source code")
   ```
 - `globals` must be a Python `dict`. It is the context in which all code is evaluated.
 
-# The turnip-text document model
+# The turnip_text document model
 
 The output of `parse_file_native()` is a `Document`.
 A `Document` contains front matter `content`, and a tree of `segments: List[DocSegment]`.
@@ -62,7 +62,7 @@ class Block(Protocol):
 BlockScope = List[Block]
 ```
 
-`Paragraph`s are blocks of text, and are usually created by parsing turnip-text source files rather than through Python.
+`Paragraph`s are blocks of text, and are usually created by parsing turnip_text source files rather than through Python.
 `Paragraph`s consist of many (at least one) `Sentence`s, and each `Sentence` consists of many (at least one) `Inline` objects.
 The most basic piece of inline content is `Text` representing plain UTF-8 text, but there are also `InlineScope`s (like `BlockScope`, a list of `Inline`) and `Raw` content (created through a "raw scope", which we'll see later).
 Python code can create its own kinds of `Inline` by declaring a class with a property `is_inline: bool = True`.
@@ -98,14 +98,14 @@ The concrete classes `Document`, `DocSegment`, `BlockScope`, `Paragraph`, `Sente
 They provide custom `__eq__` and `__repr__` functions for equality checking and debug printing respectively, but cannot be hashed.
 `Block`, `Inline`, and `Header` are _typeclasses_ e.g. patterns that custom classes can fit, and are defined in Python as Protocols that you can subclass.
 
-# Parsing a turnip-text document
+# Parsing a turnip_text document
 
-The turnip-text parser starts in *top-level block mode*.
+The turnip_text parser starts in *top-level block mode*.
 In all modes, the hash `#` character begins a comment that extends until the end of the line.
 All newlines end the comment, even those escaped with backslash `\`, just like Python.
 
 ```python
-Some turnip-text # with a comment
+Some turnip_text # with a comment
 You can add an escaped newline # the comment will end... \
 and the content will continue.
 ```
@@ -209,7 +209,7 @@ def fib(n):
 
 Note that the final eval-bracket emits `fib(5) = 8`.
 TODO tests for this
-turnip-text supports limited coercion: if an eval-bracket is an expression which evaluates to a string, it is automatically wrapped in `Text`.
+turnip_text supports limited coercion: if an eval-bracket is an expression which evaluates to a string, it is automatically wrapped in `Text`.
 If it evaluates to a float or an int, those are automatically stringified and converted to `Text`.
 They are converted through `__str__()` so won't have pretty formatting.
 Eagle-eyed readers will have noticed that `Text` isn't a `Block`, it is an `Inline`!
@@ -331,7 +331,7 @@ TODO
 ## Newlines in raw scopes and code
 
 Newlines can be inconsistent between operating systems, and handling some combination of `\r`, `\n`, and `\r\n` is a must.
-turnip-text captures each of these as a Newline token, so supports all of them.
+turnip_text captures each of these as a Newline token, so supports all of them.
 Newlines are the only exception to raw string capture, as used in raw scopes and eval-brackets, and are always converted to `\n` before exposing them to Python.
 This means all newlines captured in raw scopes, and all newlines inside eval-brackets, are captured
 

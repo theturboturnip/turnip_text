@@ -29,7 +29,7 @@ Y \[ˈʏpsilɔn\], Yen \[jɛn\], Yoga \[ˈjoːgɑ\]
     assert expected_doc == doc
 
 
-# Even after putting the text through UTF-16, turnip-text should still handle it
+# Even after putting the text through UTF-16, turnip_text should still handle it
 def test_utf16():
     original_src = r"""
 ði ıntəˈnæʃənəl fəˈnɛtık əsoʊsiˈeıʃn
@@ -56,7 +56,7 @@ Y \[ˈʏpsilɔn\], Yen \[jɛn\], Yoga \[ˈjoːgɑ\]
     assert expected_doc == doc
 
 
-# Even after putting the text through SHIFT-JIS, turnip-text should still handle it
+# Even after putting the text through SHIFT-JIS, turnip_text should still handle it
 def test_shift_jis():
     original_src = r"""
 A｡｢｣､･ｦｧｨｩｪｫｬｭｮｯ

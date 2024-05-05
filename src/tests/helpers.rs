@@ -1,4 +1,4 @@
-//! This module provides helper functions and types for mimicking "real" turnip-text data structures (especially those created in Python) in Rust.
+//! This module provides helper functions and types for mimicking "real" turnip_text data structures (especially those created in Python) in Rust.
 //! The general usage pattern is to define the expected result of your test with these types, then for harness code to execute the necessary Rust+Python and to then convert those results to these types before comparing.
 
 use std::ffi::CString;

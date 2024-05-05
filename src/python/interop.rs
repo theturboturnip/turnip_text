@@ -812,7 +812,7 @@ impl TurnipTextSource {
     }
 
     /// Take a file object, call read(), expect the output to be a string, and pull the data out as UTF-8
-    /// for turnip-text to process.
+    /// for turnip_text to process.
     ///
     /// Previously this method took a filepath directly and read it using Rust, but that wouldn't handle non-UTF-8-encoded files correctly.
     #[staticmethod]

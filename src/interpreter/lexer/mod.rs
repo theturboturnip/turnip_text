@@ -568,7 +568,7 @@ impl TTToken {
 /// Rejecting it in the lexer also lets the Python code parser unwrap CStrings from tokens without worrying about nul-correctness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum LexError {
-    #[error("Found a null byte '\\0' in turnip-text source code, which isn't allowed. This source is probably corrupted, not a text file, or was read with the wrong encoding.")]
+    #[error("Found a null byte '\\0' in turnip_text source code, which isn't allowed. This source is probably corrupted, not a text file, or was read with the wrong encoding.")]
     NullByteFound,
 }
 // The lexer library forces us to implement LexerError - effectively a default failure for when none of the parser functions return true - but the turnip text lexer explicitly captures all non-special characters as normal text.

@@ -30,7 +30,7 @@ class block_scope_builder(BlockScopeBuilder):
             return items
         return inner
     ```
-    which allows turnip-text as so:
+    which allows turnip_text as so:
     ```!text
     [block(name="greg")]{
     The contents of greg
@@ -66,7 +66,7 @@ class inline_scope_builder(InlineScopeBuilder):
             return InlineScope(list(items) + [postfix])
         return inner
     ```
-    which allows turnip-text as so:
+    which allows turnip_text as so:
     ```!text
     [inline("!")]{surprise}
     ```
@@ -101,7 +101,7 @@ class raw_scope_builder(RawScopeBuilder):
     def math(raw_text: str) -> Inline:
         ...
     ```
-    which allows turnip-text as so:
+    which allows turnip_text as so:
     ```!text
     [math]#{\\sin x}#
     ```
