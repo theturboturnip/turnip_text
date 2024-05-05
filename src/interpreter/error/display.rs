@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     interpreter::{
         error::{
@@ -49,6 +51,34 @@ pub fn detailed_message_of(py: Python, err: &TTErrorWithContext) -> String {
     match err {
         TTErrorWithContext::NullByteFoundInSource { .. }
         | TTErrorWithContext::InternalPython(_) => format!("{}", err),
+        TTErrorWithContext::FileStackExceededLimit { files, limit } => {
+            // Look for recursion: check for repeated entries of the same file names in the stack
+            let mut name_map = HashMap::new();
+            for file in files {
+                let key = file.name();
+                name_map.insert(key, name_map.get(key).map_or(1usize, |value| value + 1));
+            }
+            let mut message =
+                format!("Exceeded the TurnipTextSource stack limit of {limit} files.\n");
+            // Remove the names of files that haven't repeated
+            name_map.retain(|_, occurences| *occurences > 1);
+            if name_map.is_empty() {
+                message.push_str(
+                    "No repeated names were detected.\n\
+                It may be OK to increase the `max_file_depth` argument, \
+                but it is more likely something has gone wrong.",
+                )
+            } else {
+                message.push_str(
+                    "Found the following repeated TurnipTextSource names in the stack:\n",
+                );
+                for (name, occurences) in name_map {
+                    message = format!("{message}'{name}':\t{occurences} times\n");
+                }
+                message.push_str("One of these files is likely guilty of recursion.")
+            }
+            message
+        }
         TTErrorWithContext::Syntax(sources, err) => {
             let mut text_buf = Buffer::no_color();
             emit(

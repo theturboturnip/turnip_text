@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::{types::PyDict, Py, Python};
 use std::fmt::Debug;
+use std::num::NonZeroUsize;
 
 use crate::python::interop::{Document, TurnipTextSource};
 use crate::util::ParseSpan;
@@ -62,8 +63,17 @@ pub enum FileEvent {
     FileEnded,
 }
 
+pub struct RecursionConfig {
+    /// Print a warning to stderr on possible recursion
+    pub recursion_warning: bool,
+    /// Hard limit on the maximum depth of included source files
+    pub max_file_depth: Option<NonZeroUsize>,
+}
+
 pub struct TurnipTextParser {
-    // The stack of currently parsed file (spawned from, indices). `spawned from` is None for the first file, Some for all others
+    /// Configuration for recursion protection
+    recursion_config: RecursionConfig,
+    /// The stack of currently parsed file (spawned from, indices). `spawned from` is None for the first file, Some for all others
     file_stack: Vec<(Option<ParseSpan>, usize)>,
     files: Vec<ParsingFile>,
     builders: ProcessorStacks,
@@ -73,16 +83,23 @@ impl TurnipTextParser {
         py: Python,
         py_env: UserPythonEnv,
         file: TurnipTextSource,
+        recursion_config: RecursionConfig,
     ) -> TTResultWithContext<Py<Document>> {
-        let parser = Self::new(py, file.name, file.contents)?;
+        let parser = Self::new(py, file.name, file.contents, recursion_config)?;
         parser.parse(py, py_env)
     }
 
-    pub fn new(py: Python, file_name: String, file_contents: String) -> TTResultWithContext<Self> {
+    pub fn new(
+        py: Python,
+        file_name: String,
+        file_contents: String,
+        recursion_config: RecursionConfig,
+    ) -> TTResultWithContext<Self> {
         let file = ParsingFile::new(0, file_name, file_contents)?;
         let files = vec![file];
         let builders = ProcessorStacks::new(py)?;
         Ok(Self {
+            recursion_config,
             file_stack: vec![(None, 0)],
             files,
             builders,
@@ -117,9 +134,30 @@ impl TurnipTextParser {
                     contents,
                 } => {
                     let file_idx = self.files.len();
+
+                    // Brittle warning for recursion
+                    if self.recursion_config.recursion_warning {
+                        for (_, other_file_idx) in &self.file_stack {
+                            if self.files[*other_file_idx].name == name {
+                                eprintln!(
+                                "turnip_text warning: likely recursion in source named '{name}'"
+                            )
+                            }
+                        }
+                    }
+
                     self.files.push(ParsingFile::new(file_idx, name, contents)?);
                     self.file_stack.push((Some(emitted_by_code), file_idx));
                     self.builders.push_subfile();
+
+                    if let Some(limit) = self.recursion_config.max_file_depth {
+                        if self.file_stack.len() > limit.into() {
+                            return Err(TTErrorWithContext::FileStackExceededLimit {
+                                files: self.files,
+                                limit: limit.into(),
+                            });
+                        }
+                    }
                 }
                 FileEvent::FileEnded => {
                     let (emitted_by, _) = self

@@ -44,6 +44,12 @@ pub type TTResult<T> = Result<T, TTError>;
 pub enum TTErrorWithContext {
     #[error("Found a null byte '\\0' in source '{source_name}', which isn't allowed. This source is probably corrupted, not a text file, or was read with the wrong encoding.")]
     NullByteFoundInSource { source_name: String },
+    #[error("The stack of TurnipTextSources exceeded the limit ({limit})")]
+    FileStackExceededLimit {
+        files: Vec<ParsingFile>,
+        /// Implicitly nonzero, NonZeroUsize is difficult to work with
+        limit: usize,
+    },
     #[error("Interpreter Error: {1}")]
     Syntax(Vec<ParsingFile>, Box<TTSyntaxError>),
     #[error("Error when executing user-generated Python")]
@@ -67,8 +73,9 @@ impl TTErrorWithContext {
 
         match self {
             // If the error wasn't related to an actual PyErr, just throw the exception as-is
-            TTErrorWithContext::NullByteFoundInSource { .. } | TTErrorWithContext::Syntax(_, _) => {
-            }
+            TTErrorWithContext::NullByteFoundInSource { .. }
+            | TTErrorWithContext::FileStackExceededLimit { .. }
+            | TTErrorWithContext::Syntax(_, _) => {}
             // If it *was* related to an actual PyErr, set __cause__ and __context__ to point to that error.
             TTErrorWithContext::UserPython(_, user_python_err) => match *user_python_err {
                 // Coercion doesn't have an actual PyError associated with it

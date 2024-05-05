@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use pyo3::{
     create_exception,
     exceptions::{PyTypeError, PyValueError},
@@ -6,7 +8,7 @@ use pyo3::{
     types::{PyDict, PyFloat, PyIterator, PyList, PyLong, PyString},
 };
 
-use crate::interpreter::TurnipTextParser;
+use crate::interpreter::{RecursionConfig, TurnipTextParser};
 
 use super::typeclass::{PyInstanceList, PyTcRef, PyTypeclass, PyTypeclassList};
 
@@ -37,13 +39,29 @@ pub fn turnip_text(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-#[pyfunction]
+/// Implement a Default recursion config that matches the Python defaults
+impl Default for RecursionConfig {
+    fn default() -> Self {
+        Self {
+            recursion_warning: true,
+            max_file_depth: NonZeroUsize::new(128),
+        }
+    }
+}
+
+#[pyfunction(signature=(file, py_env, recursion_warning=false, max_file_depth=128))]
 fn parse_file<'py>(
     py: Python<'py>,
     file: TurnipTextSource,
     py_env: &Bound<'_, PyDict>,
+    recursion_warning: bool,
+    max_file_depth: usize,
 ) -> PyResult<Py<Document>> {
-    match TurnipTextParser::oneshot_parse(py, py_env, file) {
+    let recursion_config = RecursionConfig {
+        recursion_warning,
+        max_file_depth: NonZeroUsize::new(max_file_depth),
+    };
+    match TurnipTextParser::oneshot_parse(py, py_env, file, recursion_config) {
         Ok(doc) => Ok(doc),
         Err(tterr) => Err(tterr.to_pyerr(py)),
     }

@@ -68,6 +68,9 @@ impl<'a> From<(&ParseContext, &'a Vec<ParsingFile>)> for TestParseContext<'a> {
 #[derive(Debug, Clone)]
 pub enum TestTTErrorWithContext<'a> {
     NullByteFoundInSource(&'a str),
+    // This doesn't have any properties because the limit will always be the parser default,
+    // and the file list will always be ["<string>"; limit]
+    FileStackExceededLimit,
     Syntax(TestSyntaxError<'a>),
     UserPython(TestUserPythonError<'a>),
     InternalPython(Regex),
@@ -91,6 +94,9 @@ impl<'a> TestTTErrorWithContext<'a> {
                     source_name: r_name,
                 },
             ) => dbg!(l_name) == dbg!(r_name),
+            (Self::FileStackExceededLimit, TTErrorWithContext::FileStackExceededLimit { .. }) => {
+                true
+            }
             (Self::Syntax(expected), TTErrorWithContext::Syntax(sources, actual)) => {
                 let actual_as_test: TestSyntaxError<'_> = (actual, sources).into();
                 *dbg!(expected) == dbg!(actual_as_test)

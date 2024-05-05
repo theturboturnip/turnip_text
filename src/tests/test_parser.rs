@@ -1,3 +1,4 @@
+use crate::interpreter::RecursionConfig;
 use crate::interpreter::{error::TTResultWithContext, TurnipTextParser};
 use regex::Regex;
 
@@ -23,7 +24,12 @@ fn eval_data(data: &str) -> TTResultWithContext<TestDocument> {
     let res_with_panic_err = panic::catch_unwind(|| {
         Python::with_gil(|py| {
             let py_env = generate_globals(py).expect("Couldn't generate globals dict");
-            let parser = TurnipTextParser::new(py, "<test>".into(), data.into())?;
+            let parser = TurnipTextParser::new(
+                py,
+                "<test>".into(),
+                data.into(),
+                RecursionConfig::default(),
+            )?;
             let root = parser.parse(py, &py_env)?;
             let doc_obj = root.to_object(py);
             let doc = doc_obj.bind(py);
@@ -103,3 +109,6 @@ mod substitution;
 
 /// Tests that code is parsed and compiled correctly
 mod code;
+
+/// Test recursion detection
+mod recursion;
