@@ -35,12 +35,9 @@ use crate::{
             TTResult,
         },
         lexer::{Escapable, TTToken},
-        InterimDocumentStructure, UserPythonEnv,
+        UserPythonEnv,
     },
-    python::{
-        interop::{BlockScope, Document, Header},
-        typeclass::PyTcRef,
-    },
+    python::{interop::Header, typeclass::PyTcRef},
     util::{ParseContext, ParseSpan},
 };
 
@@ -49,10 +46,14 @@ use super::{
     code::CodeProcessor,
     comment::CommentProcessor,
     inline::{ParagraphProcessor, RawStringProcessor},
-    py_internal_alloc, rc_refcell, BlockElem, DocElement, EmittedElement, ProcStatus,
-    TokenProcessor,
+    rc_refcell, BlockElem, DocElement, EmittedElement, ProcStatus, TokenProcessor,
 };
 
+mod block_scope;
+mod toplevel;
+
+use block_scope::BlockScopeBlockMode;
+use toplevel::TopLevelBlockMode;
 // Only expose specific implementations of BlockLevelProcessor
 
 /// Block-scope processing with [TopLevelBlockMode].
@@ -87,127 +88,6 @@ trait BlockMode {
         block: BlockElem,
         block_ctx: ParseContext,
     ) -> TTResult<ProcStatus>;
-}
-
-/// At the top level of the document, headers are allowed and manipulate the InterimDocumentStructure.
-pub struct TopLevelBlockMode {
-    structure: InterimDocumentStructure,
-}
-impl BlockLevelProcessor<TopLevelBlockMode> {
-    pub fn new(py: Python) -> PyResult<Self> {
-        Ok(Self {
-            inner: TopLevelBlockMode {
-                structure: InterimDocumentStructure::new(py)?,
-            },
-            expects_n_blank_lines_after: None,
-        })
-    }
-    pub fn finalize(mut self, py: Python<'_>) -> TTResult<Py<Document>> {
-        self.inner
-            .structure
-            .pop_segments_until_less_than(py, i64::MIN)?;
-        Ok(self.inner.structure.finalize(py)?)
-    }
-}
-impl BlockMode for TopLevelBlockMode {
-    fn on_close_scope(&mut self, _py: Python, tok: TTToken, _data: &str) -> TTResult<ProcStatus> {
-        // This builder may receive tokens from inner files.
-        // It always returns an error.
-        // This fulfils the contract for [TokenProcessor::process_token].
-        Err(TTSyntaxError::BlockScopeCloseOutsideScope(tok.token_span()).into())
-    }
-
-    // When EOF comes, we don't produce anything to bubble up - there's nothing above us!
-    fn on_eof(&mut self, _py: Python, _tok: TTToken) -> TTResult<ProcStatus> {
-        // This is the only exception to the contract for [TokenProcessor::process_token].
-        // There is never a builder above this one, so there is nothing that can reprocess the token.
-        Ok(ProcStatus::Continue)
-    }
-
-    fn on_header(
-        &mut self,
-        py: Python,
-        header: PyTcRef<Header>,
-        _header_ctx: ParseContext,
-    ) -> TTResult<ProcStatus> {
-        self.structure.push_segment_header(py, header)?;
-        Ok(ProcStatus::Continue)
-    }
-
-    fn on_block(
-        &mut self,
-        py: Python,
-        block: BlockElem,
-        _block_ctx: ParseContext,
-    ) -> TTResult<ProcStatus> {
-        self.structure.push_to_topmost_block(py, block.bind(py))?;
-        Ok(ProcStatus::Continue)
-    }
-}
-
-pub struct BlockScopeBlockMode {
-    ctx: ParseContext,
-    block_scope: Py<BlockScope>,
-}
-impl BlockMode for BlockScopeBlockMode {
-    fn on_close_scope(&mut self, py: Python, tok: TTToken, _data: &str) -> TTResult<ProcStatus> {
-        // This builder may receive tokens from inner files.
-        // If it receives a token from an inner file, it returns an error.
-        // This fulfils the contract for [TokenProcessor::process_token].
-        if !self.ctx.try_extend(&tok.token_span()) {
-            // Closing block scope from different file
-            // This must be a block-level scope close, because if an unbalanced scope close appeared in inline mode it would already have errored and not bubbled out.
-            Err(TTSyntaxError::BlockScopeCloseOutsideScope(tok.token_span()).into())
-        } else {
-            Ok(ProcStatus::Pop(Some((
-                self.ctx,
-                BlockElem::BlockScope(self.block_scope.clone_ref(py)).into(),
-            ))))
-        }
-    }
-
-    fn on_eof(&mut self, _py: Python, tok: TTToken) -> TTResult<ProcStatus> {
-        Err(TTSyntaxError::EndedInsideScope {
-            scope_start: self.ctx.first_tok(),
-            eof_span: tok.token_span(),
-        }
-        .into())
-    }
-
-    fn on_header(
-        &mut self,
-        _py: Python,
-        header: PyTcRef<Header>,
-        header_ctx: ParseContext,
-    ) -> TTResult<ProcStatus> {
-        Err(TTSyntaxError::CodeEmittedHeaderInBlockScope {
-            block_scope_start: self.ctx.first_tok(),
-            header,
-            code_span: header_ctx.full_span(),
-        }
-        .into())
-    }
-
-    fn on_block(
-        &mut self,
-        py: Python,
-        block: BlockElem,
-        _block_ctx: ParseContext,
-    ) -> TTResult<ProcStatus> {
-        self.block_scope.borrow_mut(py).push_block(block.bind(py))?;
-        Ok(ProcStatus::Continue)
-    }
-}
-impl BlockLevelProcessor<BlockScopeBlockMode> {
-    pub fn new(py: Python, first_tok: ParseSpan, last_tok: ParseSpan) -> TTResult<Self> {
-        Ok(Self {
-            inner: BlockScopeBlockMode {
-                ctx: ParseContext::new(first_tok, last_tok),
-                block_scope: py_internal_alloc(py, BlockScope::new_empty(py))?,
-            },
-            expects_n_blank_lines_after: None,
-        })
-    }
 }
 
 /// The implementation of block-level token processing for all BlockLevelProcessors.
