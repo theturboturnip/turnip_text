@@ -174,11 +174,11 @@ fn test_inline_raw_scope() {
 #[test]
 fn test_owned_block_scope() {
     expect_parse(
-        r#"[TEST_BLOCK_BUILDER]{
+        r#"[BUILD_CUSTOM_BLOCK]{
 It was the best of the times, it was the blurst of times
 }
 "#,
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![
             TestBlock::Paragraph(vec![test_sentence(
                 "It was the best of the times, it was the blurst of times",
             )]),
@@ -208,9 +208,9 @@ It was the best of the times, it was the blurst of times
 #[test]
 fn test_owned_inline_scope() {
     expect_parse(
-        r"[TEST_INLINE_BUILDER]{special text}",
+        r"[BUILD_CUSTOM_INLINE]{special text}",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::TestOwnedInline(vec![test_text("special text")]),
+            TestInline::CustomInline(vec![test_text("special text")]),
         ]])])),
     )
 }
@@ -234,11 +234,11 @@ fn test_owned_inline_scope_with_non_inline_builder() {
 #[test]
 fn test_owned_inline_raw_scope_with_newline() {
     expect_parse(
-        r#"[TEST_RAW_INLINE_BUILDER]#{
+        r#"[BUILD_CUSTOM_RAW]#{
 import os
 }#"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::TestOwnedRaw(
+            TestInline::CustomRaw(
                 r#"
 import os
 "#
@@ -626,8 +626,8 @@ because you may need it to split up words in sentences."#,
 #[test]
 fn test_emit_block_from_code() {
     expect_parse(
-        "[TEST_BLOCK]",
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        "[CUSTOM_BLOCK]",
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![])])),
     )
 }
 
@@ -635,14 +635,14 @@ fn test_emit_block_from_code() {
 fn test_cant_emit_block_from_code_inside_paragraph() {
     expect_parse_err(
         "Lorem ipsum!
-I'm in a [TEST_BLOCK]",
+I'm in a [CUSTOM_BLOCK]",
         TestSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "Lorem",
                 " ipsum!\nI'm in a",
                 " ",
             )),
-            code_span: TestParseSpan("[TEST_BLOCK]"),
+            code_span: TestParseSpan("[CUSTOM_BLOCK]"),
         },
     )
 }
@@ -650,17 +650,21 @@ I'm in a [TEST_BLOCK]",
 #[test]
 fn test_raw_scope_emitting_block_from_block_level() {
     expect_parse(
-        "[TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#",
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        "[BUILD_CUSTOM_BLOCK_FROM_RAW]#{some raw stuff that goes in a block!}#",
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![
+            TestBlock::Paragraph(vec![vec![test_raw_text(
+                "some raw stuff that goes in a block!",
+            )]]),
+        ])])),
     )
 }
 
 #[test]
 fn test_raw_scope_emitting_inline_from_block_level() {
     expect_parse(
-        "[TEST_RAW_INLINE_BUILDER]#{some raw stuff that goes in a block!}#",
+        "[BUILD_CUSTOM_RAW]#{some raw stuff that goes in a block!}#",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::TestOwnedRaw("some raw stuff that goes in a block!".into()),
+            TestInline::CustomRaw("some raw stuff that goes in a block!".into()),
         ]])])),
     )
 }
@@ -668,7 +672,7 @@ fn test_raw_scope_emitting_inline_from_block_level() {
 #[test]
 fn test_raw_scope_cant_emit_block_inside_paragraph() {
     expect_parse_err(
-        "Inside a paragraph, you can't [TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a \
+        "Inside a paragraph, you can't [BUILD_CUSTOM_BLOCK_FROM_RAW]#{some raw stuff that goes in a \
          block!}#",
         TestSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
@@ -677,7 +681,7 @@ fn test_raw_scope_cant_emit_block_inside_paragraph() {
                 " ",
             )),
             code_span: TestParseSpan(
-                "[TEST_RAW_BLOCK_BUILDER]#{some raw stuff that goes in a block!}#",
+                "[BUILD_CUSTOM_BLOCK_FROM_RAW]#{some raw stuff that goes in a block!}#",
             ),
         },
     )
@@ -686,10 +690,10 @@ fn test_raw_scope_cant_emit_block_inside_paragraph() {
 #[test]
 fn test_raw_scope_emitting_inline_inside_paragraph() {
     expect_parse(
-        "Inside a paragraph, you can [TEST_RAW_INLINE_BUILDER]#{insert an inline raw!}#",
+        "Inside a paragraph, you can [BUILD_CUSTOM_RAW]#{insert an inline raw!}#",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Inside a paragraph, you can "),
-            TestInline::TestOwnedRaw("insert an inline raw!".into()),
+            TestInline::CustomRaw("insert an inline raw!".into()),
         ]])])),
     )
 }
@@ -818,7 +822,7 @@ fn test_syntax_errs_passed_thru() {
 #[test]
 fn test_block_scope_builder_return_none() {
     expect_parse(
-        "[TEST_BLOCK_SWALLOWER]{
+        "[CUSTOM_BLOCK_SWALLOWER]{
 stuff that gets swallowed
 }",
         Ok(test_doc(vec![])),
@@ -828,7 +832,7 @@ stuff that gets swallowed
 #[test]
 fn test_block_scope_builder_return_none_with_end_inside_para() {
     expect_parse(
-        "[TEST_BLOCK_SWALLOWER]{
+        "[CUSTOM_BLOCK_SWALLOWER]{
 stuff that gets swallowed
 }",
         Ok(test_doc(vec![])),

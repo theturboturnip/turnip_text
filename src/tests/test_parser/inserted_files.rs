@@ -121,10 +121,10 @@ f4 = test_src("""
 fn test_inserted_file_in_builder_arg() {
     expect_parse(
         r#"
-        [TEST_BLOCK_BUILDER]{
+        [BUILD_CUSTOM_BLOCK]{
             [test_src("some valid stuff in an inner file")]
         }"#,
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![
             TestBlock::Paragraph(vec![test_sentence("some valid stuff in an inner file")]),
         ])])),
     )
@@ -162,7 +162,7 @@ fn test_no_inserted_file_in_inline_scope() {
 #[test]
 fn test_no_inserted_file_in_inline_builder() {
     expect_parse_err(
-        r#"[TEST_INLINE_BUILDER]{wow i'm inside an inline scope builder! [test_src("some more data O.O")] }"#,
+        r#"[BUILD_CUSTOM_INLINE]{wow i'm inside an inline scope builder! [test_src("some more data O.O")] }"#,
         TestSyntaxError::CodeEmittedSourceInInlineMode {
             inl_mode: TestInlineModeContext::InlineScope {
                 scope_start: TestParseSpan("{"),

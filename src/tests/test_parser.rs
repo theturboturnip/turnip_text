@@ -23,7 +23,7 @@ fn eval_data(data: &str) -> TTResultWithContext<TestDocument> {
     // Catch all non-abort panics while running the interpreter and handling the output
     let res_with_panic_err = panic::catch_unwind(|| {
         Python::with_gil(|py| {
-            let py_env = generate_globals(py).expect("Couldn't generate globals dict");
+            let py_env = generate_globals(py);
             let parser = TurnipTextParser::new(
                 py,
                 "<test>".into(),

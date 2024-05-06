@@ -36,32 +36,32 @@ fn block_scope_opened_with_comment() {
 #[test]
 fn code_block_scope_opened_with_direct_newline() {
     expect_parse(
-        "[TEST_BLOCK_BUILDER]{\n}",
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        "[BUILD_CUSTOM_BLOCK]{\n}",
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![])])),
     )
 }
 
 #[test]
 fn code_block_scope_opened_with_whitespaces_then_newline() {
     expect_parse(
-        "[TEST_BLOCK_BUILDER]{       \n}",
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        "[BUILD_CUSTOM_BLOCK]{       \n}",
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![])])),
     )
 }
 
 #[test]
 fn code_block_scope_opened_with_whitespaces_then_comment_then_newline() {
     expect_parse(
-        "[TEST_BLOCK_BUILDER]{       # wowie a comment!\n}",
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        "[BUILD_CUSTOM_BLOCK]{       # wowie a comment!\n}",
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![])])),
     )
 }
 
 #[test]
 fn code_block_scope_opened_with_comment() {
     expect_parse(
-        "[TEST_BLOCK_BUILDER]{# wowie a comment\n}",
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        "[BUILD_CUSTOM_BLOCK]{# wowie a comment\n}",
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![])])),
     )
 }
 
@@ -90,9 +90,9 @@ fn inline_scope_opened_with_whitespaces_then_content() {
 #[test]
 fn code_inline_scope_opened_with_direct_content() {
     expect_parse(
-        "[TEST_INLINE_BUILDER]{inline}",
+        "[BUILD_CUSTOM_INLINE]{inline}",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::TestOwnedInline(vec![test_text("inline")]),
+            TestInline::CustomInline(vec![test_text("inline")]),
         ]])])),
     )
 }
@@ -100,9 +100,9 @@ fn code_inline_scope_opened_with_direct_content() {
 #[test]
 fn code_inline_scope_opened_with_whitespaces_then_content() {
     expect_parse(
-        "[TEST_INLINE_BUILDER]{       inline      }",
+        "[BUILD_CUSTOM_INLINE]{       inline      }",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::TestOwnedInline(vec![test_text("inline")]),
+            TestInline::CustomInline(vec![test_text("inline")]),
         ]])])),
     )
 }
@@ -133,9 +133,9 @@ fn scopes_with_escaped_newlines_are_inline() {
 #[test]
 fn code_empty_scopes_are_inline() {
     expect_parse(
-        "[TEST_INLINE_BUILDER]{}",
+        "[BUILD_CUSTOM_INLINE]{}",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::TestOwnedInline(vec![]),
+            TestInline::CustomInline(vec![]),
         ]])])),
     )
 }

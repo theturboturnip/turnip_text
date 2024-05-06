@@ -6,21 +6,21 @@ fn test_many_inner_levels() {
         "
         outside
 
-        [TestHeader(weight=1)]
+        [CustomHeader(weight=1)]
 
         light!
 
-        [TestHeader(weight=2)]
+        [CustomHeader(weight=2)]
         
-        [TestHeader(weight=30)]
+        [CustomHeader(weight=30)]
 
-        [TestHeader(weight=54)]
+        [CustomHeader(weight=54)]
         
         middling
 
-        [TestHeader(weight=67)]
+        [CustomHeader(weight=67)]
 
-        [TestHeader(weight=100)]
+        [CustomHeader(weight=100)]
 
         heAVEY
 
@@ -70,21 +70,21 @@ fn test_bouncing_in_and_out() {
         "
         outside
 
-        [TestHeader(weight=1)]
+        [CustomHeader(weight=1)]
 
         light!
 
-        [TestHeader(weight=2)]
+        [CustomHeader(weight=2)]
         
-        [TestHeader(weight=30)]
+        [CustomHeader(weight=30)]
 
-        [TestHeader(weight=54)]
+        [CustomHeader(weight=54)]
         
         middling
 
-        [TestHeader(weight=2)]
+        [CustomHeader(weight=2)]
 
-        [TestHeader(weight=20)]
+        [CustomHeader(weight=20)]
 
         middling again!
 
@@ -137,15 +137,15 @@ fn test_bouncing_out_from_under() {
         "
         outside
 
-        [TestHeader(weight=10)]
+        [CustomHeader(weight=10)]
 
         1st level
 
-        [TestHeader(weight=0)]
+        [CustomHeader(weight=0)]
         
         1st level
 
-        [TestHeader(weight=10)]
+        [CustomHeader(weight=10)]
 
         2nd level
 
@@ -186,21 +186,21 @@ fn test_negative_weight() {
         "
         outside
 
-        [TestHeader(weight=1)]
+        [CustomHeader(weight=1)]
 
         light!
 
-        [TestHeader(weight=2)]
+        [CustomHeader(weight=2)]
         
-        [TestHeader(weight=-10)]
+        [CustomHeader(weight=-10)]
 
-        [TestHeader(weight=54)]
+        [CustomHeader(weight=54)]
         
         middling
 
-        [TestHeader(weight=67)]
+        [CustomHeader(weight=67)]
 
-        [TestHeader(weight=100)]
+        [CustomHeader(weight=100)]
 
         heAVEY
 
@@ -251,11 +251,11 @@ fn test_negative_weight() {
 fn test_cant_create_header_block_scope() {
     expect_parse_err(
         "{
-    [TestHeader()]
+    [CustomHeader()]
     }",
         TestSyntaxError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
-            code_span: TestParseSpan("[TestHeader()]"),
+            code_span: TestParseSpan("[CustomHeader()]"),
         },
     )
 }
@@ -264,7 +264,7 @@ fn test_cant_create_header_block_scope() {
 fn test_cant_build_header_block_scope() {
     expect_parse_err(
         "{
-    [TestHeaderBuilder()]{
+    [CustomHeaderBuilder()]{
         Sometimes Headers can be built, too!
         But if they're in a block scope it shouldn't be allowed :(
     }
@@ -272,7 +272,7 @@ fn test_cant_build_header_block_scope() {
         TestSyntaxError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
             code_span: TestParseSpan(
-                "[TestHeaderBuilder()]{
+                "[CustomHeaderBuilder()]{
         Sometimes Headers can be built, too!
         But if they're in a block scope it shouldn't be allowed :(
     }",
@@ -284,12 +284,12 @@ fn test_cant_build_header_block_scope() {
 #[test]
 fn test_cant_create_header_block_scope_argument() {
     expect_parse_err(
-        "[TEST_BLOCK_BUILDER]{
-    [TestHeader()]
+        "[BUILD_CUSTOM_BLOCK]{
+    [CustomHeader()]
     }",
         TestSyntaxError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
-            code_span: TestParseSpan("[TestHeader()]"),
+            code_span: TestParseSpan("[CustomHeader()]"),
         },
     )
 }
@@ -300,7 +300,7 @@ fn test_can_create_header_toplevel_file() {
         "
         Toplevel content!
 
-        [TestHeader(weight=123)]
+        [CustomHeader(weight=123)]
         
         More content!",
         Ok(TestDocument {
@@ -323,7 +323,7 @@ fn test_can_create_header_inner_file() {
     expect_parse(
         r#"
 [-
-header_in_file = test_src("""[TestHeader(weight=123)]
+header_in_file = test_src("""[CustomHeader(weight=123)]
 
 Content in file!
 """)
@@ -356,7 +356,7 @@ fn test_cant_create_header_block_scope_in_inner_file() {
 [-
 header_in_file = test_src("""
 {
-    [TestHeader(weight=123)]
+    [CustomHeader(weight=123)]
 
     Content in file!
 }""")
@@ -368,7 +368,7 @@ header_in_file = test_src("""
         Content outside file!"#,
         TestSyntaxError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
-            code_span: TestParseSpan("[TestHeader(weight=123)]"),
+            code_span: TestParseSpan("[CustomHeader(weight=123)]"),
         },
     )
 }
@@ -379,7 +379,7 @@ fn test_cant_create_header_inner_file_in_block_scope() {
         r#"
 [-
 header_in_file = test_src("""
-[TestHeader(weight=123)]
+[CustomHeader(weight=123)]
 
 Content in file!
 """)
@@ -393,7 +393,7 @@ Content in file!
         }"#,
         TestSyntaxError::CodeEmittedHeaderInBlockScope {
             block_scope_start: TestParseSpan("{"),
-            code_span: TestParseSpan("[TestHeader(weight=123)]"),
+            code_span: TestParseSpan("[CustomHeader(weight=123)]"),
         },
     )
 }
@@ -401,14 +401,14 @@ Content in file!
 #[test]
 fn test_cant_create_header_in_paragraph() {
     expect_parse_err(
-        "And as I was saying [TestHeader()]",
+        "And as I was saying [CustomHeader()]",
         TestSyntaxError::CodeEmittedHeaderInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "And",
                 " as I was saying",
                 " ",
             )),
-            code_span: TestParseSpan("[TestHeader()]"),
+            code_span: TestParseSpan("[CustomHeader()]"),
         },
     )
 }
@@ -416,12 +416,12 @@ fn test_cant_create_header_in_paragraph() {
 #[test]
 fn test_cant_create_header_inline() {
     expect_parse_err(
-        "[TEST_BLOCK_BUILDER_FROM_INLINE]{ [TestHeader()] }",
+        "[BUILD_CUSTOM_BLOCK_FROM_INLINE]{ [CustomHeader()] }",
         TestSyntaxError::CodeEmittedHeaderInInlineMode {
             inl_mode: TestInlineModeContext::InlineScope {
                 scope_start: TestParseSpan("{"),
             },
-            code_span: TestParseSpan("[TestHeader()]"),
+            code_span: TestParseSpan("[CustomHeader()]"),
         },
     )
 }

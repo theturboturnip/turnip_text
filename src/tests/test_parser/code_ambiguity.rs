@@ -21,7 +21,7 @@ class Super:
 [Super()]
 
 "#,
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![])])),
     )
 }
 
@@ -47,7 +47,7 @@ class Super:
 
 "#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::TestOwnedInline(vec![]),
+            TestInline::CustomInline(vec![]),
             test_text(" and stuff"),
         ]])])),
     )
@@ -82,12 +82,12 @@ class Super:
     );
     // Test that things that can't build throw errors
     expect_parse_err(
-        "[TEST_BLOCK]{
+        "[CUSTOM_BLOCK]{
         }",
         TestUserPythonError::CoercingEvalBracketToBuilder {
             
-            code_ctx: TestParseContext("[", "TEST_BLOCK", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got <TestOwnedBlock.*")
+            code_ctx: TestParseContext("[", "CUSTOM_BLOCK", "]"),
+            err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got <CustomBlock.*")
                 .unwrap(),
             scope_open: TestParseSpan("{"),
             build_mode: UserPythonBuildMode::FromBlock,
@@ -110,7 +110,7 @@ class Super:
     def build_from_blocks(self, blocks):
         raise RuntimeError("argh shouldn't run this")
     def build_from_inlines(self, inlines):
-        return TEST_INLINE
+        return CUSTOM_INLINE
     def build_from_raw(self, raw):
         raise RuntimeError("argh shouldn't run this")
 -]
@@ -119,17 +119,17 @@ class Super:
 
 "#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::TestOwnedInline(vec![]),
+            TestInline::CustomInline(vec![]),
         ]])])),
     );
     // Test that things that can't build throw errors
     expect_parse_err(
-        "[TEST_INLINE]{}",
+        "[CUSTOM_INLINE]{}",
         TestUserPythonError::CoercingEvalBracketToBuilder {
             
-            code_ctx: TestParseContext("[", "TEST_INLINE", "]"),
+            code_ctx: TestParseContext("[", "CUSTOM_INLINE", "]"),
             err: Regex::new(
-                r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*build_from_inlines.*Got <TestOwnedInline.*",
+                r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*build_from_inlines.*Got <CustomInline.*",
             )
             .unwrap(),
             scope_open: TestParseSpan("{"),
@@ -155,23 +155,23 @@ class Super:
     def build_from_inlines(self, inlines):
         raise RuntimeError("argh shouldn't run this")
     def build_from_raw(self, raw):
-        return TEST_RAW
+        return CUSTOM_RAW
 -]
 
 [Super()]#{ stuff }#
 
 "#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::TestOwnedRaw("".to_string()),
+            TestInline::CustomRaw("".to_string()),
         ]])])),
     );
     // Test that things that can't build throw errors
     expect_parse_err(
-        "[TEST_INLINE]#{}#",
+        "[CUSTOM_INLINE]#{}#",
         TestUserPythonError::CoercingEvalBracketToBuilder {
             
-            code_ctx: TestParseContext("[", "TEST_INLINE", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*build_from_raw.*Got <TestOwnedInline.*")
+            code_ctx: TestParseContext("[", "CUSTOM_INLINE", "]"),
+            err: Regex::new(r"TypeError\s*:\s*Expected.*RawScopeBuilder.*build_from_raw.*Got <CustomInline.*")
                 .unwrap(),
             scope_open: TestParseSpan("#{"),
             build_mode: UserPythonBuildMode::FromRaw,

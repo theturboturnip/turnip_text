@@ -1,3 +1,4 @@
+use crate::interpreter::error::HandleInternalPyErr;
 use crate::python::interop::{
     BlockScope, DocSegment, Document, Header, InlineScope, Paragraph, Raw, Sentence, Text,
 };
@@ -9,7 +10,7 @@ pub const GLOBALS_CODE: &'static str = r#"
 # This means we use _native instead of turnip_text as the module name here.
 from _native import InlineScope, Text, BlockScope, TurnipTextSource, Paragraph, Sentence, Raw
 
-class TestHeader:
+class CustomHeader:
     is_header = True
     weight = 0
     def __init__(self, weight=0, test_block=None, test_inline=None):
@@ -17,84 +18,75 @@ class TestHeader:
         self.test_block = test_block
         self.test_inline = test_inline
 
-# TODO these should really be TestBlock, TestInline, TestRaw
-class TestOwnedBlock:
+class CustomBlock:
     is_block = True
     def __init__(self, contents):
         self.test_block = contents
 
-class TestOwnedInline:
+class CustomInline:
     is_inline = True
     def __init__(self, contents):
         self.test_inline = contents
 
-class TestOwnedRaw:
+class CustomRaw:
     is_inline = True
     def __init__(self, raw_str):
         self.test_raw_str = str(raw_str)
 
-TEST_BLOCK = TestOwnedBlock(BlockScope([]))
-TEST_INLINE = TestOwnedInline(InlineScope([]))
-TEST_RAW = TestOwnedRaw("")
+CUSTOM_BLOCK = CustomBlock(BlockScope([]))
+CUSTOM_INLINE = CustomInline(InlineScope([]))
+CUSTOM_RAW = CustomRaw("")
 
-class TestBlockBuilder:
+class CustomBlockBuilder:
     def build_from_blocks(self, contents):
-        return TestOwnedBlock(contents)
+        return CustomBlock(contents)
+class CustomBlockBuilderFromInline:
+    def build_from_inlines(self, contents: InlineScope):
+        return CustomBlock(BlockScope([Paragraph([Sentence([contents])])]))
+class CustomBlockBuilderFromRaw:
+    def build_from_raw(self, raw):
+        return CustomBlock(BlockScope([Paragraph([Sentence([raw])])]))
     
-class TestInlineBuilder:
+class CustomInlineBuilder:
     def build_from_inlines(self, contents):
-        return TestOwnedInline(contents)
+        return CustomInline(contents)
 
-class TestRawInlineBuilder:
+class CustomRawBuilder:
     def build_from_raw(self, raw):
-        return TestOwnedRaw(raw.data)
+        return CustomRaw(raw.data)
 
-class TestRawBlockBuilder:
-    def build_from_raw(self, raw):
-        return TEST_BLOCK
+BUILD_CUSTOM_BLOCK = CustomBlockBuilder()
+BUILD_CUSTOM_BLOCK_FROM_INLINE = CustomBlockBuilderFromInline()
+BUILD_CUSTOM_BLOCK_FROM_RAW = CustomBlockBuilderFromRaw()
+BUILD_CUSTOM_INLINE = CustomInlineBuilder()
+BUILD_CUSTOM_RAW = CustomRawBuilder()
 
-TEST_BLOCK_BUILDER = TestBlockBuilder()
-TEST_INLINE_BUILDER = TestInlineBuilder()
-TEST_RAW_INLINE_BUILDER = TestRawInlineBuilder()
-TEST_RAW_BLOCK_BUILDER = TestRawBlockBuilder()
-
-class TestBlockSwallower():
+class BlockSwallower():
     def build_from_blocks(self, contents):
         return None
-class TestInlineSwallower():
+class InlineSwallower():
     def build_from_inlines(self, contents):
         return None
-class TestRawSwallower():
+class RawSwallower():
     def build_from_raw(self, raw):
         return None
 
-TEST_BLOCK_SWALLOWER = TestBlockSwallower()
-TEST_INLINE_SWALLOWER = TestInlineSwallower()
-TEST_RAW_SWALLOWER = TestRawSwallower()
+CUSTOM_BLOCK_SWALLOWER = BlockSwallower()
+CUSTOM_INLINE_SWALLOWER = InlineSwallower()
+CUSTOM_RAW_SWALLOWER = RawSwallower()
 
-TEST_PROPERTY = property(lambda x: 5)
-
-class TestHeaderBuilder:
+class CustomHeaderBuilder:
     def __init__(self, weight=0):
         self.weight=weight
     def build_from_blocks(self, contents):
-        return TestHeader(weight=self.weight, test_block=contents)
+        return CustomHeader(weight=self.weight, test_block=contents)
     def build_from_inlines(self, contents):
-        return TestHeader(weight=self.weight, test_inline=contents)
+        return CustomHeader(weight=self.weight, test_inline=contents)
     def build_from_raw(self, raw):
-        return TestHeader(weight=self.weight, test_inline=InlineScope([raw]))
+        return CustomHeader(weight=self.weight, test_inline=InlineScope([raw]))
 
 def test_src(contents):
     return TurnipTextSource.from_string(contents)
-
-class TestBlockBuilderFromInline:
-    def build_from_inlines(self, contents: InlineScope):
-        return TestOwnedBlock(BlockScope([Paragraph([Sentence([contents])])]))
-class TestBlockBuilderFromRaw:
-    def build_from_raw(self, raw):
-        return TestOwnedBlock(BlockScope([Paragraph([Sentence([raw])])]))
-
-TEST_BLOCK_BUILDER_FROM_INLINE = TestBlockBuilderFromInline()
 
 class TestDummyInlineBuilderFromBlock:
     def __init__(self, dummy_text: str):
@@ -124,7 +116,7 @@ pub enum TestBlock {
     Paragraph(Vec<Vec<TestInline>>),
 
     /// Test-only - a Python object build from a block scope with test_block: BlockScope = the contents of that scope
-    TestOwnedBlock(Vec<TestBlock>),
+    CustomBlock(Vec<TestBlock>),
 }
 #[derive(Debug, PartialEq, Eq)]
 pub enum TestInline {
@@ -133,9 +125,9 @@ pub enum TestInline {
     Raw(String),
 
     /// Test-only - a Python object built from an inline scope with test_inline: InlineScope = the contents of that scope
-    TestOwnedInline(Vec<TestInline>),
+    CustomInline(Vec<TestInline>),
     /// Test-only - a Python object built from raw text with test_raw_str: str = the raw text
-    TestOwnedRaw(String),
+    CustomRaw(String),
 }
 pub fn test_doc(contents: Vec<TestBlock>) -> TestDocument {
     TestDocument {
@@ -243,7 +235,7 @@ impl PyToTest<TestBlock> for Bound<'_, PyAny> {
                     .collect(),
             )
         } else if let Ok(obj) = self.getattr("test_block") {
-            TestBlock::TestOwnedBlock(
+            TestBlock::CustomBlock(
                 obj.extract::<BlockScope>()
                     .unwrap()
                     .0
@@ -294,7 +286,7 @@ impl PyToTest<TestInline> for Bound<'_, PyAny> {
         } else if let Ok(text) = self.extract::<Raw>() {
             TestInline::Raw(text.0.bind(py).to_string())
         } else if let Ok(obj) = self.getattr("test_inline") {
-            TestInline::TestOwnedInline(
+            TestInline::CustomInline(
                 obj.extract::<InlineScope>()
                     .unwrap()
                     .0
@@ -304,7 +296,7 @@ impl PyToTest<TestInline> for Bound<'_, PyAny> {
                     .collect(),
             )
         } else if let Ok(text) = dbg!(self.getattr("test_raw_str")) {
-            TestInline::TestOwnedRaw(text.to_string())
+            TestInline::CustomRaw(text.to_string())
         } else {
             let repr = match self.repr() {
                 Ok(py_str) => py_str.to_string(),
@@ -317,22 +309,15 @@ impl PyToTest<TestInline> for Bound<'_, PyAny> {
 
 /// Generate a set of local Python variables used in each test case
 ///
-/// Provides `TEST_BLOCK_BUILDER`, `TEST_INLINE_BUILDER`, `TEST_RAW_BUILDER` objects
+/// Provides `BUILD_CUSTOM_BLOCK`, `BUILD_CUSTOM_INLINE`, `CUSTOM_RAW_BUILDER` objects
 /// that can own block, inline, and raw scopes respectively.
-pub fn generate_globals<'interp>(py: Python<'interp>) -> Option<Bound<'interp, PyDict>> {
+pub fn generate_globals<'interp>(py: Python<'interp>) -> Bound<'interp, PyDict> {
     let globals = PyDict::new_bound(py);
 
-    let result = py.run_bound(GLOBALS_CODE, Some(&globals), Some(&globals));
+    py.run_bound(GLOBALS_CODE, Some(&globals), Some(&globals))
+        .expect_pyok("generate_globals");
 
-    match result {
-        Err(pyerr) => {
-            pyerr.print(py);
-            return None;
-        }
-        Ok(_) => {}
-    };
-
-    Some(globals)
+    globals
 }
 
 pub fn stringify_pyerr(py: Python, pyerr: &PyErr) -> String {

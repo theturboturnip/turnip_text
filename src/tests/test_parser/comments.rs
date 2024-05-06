@@ -7,8 +7,8 @@ fn comment_ending_with_newline_in_block_mode() {
     // It should count as a newline for the sake of block separation
     expect_parse_any_ok(
         "
-    [TEST_BLOCK]   # this comment doesn't interfere with the following line
-    [TEST_BLOCK]
+    [CUSTOM_BLOCK]   # this comment doesn't interfere with the following line
+    [CUSTOM_BLOCK]
     ",
     );
 }
@@ -159,14 +159,14 @@ fn comment_ending_with_escaped_newline_in_paragraph() {
         Sentence 2
         Sentence 3 # a comment \
         
-        [TEST_BLOCK] # The above line was blank, but part of the escaped above line so didn't end the mode"#,
+        [CUSTOM_BLOCK] # The above line was blank, but part of the escaped above line so didn't end the mode"#,
         TestSyntaxError::InsufficientBlockSeparation {
             last_block: TestBlockModeElem::Para(TestParseContext(
                 "Sentence",
                 " 1\n        Sentence 2\n        Sentence 3 # a comment \\\n        ",
                 "\n",
             )),
-            next_block_start: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
+            next_block_start: TestBlockModeElem::BlockFromCode(TestParseSpan("[CUSTOM_BLOCK]")),
         },
     );
 
@@ -177,14 +177,14 @@ fn comment_ending_with_escaped_newline_in_paragraph() {
         Sentence 3 # a comment \
         
         
-        [TEST_BLOCK] # With a second blank line, we're home free."#,
+        [CUSTOM_BLOCK] # With a second blank line, we're home free."#,
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![
                 test_sentence("Sentence 1"),
                 test_sentence("Sentence 2"),
                 test_sentence("Sentence 3"),
             ]),
-            TestBlock::TestOwnedBlock(vec![]),
+            TestBlock::CustomBlock(vec![]),
         ])),
     );
 
@@ -194,14 +194,14 @@ fn comment_ending_with_escaped_newline_in_paragraph() {
         Sentence 2
         {Sentence 3 # a comment \
         }
-        [TEST_BLOCK] # The above line didn't end paragraph mode"#,
+        [CUSTOM_BLOCK] # The above line didn't end paragraph mode"#,
         TestSyntaxError::InsufficientBlockSeparation {
             last_block: TestBlockModeElem::Para(TestParseContext(
                 "Sentence",
                 " 1\n        Sentence 2\n        {Sentence 3 # a comment \\\n        }",
                 "\n",
             )),
-            next_block_start: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
+            next_block_start: TestBlockModeElem::BlockFromCode(TestParseSpan("[CUSTOM_BLOCK]")),
         },
     );
 }

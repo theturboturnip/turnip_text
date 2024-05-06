@@ -24,7 +24,7 @@ const CREATED_PARA_CTX: TestParseContext =
 
 const PARA_STARTING_WITH_SCOPE: &str =
     "{ wow some stuff in an inline scope }\nand then more of the Bee movie script\n";
-const PARA_STARTING_WITH_INLINE_CODE: &str = "[--TEST_INLINE--] Bee movie script\nlorem\n";
+const PARA_STARTING_WITH_INLINE_CODE: &str = "[--CUSTOM_INLINE--] Bee movie script\nlorem\n";
 const PARA_STARTING_WITH_RAW_SCOPE: &str =
     "####{raw stuff}#### and then even more about bees\nbees, i tell you!\n";
 
@@ -34,22 +34,22 @@ const CREATED_BSCOPE: &str = "{
 const CREATED_BSCOPE_CTX: TestParseContext =
     TestParseContext("{", "\n    block_scope_content\n", "}");
 
-const CREATED_BLOCK_BARE: &str = "[TEST_BLOCK]";
+const CREATED_BLOCK_BARE: &str = "[CUSTOM_BLOCK]";
 const CREATED_BLOCK_BARE_SPAN: TestParseSpan = TestParseSpan(CREATED_BLOCK_BARE);
-const CREATED_BLOCK_FROM_BLOCK: &str = "[TestBlockBuilder()]{\nblock_in_block\n}";
+const CREATED_BLOCK_FROM_BLOCK: &str = "[CustomBlockBuilder()]{\nblock_in_block\n}";
 const CREATED_BLOCK_FROM_BLOCK_SPAN: TestParseSpan = TestParseSpan(CREATED_BLOCK_FROM_BLOCK);
-const CREATED_BLOCK_FROM_INLINE: &str = "[TestBlockBuilderFromInline()]{ inline_in_block }";
+const CREATED_BLOCK_FROM_INLINE: &str = "[CustomBlockBuilderFromInline()]{ inline_in_block }";
 const CREATED_BLOCK_FROM_INLINE_SPAN: TestParseSpan = TestParseSpan(CREATED_BLOCK_FROM_INLINE);
-const CREATED_BLOCK_FROM_RAW: &str = "[TestBlockBuilderFromRaw()]#{raw_in_block}#";
+const CREATED_BLOCK_FROM_RAW: &str = "[CustomBlockBuilderFromRaw()]#{raw_in_block}#";
 const CREATED_BLOCK_FROM_RAW_SPAN: TestParseSpan = TestParseSpan(CREATED_BLOCK_FROM_RAW);
 
-const CREATED_HEADER_BARE: &str = "[TestHeader(weight=1)]";
+const CREATED_HEADER_BARE: &str = "[CustomHeader(weight=1)]";
 const CREATED_HEADER_BARE_SPAN: TestParseSpan = TestParseSpan(CREATED_HEADER_BARE);
-const CREATED_HEADER_FROM_BLOCK: &str = "[TestHeaderBuilder(weight=1)]{\nblock_in_header\n}";
+const CREATED_HEADER_FROM_BLOCK: &str = "[CustomHeaderBuilder(weight=1)]{\nblock_in_header\n}";
 const CREATED_HEADER_FROM_BLOCK_SPAN: TestParseSpan = TestParseSpan(CREATED_HEADER_FROM_BLOCK);
-const CREATED_HEADER_FROM_INLINE: &str = "[TestHeaderBuilder(weight=1)]{ inline_in_header }";
+const CREATED_HEADER_FROM_INLINE: &str = "[CustomHeaderBuilder(weight=1)]{ inline_in_header }";
 const CREATED_HEADER_FROM_INLINE_SPAN: TestParseSpan = TestParseSpan(CREATED_HEADER_FROM_INLINE);
-const CREATED_HEADER_FROM_RAW: &str = "[TestHeaderBuilder(weight=1)]#{raw_in_header}#";
+const CREATED_HEADER_FROM_RAW: &str = "[CustomHeaderBuilder(weight=1)]#{raw_in_header}#";
 const CREATED_HEADER_FROM_RAW_SPAN: TestParseSpan = TestParseSpan(CREATED_HEADER_FROM_RAW);
 
 const CREATED_FILE: &str = "[test_src('beans')]";
@@ -72,17 +72,17 @@ fn test_primitives() {
     );
     expect_parse(
         CREATED_BLOCK_BARE,
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![])])),
     );
     expect_parse(
         CREATED_BLOCK_FROM_BLOCK,
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![
             TestBlock::Paragraph(vec![test_sentence("block_in_block")]),
         ])])),
     );
     expect_parse(
         CREATED_BLOCK_FROM_INLINE,
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![
             TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![test_text(
                 "inline_in_block",
             )])]]),
@@ -90,7 +90,7 @@ fn test_primitives() {
     );
     expect_parse(
         CREATED_BLOCK_FROM_RAW,
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![
             TestBlock::Paragraph(vec![vec![test_raw_text("raw_in_block")]]),
         ])])),
     );

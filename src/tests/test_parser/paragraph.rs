@@ -98,14 +98,14 @@ fn escaped_newline_then_blank() {
         Sentence 2
         Sentence 3 \
         
-        [TEST_BLOCK] # The above line was blank, but part of the escaped above line so didn't end the mode"#,
+        [CUSTOM_BLOCK] # The above line was blank, but part of the escaped above line so didn't end the mode"#,
         TestSyntaxError::InsufficientBlockSeparation {
             last_block: TestBlockModeElem::Para(TestParseContext(
                 "Sentence",
                 " 1\n        Sentence 2\n        Sentence 3 \\\n        ",
                 "\n",
             )),
-            next_block_start: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
+            next_block_start: TestBlockModeElem::BlockFromCode(TestParseSpan("[CUSTOM_BLOCK]")),
         },
     );
 
@@ -116,14 +116,14 @@ fn escaped_newline_then_blank() {
         Sentence 3 \
         
         
-        [TEST_BLOCK] # With a second blank line, we're home free."#,
+        [CUSTOM_BLOCK] # With a second blank line, we're home free."#,
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![
                 test_sentence("Sentence 1"),
                 test_sentence("Sentence 2"),
                 test_sentence("Sentence 3"),
             ]),
-            TestBlock::TestOwnedBlock(vec![]),
+            TestBlock::CustomBlock(vec![]),
         ])),
     );
 
@@ -133,14 +133,14 @@ fn escaped_newline_then_blank() {
         Sentence 2
         {Sentence 3 \
         }
-        [TEST_BLOCK] # The above line didn't end paragraph mode"#,
+        [CUSTOM_BLOCK] # The above line didn't end paragraph mode"#,
         TestSyntaxError::InsufficientBlockSeparation {
             last_block: TestBlockModeElem::Para(TestParseContext(
                 "Sentence",
                 " 1\n        Sentence 2\n        {Sentence 3 \\\n        }",
                 "\n",
             )),
-            next_block_start: TestBlockModeElem::BlockFromCode(TestParseSpan("[TEST_BLOCK]")),
+            next_block_start: TestBlockModeElem::BlockFromCode(TestParseSpan("[CUSTOM_BLOCK]")),
         },
     );
 }

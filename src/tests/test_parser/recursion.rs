@@ -5,8 +5,7 @@ fn recursion_bad() {
     expect_parse_err(
         r#"
     [-
-    import _native as tt
-    s = tt.TurnipTextSource.from_string("[s]")
+    s = test_src("[s]")
     -]
     
     [s]
@@ -20,10 +19,9 @@ fn test_limited_recursion_ok() {
     expect_parse_any_ok(
         r#"
     [-
-    import _native as tt
     # The first file counts as a file
     file_stack_len = 1
-    s = tt.TurnipTextSource.from_string("""
+    s = test_src("""
 [file_stack_len = file_stack_len + 1]
 
 [file_stack_len]

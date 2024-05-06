@@ -5,10 +5,10 @@ use super::*;
 #[test]
 fn test_inline_scope_builder_building_inline() {
     expect_parse(
-        "building [TEST_INLINE_BUILDER]{something built} inline",
+        "building [BUILD_CUSTOM_INLINE]{something built} inline",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("building "),
-            TestInline::TestOwnedInline(vec![test_text("something built")]),
+            TestInline::CustomInline(vec![test_text("something built")]),
             test_text(" inline"),
         ]])])),
     )
@@ -25,8 +25,8 @@ fn test_block_scope_builder_building_inline() {
 
         even more blocks!
 
-        [TEST_BLOCK_BUILDER]{
-            blocks inside blocks! [TEST_INLINE_BUILDER]{ with otehr stuff in them! }
+        [BUILD_CUSTOM_BLOCK]{
+            blocks inside blocks! [BUILD_CUSTOM_INLINE]{ with otehr stuff in them! }
         }
     } stuff # this is on the same line!
     "#,
@@ -41,10 +41,10 @@ fn test_block_scope_builder_building_inline() {
 #[test]
 fn test_raw_scope_builder_building_inline() {
     expect_parse(
-        "building [TEST_RAW_INLINE_BUILDER]#{some raw stuff}#",
+        "building [BUILD_CUSTOM_RAW]#{some raw stuff}#",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("building "),
-            TestInline::TestOwnedRaw("some raw stuff".to_string()),
+            TestInline::CustomRaw("some raw stuff".to_string()),
         ]])])),
     )
 }
@@ -54,9 +54,9 @@ fn test_raw_scope_builder_building_inline() {
 #[test]
 fn test_inline_scope_builder_building_inline_creates_paragraph() {
     expect_parse(
-        "[TEST_INLINE_BUILDER]{something built} inline",
+        "[BUILD_CUSTOM_INLINE]{something built} inline",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::TestOwnedInline(vec![test_text("something built")]),
+            TestInline::CustomInline(vec![test_text("something built")]),
             test_text(" inline"),
         ]])])),
     )
@@ -73,8 +73,8 @@ fn test_block_scope_builder_building_inline_creates_paragraph() {
 
         even more blocks!
 
-        [TEST_BLOCK_BUILDER]{
-            blocks inside blocks! [TEST_INLINE_BUILDER]{ with otehr stuff in them! }
+        [BUILD_CUSTOM_BLOCK]{
+            blocks inside blocks! [BUILD_CUSTOM_INLINE]{ with otehr stuff in them! }
         }
     } stuff # this is on the same line!
     "#,
@@ -88,9 +88,9 @@ fn test_block_scope_builder_building_inline_creates_paragraph() {
 #[test]
 fn test_raw_scope_builder_building_inline_creates_paragraph() {
     expect_parse(
-        "[TEST_RAW_INLINE_BUILDER]#{some raw stuff}# and this continues",
+        "[BUILD_CUSTOM_RAW]#{some raw stuff}# and this continues",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::TestOwnedRaw("some raw stuff".to_string()),
+            TestInline::CustomRaw("some raw stuff".to_string()),
             test_text(" and this continues"),
         ]])])),
     )
@@ -101,8 +101,8 @@ fn test_raw_scope_builder_building_inline_creates_paragraph() {
 #[test]
 fn test_inline_scope_builder_building_block() {
     expect_parse(
-        "[TEST_BLOCK_BUILDER_FROM_INLINE]{only inlines :)}",
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![
+        "[BUILD_CUSTOM_BLOCK_FROM_INLINE]{only inlines :)}",
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![
             TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![TestInline::Text(
                 "only inlines :)".to_string(),
             )])]]),
@@ -114,11 +114,11 @@ fn test_inline_scope_builder_building_block() {
 fn test_block_scope_builder_building_block() {
     expect_parse(
         r#"
-        [TEST_BLOCK_BUILDER]{
+        [BUILD_CUSTOM_BLOCK]{
             Stuff
         }
     "#,
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![
             TestBlock::Paragraph(vec![test_sentence("Stuff")]),
         ])])),
     )
@@ -127,8 +127,10 @@ fn test_block_scope_builder_building_block() {
 #[test]
 fn test_raw_scope_builder_building_block() {
     expect_parse(
-        "[TEST_RAW_BLOCK_BUILDER]#{ block! }#",
-        Ok(test_doc(vec![TestBlock::TestOwnedBlock(vec![])])),
+        "[BUILD_CUSTOM_BLOCK_FROM_RAW]#{ block! }#",
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![
+            TestBlock::Paragraph(vec![vec![test_raw_text(" block! ")]]),
+        ])])),
     )
 }
 
@@ -137,12 +139,12 @@ fn test_raw_scope_builder_building_block() {
 #[test]
 fn test_inline_scope_builder_building_block_in_inline() {
     expect_parse_err(
-        "{wow i'm in an inline context [TEST_BLOCK_BUILDER_FROM_INLINE]{only inlines :)}}",
+        "{wow i'm in an inline context [BUILD_CUSTOM_BLOCK_FROM_INLINE]{only inlines :)}}",
         TestSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: TestInlineModeContext::InlineScope {
                 scope_start: TestParseSpan("{"),
             },
-            code_span: TestParseSpan("[TEST_BLOCK_BUILDER_FROM_INLINE]{only inlines :)}"),
+            code_span: TestParseSpan("[BUILD_CUSTOM_BLOCK_FROM_INLINE]{only inlines :)}"),
         },
     )
 }
@@ -151,7 +153,7 @@ fn test_inline_scope_builder_building_block_in_inline() {
 fn test_block_scope_builder_building_block_in_inline() {
     expect_parse_err(
         r#"
-        {wow i'm in an inline context [TEST_BLOCK_BUILDER]{
+        {wow i'm in an inline context [BUILD_CUSTOM_BLOCK]{
             Stuff
         } continuing the inline context}
     "#,
@@ -159,7 +161,7 @@ fn test_block_scope_builder_building_block_in_inline() {
             inl_mode: TestInlineModeContext::InlineScope {
                 scope_start: TestParseSpan("{"),
             },
-            code_span: TestParseSpan("[TEST_BLOCK_BUILDER]{\n            Stuff\n        }"),
+            code_span: TestParseSpan("[BUILD_CUSTOM_BLOCK]{\n            Stuff\n        }"),
         },
     )
 }
@@ -167,13 +169,13 @@ fn test_block_scope_builder_building_block_in_inline() {
 #[test]
 fn test_raw_scope_builder_building_block_in_inline() {
     expect_parse_err(
-        "{wow i'm in an inline context [TEST_RAW_BLOCK_BUILDER]#{ block! }# continuing the \
+        "{wow i'm in an inline context [BUILD_CUSTOM_BLOCK_FROM_RAW]#{ block! }# continuing the \
          inline context}",
         TestSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: TestInlineModeContext::InlineScope {
                 scope_start: TestParseSpan("{"),
             },
-            code_span: TestParseSpan("[TEST_RAW_BLOCK_BUILDER]#{ block! }#"),
+            code_span: TestParseSpan("[BUILD_CUSTOM_BLOCK_FROM_RAW]#{ block! }#"),
         },
     )
 }
@@ -182,7 +184,7 @@ fn test_raw_scope_builder_building_block_in_inline() {
 #[test]
 fn test_inline_scope_builder_building_header() {
     expect_parse(
-        "[TestHeaderBuilder()]{ Wowee i wish I had inline content }",
+        "[CustomHeaderBuilder()]{ Wowee i wish I had inline content }",
         Ok(TestDocument {
             contents: TestBlock::BlockScope(vec![]),
             segments: vec![TestDocSegment {
@@ -203,7 +205,7 @@ fn test_inline_scope_builder_building_header() {
 #[test]
 fn test_block_scope_builder_building_header() {
     expect_parse(
-        "[TestHeaderBuilder()]{
+        "[CustomHeaderBuilder()]{
         Wowee i wish I had block content
     }",
         Ok(TestDocument {
@@ -226,7 +228,7 @@ fn test_block_scope_builder_building_header() {
 #[test]
 fn test_raw_scope_builder_building_header() {
     expect_parse(
-        "[TestHeaderBuilder()]#{ Wowee i wish I had inline content }#",
+        "[CustomHeaderBuilder()]#{ Wowee i wish I had inline content }#",
         Ok(TestDocument {
             contents: TestBlock::BlockScope(vec![]),
             segments: vec![TestDocSegment {
@@ -249,14 +251,16 @@ fn test_raw_scope_builder_building_header() {
 #[test]
 fn test_inline_scope_builder_building_header_in_inline_mode_para() {
     expect_parse_err(
-        "And as I was saying [TestHeaderBuilder()]{ Wowee i wish I had inline content }",
+        "And as I was saying [CustomHeaderBuilder()]{ Wowee i wish I had inline content }",
         TestSyntaxError::CodeEmittedHeaderInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "And",
                 " as I was saying",
                 " ",
             )),
-            code_span: TestParseSpan("[TestHeaderBuilder()]{ Wowee i wish I had inline content }"),
+            code_span: TestParseSpan(
+                "[CustomHeaderBuilder()]{ Wowee i wish I had inline content }",
+            ),
         },
     )
 }
@@ -264,7 +268,7 @@ fn test_inline_scope_builder_building_header_in_inline_mode_para() {
 #[test]
 fn test_block_scope_builder_building_header_in_inline() {
     expect_parse_err(
-        "And as I was saying [TestHeaderBuilder()]{
+        "And as I was saying [CustomHeaderBuilder()]{
             Wowee i wish I had block content
         }",
         TestSyntaxError::CodeEmittedHeaderInInlineMode {
@@ -274,7 +278,7 @@ fn test_block_scope_builder_building_header_in_inline() {
                 " ",
             )),
             code_span: TestParseSpan(
-                "[TestHeaderBuilder()]{
+                "[CustomHeaderBuilder()]{
             Wowee i wish I had block content
         }",
             ),
@@ -285,7 +289,7 @@ fn test_block_scope_builder_building_header_in_inline() {
 #[test]
 fn test_raw_scope_builder_building_header_in_inline() {
     expect_parse_err(
-        "And as I was saying [TestHeaderBuilder()]#{ Wowee i wish 
+        "And as I was saying [CustomHeaderBuilder()]#{ Wowee i wish 
             I had inline 
             and raw
             content }#",
@@ -296,7 +300,7 @@ fn test_raw_scope_builder_building_header_in_inline() {
                 " ",
             )),
             code_span: TestParseSpan(
-                "[TestHeaderBuilder()]#{ Wowee i wish 
+                "[CustomHeaderBuilder()]#{ Wowee i wish 
             I had inline 
             and raw
             content }#",
@@ -311,9 +315,9 @@ fn test_raw_scope_builder_building_header_in_inline() {
 #[test]
 fn test_inline_scope_builder_building_none_inside_sentence() {
     expect_parse(
-        "stuff at the start of a sentence [TEST_INLINE_SWALLOWER]{ this is gonna be swallowed \
+        "stuff at the start of a sentence [CUSTOM_INLINE_SWALLOWER]{ this is gonna be swallowed \
          }
-        [TEST_INLINE_SWALLOWER]{ this is gonna be swallowed } stuff at the end of a sentence",
+        [CUSTOM_INLINE_SWALLOWER]{ this is gonna be swallowed } stuff at the end of a sentence",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![
             test_sentence("stuff at the start of a sentence "), // Note that this has the ending space - whitespace content is flushed to the text when the eval-brackets start
             test_sentence(" stuff at the end of a sentence"), // Note that this has the leading space - whitespace is counted after inline scopes and code, but not inside inline scopes
@@ -327,7 +331,7 @@ fn test_inline_scope_builder_building_none_sentence_inside_para() {
     expect_parse(
         "
         Wow what a lovely paragraph.
-        [TEST_INLINE_SWALLOWER]{ this is gonna be swallowed }
+        [CUSTOM_INLINE_SWALLOWER]{ this is gonna be swallowed }
         Yes, isn't it?",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![
             test_sentence("Wow what a lovely paragraph."),
@@ -341,8 +345,8 @@ fn test_inline_scope_builder_building_none_sentence_inside_para() {
 #[test]
 fn test_inline_scope_builder_building_none_para() {
     expect_parse(
-        "[TEST_INLINE_SWALLOWER]{ this is gonna be swallowed }
-        [TEST_INLINE_SWALLOWER]{ so is this }",
+        "[CUSTOM_INLINE_SWALLOWER]{ this is gonna be swallowed }
+        [CUSTOM_INLINE_SWALLOWER]{ so is this }",
         Ok(test_doc(vec![])),
     )
 }
@@ -350,7 +354,7 @@ fn test_inline_scope_builder_building_none_para() {
 #[test]
 fn test_block_scope_builder_building_none() {
     expect_parse(
-        "[TEST_BLOCK_SWALLOWER]{
+        "[CUSTOM_BLOCK_SWALLOWER]{
             this is gonna be swallowed
         
             so is this!
@@ -362,7 +366,7 @@ fn test_block_scope_builder_building_none() {
 #[test]
 fn test_raw_scope_builder_building_none() {
     expect_parse(
-        "[TEST_RAW_SWALLOWER]#{ this is gonna be swallowed }#",
+        "[CUSTOM_RAW_SWALLOWER]#{ this is gonna be swallowed }#",
         Ok(test_doc(vec![])),
     )
 }

@@ -105,14 +105,14 @@ fn simple_eval_works() {
     expect_parse(
         "[5] ['string']
             
-            [TEST_BLOCK]",
+            [CUSTOM_BLOCK]",
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![vec![
                 test_text("5"),
                 test_text(" "),
                 test_text("string"),
             ]]),
-            TestBlock::TestOwnedBlock(vec![]),
+            TestBlock::CustomBlock(vec![]),
         ])),
     )
 }
