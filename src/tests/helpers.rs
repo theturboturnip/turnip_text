@@ -103,7 +103,10 @@ impl<'a> TestTTErrorWithContext<'a> {
             (Self::UserPython(l_err), TTErrorWithContext::UserPython(sources, r_err)) => {
                 l_err.matches(py, r_err, sources)
             }
-            _ => false,
+            _ => {
+                dbg!("error type mismatch");
+                false
+            }
         }
     }
 }
@@ -446,7 +449,10 @@ impl<'a> TestUserPythonError<'a> {
                 *dbg!(l_code) == dbg!((r_code, data).into())
                     && dbg!(l_err).is_match(&dbg!(stringify_pyerr(py, r_err)))
             }
-            _ => false,
+            _ => {
+                dbg!("error type mismatch");
+                false
+            }
         }
     }
 }

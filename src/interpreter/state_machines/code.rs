@@ -166,7 +166,6 @@ impl TokenProcessor for CodeProcessor {
             "Should never get a built None - CodeProcessor only spawns AmbiguousScopeProcessor \
              and RawScopeProcessor none of which return None.",
         );
-        // TODO test TTUserPythonError::Building is used
         let built = match elem {
             DocElement::Block(BlockElem::BlockScope(blocks)) => {
                 let builder = PyTcRef::<BlockScopeBuilder>::of(&evaled_result_ref).expect("The AmbiguousScopeProcessor callbacks must have checked this was a BlockScopeBuilder.");

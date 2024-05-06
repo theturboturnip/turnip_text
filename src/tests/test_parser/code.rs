@@ -515,8 +515,20 @@ fn non_indent_errors_dont_trigger_indented_exec_mode() {
         );
 }
 
+// Code is must only be able to emit:
+// - None
+// - instance of TurnipTextSource
+// - object fitting Header
+// - object fitting Block
+// - object fitting Inline, or coercible to inline
+//
+// It must not be able to emit something that isn't any of those,
+// and it must not be able to emit something that is multiple of those.
+// coercible-to-inline cannot directly fit inline, turniptextsources and none cannot fit anything,
+// so we have to test emitting something that fits header+block+inline
+
 #[test]
-fn code_returns_uncoercible_when_emitting_uncoercible() {
+fn code_returns_uncoercible_when_emitting_uncoercible_that_fits_none() {
     expect_parse_err(
         "[-----b'bytestirng not coercible'-----]",
         TestUserPythonError::CoercingEvalBracketToElement {
@@ -545,4 +557,72 @@ fn code_returns_uncoercible_when_emitting_uncoercible() {
             err: Regex::new("TypeError").unwrap(),
         },
     );
+}
+
+#[test]
+fn code_returns_uncoercible_when_emitting_uncoercible_that_fits_many() {
+    expect_parse_err(
+        "[-
+        class FitMultiple:
+            is_block = True
+            is_inline = True
+            is_header = True
+            weight = 0
+        -]
+        
+        [-----FitMultiple()-----]",
+        TestUserPythonError::CoercingEvalBracketToElement {
+            code_ctx: TestParseContext("[-----", "FitMultiple()", "-----]"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+}
+
+// User Python code can throw errors in various places - when it's initially run, and when the result is built.
+// I am ignoring errors thrown while evaluating typeclasses e.g. if getting Header.weight raises an error, that's out of scope.
+#[test]
+fn errors_while_running_are_returned() {
+    expect_parse_err(
+        r#"
+    [-
+    def function_that_throws():
+        raise RuntimeError("Should be raised through TTUserPythonError::RunningEvalBrackets")
+    -]
+
+    [function_that_throws()]
+    "#,
+        TestUserPythonError::RunningEvalBrackets {
+            code_ctx: TestParseContext("[", "function_that_throws()", "]"),
+            code: CString::new("function_that_throws()").unwrap(),
+            mode: UserPythonCompileMode::EvalExpr,
+            err: Regex::new(
+                "RuntimeError.*Should be raised through TTUserPythonError::RunningEvalBrackets",
+            )
+            .unwrap(),
+        },
+    )
+}
+
+#[test]
+fn errors_while_building_are_returned() {
+    expect_parse_err(
+        r#"
+    [-
+    class BuilderThatThrows:
+        def build_from_blocks(self, blocks):
+            raise RuntimeError("Should be raised through TTUserPythonError::Building")
+    -]
+
+    [BuilderThatThrows()]{
+        content
+    }
+    "#,
+        TestUserPythonError::Building {
+            code_ctx: TestParseContext("[", "BuilderThatThrows()", "]"),
+            arg_ctx: TestParseContext("{", "\n        content\n    ", "}"),
+            build_mode: UserPythonBuildMode::FromBlock,
+            err: Regex::new("RuntimeError.*Should be raised through TTUserPythonError::Building")
+                .unwrap(),
+        },
+    )
 }

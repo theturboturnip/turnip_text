@@ -1,4 +1,4 @@
-// All kinds of builder should be able to build inlines, even if their arguments aren't inline
+// All kinds of builder should be able to build Header | Block | Inline | None.
 
 use super::*;
 
@@ -369,4 +369,189 @@ fn test_raw_scope_builder_building_none() {
         "[CUSTOM_RAW_SWALLOWER]#{ this is gonna be swallowed }#",
         Ok(test_doc(vec![])),
     )
+}
+
+// Builders are *only* allowed to emit Header | Inline | Block | None.
+// They aren't allowed to emit objects that fit none of those,
+// and aren't allowed to emit objects that fit multiple of those.
+// That includes things that are typically coercible to inline like lists, ints, floats, strings.
+
+#[test]
+fn test_builders_cant_emit_objects_fitting_none() {
+    // Test for block, raw, inline builders
+    expect_parse_err(
+        r#"
+    [-
+    class ObjectBuilder:
+        def build_from_blocks(self, arg):
+            return object() # This isn't header, inline, block, or none
+    -]
+
+    [-ObjectBuilder()-]{
+        block
+    }
+    "#,
+        TestUserPythonError::CoercingBuildResultToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
+            arg_ctx: TestParseContext("{", "\n        block\n    ", "}"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        r#"
+    [-
+    class ObjectBuilder:
+        def build_from_inlines(self, arg):
+            return object() # This isn't header, inline, block, or none
+    -]
+
+    [-ObjectBuilder()-]{ inline }
+    "#,
+        TestUserPythonError::CoercingBuildResultToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
+            arg_ctx: TestParseContext("{", " inline ", "}"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        r#"
+    [-
+    class ObjectBuilder:
+        def build_from_raw(self, arg):
+            return object() # This isn't header, inline, block, or none
+    -]
+
+    [-ObjectBuilder()-]#{raw}#
+    "#,
+        TestUserPythonError::CoercingBuildResultToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
+            arg_ctx: TestParseContext("#{", "raw", "}#"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+}
+
+#[test]
+fn test_builders_cant_emit_coercible_to_inline() {
+    // Test for block, raw, inline builders
+    expect_parse_err(
+        r#"
+    [-
+    class ObjectBuilder:
+        def build_from_blocks(self, arg):
+            return 1.0 # This is coercible, but that's invalid
+    -]
+
+    [-ObjectBuilder()-]{
+        block
+    }
+    "#,
+        TestUserPythonError::CoercingBuildResultToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
+            arg_ctx: TestParseContext("{", "\n        block\n    ", "}"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        r#"
+    [-
+    class ObjectBuilder:
+        def build_from_inlines(self, arg):
+            return 1982309 # This is coercible, but that's invalid
+    -]
+
+    [-ObjectBuilder()-]{ inline }
+    "#,
+        TestUserPythonError::CoercingBuildResultToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
+            arg_ctx: TestParseContext("{", " inline ", "}"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        r#"
+    [-
+    class ObjectBuilder:
+        def build_from_raw(self, arg):
+            return "a tasty string" # This is coercible, but that's invalid
+    -]
+
+    [-ObjectBuilder()-]#{raw}#
+    "#,
+        TestUserPythonError::CoercingBuildResultToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
+            arg_ctx: TestParseContext("#{", "raw", "}#"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+}
+
+#[test]
+fn test_builders_cant_emit_objects_fitting_multiple() {
+    // Test for block, raw, inline builders
+    expect_parse_err(
+        r#"
+    [-
+    class FitMultiple:
+        is_block = True
+        is_inline = True
+        is_header = True
+        weight = 0
+    class ObjectBuilder:
+        def build_from_blocks(self, arg):
+            return FitMultiple() # This is header, inline, and block!
+    -]
+
+    [-ObjectBuilder()-]{
+        block
+    }
+    "#,
+        TestUserPythonError::CoercingBuildResultToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
+            arg_ctx: TestParseContext("{", "\n        block\n    ", "}"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        r#"
+    [-
+    class FitMultiple:
+        is_block = True
+        is_inline = True
+        is_header = True
+        weight = 0
+    class ObjectBuilder:
+        def build_from_inlines(self, arg):
+            return FitMultiple() # This is header, inline, and block!
+    -]
+
+    [-ObjectBuilder()-]{ inline }
+    "#,
+        TestUserPythonError::CoercingBuildResultToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
+            arg_ctx: TestParseContext("{", " inline ", "}"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        r#"
+    [-
+    class FitMultiple:
+        is_block = True
+        is_inline = True
+        is_header = True
+        weight = 0
+    class ObjectBuilder:
+        def build_from_raw(self, arg):
+            return FitMultiple() # This is header, inline, and block!
+    -]
+
+    [-ObjectBuilder()-]#{raw}#
+    "#,
+        TestUserPythonError::CoercingBuildResultToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
+            arg_ctx: TestParseContext("#{", "raw", "}#"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
 }
