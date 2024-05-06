@@ -185,6 +185,7 @@ impl<T: OnResolveAmbiguousScope> TokenProcessor for AmbiguousScopeProcessor<T> {
 /// Parser for a scope which based on context *should* be inline, i.e. if you encounter no content before a newline then you must throw an error.
 pub enum InlineLevelAmbiguousScopeProcessor {
     Undecided {
+        /// This is the entirety of preceding inline state - even if inside inline scope in paragraph, it includes the whole paragraph
         preceding_inline: InlineModeContext,
         start_of_line: bool,
         scope_ctx: ParseContext,
@@ -227,7 +228,8 @@ impl TokenProcessor for InlineLevelAmbiguousScopeProcessor {
                                 next_block_start: BlockModeElem::AnyToken(scope_ctx.first_tok()),
                             })?
                         } else {
-                            // TODO test the case where you open a paragraph, then in the middle of a line you insert a block-scope-open - the preceding_para context should be the whole para up to the block-scope-open
+                            // If you open a paragraph, then in the middle of a line you insert a block-scope-open - the preceding_para context should be the whole para up to the block-scope-open.
+                            // *even* if you're currently inside an inline scope inside a paragraph!
                             Err(TTSyntaxError::BlockScopeOpenedInInlineMode {
                                 inl_mode: preceding_inline.clone(),
                                 block_scope_open: scope_ctx.first_tok(),
@@ -235,7 +237,7 @@ impl TokenProcessor for InlineLevelAmbiguousScopeProcessor {
                         }
                     }
                     InlineModeContext::InlineScope { .. } => {
-                        // TODO test the case where you open a paragraph, then in the middle of a line you insert a block-scope-open *inside an inline scope* - the preceding_para context should be the whole para including that enclosing inline scope
+                        // This only happens if we *started* from an inline scope, i.e. this is an inline scope attached to code, not a bare inline scope inside a paragraph.
                         Err(TTSyntaxError::BlockScopeOpenedInInlineMode {
                             inl_mode: preceding_inline.clone(),
                             block_scope_open: scope_ctx.first_tok(),

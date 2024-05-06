@@ -112,3 +112,6 @@ mod code;
 
 /// Test recursion detection
 mod recursion;
+
+/// Tests that the context provided for block-scope-open errors in inline mode is accurate
+mod block_scope_inline_error_context;

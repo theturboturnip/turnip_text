@@ -345,12 +345,10 @@ impl InlineMode for KnownInlineScopeInlineMode {
         }
     }
 
-    // TODO test error reporting for nested inline scopes
     fn on_open_scope(&mut self, _py: Python, tok: TTToken, _data: &str) -> TTResult<ProcStatus> {
         let new_scopes_inline_context = match self.preceding_inline {
             // If we're part of a paragraph, the inner scope is part of a paragraph too
             // Just extend the paragraph to include the current token
-            // TODO test this gets all the tokens up to but not including the inline scope
             Some(InlineModeContext::Paragraph(preceding_para)) => {
                 let mut new = preceding_para.clone();
                 assert!(
