@@ -11,7 +11,6 @@ from typing import (
     Optional,
     ParamSpec,
     Protocol,
-    Self,
     Sequence,
     Set,
     Tuple,

@@ -15,7 +15,6 @@ from typing import (
     Optional,
     ParamSpec,
     Protocol,
-    Self,
     Sequence,
     Set,
     Tuple,
@@ -384,18 +383,18 @@ class Renderer(abc.ABC):
             else:
                 raise ValueError(f"Don't know how to automatically render {a}")
 
-    def emit_inline(self: Self, i: Inline) -> None:
+    def emit_inline(self, i: Inline) -> None:
         self.handlers.emit_block_or_inline(i, self, self.fmt)
 
-    def emit_block(self: Self, b: Block) -> None:
+    def emit_block(self, b: Block) -> None:
         self.handlers.emit_block_or_inline(b, self, self.fmt)
 
     # This can be overridden by renderers to add stuff at the top level
-    def emit_document(self: Self, doc: Document) -> None:
+    def emit_document(self, doc: Document) -> None:
         self.emit_blockscope(doc.contents)
         self.emit(*doc.segments)
 
-    def emit_segment(self: Self, s: DocSegment) -> None:
+    def emit_segment(self, s: DocSegment) -> None:
         if s.header is None:
             self.emit_blockscope(s.contents)
             self.emit(*s.subsegments)

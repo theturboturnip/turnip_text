@@ -16,9 +16,11 @@ crate-type = ["cdylib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# Use abi3 for compatibility with Python 3.11+, we need dataclasses (python3.8) and simple .to_str() on PyString (python3.10)
+# Used to require 3.11, haven't reduced the requirement yet
 pyo3 = { version = "0.21.2", features = [
     "abi3-py311",
-] } # Use abi3 for compatibility with Python 3.11+, we need dataclasses (python3.8) and typing.Self (python3.11)
+] }
 lexer-rs = "0.0.2"
 codespan-reporting = "0.11.1"
 thiserror = "1.0.37"
