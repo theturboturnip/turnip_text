@@ -338,3 +338,12 @@ class Builder:
             }
             """,
         )
+        test_one_error(
+            "Error message in multibyte text",
+            """
+A ｡ ｢ ｣ ､ ･ ｦ ｧ ｨ ｩ ｪ ｫ ｬ ｭ ｮ ｯ
+B ｰ ｱ ｲ ｳ ｴ ｵ ｶ ｷ ｸ ｹ ｺ ｻ ｼ ｽ ｾ ｿ
+C ﾀ ﾁ ﾂ ﾃ ﾄ ﾅ ﾆ ﾇ ﾈ ﾉ ﾊ ﾋ ﾌ ﾍ ﾎ ﾏ
+D ﾐ ﾑ ﾒ ﾓ ﾔ ﾕ ﾖ {  ﾗ ﾘ ﾙ ﾚ ﾛ ﾜ ﾝﾞﾟ error unterminated inline scope
+""",
+        )

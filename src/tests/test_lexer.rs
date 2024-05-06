@@ -695,5 +695,3 @@ fn test_nul_byte_not_allowed() {
     [[-\0----- ]---- #{{{##} qdubwdqwd \n\t\r\r\n\t\0",
     );
 }
-
-// TODO test error messages for multibyte?

@@ -829,3 +829,33 @@ _native.TurnipTextError: error: Python code created a builder, and built a new o
 
 
 #########################################
+
+###############################
+Error message in multibyte text
+###############################
+
+A ｡ ｢ ｣ ､ ･ ｦ ｧ ｨ ｩ ｪ ｫ ｬ ｭ ｮ ｯ
+B ｰ ｱ ｲ ｳ ｴ ｵ ｶ ｷ ｸ ｹ ｺ ｻ ｼ ｽ ｾ ｿ
+C ﾀ ﾁ ﾂ ﾃ ﾄ ﾅ ﾆ ﾇ ﾈ ﾉ ﾊ ﾋ ﾌ ﾍ ﾎ ﾏ
+D ﾐ ﾑ ﾒ ﾓ ﾔ ﾕ ﾖ {  ﾗ ﾘ ﾙ ﾚ ﾛ ﾜ ﾝﾞﾟ error unterminated inline scope
+
+###############################
+Traceback (most recent call last):
+  File test_errors.py, line 92, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Paragraph break found inside an inline scope
+  ┌─ <string>:5:17
+  │  
+5 │   D ﾐ ﾑ ﾒ ﾓ ﾔ ﾕ ﾖ {  ﾗ ﾘ ﾙ ﾚ ﾛ ﾜ ﾝﾞﾟ error unterminated inline scope
+  │                   ^ Inline scope opened here
+  │ ╭────────────────────────────────────────────────────────────────'
+6 │ │ 
+  │ ╰' Sentence break here
+  │  
+  = Inline scopes can only contain one line.
+  = Try closing the inline scope with '}', escaping the sentence-break with a backslash '\',
+    or make it a block scope by putting a newline directly after the scope-open.
+
+
+
+###############################
