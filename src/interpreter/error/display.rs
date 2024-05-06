@@ -49,8 +49,7 @@ pub fn detailed_message_of(py: Python, err: &TTErrorWithContext) -> String {
     config.end_context_lines = 5;
 
     match err {
-        TTErrorWithContext::NullByteFoundInSource { .. }
-        | TTErrorWithContext::InternalPython(_) => format!("{}", err),
+        TTErrorWithContext::NullByteFoundInSource { .. } => format!("{}", err),
         TTErrorWithContext::FileStackExceededLimit { files, limit } => {
             // Look for recursion: check for repeated entries of the same file names in the stack
             let mut name_map = HashMap::new();

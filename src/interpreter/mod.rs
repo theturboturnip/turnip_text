@@ -97,7 +97,10 @@ impl TurnipTextParser {
     ) -> TTResultWithContext<Self> {
         let file = ParsingFile::new(0, file_name, file_contents)?;
         let files = vec![file];
-        let builders = ProcessorStacks::new(py)?;
+        let builders = match ProcessorStacks::new(py) {
+            Ok(b) => b,
+            Err(err) => return Err((files, err).into()),
+        };
         Ok(Self {
             recursion_config,
             file_stack: vec![(None, 0)],

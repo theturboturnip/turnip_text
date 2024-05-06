@@ -2,9 +2,9 @@ use pyo3::prelude::*;
 
 use crate::{
     interpreter::{
-        error::{syntax::TTSyntaxError, TTResult},
+        error::{syntax::TTSyntaxError, HandleInternalPyErr, TTResult},
         lexer::TTToken,
-        state_machines::{BlockElem, ProcStatus},
+        state_machines::{py_internal_alloc, BlockElem, ProcStatus},
     },
     python::{
         interop::{BlockScope, DocSegment, Document, Header},
@@ -20,7 +20,7 @@ pub struct TopLevelBlockMode {
     structure: InterimDocument,
 }
 impl BlockLevelProcessor<TopLevelBlockMode> {
-    pub fn new(py: Python) -> PyResult<Self> {
+    pub fn new(py: Python) -> TTResult<Self> {
         Ok(Self {
             inner: TopLevelBlockMode {
                 structure: InterimDocument::new(py)?,
@@ -83,21 +83,21 @@ pub struct InterimDocument {
     segment_stack: Vec<InterimDocSegment>,
 }
 impl InterimDocument {
-    pub fn new(py: Python) -> PyResult<Self> {
+    pub fn new(py: Python) -> TTResult<Self> {
         Ok(Self {
-            toplevel_content: Py::new(py, BlockScope::new_empty(py))?,
+            toplevel_content: py_internal_alloc(py, BlockScope::new_empty(py))?,
             toplevel_segments: PyInstanceList::new(py),
             segment_stack: vec![],
         })
     }
 
-    pub fn finalize(self, py: Python) -> PyResult<Py<Document>> {
+    pub fn finalize(self, py: Python) -> TTResult<Py<Document>> {
         assert_eq!(
             self.segment_stack.len(),
             0,
             "Tried to finalize the document with in-progress segments?"
         );
-        Py::new(
+        py_internal_alloc(
             py,
             Document::new_rs(
                 self.toplevel_content.clone(),
@@ -107,7 +107,8 @@ impl InterimDocument {
     }
 
     fn push_segment_header(&mut self, py: Python, header: PyTcRef<Header>) -> TTResult<()> {
-        let subsegment_weight = Header::get_weight(py, header.bind(py))?;
+        let subsegment_weight =
+            Header::get_weight(py, header.bind(py)).expect_pyok("Header::get_weight on Header");
 
         // If there are items in the segment_stack, pop from self.segment_stack until the toplevel weight < subsegment_weight
         self.pop_segments_until_less_than(py, subsegment_weight)?;
@@ -146,13 +147,18 @@ impl InterimDocument {
                 // If there's another segment, push the new finished segment into it,
                 // and return that weight
                 Some(x) => {
-                    x.subsegments.append_checked(segment.bind(py))?;
+                    x.subsegments
+                        .append_checked(segment.bind(py))
+                        .expect_pyok("PyTypeclassList<DocSegment>::append_checked with DocSegment");
                     x.weight
                 }
                 // Otherwise just push it into toplevel_segments.
                 // The segment stack is now empty.
                 None => {
-                    self.toplevel_segments.append_checked(segment.bind(py))?;
+                    self.toplevel_segments
+                        .append_checked(segment.bind(py))
+                        .expect_pyok("PyTypeclassList<DocSegment>::append_checked with DocSegment");
+
                     return Ok(());
                 }
             };
@@ -170,7 +176,10 @@ impl InterimDocument {
             Some(segment) => &segment.content,
             None => &self.toplevel_content,
         };
-        Ok(child_list_ref.borrow_mut(py).push_block(block)?)
+        Ok(child_list_ref
+            .borrow_mut(py)
+            .push_block(block)
+            .expect_pyok("BlockScope::push_block with presumed Block"))
     }
 }
 
@@ -182,18 +191,19 @@ struct InterimDocSegment {
     subsegments: PyInstanceList<DocSegment>,
 }
 impl InterimDocSegment {
-    fn new(py: Python, header: PyTcRef<Header>, weight: i64) -> PyResult<Self> {
+    fn new(py: Python, header: PyTcRef<Header>, weight: i64) -> TTResult<Self> {
         Ok(Self {
             header,
             weight,
-            content: Py::new(py, BlockScope::new_empty(py))?,
+            content: py_internal_alloc(py, BlockScope::new_empty(py))?,
             subsegments: PyInstanceList::new(py),
         })
     }
-    fn finalize(self, py: Python) -> PyResult<Py<DocSegment>> {
-        Py::new(
+    fn finalize(self, py: Python) -> TTResult<Py<DocSegment>> {
+        py_internal_alloc(
             py,
-            DocSegment::new_checked(py, self.header, self.content, self.subsegments)?,
+            DocSegment::new_checked(py, self.header, self.content, self.subsegments)
+                .expect_pyok("DocSegment::new_checked with supposedly correct tree"),
         )
     }
 }

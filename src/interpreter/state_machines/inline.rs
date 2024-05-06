@@ -4,7 +4,7 @@ use crate::{
     interpreter::{
         error::{
             syntax::{BlockModeElem, InlineModeContext, TTSyntaxError},
-            TTError, TTResult,
+            HandleInternalPyErr, TTError, TTResult,
         },
         lexer::{Escapable, TTToken},
         state_machines::{BlockElem, InlineElem},
@@ -75,7 +75,10 @@ impl InlineLevelProcessor<ParagraphInlineMode> {
         inline_ctx: ParseContext,
     ) -> TTResult<Self> {
         let current_sentence = py_internal_alloc(py, Sentence::new_empty(py))?;
-        current_sentence.borrow_mut(py).push_inline(inline)?;
+        current_sentence
+            .borrow_mut(py)
+            .push_inline(inline)
+            .expect_pyok("Sentence::push_inline with presumed inline");
         Ok(Self {
             inner: ParagraphInlineMode {
                 ctx: ParseContext::new(inline_ctx.first_tok(), inline_ctx.last_tok()),
@@ -108,7 +111,10 @@ impl ParagraphInlineMode {
                 py_internal_alloc(py, Sentence::new_empty(py))?,
             );
             // Push the old one into the paragraph
-            self.para.borrow_mut(py).push_sentence(py, sentence)?;
+            self.para
+                .borrow_mut(py)
+                .push_sentence(py, sentence)
+                .expect_pyok("Paragraph::push_sentence with Sentence");
         }
         Ok(())
     }
@@ -273,7 +279,10 @@ impl InlineMode for ParagraphInlineMode {
             self.ctx.try_combine(inl_ctx),
             "ParagraphInlineMode got a token from a different file that it was opened in"
         );
-        self.current_sentence.borrow_mut(py).push_inline(inl)?;
+        self.current_sentence
+            .borrow_mut(py)
+            .push_inline(inl)
+            .expect_pyok("Sentence::push_inline with presumed Inline");
         Ok(())
     }
 }
@@ -427,7 +436,10 @@ impl InlineMode for KnownInlineScopeInlineMode {
             self.ctx.try_combine(inl_ctx),
             "ParagraphInlineMode got a token from a different file that it was opened in"
         );
-        self.inline_scope.borrow_mut(py).push_inline(inl)?;
+        self.inline_scope
+            .borrow_mut(py)
+            .push_inline(inl)
+            .expect_pyok("InlineScope::push_inline with presumed Inline");
         Ok(())
     }
 }

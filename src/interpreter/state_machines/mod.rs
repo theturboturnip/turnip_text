@@ -64,7 +64,7 @@ mod ambiguous_scope;
 mod block;
 use block::TopLevelProcessor;
 
-use super::{FileEvent, UserPythonEnv};
+use super::{error::HandleInternalPyErr, FileEvent, UserPythonEnv};
 
 mod code;
 mod comment;
@@ -389,7 +389,7 @@ pub struct ProcessorStacks {
     stacks: Vec<FileProcessorStack>,
 }
 impl ProcessorStacks {
-    pub fn new(py: Python) -> PyResult<Self> {
+    pub fn new(py: Python) -> TTResult<Self> {
         let top = rc_refcell(TopLevelProcessor::new(py)?);
         Ok(Self {
             stacks: vec![FileProcessorStack::new(top.clone())], // Constant condition: there is always at least one processor stack
@@ -443,7 +443,7 @@ fn py_internal_alloc<T: PyClass>(
     py: Python<'_>,
     value: impl Into<PyClassInitializer<T>>,
 ) -> TTResult<Py<T>> {
-    Ok(Py::new(py, value)?)
+    Ok(Py::new(py, value).expect_pyok("Py::new"))
 }
 
 fn rc_refcell<T>(t: T) -> Rc<RefCell<T>> {

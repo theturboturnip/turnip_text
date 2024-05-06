@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 
 use crate::{
     interpreter::{
-        error::{syntax::TTSyntaxError, TTResult},
+        error::{syntax::TTSyntaxError, HandleInternalPyErr, TTResult},
         lexer::TTToken,
         state_machines::{py_internal_alloc, BlockElem, ProcStatus},
     },
@@ -64,7 +64,10 @@ impl BlockMode for BlockScopeBlockMode {
         block: BlockElem,
         _block_ctx: ParseContext,
     ) -> TTResult<ProcStatus> {
-        self.block_scope.borrow_mut(py).push_block(block.bind(py))?;
+        self.block_scope
+            .borrow_mut(py)
+            .push_block(block.bind(py))
+            .expect_pyok("BlockScope::push_block with BlockElem");
         Ok(ProcStatus::Continue)
     }
 }

@@ -73,7 +73,6 @@ pub enum TestTTErrorWithContext<'a> {
     FileStackExceededLimit,
     Syntax(TestSyntaxError<'a>),
     UserPython(TestUserPythonError<'a>),
-    InternalPython(Regex),
 }
 impl<'a> From<TestSyntaxError<'a>> for TestTTErrorWithContext<'a> {
     fn from(value: TestSyntaxError<'a>) -> Self {
@@ -103,9 +102,6 @@ impl<'a> TestTTErrorWithContext<'a> {
             }
             (Self::UserPython(l_err), TTErrorWithContext::UserPython(sources, r_err)) => {
                 l_err.matches(py, r_err, sources)
-            }
-            (Self::InternalPython(l_pyerr), TTErrorWithContext::InternalPython(r_pyerr)) => {
-                l_pyerr.is_match(&stringify_pyerr(py, r_pyerr))
             }
             _ => false,
         }

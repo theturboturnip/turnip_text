@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use pyo3::{PyErr, Python};
 use thiserror::Error;
 
@@ -11,6 +13,24 @@ use display::detailed_message_of;
 pub mod syntax;
 pub mod user_python;
 
+/// Implemented only by PyResult<T>
+pub trait HandleInternalPyErr {
+    type Out;
+    /// panic if the result is an err, displaying the error and the provided context.
+    /// PyO3 will hopefully unwind the panic and show line numbers.
+    fn expect_pyok(self, context: impl Display) -> Self::Out;
+}
+impl<T> HandleInternalPyErr for Result<T, PyErr> {
+    type Out = T;
+
+    fn expect_pyok(self, context: impl Display) -> T {
+        match self {
+            Ok(t) => t,
+            Err(pyerr) => panic!("Internal turnip_text Python error in {context}: {pyerr}"),
+        }
+    }
+}
+
 /// An Error used in code that doesn't currently have access to
 /// the TurnipTextSource files that generated the error.
 /// May contain ParseSpans, ParseContexts etc. that indicate "in file 5 character 12 was problematic"
@@ -23,8 +43,6 @@ pub enum TTError {
     Syntax(#[from] Box<TTSyntaxError>),
     #[error("Error when executing user-generated Python")]
     UserPython(#[from] Box<TTUserPythonError>),
-    #[error("Internal Python Error")]
-    InternalPython(#[from] PyErr),
 }
 impl From<TTSyntaxError> for TTError {
     fn from(value: TTSyntaxError) -> Self {
@@ -39,7 +57,7 @@ impl From<TTUserPythonError> for TTError {
 
 pub type TTResult<T> = Result<T, TTError>;
 
-/// An Error
+/// An Error returned by the toplevel interpreter, with all the context required for error reporting.
 #[derive(Error, Debug)]
 pub enum TTErrorWithContext {
     #[error("Found a null byte '\\0' in source '{source_name}', which isn't allowed. This source is probably corrupted, not a text file, or was read with the wrong encoding.")]
@@ -54,15 +72,12 @@ pub enum TTErrorWithContext {
     Syntax(Vec<ParsingFile>, Box<TTSyntaxError>),
     #[error("Error when executing user-generated Python")]
     UserPython(Vec<ParsingFile>, Box<TTUserPythonError>),
-    #[error("Internal Python Error")]
-    InternalPython(#[from] PyErr),
 }
 impl From<(Vec<ParsingFile>, TTError)> for TTErrorWithContext {
     fn from(value: (Vec<ParsingFile>, TTError)) -> Self {
         match value.1 {
             TTError::Syntax(err) => Self::Syntax(value.0, err),
             TTError::UserPython(err) => Self::UserPython(value.0, err),
-            TTError::InternalPython(err) => Self::InternalPython(err),
         }
     }
 }
@@ -88,9 +103,6 @@ impl TTErrorWithContext {
                     set_cause_and_context(py, &mut basic_err, err)
                 }
             },
-            TTErrorWithContext::InternalPython(err) => {
-                set_cause_and_context(py, &mut basic_err, err)
-            }
         }
 
         basic_err
