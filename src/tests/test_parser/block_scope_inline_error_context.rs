@@ -99,7 +99,7 @@ fn code_inline_scope_inside_para() {
 
 #[test]
 fn bare_nested_inline_scopes() {
-    // TODO not a great test lol
+    // This is not a great test lol but I can't make it better without upending the infrastructure
     expect_parse_err(
         "{    inline    {  another inline {
         block! ",
