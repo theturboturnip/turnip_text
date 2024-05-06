@@ -1,6 +1,4 @@
-[section()]{
-    First-Year Plan
-}
+[section()]{First-Year Plan}
 
 The first year of the PhD will focus on reducing the broad idea of diverging CPU/GPU capabilities to a concrete set of potential approaches.
 This problem space is bounded by two restrictions: how current drivers and programming models use pointers, and how the CPU and GPU domains are separated in hardware.

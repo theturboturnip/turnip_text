@@ -14,7 +14,7 @@ from turnip_text.doc.std_plugins import (
     InlineFormatted,
     InlineFormattingType,
     NamedUrl,
-    StructureBlockHeader,
+    StructureHeader,
 )
 from turnip_text.render import RenderPlugin
 from turnip_text.render.latex.backrefs import LatexBackrefMethod
@@ -88,11 +88,11 @@ class ArticleRenderPlugin(LatexPlugin):
                 if latex_counter is not None:
                     setup.declare_tt_counter(tt_counter, latex_counter)
 
-        setup.emitter.register_header(StructureBlockHeader, self._emit_structure)
+        setup.emitter.register_header(StructureHeader, self._emit_structure)
 
     def _emit_structure(
         self,
-        head: StructureBlockHeader,
+        head: StructureHeader,
         contents: BlockScope,
         subsegments: Iterator[DocSegment],
         renderer: LatexRenderer,

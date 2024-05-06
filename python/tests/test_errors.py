@@ -79,7 +79,6 @@ def test_error_from_nested_file_running_user_code_filters_out():
     assert err_info.value.__context__ is SPECIFIC_ERROR
 
 
-# TODO test error messages
 def test_print_error_messages():
     with open(
         os.path.join(os.path.dirname(__file__), "error_messages.txt"),

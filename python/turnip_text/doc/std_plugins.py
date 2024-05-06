@@ -136,8 +136,8 @@ class InlineFormatted(UserInline):
 
 
 @dataclass(frozen=True)
-class StructureBlockHeader(UserAnchorHeader):
-    contents: BlockScope  # The title of the segment (TODO once the interpreter allows it, make this use InlineScope. See _headingn)
+class StructureHeader(UserAnchorHeader):
+    contents: InlineScope  # The title of the segment
     anchor: Optional[
         Anchor
     ]  # May be None if this DocSegment is unnumbered. Otherwise necessary so it can be counted, but the ID may be None
@@ -149,9 +149,7 @@ class TableOfContents(Block):
     pass
 
 
-# TODO make this a InlineScopeBuilder. Right now an InlineScopeBuilder can't return Header,
-# because once you're parsing inline content you're in "inline mode".
-class StructureBlockHeaderGenerator(BlockScopeBuilder):
+class StructureHeaderGenerator(InlineScopeBuilder):
     doc: DocState
     weight: int
     label: Optional[str]
@@ -168,20 +166,20 @@ class StructureBlockHeaderGenerator(BlockScopeBuilder):
 
     def __call__(
         self, label: Optional[str] = None, num: bool = True
-    ) -> "StructureBlockHeaderGenerator":
-        return StructureBlockHeaderGenerator(self.doc, self.weight, label, num)
+    ) -> "StructureHeaderGenerator":
+        return StructureHeaderGenerator(self.doc, self.weight, label, num)
 
-    def build_from_blocks(self, bs: BlockScope) -> StructureBlockHeader:
+    def build_from_inlines(self, inlines: InlineScope) -> StructureHeader:
         kind = f"h{self.weight}"
         weight = self.weight
 
         if self.num:
-            return StructureBlockHeader(
-                contents=bs,
+            return StructureHeader(
+                contents=inlines,
                 anchor=self.doc.anchors.register_new_anchor(kind, self.label),
                 weight=weight,
             )
-        return StructureBlockHeader(contents=bs, anchor=None, weight=weight)
+        return StructureHeader(contents=inlines, anchor=None, weight=weight)
 
 
 class StructureDocPlugin(DocPlugin):
@@ -189,33 +187,33 @@ class StructureDocPlugin(DocPlugin):
         self,
     ) -> Sequence[type[Block] | type[Inline] | type[Header]]:
         return (
-            StructureBlockHeader,
+            StructureHeader,
             # TableOfContents, # TODO
         )
 
     @stateful
     def heading1(
         self, state: DocState, label: Optional[str] = None, num: bool = True
-    ) -> BlockScopeBuilder:
-        return StructureBlockHeaderGenerator(state, 1, label, num)
+    ) -> InlineScopeBuilder:
+        return StructureHeaderGenerator(state, 1, label, num)
 
     @stateful
     def heading2(
         self, state: DocState, label: Optional[str] = None, num: bool = True
-    ) -> BlockScopeBuilder:
-        return StructureBlockHeaderGenerator(state, 2, label, num)
+    ) -> InlineScopeBuilder:
+        return StructureHeaderGenerator(state, 2, label, num)
 
     @stateful
     def heading3(
         self, state: DocState, label: Optional[str] = None, num: bool = True
-    ) -> BlockScopeBuilder:
-        return StructureBlockHeaderGenerator(state, 3, label, num)
+    ) -> InlineScopeBuilder:
+        return StructureHeaderGenerator(state, 3, label, num)
 
     @stateful
     def heading4(
         self, state: DocState, label: Optional[str] = None, num: bool = True
-    ) -> BlockScopeBuilder:
-        return StructureBlockHeaderGenerator(state, 4, label, num)
+    ) -> InlineScopeBuilder:
+        return StructureHeaderGenerator(state, 4, label, num)
 
     # TODO
     # @stateless
@@ -242,7 +240,7 @@ class CitationDocPlugin(DocPlugin):
         if not self._has_bib:
             toplevel.push_segment(
                 DocSegment(
-                    doc.heading1(num=False) @ paragraph_of("Bibliography"),
+                    doc.heading1(num=False) @ "Bibliography",
                     BlockScope([Bibliography()]),
                     [],
                 )
@@ -307,19 +305,14 @@ class FootnoteDocPlugin(DocPlugin):
         )
 
     @stateful
-    def footnote_text(self, doc: DocState, footnote_id: str) -> BlockScopeBuilder:
+    def footnote_text(self, doc: DocState, footnote_id: str) -> InlineScopeBuilder:
         # Store the contents of a block scope and associate them with a specific footnote label
-        # TODO ah hell make InlineScopeBuilder able to return None so we can use it here
-        @block_scope_builder
-        def handle_block_contents(contents: BlockScope) -> Optional[Block]:
-            p = next(iter(contents))
-            assert isinstance(p, Paragraph)
+        @inline_scope_builder
+        def handle_block_contents(contents: InlineScope) -> Optional[Block]:
             doc.anchors.register_new_anchor_with_float(
                 "footnote",
                 footnote_id,
-                lambda anchor: FootnoteContents(
-                    anchor, InlineScope(list(next(iter(p))))
-                ),
+                lambda anchor: FootnoteContents(anchor, contents),
             )
             return None
 

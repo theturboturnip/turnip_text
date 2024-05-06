@@ -3,9 +3,7 @@ section=heading1
 subsection=heading2
 -]
 
-[section()]{
-    Introduction/Extended Abstract
-}
+[section()]{ Introduction/Extended Abstract }
 
 # 500-1000 words
 
@@ -31,9 +29,7 @@ GPUs can hold data that's sensitive at small-scale (e.g. data for displaying per
 However, as the next section will show, CHERI's CPU-centric capabilities may need to adapt to work well with GPUs.
 
 #----------------------
-[subsection(num=False)]{
-    Problem Definition
-}
+[subsection(num=False)]{Problem Definition}
 
 Current systems that use CHERI capabilities make a few basic assumptions:
 
@@ -77,9 +73,7 @@ Because the GPU controls the image format, and has hardware to decode the format
 Separating [enquote]{texture capabilities} from normal capabilities could enforce that these are accessed through correct hardware, but as this hardware isn't available on CPUs one would have to prevent CPUs from dereferencing them.
 
 #----------------------
-[subsection(num=False)]{
-    Potential Approach
-}
+[subsection(num=False)]{Potential Approach}
 
 As shown above, GPU and CPU memory have different characteristics, and GPUs could benefit from having separate capability types.
 However, even if these capability types could only be dereferenced on the GPU, they will need to be created or manipulated from the CPU - the gap between domains needs to be crossed.
@@ -91,17 +85,13 @@ As CAPcelerate is investigating, naive implementations of this model can be inse
 Once domain-crossing approaches have been developed in this context, they can be extended to support lower-level APIs.
 
 #-------------------
-[section()]{
-    Related Work
-}
+[section()]{Related Work}
 
 While capabilities themselves haven't yet addressed domain-crossing, there is a vast amount of previous work for sharing memory with legacy pointers.
 This section will highlight three broad topics that require domain crossing, which domain-crossing capability systems may need to be compatible with or build on.
 
 # ------------------------------------
-[subsection()]{
-    DMA
-}
+[subsection()]{DMA}
 
 Modern System on Chips (SoCs) can contain much more than just CPUs and GPUs.
 Mobile SoCs are a great example due to their high connectivity - custom hardware is included to support connections over mobile networks (4G/5G), Bluetooth, and Wi-Fi.
@@ -123,14 +113,10 @@ The DMAC then pulls data from the peripheral domain and writes it out to the phy
 This is a very simple example of domain crossing for physically separated hardware domains, but it isn't enough for dynamic software domains.
 For example, accessing peripherals from Virtual Machines (VMs) adds a layer of translation between the guest-domains and the host-domains.
 
-[footnote_text("amba_example")]{
-    One such example is the Arm AMBA DMA-330 [cite("armltdAMBADMAController2009")]
-}
+[footnote_text("amba_example")]{One such example is the Arm AMBA DMA-330 [cite("armltdAMBADMAController2009")]}
 
 # ------------------------------------
-[subsection()]{
-    Virtualization
-}
+[subsection()]{Virtualization}
 
 When a VM tries to DMA data to/from a peripheral, it will specify a guest-domain address (guest-physical, or potentially guest-virtual) which needs to be translated into a host-physical address which the DMAC can use.
 AMD[cite("amdAMDIOVirtualizationTechnology2021")], Arm[cite("armltdArmSMMUVer3")], and Intel[cite("intelIOMMUSpecRev3p3")] each have their own IOMMU (I/O Memory Management Unit) design which performs this translation dynamically.
@@ -161,9 +147,7 @@ When using SR-IOV, Nvidia's vGPU technology physically segments both the memory 
 Integrated GPUs (e.g. Arm Mali GPUs, packaged on the same SoC as the CPU) don't necessarily use SR-IOV, but do isolate resources similarly[cite("armltdArmMaliG78AEProduct2020")].
 
 # ------------------------------------
-[subsection()]{
-    GPU Virtual Memory
-}
+[subsection()]{GPU Virtual Memory}
 
 On top of isolating VMs from each other, a further level of translation is added on the GPU side: Nvidia and AMD external GPUs have their own dedicated MMUs for virtual-to-physical address translation.
 This is in large part due to the idea of [enquote]{Shared Virtual Memory} (SVM), where the CPU and GPU share an address space, and pointers to SVM can be seamlessly dereferenced on both.

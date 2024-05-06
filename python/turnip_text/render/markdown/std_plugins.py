@@ -38,7 +38,7 @@ from turnip_text.doc.std_plugins import (
     InlineFormatted,
     InlineFormattingType,
     NamedUrl,
-    StructureBlockHeader,
+    StructureHeader,
 )
 from turnip_text.helpers import paragraph_of
 from turnip_text.render import (
@@ -85,7 +85,7 @@ class StructureRenderPlugin(MarkdownPlugin):
         self._has_chapter = use_chapters
 
     def _register(self, setup: MarkdownSetup) -> None:
-        setup.emitter.register_header(StructureBlockHeader, self._emit_structure)
+        setup.emitter.register_header(StructureHeader, self._emit_structure)
         setup.define_counter_rendering(
             "h1",
             SimpleCounterFormat(
@@ -121,7 +121,7 @@ class StructureRenderPlugin(MarkdownPlugin):
 
     def _emit_structure(
         self,
-        head: StructureBlockHeader,
+        head: StructureHeader,
         contents: BlockScope,
         subsegments: Iterator[DocSegment],
         renderer: MarkdownRenderer,
@@ -248,7 +248,7 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
     ) -> Document:
         toplevel.push_segment(
             DocSegment(
-                doc.heading1(num=False) @ paragraph_of("Footnotes"),
+                doc.heading1(num=False) @ "Footnotes",
                 BlockScope([FootnoteList()]),
                 [],
             )
