@@ -1,0 +1,831 @@
+
+
+###################
+Null Byte in Source
+###################
+oidnowbiadw\0unbwodubqdop
+###################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: Found a null byte '\0' in source '<string>', which isn't allowed. This source is probably corrupted, not a text file, or was read with the wrong encoding.
+
+###################
+
+#########################
+File Stack Exceeded Limit
+#########################
+[-
+            import turnip_text as tt
+            s = tt.TurnipTextSource("<test>", "[s]")
+            -]
+            
+            [s]
+#########################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: Exceeded the TurnipTextSource stack limit of 16 files.
+Found the following repeated TurnipTextSource names in the stack:
+'<test>':	16 times
+One of these files is likely guilty of recursion.
+
+#########################
+
+#############################
+Syntax - CodeCloseOutsideCode
+#############################
+Wow some stuff in a paragraph
+and then a bare ]
+
+#############################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Code close token in text mode
+  ┌─ <string>:2:17
+  │
+2 │ and then a bare ]
+  │                 ^ Code-close here
+  │
+  = If you want to use ']' in text, try escaping it with a backslash '\]'
+
+
+
+#############################
+
+####################################
+Syntax - BlockScopeCloseOutsideScope
+####################################
+Wow some stuff in a paragraph
+and then a bare
+}
+####################################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Scope-close token found in block-mode when no block scopes are open
+  ┌─ <string>:3:1
+  │
+3 │ }
+  │ ^ Scope-close here
+  │
+  = If you want to use '}' in text, try escaping it with a backslash '\}'
+
+
+
+####################################
+
+#####################################
+Syntax - InlineScopeCloseOutsideScope
+#####################################
+Wow some stuff in a paragraph
+and then a bare }
+#####################################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Scope-close token found in inline-mode when no inline scopes are open
+  ┌─ <string>:2:17
+  │
+2 │ and then a bare }
+  │                 ^ Scope-close here
+  │
+  = If you want to use '}' in text, try escaping it with a backslash '\}'
+  = If you meant to end an enclosing block-scope, put the '}' on a separate line.
+
+
+
+#####################################
+
+##################################
+Syntax - RawScopeCloseOutsideScope
+##################################
+Wow some stuff in a paragraph
+and then a bare }###
+##################################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Raw-scope-close token found when no raw scope is open
+  ┌─ <string>:2:17
+  │
+2 │ and then a bare }###
+  │                 ^^^^ Raw-scope-close here
+  │
+  = If you want to use this in text, try escaping each character with a backslash.
+  = e.g. '}###' = '\}\#\#\#'
+
+
+
+##################################
+
+########################
+Syntax - EndedInsideCode
+########################
+Wow some stuff in a paragraph with [ everywhere!
+[[[ 
+########################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: File ended while parsing code
+  ┌─ <string>:1:36
+  │
+1 │ Wow some stuff in a paragraph with [ everywhere!
+  │                                    ^ Started parsing code here
+2 │ [[[ 
+  │     - File ends here
+  │
+  = Make sure to close code mode!
+  = If you meant to use '[' as text instead of starting code, try escaping it with a backslash '\['
+
+
+
+########################
+
+############################
+Syntax - EndedInsideRawScope
+############################
+Wow some stuff in a paragraph with ###{ everywhere!
+ ##{ #{
+############################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: File ended while parsing raw scope
+  ┌─ <string>:1:36
+  │
+1 │ Wow some stuff in a paragraph with ###{ everywhere!
+  │                                    ^^^^ Started parsing raw scope here
+2 │  ##{ #{
+  │        - File ends here
+  │
+  = Make sure to close the raw scope!
+  = If you meant to use this as text instead of opening a raw scope,
+    try escaping each character with a backslash
+  = e.g. '###{' = '\#\#\#\{'
+
+
+
+############################
+
+##################################
+Syntax - EndedInsideScope - inline
+##################################
+Wow some stuff in a paragraph with { everywhere! {{{ 
+##################################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: File ended inside scope
+  ┌─ <string>:1:52
+  │
+1 │ Wow some stuff in a paragraph with { everywhere! {{{ 
+  │                                                    ^ - File ends here
+  │                                                    │ 
+  │                                                    Scope opened here
+  │
+  = Make sure to close the scope!
+  = If you meant to use '{' in text instead of opening a scope, try escaping it with a backslash '\{'
+
+
+
+##################################
+
+#################################
+Syntax - EndedInsideScope - block
+#################################
+{
+Wow some stuff in a paragraph and no closing \}
+#################################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: File ended inside scope
+  ┌─ <string>:1:1
+  │
+1 │ {
+  │ ^ Scope opened here
+2 │ Wow some stuff in a paragraph and no closing \}
+  │                                                - File ends here
+  │
+  = Make sure to close the scope!
+  = If you meant to use '{' in text instead of opening a scope, try escaping it with a backslash '\{'
+
+
+
+#################################
+
+#####################################
+Syntax - BlockScopeOpenedInInlineMode
+#####################################
+
+Wahey a very big paragraph.
+With multiple sentences, even.
+Even some delightful inline scopes { like this one {
+    But then SURPRISE a block scope!
+}
+
+#####################################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Block scope opened in inline mode
+  ┌─ <string>:4:52
+  │
+2 │ Wahey a very big paragraph.
+  │ ----- Paragraph started here...
+3 │ With multiple sentences, even.
+4 │ Even some delightful inline scopes { like this one {
+  │                                                   -^ Block scope opened here
+  │                                                   │ 
+  │                                                   ...still in inline mode here
+  │
+  = A scope-open followed by whitespace and a newline is a block-scope-open.
+  = Block scopes can't be opened inside paragraphs.
+  = Try opening this scope on a new line, separated from the paragraph.
+
+
+
+#####################################
+
+#####################################
+Syntax - CodeEmittedBlockInInlineMode
+#####################################
+
+[-
+class CustomBlock:
+    is_block=True
+-]
+And we're inside a paragraph but then [CustomBlock()]!
+
+#####################################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: A `Block` was emitted by code in inline mode.
+  ┌─ <string>:6:39
+  │
+6 │ And we're inside a paragraph but then [CustomBlock()]!
+  │ ---                                  -^^^^^^^^^^^^^^^ Block emitted by code here
+  │ │                                    │ 
+  │ │                                    ...still in inline mode here
+  │ Paragraph started here...
+  │
+  = Emitted an object '<CustomBlock object at 0x000001D931781E90>', which implements `Block`
+  = Blocks can't be emitted inside paragraphs.
+
+
+
+#####################################
+
+######################################
+Syntax - CodeEmittedHeaderInInlineMode
+######################################
+
+[-
+class CustomHeader:
+    is_header = True
+    weight = 12
+
+class CustomHeaderBuilder:
+    def build_from_inlines(self, arg):
+        return CustomHeader()
+-]
+
+And we're inside a paragraph but then { even inside an inline scope [CustomHeaderBuilder()]{with some swallowed inline content} }
+
+######################################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: A `Header` was emitted by code in inline mode.
+   ┌─ <string>:12:69
+   │
+12 │ And we're inside a paragraph but then { even inside an inline scope [CustomHeaderBuilder()]{with some swallowed inline content} }
+   │                                       -                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Header emitted by code here
+   │                                       │                              
+   │                                       Inline scope started here
+   │
+   = Emitted an object '<CustomHeader object at 0x000001D931781F50>', which implements `Header`
+   = Headers can't be emitted inside inline scopes.
+
+
+
+######################################
+
+######################################
+Syntax - CodeEmittedHeaderInBlockScope
+######################################
+
+[-
+class CustomHeader:
+    is_header = True
+    weight = 12
+
+class CustomHeaderBuilder:
+    def build_from_raw(self, arg):
+        return CustomHeader()
+-]
+
+{
+    inside a block scope
+
+    [CustomHeaderBuilder()]#{and we try to build a header!}#
+}
+
+######################################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: A `Header` was emitted by code inside a block scope.
+   ┌─ <string>:15:5
+   │
+12 │ {
+   │ - Enclosing block scope started here
+   ·
+15 │     [CustomHeaderBuilder()]#{and we try to build a header!}#
+   │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Header emitted by code here
+   │
+   = Emitted an object '<CustomHeader object at 0x000001D931781ED0>', which implements `Header`
+   = Headers are only allowed at the top level of the document,
+     not inside block scopes.
+
+
+
+######################################
+
+######################################
+Syntax - CodeEmittedSourceInInlineMode
+######################################
+
+[-
+import turnip_text as tt
+s = tt.TurnipTextSource.from_string("")
+
+class CustomBuilderFromInline:
+    def build_from_inlines(self, arg):
+        return None
+-]
+
+We're in a paragraph and then
+[CustomBuilderFromInline()]{ wow we're inside an inline scope and we emit a source [s] }
+
+######################################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: A `TurnipTextSource` file was emitted by code in inline mode.
+   ┌─ <string>:12:84
+   │
+12 │ [CustomBuilderFromInline()]{ wow we're inside an inline scope and we emit a source [s] }
+   │                            -                                                       ^^^ TurnipTextSource emitted by code here
+   │                            │                                                        
+   │                            Inline scope started here
+   │
+   = New source files can't be emitted inside inline scopes.
+
+
+
+######################################
+
+###################################
+Syntax - SentenceBreakInInlineScope
+###################################
+{ Wow check out this great inline scope
+
+ oh, surprise newline }
+###################################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Paragraph break found inside an inline scope
+  ┌─ <string>:1:1
+  │  
+1 │   { Wow check out this great inline scope
+  │   ^ Inline scope opened here
+  │ ╭───────────────────────────────────────'
+2 │ │ 
+  │ ╰' Sentence break here
+  │  
+  = Inline scopes can only contain one line.
+  = Try closing the inline scope with '}', escaping the sentence-break with a backslash '\',
+    or make it a block scope by putting a newline directly after the scope-open.
+
+
+
+###################################
+
+##################################
+Syntax - EscapedNewlineInBlockMode
+##################################
+{
+            
+            Inside a block scope there may be a paragraph
+
+            # and then an escaped newline
+                \
+
+            }
+##################################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Escaped newline found in block-mode
+  ┌─ <string>:6:17
+  │  
+6 │ ╭                 \
+7 │ │ 
+  │ ╰^ Backslash-escaped newline here
+  │  
+  = Escaping a newline with a backslash means 'continue the line'.
+  = It is valid inside Paragraphs and inline scopes, but it doesn't have any meaning in block mode.
+  = Delete the backslash to remove this error.
+
+
+
+##################################
+
+####################################
+Syntax - InsufficientBlockSeparation
+####################################
+
+Wow we have a big paragraph here
+It has so many sentences
+And then we could try to make a block right afterwards
+{
+
+}
+
+####################################
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Insufficient separation between block-level elements
+  ┌─ <string>:5:1
+  │  
+2 │   Wow we have a big paragraph here
+  │   --- A Paragraph started here...
+3 │   It has so many sentences
+4 │   And then we could try to make a block right afterwards
+  │ ╭──────────────────────────────────────────────────────'
+5 │ │ {
+  │ │ ^ ...need a new line before any other content.
+  │ ╰' ...and was still in progress here...
+  │  
+  = Blocks must be visually separated in turnip_text code.
+  = Start the new block on a new line.
+  = Headers and TurnipTextSource files are also block-level elements, and must also be separated.
+
+
+
+####################################
+
+################################
+UserPython - Compiling Statement
+################################
+[1.0f]
+################################
+  File "<string>", line 1
+    1.0f
+      ^
+SyntaxError: invalid decimal literal
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Error when compiling Python from eval-brackets
+  ┌─ <string>:1:1
+  │
+1 │ [1.0f]
+  │ ^^^^^^ Code taken from here
+  │
+  = Trying to compile the following code as a Python expression raised SyntaxError, 
+  = then trying to compile it as at least one Python statement raised <class 'SyntaxError'>.
+  = Compiled code:
+    1.0f
+
+
+
+################################
+
+###############################
+UserPython - Compiling Indented
+###############################
+[    indented = 1
+unindented=1
+    indented=2]
+###############################
+  File "<string>", line 4
+    indented=2
+IndentationError: unexpected indent
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Error when compiling Python from eval-brackets
+  ┌─ <string>:1:1
+  │  
+1 │ ╭ [    indented = 1
+2 │ │ unindented=1
+3 │ │     indented=2]
+  │ ╰───────────────^ Code taken from here
+  │  
+  = Trying to compile the code as a Python statement raised IndentationError.
+  = Attached 'if True:' to the front to fix it, but compiling that raised <class 'IndentationError'>.
+  = Compiled code:
+    if True:
+        indented = 1
+    unindented=1
+        indented=2
+
+
+
+###############################
+
+####################
+UserPython - Running
+####################
+[function_raising_error()]
+####################
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 245, in raising_error
+    raise ValueError()
+ValueError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: <class 'ValueError'> raised when executing Python from eval-brackets
+  ┌─ <string>:1:1
+  │
+1 │ [function_raising_error()]
+  │ ^^^^^^^^^^^^^^^^^^^^^^^^^^ Code taken from here
+  │
+  = Executed code:
+    function_raising_error()
+
+
+
+####################
+
+#############################
+UserPython - Running Indented
+#############################
+[
+    indented=1
+    function_raising_error()]
+#############################
+Traceback (most recent call last):
+  File "<string>", line 4, in <module>
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 245, in raising_error
+    raise ValueError()
+ValueError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: <class 'ValueError'> raised when executing Python from eval-brackets
+  ┌─ <string>:1:1
+  │  
+1 │ ╭ [
+2 │ │     indented=1
+3 │ │     function_raising_error()]
+  │ ╰─────────────────────────────^ Code taken from here
+  │  
+  = Trying to compile the code as Python statements raised IndentationError.
+  = Attaching 'if True:' to the front made the code compile.
+  = Executed code:
+    if True:
+    
+        indented=1
+        function_raising_error()
+
+
+
+#############################
+
+#####################################################
+UserPython - CoercingEvalBracketToElement - fits none
+#####################################################
+[object()]
+#####################################################
+TypeError: Expected eval-bracket to produce None, a TurnipTextSource, a Header, a Block, or something coercible to Inline. <object object at 0x000001D92EB051B0> isn't any of those.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Python code produced an unsupported object
+  ┌─ <string>:1:1
+  │
+1 │ [object()]
+  │ ^^^^^^^^^^ Object produced from this code
+  │
+  = To emit an object into the document it must be exactly one of: None, a TurnipTextSource, a Header, a Block, or an Inline.
+  = Instead, Python emitted '<object object at 0x000001D92EB051B0>'
+  = which had a docstring:
+    The base class of the class hierarchy.
+    
+    When called, it accepts no arguments and returns a new featureless
+    instance that has no instance attributes and cannot be given any.
+
+
+
+#####################################################
+
+#####################################################
+UserPython - CoercingEvalBracketToElement - fits many
+#####################################################
+[-
+            class FitMany:
+                is_block = True
+                is_inline = True
+                is_header = True
+                weight = 0
+            -]
+            [FitMany()]
+#####################################################
+TypeError: Expected eval-bracket to produce None, a TurnipTextSource, a Header, a Block, or something coercible to Inline. <FitMany object at 0x000001D931781F50> fits multiple typeclasses: (block? true) (inline? true) (header? true).
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Python code produced an unsupported object
+  ┌─ <string>:8:13
+  │
+8 │             [FitMany()]
+  │             ^^^^^^^^^^^ Object produced from this code
+  │
+  = To emit an object into the document it must be exactly one of: None, a TurnipTextSource, a Header, a Block, or an Inline.
+  = Instead, Python emitted '<FitMany object at 0x000001D931781F50>'
+
+
+
+#####################################################
+
+#########################################
+UserPython - CoercingEvalBracketToBuilder
+#########################################
+
+            [-
+            def returns_builder():
+                class Builder:
+                    def build_from_blocks(self, arg):
+                        return arg
+                return Builder()
+            -]
+            [returns_builder]{ # a function that isn't called
+                Wasn't a builder
+                But it's expected to receive a block scope
+            }
+#########################################
+TypeError: Expected value returned by eval-bracket to be an instance of BlockScopeBuilder, but it didn't have a build_from_blocks() method. Got <function returns_builder at 0x000001D9317880E0>
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Python code attached to a block scope didn't produce a BlockScopeBuilder
+  ┌─ <string>:9:13
+  │
+9 │             [returns_builder]{ # a function that isn't called
+  │             ^^^^^^^^^^^^^^^^^- Scope attached here
+  │             │                 
+  │             Object produced here wasn't a BlockScopeBuilder
+  │
+  = If eval-brackets are attached to a block scope, the produced object must be a a BlockScopeBuilder
+  = Instead, Python emitted 'returns_builder'
+  = which is '<function returns_builder at 0x000001D9317880E0>'
+  = This object is callable - try calling it to get a builder?
+
+
+
+#########################################
+
+#########################################################
+UserPython - CoercingEvalBracketToBuilder - other builder
+#########################################################
+
+[-
+class Builder:
+    def build_from_raw(self, arg):
+        raise ValueError()
+-]
+
+[Builder()]{
+    block content
+}
+#########################################################
+TypeError: Expected value returned by eval-bracket to be an instance of BlockScopeBuilder, but it didn't have a build_from_blocks() method. Got <Builder object at 0x000001D931782750>
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Python code attached to a block scope didn't produce a BlockScopeBuilder
+  ┌─ <string>:8:1
+  │
+8 │ [Builder()]{
+  │ ^^^^^^^^^^^- Scope attached here
+  │ │           
+  │ Object produced here wasn't a BlockScopeBuilder
+  │
+  = If eval-brackets are attached to a block scope, the produced object must be a a BlockScopeBuilder
+  = Instead, Python emitted '<Builder object at 0x000001D931782750>'
+  = The builder does fit RawScopeBuilder, try attaching a raw scope instead
+
+
+
+#########################################################
+
+#####################
+UserPython - Building
+#####################
+
+[-
+class Builder:
+    def build_from_inlines(self, inls):
+        raise ValueError()
+-]
+
+[Builder()]{inline content}
+#####################
+Traceback (most recent call last):
+  File "<string>", line 3, in build_from_inlines
+ValueError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: <class 'ValueError'> raised when building an object from an evaluated InlineScopeBuilder
+  ┌─ <string>:8:1
+  │
+8 │ [Builder()]{inline content}
+  │ ^^^^^^^^^^^---------------- ...and took this argument
+  │ │           
+  │ Code created a builder...
+  │
+  = The code successfully evaluated to the builder <Builder object at 0x000001D931782750>
+  = Calling .build_from_inlines() on this object with the scope argument raised an error
+
+
+
+#####################
+
+#########################################
+UserPython - CoercingBuildResultToElement
+#########################################
+
+            [-
+            class Builder:
+                def build_from_blocks(self, arg):
+                    return 15 # Not a valid element
+            -]
+            [Builder()]{
+                some valid to build
+            }
+            
+#########################################
+TypeError: Expected build result to be None or an object fitting Block, Inline, or Header - got 15 which fits none of them.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+    parse_file(
+_native.TurnipTextError: error: Python code created a builder, and built a new object that isn't supported
+  ┌─ <string>:7:13
+  │  
+7 │               [Builder()]{
+  │               ^^^^^^^^^^^ Code created a builder...
+  │ ╭────────────────────────'
+8 │ │                 some valid to build
+9 │ │             }
+  │ ╰─────────────' ...and took this argument
+  │  
+  = The code successfully evaluated to the builder <Builder object at 0x000001D9317821D0>
+  = The builder took a scope argument and successfully built 15,
+    but it wasn't of a supported type.
+  = To emit an object into the document it must be exactly one of None, a Header, a Block, or an Inline.
+
+
+
+#########################################

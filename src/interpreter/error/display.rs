@@ -27,7 +27,7 @@ use codespan_reporting::{
 use pyo3::{
     exceptions::PySyntaxError,
     prelude::*,
-    types::{PyFloat, PyLong, PyString},
+    types::{PyFloat, PyLong, PyString, PyType},
 };
 
 // This uses codespan_reporting functions to split each file into lines.
@@ -573,6 +573,7 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
             err: _,
         } => {
             let obj = obj.bind(py);
+            let stringified_obj = stringify_py(obj);
             let mut notes = into_vec![
                 "To emit an object into the document it must be exactly one of: \
                  None, a TurnipTextSource, a \
@@ -582,17 +583,20 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
             // Decided against trying qualname - that will usually come across in stringification
             if let Some(name) = get_name(obj) {
                 notes.push(format!("Instead, Python emitted '{name}'"));
-                notes.push(format!("which is '{}'", stringify_py(obj)));
+                notes.push(format!("which is '{stringified_obj}'"));
             } else {
-                notes.push(format!("Instead, Python emitted '{}'", stringify_py(obj)));
+                notes.push(format!("Instead, Python emitted '{stringified_obj}'"));
             }
             // Print the docstring if it has one
             if let Some(doc) = get_docstring(obj) {
                 notes.push(format!("which had a docstring:\n{}", doc));
             }
-            // If it's callable, suggest calling it
-            if obj.is_callable() {
-                notes.push("This object is callable - try calling it?".into());
+            // If it's a type, suggest making an instance
+            if obj.is_instance_of::<PyType>() {
+                notes.push(format!("{stringified_obj} is a type, not an object - maybe you need to construct an instance?"));
+            } else if obj.is_callable() {
+                // Otherwise if it's callable, suggest calling it
+                notes.push("This object is callable - try calling it to get a builder?".into());
             }
             // If it's a different builder, suggest building with the correct argument
             if matches!(BlockScopeBuilder::fits_typeclass(obj), Ok(true)) {
@@ -625,6 +629,7 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
             err: _,
         } => {
             let obj = obj.bind(py);
+            let stringified_obj = stringify_py(obj);
             let (argument_name, builder_type) = match build_mode {
                 UserPythonBuildMode::FromBlock => ("a block scope", "a BlockScopeBuilder"),
                 UserPythonBuildMode::FromInline => ("an inline scope", "an InlineScopeBuilder"),
@@ -638,13 +643,20 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
             // Decided against trying qualname - that will usually come across in stringification
             if let Some(name) = get_name(obj) {
                 notes.push(format!("Instead, Python emitted '{name}'"));
-                notes.push(format!("which is '{}'", stringify_py(obj)));
+                notes.push(format!("which is '{stringified_obj}'"));
             } else {
-                notes.push(format!("Instead, Python emitted '{}'", stringify_py(obj)));
+                notes.push(format!("Instead, Python emitted '{stringified_obj}'"));
             }
             // Print the docstring if it has one
             if let Some(doc) = get_docstring(obj) {
                 notes.push(format!("which had a docstring:\n{}", doc));
+            }
+            // If it's a type, suggest making an instance
+            if obj.is_instance_of::<PyType>() {
+                notes.push(format!("{stringified_obj} is a type, not an object - maybe you need to construct an instance?"));
+            } else if obj.is_callable() {
+                // Otherwise if it's callable, suggest calling it
+                notes.push("This object is callable - try calling it to get a builder?".into());
             }
             // If it's a DocElement by itself, suggest removing the argument
             if matches!(Header::fits_typeclass(obj), Ok(true)) {
@@ -666,10 +678,6 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
             // This will never be called but is kept around in case the state machine changes.
             if obj.is_exact_instance_of::<TurnipTextSource>() {
                 notes.push("The builder is a TurnipTextSource, try removing the argument".into());
-            }
-            // If it's callable, suggest calling it
-            if obj.is_callable() {
-                notes.push("This object is callable - try calling it to get a builder?".into());
             }
             // If it's a different builder, suggest building with the correct argument
             if matches!(BlockScopeBuilder::fits_typeclass(obj), Ok(true)) {
@@ -712,6 +720,21 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                 UserPythonBuildMode::FromInline => ("InlineScopeBuilder", ".build_from_inlines()"),
                 UserPythonBuildMode::FromRaw => ("RawScopeBuilder", ".build_from_raw()"),
             };
+            let stringified_builder = stringify_py(builder.bind(py));
+            let mut notes = into_vec![
+                format!(
+                    "The code successfully evaluated to the builder {}",
+                    stringified_builder
+                ),
+                format!(
+                    "Calling {builder_function} on this object with the scope argument raised \
+                     an error"
+                ),
+            ];
+            // If you accidentally 
+            if builder.bind(py).is_instance_of::<PyType>() {
+                notes.push(format!("{stringified_builder} is a type, not an object - maybe you need to construct an instance?"));
+            }
             error_diag(
                 format!(
                     "{} raised when building an object from an evaluated {builder_type}",
@@ -721,16 +744,7 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                     prim_label_of(&code_ctx.full_span(), "Code created a builder..."),
                     sec_label_of(&arg_ctx.full_span(), "...and took this argument"),
                 ],
-                into_vec![
-                    format!(
-                        "The code successfully evaluated to the builder {}",
-                        stringify_py(builder.bind(py))
-                    ),
-                    format!(
-                        "Calling {builder_function} on this object with the scope argument raised \
-                         an error"
-                    ),
-                ],
+                notes,
             )
         }
         CoercingBuildResultToElement {

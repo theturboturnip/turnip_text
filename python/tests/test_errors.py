@@ -1,3 +1,6 @@
+import os
+import traceback
+
 import pytest
 from turnip_text import *
 
@@ -73,3 +76,248 @@ def test_error_from_nested_file_running_user_code_filters_out():
 
 
 # TODO test error messages
+def test_print_error_messages():
+    with open(
+        os.path.dirname(__file__) + "./error_messages.txt", mode="w", encoding="utf-8"
+    ) as f:
+
+        def test_one_error(reason: str, data: str, py_env=None):
+            with pytest.raises(TurnipTextError) as err_info:
+                parse_file(
+                    TurnipTextSource.from_string(data),
+                    py_env if py_env else {},
+                    recursion_warning=False,
+                    max_file_depth=16,
+                )
+            header = "#" * len(reason)
+            safe_data = data.replace("\0", "\\0")
+            f.write(f"\n\n{header}\n{reason}\n{header}\n{safe_data}\n{header}\n")
+            traceback.print_exception(err_info.value, file=f)
+            f.write(f"\n{header}")
+
+        test_one_error("Null Byte in Source", "oidnowbiadw\0unbwodubqdop")
+        test_one_error(
+            "File Stack Exceeded Limit",
+            """[-
+            import turnip_text as tt
+            s = tt.TurnipTextSource("<test>", "[s]")
+            -]
+            
+            [s]""",
+        )
+        test_one_error(
+            "Syntax - CodeCloseOutsideCode",
+            "Wow some stuff in a paragraph\nand then a bare ]\n",
+        )
+        test_one_error(
+            "Syntax - BlockScopeCloseOutsideScope",
+            "Wow some stuff in a paragraph\nand then a bare\n}",
+        )
+        test_one_error(
+            "Syntax - InlineScopeCloseOutsideScope",
+            "Wow some stuff in a paragraph\nand then a bare }",
+        )
+        test_one_error(
+            "Syntax - RawScopeCloseOutsideScope",
+            "Wow some stuff in a paragraph\nand then a bare }###",
+        )
+        test_one_error(
+            "Syntax - EndedInsideCode",
+            "Wow some stuff in a paragraph with [ everywhere!\n[[[ ",
+        )
+        test_one_error(
+            "Syntax - EndedInsideRawScope",
+            "Wow some stuff in a paragraph with ###{ everywhere!\n ##{ #{",
+        )
+        test_one_error(
+            "Syntax - EndedInsideScope - inline",
+            "Wow some stuff in a paragraph with { everywhere! {{{ ",
+        )
+        test_one_error(
+            "Syntax - EndedInsideScope - block",
+            "{\nWow some stuff in a paragraph and no closing \\}",
+        )
+
+        test_one_error(
+            "Syntax - BlockScopeOpenedInInlineMode",
+            """
+Wahey a very big paragraph.
+With multiple sentences, even.
+Even some delightful inline scopes { like this one {
+    But then SURPRISE a block scope!
+}
+""",
+        )
+        test_one_error(
+            "Syntax - CodeEmittedBlockInInlineMode",
+            """
+[-
+class CustomBlock:
+    is_block=True
+-]
+And we're inside a paragraph but then [CustomBlock()]!
+""",
+        )
+        test_one_error(
+            "Syntax - CodeEmittedHeaderInInlineMode",
+            """
+[-
+class CustomHeader:
+    is_header = True
+    weight = 12
+
+class CustomHeaderBuilder:
+    def build_from_inlines(self, arg):
+        return CustomHeader()
+-]
+
+And we're inside a paragraph but then { even inside an inline scope [CustomHeaderBuilder()]{with some swallowed inline content} }
+""",
+        )
+        test_one_error(
+            "Syntax - CodeEmittedHeaderInBlockScope",
+            """
+[-
+class CustomHeader:
+    is_header = True
+    weight = 12
+
+class CustomHeaderBuilder:
+    def build_from_raw(self, arg):
+        return CustomHeader()
+-]
+
+{
+    inside a block scope
+
+    [CustomHeaderBuilder()]#{and we try to build a header!}#
+}
+""",
+        )
+        test_one_error(
+            "Syntax - CodeEmittedSourceInInlineMode",
+            """
+[-
+import turnip_text as tt
+s = tt.TurnipTextSource.from_string("")
+
+class CustomBuilderFromInline:
+    def build_from_inlines(self, arg):
+        return None
+-]
+
+We're in a paragraph and then
+[CustomBuilderFromInline()]{ wow we're inside an inline scope and we emit a source [s] }
+""",
+        )
+        test_one_error(
+            "Syntax - SentenceBreakInInlineScope",
+            "{ Wow check out this great inline scope\n\n oh, surprise newline }",
+        )
+        test_one_error(
+            "Syntax - EscapedNewlineInBlockMode",
+            """{
+            
+            Inside a block scope there may be a paragraph
+
+            # and then an escaped newline
+                \\\n
+            }""",
+        )
+        test_one_error(
+            "Syntax - InsufficientBlockSeparation",
+            """
+Wow we have a big paragraph here
+It has so many sentences
+And then we could try to make a block right afterwards
+{
+
+}
+""",
+        )
+        test_one_error("UserPython - Compiling Statement", "[1.0f]")
+        test_one_error(
+            "UserPython - Compiling Indented",
+            "[    indented = 1\nunindented=1\n    indented=2]",
+        )
+
+        def raising_error():
+            raise ValueError()
+
+        test_one_error(
+            "UserPython - Running",
+            "[function_raising_error()]",
+            py_env={"function_raising_error": raising_error},
+        )
+        test_one_error(
+            "UserPython - Running Indented",
+            "[\n    indented=1\n    function_raising_error()]",
+            py_env={"function_raising_error": raising_error},
+        )
+        test_one_error(
+            "UserPython - CoercingEvalBracketToElement - fits none",
+            "[object()]",  # fits none of None | Builder | Header | CoercibleToInline
+        )
+        test_one_error(
+            "UserPython - CoercingEvalBracketToElement - fits many",
+            """[-
+            class FitMany:
+                is_block = True
+                is_inline = True
+                is_header = True
+                weight = 0
+            -]
+            [FitMany()]""",  # fits Builder | Header | Inline
+        )
+        test_one_error(
+            "UserPython - CoercingEvalBracketToBuilder",
+            """
+            [-
+            def returns_builder():
+                class Builder:
+                    def build_from_blocks(self, arg):
+                        return arg
+                return Builder()
+            -]
+            [returns_builder]{ # a function that isn't called
+                Wasn't a builder
+                But it's expected to receive a block scope
+            }""",
+        )
+        test_one_error(
+            "UserPython - CoercingEvalBracketToBuilder - other builder",
+            """
+[-
+class Builder:
+    def build_from_raw(self, arg):
+        raise ValueError()
+-]
+
+[Builder()]{
+    block content
+}""",
+        )
+        test_one_error(
+            "UserPython - Building",
+            """
+[-
+class Builder:
+    def build_from_inlines(self, inls):
+        raise ValueError()
+-]
+
+[Builder()]{inline content}""",
+        )
+        test_one_error(
+            "UserPython - CoercingBuildResultToElement",
+            """
+            [-
+            class Builder:
+                def build_from_blocks(self, arg):
+                    return 15 # Not a valid element
+            -]
+            [Builder()]{
+                some valid to build
+            }
+            """,
+        )

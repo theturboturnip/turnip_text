@@ -82,7 +82,7 @@ def open_turnip_text_source(path: str, encoding: str = "utf-8") -> TurnipTextSou
 def parse_file(
     file: TurnipTextSource,
     py_env: Dict[str, Any],
-    recursion_warning: bool = False,
+    recursion_warning: bool = True,
     max_file_depth: int = 128,
 ) -> Document: ...
 def coerce_to_inline(obj: CoercibleToInline) -> Inline: ...

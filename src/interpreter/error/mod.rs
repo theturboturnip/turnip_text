@@ -93,9 +93,8 @@ impl TTErrorWithContext {
             | TTErrorWithContext::Syntax(_, _) => {}
             // If it *was* related to an actual PyErr, set __cause__ and __context__ to point to that error.
             TTErrorWithContext::UserPython(_, user_python_err) => match *user_python_err {
-                // Coercion doesn't have an actual PyError associated with it
-                TTUserPythonError::CoercingEvalBracketToElement { .. } => {}
-                TTUserPythonError::CompilingEvalBrackets { err, .. }
+                TTUserPythonError::CoercingEvalBracketToElement { err, .. }
+                | TTUserPythonError::CompilingEvalBrackets { err, .. }
                 | TTUserPythonError::RunningEvalBrackets { err, .. }
                 | TTUserPythonError::CoercingEvalBracketToBuilder { err, .. }
                 | TTUserPythonError::Building { err, .. }

@@ -49,7 +49,7 @@ impl Default for RecursionConfig {
     }
 }
 
-#[pyfunction(signature=(file, py_env, recursion_warning=false, max_file_depth=128))]
+#[pyfunction(signature=(file, py_env, recursion_warning=true, max_file_depth=128))]
 fn parse_file<'py>(
     py: Python<'py>,
     file: TurnipTextSource,
