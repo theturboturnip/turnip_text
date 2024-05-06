@@ -1,7 +1,11 @@
+import io
 import os
+import re
 import traceback
+from pathlib import Path
 
 import pytest
+
 from turnip_text import *
 
 SPECIFIC_ERROR = RuntimeError("An Error")
@@ -78,7 +82,9 @@ def test_error_from_nested_file_running_user_code_filters_out():
 # TODO test error messages
 def test_print_error_messages():
     with open(
-        os.path.dirname(__file__) + "./error_messages.txt", mode="w", encoding="utf-8"
+        os.path.join(os.path.dirname(__file__), "error_messages.txt"),
+        mode="w",
+        encoding="utf-8",
     ) as f:
 
         def test_one_error(reason: str, data: str, py_env=None):
@@ -89,11 +95,22 @@ def test_print_error_messages():
                     recursion_warning=False,
                     max_file_depth=16,
                 )
+            traceback_msg_buf = io.StringIO()
+            traceback.print_exception(err_info.value, file=traceback_msg_buf)
+            # Replace filepaths with base names
+            traceback_msg = re.sub(
+                r"\"([\w:\\/\s\.]+)\"",
+                lambda match: Path(match.group(1)).name,
+                traceback_msg_buf.getvalue(),
+            )
+            # Replace <object Blah at 0x0928023> with <object Blah at MEMADDR>
+            # These replacements mean the traceback remains stable across computers
+            traceback_msg = re.sub(r"at 0x[\da-fA-F]+>", "at 0xMEMADDR>", traceback_msg)
             header = "#" * len(reason)
             safe_data = data.replace("\0", "\\0")
-            f.write(f"\n\n{header}\n{reason}\n{header}\n{safe_data}\n{header}\n")
-            traceback.print_exception(err_info.value, file=f)
-            f.write(f"\n{header}")
+            f.write(
+                f"\n\n{header}\n{reason}\n{header}\n{safe_data}\n{header}\n{traceback_msg}\n{header}"
+            )
 
         test_one_error("Null Byte in Source", "oidnowbiadw\0unbwodubqdop")
         test_one_error(

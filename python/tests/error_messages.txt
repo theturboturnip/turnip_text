@@ -6,7 +6,7 @@ Null Byte in Source
 oidnowbiadw\0unbwodubqdop
 ###################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: Found a null byte '\0' in source '<string>', which isn't allowed. This source is probably corrupted, not a text file, or was read with the wrong encoding.
 
@@ -23,7 +23,7 @@ File Stack Exceeded Limit
             [s]
 #########################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: Exceeded the TurnipTextSource stack limit of 16 files.
 Found the following repeated TurnipTextSource names in the stack:
@@ -40,7 +40,7 @@ and then a bare ]
 
 #############################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Code close token in text mode
   ┌─ <string>:2:17
@@ -62,7 +62,7 @@ and then a bare
 }
 ####################################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Scope-close token found in block-mode when no block scopes are open
   ┌─ <string>:3:1
@@ -83,7 +83,7 @@ Wow some stuff in a paragraph
 and then a bare }
 #####################################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Scope-close token found in inline-mode when no inline scopes are open
   ┌─ <string>:2:17
@@ -105,7 +105,7 @@ Wow some stuff in a paragraph
 and then a bare }###
 ##################################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Raw-scope-close token found when no raw scope is open
   ┌─ <string>:2:17
@@ -127,7 +127,7 @@ Wow some stuff in a paragraph with [ everywhere!
 [[[ 
 ########################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: File ended while parsing code
   ┌─ <string>:1:36
@@ -151,7 +151,7 @@ Wow some stuff in a paragraph with ###{ everywhere!
  ##{ #{
 ############################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: File ended while parsing raw scope
   ┌─ <string>:1:36
@@ -176,7 +176,7 @@ Syntax - EndedInsideScope - inline
 Wow some stuff in a paragraph with { everywhere! {{{ 
 ##################################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: File ended inside scope
   ┌─ <string>:1:52
@@ -200,7 +200,7 @@ Syntax - EndedInsideScope - block
 Wow some stuff in a paragraph and no closing \}
 #################################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: File ended inside scope
   ┌─ <string>:1:1
@@ -229,7 +229,7 @@ Even some delightful inline scopes { like this one {
 
 #####################################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Block scope opened in inline mode
   ┌─ <string>:4:52
@@ -262,7 +262,7 @@ And we're inside a paragraph but then [CustomBlock()]!
 
 #####################################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: A `Block` was emitted by code in inline mode.
   ┌─ <string>:6:39
@@ -273,7 +273,7 @@ _native.TurnipTextError: error: A `Block` was emitted by code in inline mode.
   │ │                                    ...still in inline mode here
   │ Paragraph started here...
   │
-  = Emitted an object '<CustomBlock object at 0x000001D931781E90>', which implements `Block`
+  = Emitted an object '<CustomBlock object at 0xMEMADDR>', which implements `Block`
   = Blocks can't be emitted inside paragraphs.
 
 
@@ -298,7 +298,7 @@ And we're inside a paragraph but then { even inside an inline scope [CustomHeade
 
 ######################################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: A `Header` was emitted by code in inline mode.
    ┌─ <string>:12:69
@@ -308,7 +308,7 @@ _native.TurnipTextError: error: A `Header` was emitted by code in inline mode.
    │                                       │                              
    │                                       Inline scope started here
    │
-   = Emitted an object '<CustomHeader object at 0x000001D931781F50>', which implements `Header`
+   = Emitted an object '<CustomHeader object at 0xMEMADDR>', which implements `Header`
    = Headers can't be emitted inside inline scopes.
 
 
@@ -337,7 +337,7 @@ class CustomHeaderBuilder:
 
 ######################################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: A `Header` was emitted by code inside a block scope.
    ┌─ <string>:15:5
@@ -348,7 +348,7 @@ _native.TurnipTextError: error: A `Header` was emitted by code inside a block sc
 15 │     [CustomHeaderBuilder()]#{and we try to build a header!}#
    │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Header emitted by code here
    │
-   = Emitted an object '<CustomHeader object at 0x000001D931781ED0>', which implements `Header`
+   = Emitted an object '<CustomHeader object at 0xMEMADDR>', which implements `Header`
    = Headers are only allowed at the top level of the document,
      not inside block scopes.
 
@@ -374,7 +374,7 @@ We're in a paragraph and then
 
 ######################################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: A `TurnipTextSource` file was emitted by code in inline mode.
    ┌─ <string>:12:84
@@ -398,7 +398,7 @@ Syntax - SentenceBreakInInlineScope
  oh, surprise newline }
 ###################################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Paragraph break found inside an inline scope
   ┌─ <string>:1:1
@@ -430,7 +430,7 @@ Syntax - EscapedNewlineInBlockMode
             }
 ##################################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Escaped newline found in block-mode
   ┌─ <string>:6:17
@@ -460,7 +460,7 @@ And then we could try to make a block right afterwards
 
 ####################################
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Insufficient separation between block-level elements
   ┌─ <string>:5:1
@@ -495,7 +495,7 @@ SyntaxError: invalid decimal literal
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Error when compiling Python from eval-brackets
   ┌─ <string>:1:1
@@ -526,7 +526,7 @@ IndentationError: unexpected indent
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Error when compiling Python from eval-brackets
   ┌─ <string>:1:1
@@ -555,14 +555,14 @@ UserPython - Running
 ####################
 Traceback (most recent call last):
   File "<string>", line 1, in <module>
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 245, in raising_error
+  File test_errors.py, line 262, in raising_error
     raise ValueError()
 ValueError
 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: <class 'ValueError'> raised when executing Python from eval-brackets
   ┌─ <string>:1:1
@@ -586,14 +586,14 @@ UserPython - Running Indented
 #############################
 Traceback (most recent call last):
   File "<string>", line 4, in <module>
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 245, in raising_error
+  File test_errors.py, line 262, in raising_error
     raise ValueError()
 ValueError
 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: <class 'ValueError'> raised when executing Python from eval-brackets
   ┌─ <string>:1:1
@@ -620,12 +620,12 @@ UserPython - CoercingEvalBracketToElement - fits none
 #####################################################
 [object()]
 #####################################################
-TypeError: Expected eval-bracket to produce None, a TurnipTextSource, a Header, a Block, or something coercible to Inline. <object object at 0x000001D92EB051B0> isn't any of those.
+TypeError: Expected eval-bracket to produce None, a TurnipTextSource, a Header, a Block, or something coercible to Inline. <object object at 0xMEMADDR> isn't any of those.
 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Python code produced an unsupported object
   ┌─ <string>:1:1
@@ -634,7 +634,7 @@ _native.TurnipTextError: error: Python code produced an unsupported object
   │ ^^^^^^^^^^ Object produced from this code
   │
   = To emit an object into the document it must be exactly one of: None, a TurnipTextSource, a Header, a Block, or an Inline.
-  = Instead, Python emitted '<object object at 0x000001D92EB051B0>'
+  = Instead, Python emitted '<object object at 0xMEMADDR>'
   = which had a docstring:
     The base class of the class hierarchy.
     
@@ -657,12 +657,12 @@ UserPython - CoercingEvalBracketToElement - fits many
             -]
             [FitMany()]
 #####################################################
-TypeError: Expected eval-bracket to produce None, a TurnipTextSource, a Header, a Block, or something coercible to Inline. <FitMany object at 0x000001D931781F50> fits multiple typeclasses: (block? true) (inline? true) (header? true).
+TypeError: Expected eval-bracket to produce None, a TurnipTextSource, a Header, a Block, or something coercible to Inline. <FitMany object at 0xMEMADDR> fits multiple typeclasses: (block? true) (inline? true) (header? true).
 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Python code produced an unsupported object
   ┌─ <string>:8:13
@@ -671,7 +671,7 @@ _native.TurnipTextError: error: Python code produced an unsupported object
   │             ^^^^^^^^^^^ Object produced from this code
   │
   = To emit an object into the document it must be exactly one of: None, a TurnipTextSource, a Header, a Block, or an Inline.
-  = Instead, Python emitted '<FitMany object at 0x000001D931781F50>'
+  = Instead, Python emitted '<FitMany object at 0xMEMADDR>'
 
 
 
@@ -693,12 +693,12 @@ UserPython - CoercingEvalBracketToBuilder
                 But it's expected to receive a block scope
             }
 #########################################
-TypeError: Expected value returned by eval-bracket to be an instance of BlockScopeBuilder, but it didn't have a build_from_blocks() method. Got <function returns_builder at 0x000001D9317880E0>
+TypeError: Expected value returned by eval-bracket to be an instance of BlockScopeBuilder, but it didn't have a build_from_blocks() method. Got <function returns_builder at 0xMEMADDR>
 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Python code attached to a block scope didn't produce a BlockScopeBuilder
   ┌─ <string>:9:13
@@ -710,7 +710,7 @@ _native.TurnipTextError: error: Python code attached to a block scope didn't pro
   │
   = If eval-brackets are attached to a block scope, the produced object must be a a BlockScopeBuilder
   = Instead, Python emitted 'returns_builder'
-  = which is '<function returns_builder at 0x000001D9317880E0>'
+  = which is '<function returns_builder at 0xMEMADDR>'
   = This object is callable - try calling it to get a builder?
 
 
@@ -731,12 +731,12 @@ class Builder:
     block content
 }
 #########################################################
-TypeError: Expected value returned by eval-bracket to be an instance of BlockScopeBuilder, but it didn't have a build_from_blocks() method. Got <Builder object at 0x000001D931782750>
+TypeError: Expected value returned by eval-bracket to be an instance of BlockScopeBuilder, but it didn't have a build_from_blocks() method. Got <Builder object at 0xMEMADDR>
 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Python code attached to a block scope didn't produce a BlockScopeBuilder
   ┌─ <string>:8:1
@@ -747,7 +747,7 @@ _native.TurnipTextError: error: Python code attached to a block scope didn't pro
   │ Object produced here wasn't a BlockScopeBuilder
   │
   = If eval-brackets are attached to a block scope, the produced object must be a a BlockScopeBuilder
-  = Instead, Python emitted '<Builder object at 0x000001D931782750>'
+  = Instead, Python emitted '<Builder object at 0xMEMADDR>'
   = The builder does fit RawScopeBuilder, try attaching a raw scope instead
 
 
@@ -773,7 +773,7 @@ ValueError
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: <class 'ValueError'> raised when building an object from an evaluated InlineScopeBuilder
   ┌─ <string>:8:1
@@ -783,7 +783,7 @@ _native.TurnipTextError: error: <class 'ValueError'> raised when building an obj
   │ │           
   │ Code created a builder...
   │
-  = The code successfully evaluated to the builder <Builder object at 0x000001D931782750>
+  = The code successfully evaluated to the builder <Builder object at 0xMEMADDR>
   = Calling .build_from_inlines() on this object with the scope argument raised an error
 
 
@@ -809,7 +809,7 @@ TypeError: Expected build result to be None or an object fitting Block, Inline, 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "C:\Users\Samuel\Projects\TurnipText\turnip-text\python\tests\test_errors.py", line 86, in test_one_error
+  File test_errors.py, line 92, in test_one_error
     parse_file(
 _native.TurnipTextError: error: Python code created a builder, and built a new object that isn't supported
   ┌─ <string>:7:13
@@ -821,7 +821,7 @@ _native.TurnipTextError: error: Python code created a builder, and built a new o
 9 │ │             }
   │ ╰─────────────' ...and took this argument
   │  
-  = The code successfully evaluated to the builder <Builder object at 0x000001D9317821D0>
+  = The code successfully evaluated to the builder <Builder object at 0xMEMADDR>
   = The builder took a scope argument and successfully built 15,
     but it wasn't of a supported type.
   = To emit an object into the document it must be exactly one of None, a Header, a Block, or an Inline.
