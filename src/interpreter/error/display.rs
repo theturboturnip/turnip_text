@@ -567,10 +567,15 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                 notes,
             )
         }
-        CoercingEvalBracketToElement { code_ctx, obj } => {
+        CoercingEvalBracketToElement {
+            code_ctx,
+            obj,
+            err: _,
+        } => {
             let obj = obj.bind(py);
             let mut notes = into_vec![
-                "To emit an object into the document it must be None, a TurnipTextSource, a \
+                "To emit an object into the document it must be exactly one of: \
+                 None, a TurnipTextSource, a \
                  Header, a Block, or an Inline.",
             ];
             // Print the name if it has one, always print stringification
@@ -657,6 +662,8 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
             {
                 notes.push("The builder is coercible to Inline, try removing the argument".into());
             }
+            // The way the state machine is designed now, it can't try to attach a builder argument to a TurnipTextSource.
+            // This will never be called but is kept around in case the state machine changes.
             if obj.is_exact_instance_of::<TurnipTextSource>() {
                 notes.push("The builder is a TurnipTextSource, try removing the argument".into());
             }
@@ -748,7 +755,7 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                      of a supported type.",
                     stringify_py(obj.bind(py))
                 ),
-                "To emit an object into the document it must be None, a Header, a Block, or an \
+                "To emit an object into the document it must be exactly one of None, a Header, a Block, or an \
                  Inline.",
             ],
         ),

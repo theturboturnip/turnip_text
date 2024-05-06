@@ -72,6 +72,8 @@ pub fn coerce_to_inline<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResu
     Ok(coerce_to_inline_pytcref(py, obj)?.unbox())
 }
 
+// FUTURE separate the failure condition of the coercion from other potential failures e.g. allocation failure.
+// if let Ok(x) = ? is an antipattern afaik.
 pub fn coerce_to_inline_pytcref<'py>(
     py: Python<'py>,
     obj: &Bound<'py, PyAny>,

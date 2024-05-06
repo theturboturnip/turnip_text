@@ -58,6 +58,7 @@ def x():
         "[-----b'bytestirng not allowed'-----]",
         TestUserPythonError::CoercingEvalBracketToElement {
             code_ctx: TestParseContext("[-----", "b'bytestirng not allowed'", "-----]"),
+            err: Regex::new("TypeError").unwrap(),
         },
     );
     expect_parse_err(
@@ -520,24 +521,28 @@ fn code_returns_uncoercible_when_emitting_uncoercible() {
         "[-----b'bytestirng not coercible'-----]",
         TestUserPythonError::CoercingEvalBracketToElement {
             code_ctx: TestParseContext("[-----", "b'bytestirng not coercible'", "-----]"),
+            err: Regex::new("TypeError").unwrap(),
         },
     );
     expect_parse_err(
         "[-----{}-----]",
         TestUserPythonError::CoercingEvalBracketToElement {
             code_ctx: TestParseContext("[-----", "{}", "-----]"),
+            err: Regex::new("TypeError").unwrap(),
         },
     );
     expect_parse_err(
         "[-----set()-----]",
         TestUserPythonError::CoercingEvalBracketToElement {
             code_ctx: TestParseContext("[-----", "set()", "-----]"),
+            err: Regex::new("TypeError").unwrap(),
         },
     );
     expect_parse_err(
         "[-----object()-----]",
         TestUserPythonError::CoercingEvalBracketToElement {
             code_ctx: TestParseContext("[-----", "object()", "-----]"),
+            err: Regex::new("TypeError").unwrap(),
         },
     );
 }

@@ -312,6 +312,7 @@ pub enum TestUserPythonError<'a> {
     },
     CoercingEvalBracketToElement {
         code_ctx: TestParseContext<'a>,
+        err: Regex,
     },
     CoercingEvalBracketToBuilder {
         code_ctx: TestParseContext<'a>,
@@ -432,12 +433,19 @@ impl<'a> TestUserPythonError<'a> {
                     && dbg!(l_err).is_match(&dbg!(stringify_pyerr(py, r_err)))
             }
             (
-                TestUserPythonError::CoercingEvalBracketToElement { code_ctx: l_code },
+                TestUserPythonError::CoercingEvalBracketToElement {
+                    code_ctx: l_code,
+                    err: l_err,
+                },
                 TTUserPythonError::CoercingEvalBracketToElement {
                     code_ctx: r_code,
                     obj: _,
+                    err: r_err,
                 },
-            ) => *dbg!(l_code) == dbg!((r_code, data).into()),
+            ) => {
+                *dbg!(l_code) == dbg!((r_code, data).into())
+                    && dbg!(l_err).is_match(&dbg!(stringify_pyerr(py, r_err)))
+            }
             _ => false,
         }
     }

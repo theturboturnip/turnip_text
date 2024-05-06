@@ -46,7 +46,6 @@ pub enum TTUserPythonError {
     },
     /// Ran user code from an eval-bracket which didn't have an argument attached,
     /// failed to coerce the code result to Block, Inline, Header, or TurnipTextSource
-    /// FUTURE this should have a PyErr associated with it, but right now that would mostly be a TypeError just about coercing to Inline and not anything else
     #[error(
         "Successfully evaluated eval-brackets, but the output was not None, a TurnipTextSource, a \
          Header, a Block, or coercible to Inline"
@@ -54,6 +53,7 @@ pub enum TTUserPythonError {
     CoercingEvalBracketToElement {
         code_ctx: ParseContext,
         obj: PyObject,
+        err: PyErr,
     },
     /// Ran user code from an eval-bracket, needed that to be a builder, didn't get it
     #[error(

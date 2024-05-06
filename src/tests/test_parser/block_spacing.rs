@@ -549,4 +549,20 @@ mod code_emitting_source {
         CREATED_FILE,
         TestBlockModeElem::SourceFromCode(CREATED_FILE_SPAN)
     );
+
+    /// A special case: The parser handles TurnipTextSource differently to other eval-bracket outcomes,
+    /// in that when the eval-brackets finish the TurnipTextSource is immediately emitted instead of checking
+    /// the next token to see if an argument should be attached. If an argument *is* attached it can never be valid
+    /// and should always fail. Right now that failure is counted as InsufficientBlockSeparation -
+    /// there cannot be content between the end of an eval-bracket evaluating TurnipTextSource and the following newline.
+    #[test]
+    fn to_directly_following_scope() {
+        expect_parse_err(
+            concatcp!(CREATED_FILE, CREATED_BSCOPE),
+            TestSyntaxError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::SourceFromCode(CREATED_FILE_SPAN),
+                next_block_start: TestBlockModeElem::AnyToken(TestParseSpan(CREATED_BSCOPE_CTX.0)),
+            },
+        );
+    }
 }

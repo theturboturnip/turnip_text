@@ -71,6 +71,7 @@ impl TokenProcessor for CodeProcessor {
                             eval_or_exec(py, py_env, &self.code, self.ctx, n_close_brackets)?;
 
                         // If we evaluated a TurnipTextSource, it may not be a builder of any kind thus we can finish immediately.
+                        // Any token directly after the TurnipTextSource will be interpreted as a new element, and blocked as insufficient block separation, so it's safe to assume there isn't a builder-argument here.
                         if let Ok(inserted_file) = eval_obj.extract::<TurnipTextSource>() {
                             Ok(ProcStatus::PopAndNewSource(self.ctx, inserted_file))
                         } else {
@@ -129,54 +130,24 @@ impl TokenProcessor for CodeProcessor {
                     // We didn't encounter any scope openers, so we know we don't need to build anything.
                     // Emit the object directly, and reprocess the current token so it gets included.
 
-                    // Consider: we may have an object at the very start of the line.
-                    // If it's an Inline, e.g. "[virtio] is a thing..." then we want to return Inline so the rest of the line can be added.
-                    // If it's a Block, e.g. [image_figure(...)], then we want to return Block.
-                    // If it's neither, it needs to be *coerced*.
-                    // But what should coercion look like? What should we try to coerce the object *to*?
-                    // Well, what can be coerced?
-                    // Coercible to inline:
-                    // - Inline        -> `x`
-                    // - List[Inline]  -> `InlineScope(x)`
-                    // - str/float/int -> `Text(str(x))`
-                    // Coercible to block:
-                    // - Block             -> `x`
-                    // - List[Block]       -> `BlockScope(x)`
-                    // - Sentence          -> `Paragraph([x])
-                    // - CoercibleToInline -> `Paragraph([Sentence([coerce_to_inline(x)])])`
-                    // I do not see the need to allow eval-brackets to directly return List[Block] or Sentence at all.
-                    // Similar outcomes can be acheived by wrapping in BlockScope or Paragraph manually in the evaluated code, which better demonstrates intent.
-                    // If we always coerce to inline, then the wrapping in Paragraph and Sentence happens naturally in the interpreter.
-                    // => We check if it's a block, and if it isn't we try to coerce to inline.
+                    let emitted = EvalDirectOutcome::of(evaled_result.bind(py)).map_err(|pyerr| {
+                        TTUserPythonError::CoercingEvalBracketToElement { code_ctx: self.ctx, obj: evaled_result.clone_ref(py), err: pyerr }
+                    })?;
 
-                    // TODO check if it fits multiple typeclasses?
-
-                    let evaled_result_ref = evaled_result.bind(py);
-
-                    if evaled_result_ref.is_none() {
-                        Ok(ProcStatus::PopAndReprocessToken(None))
-                    } else if let Ok(header) = PyTcRef::of(evaled_result_ref) {
-                        Ok(ProcStatus::PopAndReprocessToken(Some((
+                    match emitted {
+                        EvalDirectOutcome::Header(header) => Ok(ProcStatus::PopAndReprocessToken(Some((
                             self.ctx,
                             DocElement::HeaderFromCode(header),
-                        ))))
-                    } else if let Ok(block) = PyTcRef::of(evaled_result_ref) {
-                        Ok(ProcStatus::PopAndReprocessToken(Some((
+                        )))),
+                        EvalDirectOutcome::Block(block) => Ok(ProcStatus::PopAndReprocessToken(Some((
                             self.ctx,
                             BlockElem::FromCode(block).into(),
-                        ))))
-                    } else {
-                        let inline =
-                            coerce_to_inline_pytcref(py, evaled_result_ref).map_err(|_err| {
-                                TTUserPythonError::CoercingEvalBracketToElement {
-                                    code_ctx: self.ctx,
-                                    obj: evaled_result.clone_ref(py),
-                                }
-                            })?;
-                        Ok(ProcStatus::PopAndReprocessToken(Some((
+                        )))),
+                        EvalDirectOutcome::Inline(inline) => Ok(ProcStatus::PopAndReprocessToken(Some((
                             self.ctx,
                             InlineElem::FromCode(inline).into(),
-                        ))))
+                        )))),
+                        EvalDirectOutcome::None => Ok(ProcStatus::PopAndReprocessToken(None)),
                     }
                 }
             },
@@ -323,36 +294,117 @@ impl OnResolveAmbiguousScope for ScopeKindChecker {
     }
 }
 
-/// The possible options that can be returned by a builder.
+/// The possible options that can be emitted from an eval-bracket and placed directly into the document.
+/// 
+/// This is computed when we've examined the token *after* the end of the eval-brackets, to see if we
+/// want to provide a builder argument, and have found that we don't.
+/// 
+/// Returns a PyTypeError if an object implements multiple interfaces
+/// 
+/// Consider: we may have an object at the very start of the line.
+/// If it's an Inline, e.g. "[virtio] is a thing..." then we want to return Inline so the rest of the line can be added.
+/// If it's a Block, e.g. [image_figure(...)], then we want to return Block.
+/// If it's neither, it needs to be *coerced*.
+/// But what should coercion look like? What should we try to coerce the object *to*?
+/// Well, what can be coerced?
+/// Coercible to inline:
+/// - `Inline`        -> `x`
+/// - `List[Inline]`  -> `InlineScope(x)`
+/// - `str/float/int` -> `Text(str(x))`
+/// Coercible to block:
+/// - `Block`             -> `x`
+/// - `List[Block]`       -> `BlockScope(x)`
+/// - `Sentence`          -> `Paragraph([x])
+/// - `CoercibleToInline` -> `Paragraph([Sentence([coerce_to_inline(x)])])`
+/// I do not see the need to allow eval-brackets to directly return `List[Block]` or `Sentence` at all.
+/// Similar outcomes can be acheived by wrapping in `BlockScope` or `Paragraph` manually in the evaluated code, which better demonstrates intent.
+/// If we always coerce to inline, then the wrapping in `Paragraph` and `Sentence` happens naturally in the interpreter.
+/// => We check if it's a block, and if it isn't we try to coerce to inline.
+pub enum EvalDirectOutcome {
+    // This does not handle TurnipTextSource.
+    // TurnipTextSource is handled exactly when the eval-brackets finish,
+    // and must be handled that way because we cannot PopAndReprocessToken(TurnipTextSource).
+    // Source(Py<TurnipTextSource>),
+    Header(PyTcRef<Header>),
+    Block(PyTcRef<Block>),
+    /// This result may be due to coercion
+    Inline(PyTcRef<Inline>),
+    None,
+}
+impl EvalDirectOutcome {
+    fn of(obj: &Bound<'_, PyAny>) -> PyResult<EvalDirectOutcome> {
+        if obj.is_none() {
+            Ok(EvalDirectOutcome::None)
+        } else {
+            let is_block = Block::fits_typeclass(obj)?;
+            let is_inline = Inline::fits_typeclass(obj)?;
+            let is_header = Header::fits_typeclass(obj)?;
+
+            match (is_block, is_inline, is_header) {
+                (true, false, false) => Ok(EvalDirectOutcome::Block(PyTcRef::of_unchecked(obj))),
+                (false, true, false) => Ok(EvalDirectOutcome::Inline(PyTcRef::of_unchecked(obj))),
+                (false, false, true) => Ok(EvalDirectOutcome::Header(PyTcRef::of_unchecked(obj))),
+
+                (false, false, false) => {
+                    // FUTURE this may swallow allocation errors
+                    if let Ok(inline) = coerce_to_inline_pytcref(obj.py(), obj) {
+                        Ok(EvalDirectOutcome::Inline(inline))
+                    } else {
+                        let obj_repr = obj.repr()?;
+                        Err(PyTypeError::new_err(format!(
+                            "Expected eval-bracket to produce None, a TurnipTextSource, a Header, \
+                            a Block, or something coercible to Inline. {} isn't any of those.",
+                            obj_repr.to_str()?
+                        )))
+                    }
+                }
+                _ => {
+                    let obj_repr = obj.repr()?;
+                    Err(PyTypeError::new_err(format!(
+                        "Expected eval-bracket to produce None, a TurnipTextSource, a Header, \
+                        a Block, or something coercible to Inline. \
+                        {} fits multiple typeclasses: (block? {}) (inline? {}) (header? {}).",
+                        obj_repr.to_str()?,
+                        is_block,
+                        is_inline,
+                        is_header
+                    )))
+                }
+            }
+        }
+    }
+}
+
+/// The possible options that can be returned by build_from_{blocks,inlines,raw}() on a builder
 pub enum BuildOutcome {
+    Header(PyTcRef<Header>),
     Block(PyTcRef<Block>),
     Inline(PyTcRef<Inline>),
-    Header(PyTcRef<Header>),
     None,
 }
 impl BuildOutcome {
-    fn of(val: &Bound<'_, PyAny>) -> PyResult<BuildOutcome> {
-        if val.is_none() {
+    fn of(obj: &Bound<'_, PyAny>) -> PyResult<BuildOutcome> {
+        if obj.is_none() {
             Ok(BuildOutcome::None)
         } else {
-            let is_block = Block::fits_typeclass(val)?;
-            let is_inline = Inline::fits_typeclass(val)?;
-            let is_header = Header::fits_typeclass(val)?;
+            let is_block = Block::fits_typeclass(obj)?;
+            let is_inline = Inline::fits_typeclass(obj)?;
+            let is_header = Header::fits_typeclass(obj)?;
 
             match (is_block, is_inline, is_header) {
-                (true, false, false) => Ok(BuildOutcome::Block(PyTcRef::of_unchecked(val))),
-                (false, true, false) => Ok(BuildOutcome::Inline(PyTcRef::of_unchecked(val))),
-                (false, false, true) => Ok(BuildOutcome::Header(PyTcRef::of_unchecked(val))),
+                (true, false, false) => Ok(BuildOutcome::Block(PyTcRef::of_unchecked(obj))),
+                (false, true, false) => Ok(BuildOutcome::Inline(PyTcRef::of_unchecked(obj))),
+                (false, false, true) => Ok(BuildOutcome::Header(PyTcRef::of_unchecked(obj))),
 
                 (false, false, false) => {
-                    let obj_repr = val.repr()?;
+                    let obj_repr = obj.repr()?;
                     Err(PyTypeError::new_err(format!(
                         "Expected build result to be None or an object fitting Block, Inline, or Header - got {} which fits none of them.",
                         obj_repr.to_str()?
                     )))
                 }
                 _ => {
-                    let obj_repr = val.repr()?;
+                    let obj_repr = obj.repr()?;
                     Err(PyTypeError::new_err(format!(
                         "Expected build result to be None or an object fitting Block, Inline, or Header \
                          - got {} which fits (block? {}) (inline? {}) (header? {}).",
