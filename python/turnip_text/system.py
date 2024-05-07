@@ -65,7 +65,7 @@ def parse_and_emit(
         exported_nodes.update(m._doc_nodes())
         exported_countables.update(m._countables())
         # TODO we need to handle mutations differently
-        document = m._mutate_document(doc_setup.doc, doc_setup.fmt, document)
+        document = m._mutate_document(doc_setup.doc_env, doc_setup.fmt, document)
 
     for doc_plugin in doc_setup.plugins:
         apply_mutation(doc_plugin)

@@ -24,7 +24,7 @@ from turnip_text import (
     Raw,
     Text,
 )
-from turnip_text.doc import DocState, FormatContext
+from turnip_text.doc import DocEnv, FmtEnv
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.std_plugins import (
     Bibliography,
@@ -125,7 +125,7 @@ class StructureRenderPlugin(MarkdownPlugin):
         contents: BlockScope,
         subsegments: Iterator[DocSegment],
         renderer: MarkdownRenderer,
-        ctx: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         if renderer.in_html_mode:
             tag = f"h{head.weight}"
@@ -186,7 +186,7 @@ class UncheckedBibMarkdownRenderPlugin(MarkdownPlugin):
     # TODO make Citations use backrefs? Requires document mutations which we don't have yet.
 
     def _emit_cite(
-        self, cite: Citation, renderer: MarkdownRenderer, ctx: FormatContext
+        self, cite: Citation, renderer: MarkdownRenderer, fmt: FmtEnv
     ) -> None:
         # TODO what happens with unmarkdownable labels? e.g. labels with backslash or something. need to check that when loading.
         # TODO also maybe people wouldn't want those labels being exposed?
@@ -194,7 +194,7 @@ class UncheckedBibMarkdownRenderPlugin(MarkdownPlugin):
         if cite.citenote:
             renderer.emit(Text("("))
         for citekey in cite.citekeys:
-            renderer.emit(ctx.url(f"#{citekey}") @ f"[{citekey}]")
+            renderer.emit(fmt.url(f"#{citekey}") @ f"[{citekey}]")
         if cite.citenote:
             renderer.emit(cite.citenote, Text(", )"))
 
@@ -202,16 +202,16 @@ class UncheckedBibMarkdownRenderPlugin(MarkdownPlugin):
         self,
         citeauthor: CiteAuthor,
         renderer: MarkdownRenderer,
-        ctx: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         renderer.emit(Text("The authors of "))
-        renderer.emit(ctx.url(f"#{citeauthor.citekey}") @ f"[{citeauthor.citekey}]")
+        renderer.emit(fmt.url(f"#{citeauthor.citekey}") @ f"[{citeauthor.citekey}]")
 
     def _emit_bibliography(
         self,
         bib: Bibliography,
         renderer: MarkdownRenderer,
-        ctx: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         # TODO actual reference rendering!
         def bib_gen() -> Generator[None, None, None]:
@@ -244,11 +244,11 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
         return [FootnoteList]
 
     def _mutate_document(
-        self, doc: DocState, fmt: FormatContext, toplevel: Document
+        self, doc_env: DocEnv, fmt: FmtEnv, toplevel: Document
     ) -> Document:
         toplevel.push_segment(
             DocSegment(
-                doc.heading1(num=False) @ "Footnotes",
+                doc_env.heading1(num=False) @ "Footnotes",
                 BlockScope([FootnoteList()]),
                 [],
             )
@@ -273,7 +273,7 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
         self,
         footnote: FootnoteRef,
         renderer: MarkdownRenderer,
-        ctx: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         renderer.emit(footnote.portal_to)
 
@@ -281,7 +281,7 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
         self,
         footnotes: FootnoteList,
         renderer: MarkdownRenderer,
-        ctx: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         for backref in self.footnote_anchors:
             anchor, footnote = renderer.anchors.lookup_backref_float(backref)
@@ -310,7 +310,7 @@ class ListRenderPlugin(MarkdownPlugin):
         self,
         list_item: DisplayListItem,
         renderer: MarkdownRenderer,
-        ctx: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         pass  # DisplayListItems inside DisplayLists will be handled directly
 
@@ -318,7 +318,7 @@ class ListRenderPlugin(MarkdownPlugin):
         self,
         list: DisplayList,
         renderer: MarkdownRenderer,
-        ctx: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         numbered = list.list_type == DisplayListType.Enumerate
         if renderer.in_html_mode:
@@ -397,7 +397,7 @@ class InlineFormatRenderPlugin(MarkdownPlugin):
         self,
         f: InlineFormatted,
         renderer: MarkdownRenderer,
-        fmt: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         if f.format_type == InlineFormattingType.SingleQuote:
             renderer.emit_raw("'")
@@ -429,6 +429,6 @@ class UrlRenderPlugin(MarkdownPlugin):
         self,
         url: NamedUrl,
         renderer: MarkdownRenderer,
-        fmt: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         renderer.emit_url(url.url, InlineScope(list(url.name)) if url.name else None)

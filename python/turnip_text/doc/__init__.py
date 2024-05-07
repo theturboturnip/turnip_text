@@ -44,11 +44,11 @@ __all__ = [
     "parse_pass",
     "mutate_pass",
     "DocPlugin",
-    "DocState",
-    "FormatContext",
+    "DocEnv",
+    "FmtEnv",
     "anchors",
-    "stateful",
-    "stateless",
+    "in_doc",
+    "pure_fmt",
 ]
 
 TDocPlugin = TypeVar("TDocPlugin", bound="DocPlugin")
@@ -60,8 +60,8 @@ class DocSetup:
     build_sys: BuildSystem
     doc_project_relative_path: str
     plugins: Sequence["DocPlugin"]
-    fmt: "FormatContext"
-    doc: "DocState"
+    fmt: "FmtEnv"
+    doc_env: "DocEnv"
 
     def __init__(
         self,
@@ -72,18 +72,18 @@ class DocSetup:
         self.build_sys = build_sys
         self.doc_project_relative_path = doc_project_relative_path
         self.plugins = plugins
-        self.fmt, self.doc = DocPlugin._make_contexts(build_sys, plugins)
+        self.fmt, self.doc_env = DocPlugin._make_contexts(build_sys, plugins)
 
     @property
     def anchors(self) -> "DocAnchors":
-        return self.doc.anchors
+        return self.doc_env.anchors
 
     def parse(self) -> Document:
         src = self.build_sys.resolve_turnip_text_source(self.doc_project_relative_path)
-        return parse_file(src, self.doc.__dict__)
+        return parse_file(src, self.doc_env.__dict__)
 
     def freeze(self) -> None:
-        self.doc._frozen = True
+        self.doc_env._frozen = True
 
 
 class DocMutator(Protocol):
@@ -98,7 +98,7 @@ class DocMutator(Protocol):
         return []
 
     def _mutate_document(
-        self, doc: "DocState", fmt: "FormatContext", toplevel: Document
+        self, doc_env: "DocEnv", fmt: "FmtEnv", toplevel: Document
     ) -> Document:
         """
         Mutate the toplevel_contents or toplevel_segments to add things as you please.
@@ -114,15 +114,18 @@ class DocMutator(Protocol):
 
 
 class DocPlugin(DocMutator):
-    # Initialized when the plugin is included into the MutableState.
-    # Should always be non-None when the plugin's emitted functions are called
-    __doc: "DocState" = None  # type: ignore
-    __fmt: "FormatContext" = None  # type: ignore
+    # Initialized when the plugin is included into the MutableState,
+    # which is after the plugin is constructed.
+    # Should always be non-None when the plugin's emitted functions are called.
+    # Can't be handled by e.g. a metaclass, because that would require the doc_env and fmt to
+    # effectively be global state.
+    _doc_env: "DocEnv" = None  # type: ignore
+    _fmt: "FmtEnv" = None  # type: ignore
 
-    def __init_ctx(self, fmt: "FormatContext", doc: "DocState") -> None:
-        assert self.__doc is None and self.__fmt is None
-        self.__doc = doc
-        self.__fmt = fmt
+    def __init_ctx(self, fmt: "FmtEnv", doc_env: "DocEnv") -> None:
+        assert self._doc_env is None and self._fmt is None
+        self._doc_env = doc_env
+        self._fmt = fmt
 
     @property
     def _plugin_name(self) -> str:
@@ -173,104 +176,97 @@ class DocPlugin(DocMutator):
     def _make_contexts(
         build_sys: BuildSystem,
         plugins: Sequence["DocPlugin"],
-    ) -> Tuple["FormatContext", "DocState"]:
+    ) -> Tuple["FmtEnv", "DocEnv"]:
         anchors = DocAnchors()
-        fmt = FormatContext()
-        doc = DocState(build_sys, fmt, anchors)
+        fmt = FmtEnv()
+        doc_env = DocEnv(build_sys, fmt, anchors)
 
         def register_plugin(plugin: "DocPlugin") -> None:
             i = plugin._interface()
 
             for key, value in i.items():
-                # The stateless context only includes:
-                # - functions and methods that have been explicitly marked stateless.
-                # - class variables which aren't data descriptors (they don't have access to the plugin self and don't have access to __doc.)
+                # The pure_fmt context only includes:
+                # - functions and methods that have been explicitly marked pure_fmt.
+                # - class variables which aren't data descriptors (they don't have access to the plugin self and don't have access to __doc_env.)
 
                 if key in RESERVED_DOC_PLUGIN_EXPORTS:
                     print(f"Warning: ignoring reserved field {key} of plugin {plugin}")
                     continue
 
-                is_stateless = False
+                is_pure_fmt = False
                 if inspect.ismethod(value):
-                    is_stateless = getattr(value.__func__, "_stateless", False)
+                    is_pure_fmt = getattr(value.__func__, "_pure_fmt", False)
                 elif hasattr(value, "__call__"):
-                    # Callables or data descriptors need to be explicitly marked as stateless
-                    is_stateless = getattr(value, "_stateless", False)
+                    # Callables or data descriptors need to be explicitly marked as pure_fmt
+                    is_pure_fmt = getattr(value, "_pure_fmt", False)
                 else:
                     # It's not a bound method, it's not callable or gettable, it's probably a plain variable.
-                    # It can't get access to __doc, so expose it.
-                    is_stateless = True
+                    # It can't get access to __doc_env, so expose it.
+                    is_pure_fmt = True
 
-                # No matter what, the function gets added to the stateful context (even if they're stateless!)
-                # If you have access to mutable state, you're allowed to call stateless functions too.
-                doc.__dict__[key] = value
-                # Stateless functions get added to the stateless context
-                if is_stateless:
+                # No matter what, the function gets added to the in_doc context (even if they're pure_fmt!)
+                # If you're in the middle of building the document, you're allowed to call pure_fmt functions too.
+                doc_env.__dict__[key] = value
+                # pure_fmt functions get added to the pure_fmt context
+                if is_pure_fmt:
                     fmt.__dict__[key] = value
 
-            plugin.__init_ctx(fmt, doc)
+            plugin.__init_ctx(fmt, doc_env)
 
         register_plugin(anchors)
         for plugin in plugins:
             register_plugin(plugin)
 
-        return fmt, doc
+        return fmt, doc_env
 
-    @staticmethod
-    def _stateful(
-        f: Callable[Concatenate[TDocPlugin, "DocState", P], T]
-    ) -> Callable[Concatenate[TDocPlugin, P], T]:
-        """
-        An annotation for plugin bound methods which access the __doc object i.e. other stateful (and stateless) functions and variables.
-        This is the only way to access the doc, and thus theoretically the only way to mutate doc.
-        Unfortunately, we can't protect a plugin from modifying its private doc in a so-annotated "stateless" function.
-        """
 
-        def wrapper(plugin: TDocPlugin, /, *args: Any, **kwargs: Any) -> T:
-            if plugin.__doc._frozen:
-                raise RuntimeError(
-                    "Can't run a stateful function when the doc is frozen!"
-                )
-            return f(plugin, plugin.__doc, *args, **kwargs)
+def in_doc(
+    f: Callable[Concatenate[TDocPlugin, "DocEnv", P], T]
+) -> Callable[Concatenate[TDocPlugin, P], T]:
+    """
+    An annotation for plugin bound methods which access the __doc_env object i.e. other in_doc (and pure_fmt) functions and variables.
+    This is the only way to access the doc_env, and thus theoretically the only way to mutate doc_env.
+    Unfortunately, we can't protect a plugin from modifying its private state in a so-annotated "pure_fmt" function.
+    """
 
-        wrapper._stateful = True  # type: ignore
-        wrapper.__doc__ = f.__doc__
-        wrapper.__name__ = f"stateful wrapper of function {f.__name__}()"
+    def wrapper(plugin: TDocPlugin, /, *args: Any, **kwargs: Any) -> T:
+        if plugin._doc_env._frozen:
+            raise RuntimeError("Can't run an in_env function when the doc is frozen!")
+        return f(plugin, plugin._doc_env, *args, **kwargs)
 
-        return wrapper
+    wrapper._in_doc = True  # type: ignore
+    wrapper.__doc__ = f.__doc__
+    wrapper.__name__ = f"in_doc wrapper of function {f.__name__}()"
 
-    @staticmethod
-    def _stateless(
-        f: Callable[Concatenate[TDocPlugin, "FormatContext", P], T]
-    ) -> Callable[Concatenate[TDocPlugin, P], T]:
-        """
-        An annotation for plugin bound methods which access the __fmt object i.e. other stateless functions.
+    return wrapper
+
+
+def pure_fmt(
+    f: Callable[Concatenate[TDocPlugin, "FmtEnv", P], T]
+) -> Callable[Concatenate[TDocPlugin, P], T]:
+    """
+        An annotation for plugin bound methods which access the __fmt object i.e. other pure_fmt functions.
         This is the only way to access fmt.
-        Unfortunately, we can't protect a plugin from modifying its private doc in a so-annotated "stateless" function.
+        Unfortunately, we can't protect a plugin from modifying its private state in a so-annotated "pure_fmt" function.
 
+    ```
         class SomePlugin(Plugin):
-            @stateless
-            def some_stateless_function(self, fmt, other_arg):
+            @pure_fmt
+            def formatting_func(self, fmt, other_arg):
                 return (fmt.bold @ other_arg)
+    ```
 
-        some_plugin.some_stateless_function(other_arg) # returns (fmt.bold @ other_arg), don't need to pass in fmt!
+        some_plugin.formatting_func(other_arg) # returns (fmt.bold @ other_arg), don't need to pass in fmt!
+    """
 
-        TODO could make this pass through stuff and just set _stateless, if __fmt is changed to _ctx
-        """
+    def wrapper(plugin: TDocPlugin, /, *args: Any, **kwargs: Any) -> T:
+        return f(plugin, plugin._fmt, *args, **kwargs)
 
-        def wrapper(plugin: TDocPlugin, /, *args: Any, **kwargs: Any) -> T:
-            return f(plugin, plugin.__fmt, *args, **kwargs)
+    wrapper._pure_fmt = True  # type: ignore
+    wrapper.__doc__ = f.__doc__
+    wrapper.__name__ = f"pure_fmt wrapper of function {f.__name__}()"
 
-        wrapper._stateless = True  # type: ignore
-        wrapper.__doc__ = f.__doc__
-        wrapper.__name__ = f"stateless wrapper of function {f.__name__}()"
-
-        return wrapper
-
-
-# TODO: annoyingly, vscode doesn't auto-import these. Why?
-stateful = DocPlugin._stateful
-stateless = DocPlugin._stateless
+    return wrapper
 
 
 RESERVED_DOC_PLUGIN_EXPORTS = [
@@ -282,9 +278,9 @@ RESERVED_DOC_PLUGIN_EXPORTS = [
 ]
 
 
-class FormatContext:
+class FmtEnv:
     def __getattr__(self, name: str) -> Any:
-        # The FormatContext has various things that we don't know at type-time.
+        # The FmtEnv has various things that we don't know at type-time.
         # We want to be able to use those things from Python code.
         # __getattr__ is called when an attribute access is attempted and the "normal routes" fail.
         # Defining __getattr__ tells the type checker "hey, this object has various dynamic attributes"
@@ -293,22 +289,24 @@ class FormatContext:
         raise AttributeError(name=name, obj=self)
 
 
-class DocState:
+class DocEnv:
     _frozen: bool = (
-        False  # Set to True when rendering the document, which disables functions annotated with @stateful.
+        False  # Set to True when rendering the document, which disables functions annotated with @in_doc.
     )
 
     # These are reserved fields, so plugins can't export them.
     # Evaluated code can call directly out to doc.blah or fmt.blah.
     build_sys: BuildSystem
-    doc: "DocState"
-    fmt: "FormatContext"
+    doc: "DocEnv"
+    fmt: "FmtEnv"
+    # TODO don't special-case DocAnchors
     anchors: "DocAnchors"
+    # TODO move this into DocAnchors plugin
     # This can be used by all document code to create backrefs, optionally with custom labels.
     backref = Backref
 
     def __init__(
-        self, build_sys: BuildSystem, fmt: "FormatContext", anchors: "DocAnchors"
+        self, build_sys: BuildSystem, fmt: "FmtEnv", anchors: "DocAnchors"
     ) -> None:
         self.build_sys = build_sys
         self.doc = self
@@ -337,7 +335,7 @@ class DocAnchors(DocPlugin):
     Anchors can be created without knowing their ID, at which point this will generate an ID from a monotonic per-kind counter.
     To avoid overlap with user-defined IDs, user-defined IDs must contain at least one alphabetic latin character (upper or lowercase).
 
-    This is a DocPlugin so that it can use the @stateful annotation to avoid creating new anchors after the document is frozen.
+    This is a DocPlugin so that it can use the @in_doc annotation to avoid creating new anchors after the document is frozen.
     """
 
     #
@@ -354,9 +352,9 @@ class DocAnchors(DocPlugin):
         self._anchor_id_to_possible_kinds = defaultdict(dict)
         self._anchored_floats = {}
 
-    @stateful
+    @in_doc
     def register_new_anchor(
-        self, doc: DocState, kind: str, id: Optional[str]
+        self, doc_env: DocEnv, kind: str, id: Optional[str]
     ) -> Anchor:
         """
         When inside the document, create a new anchor.

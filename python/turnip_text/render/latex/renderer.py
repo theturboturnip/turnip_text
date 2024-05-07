@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Set, Tuple, Union
 
 from turnip_text import Block, DocSegment, Document, Inline, Raw, Text
-from turnip_text.doc import DocSetup, FormatContext
+from turnip_text.doc import DocSetup, FmtEnv
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.helpers import MaybeUnset
 from turnip_text.render import EmitterDispatch, Renderer, Writable
@@ -87,7 +87,7 @@ class LatexBackrefMethodImpl(abc.ABC):
         self,
         anchor: Anchor,
         renderer: "LatexRenderer",
-        fmt: FormatContext,
+        fmt: FmtEnv,
     ) -> None: ...
 
     @abc.abstractmethod
@@ -96,7 +96,7 @@ class LatexBackrefMethodImpl(abc.ABC):
         backref: Backref,
         anchor: Anchor,
         renderer: "LatexRenderer",
-        fmt: FormatContext,
+        fmt: FmtEnv,
     ) -> None: ...
 
 

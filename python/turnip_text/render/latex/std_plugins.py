@@ -1,7 +1,7 @@
 from typing import Dict, Iterator, List, Optional
 
 from turnip_text import BlockScope, DocSegment, Raw
-from turnip_text.doc import FormatContext
+from turnip_text.doc import FmtEnv
 from turnip_text.doc.std_plugins import (
     Bibliography,
     Citation,
@@ -96,7 +96,7 @@ class ArticleRenderPlugin(LatexPlugin):
         contents: BlockScope,
         subsegments: Iterator[DocSegment],
         renderer: LatexRenderer,
-        ctx: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         latex_name = self.level_to_latex[head.weight]
         if latex_name is None:
@@ -126,9 +126,7 @@ class UncheckedBiblatexRenderPlugin(LatexPlugin):
         setup.emitter.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
         setup.emitter.register_block_or_inline(Bibliography, self._emit_bibliography)
 
-    def _emit_cite(
-        self, cite: Citation, renderer: LatexRenderer, ctx: FormatContext
-    ) -> None:
+    def _emit_cite(self, cite: Citation, renderer: LatexRenderer, fmt: FmtEnv) -> None:
         renderer.emit_macro("cite")
         if cite.citenote:
             renderer.emit_sqr_bracketed(cite.citenote)
@@ -138,7 +136,7 @@ class UncheckedBiblatexRenderPlugin(LatexPlugin):
         self,
         citeauthor: CiteAuthor,
         renderer: LatexRenderer,
-        ctx: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         renderer.emit_raw(f"\\citeauthor{{{citeauthor.citekey}}}")
 
@@ -146,7 +144,7 @@ class UncheckedBiblatexRenderPlugin(LatexPlugin):
         self,
         bib: Bibliography,
         renderer: LatexRenderer,
-        ctx: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         renderer.emit_raw("{")
         renderer.emit_break_sentence()
@@ -176,7 +174,7 @@ class FootnoteRenderPlugin(LatexPlugin):
         self,
         footnote: FootnoteRef,
         renderer: LatexRenderer,
-        ctx: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         footnote_backref = footnote.portal_to
         _, footnote_contents = renderer.anchors.lookup_backref_float(footnote_backref)
@@ -201,7 +199,7 @@ class ListRenderPlugin(LatexPlugin):
         self,
         list: DisplayList,
         renderer: LatexRenderer,
-        ctx: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         mode = {
             DisplayListType.Itemize: "itemize",
@@ -214,7 +212,7 @@ class ListRenderPlugin(LatexPlugin):
         self,
         list_item: DisplayListItem,
         renderer: LatexRenderer,
-        ctx: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         # Put {} after \item so square brackets at the start of render_block don't get swallowed as arguments
         renderer.emit_raw("\\item{} ")
@@ -241,7 +239,7 @@ class InlineFormatRenderPlugin(LatexPlugin):
         self,
         f: InlineFormatted,
         renderer: LatexRenderer,
-        fmt: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         if f.format_type == InlineFormattingType.SingleQuote:
             renderer.emit_raw("`")
@@ -266,7 +264,7 @@ class UrlRenderPlugin(LatexPlugin):
         self,
         url: NamedUrl,
         renderer: LatexRenderer,
-        fmt: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         if "}" in url.url:
             raise RuntimeError(

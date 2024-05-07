@@ -37,7 +37,7 @@ from turnip_text import (
     Sentence,
     Text,
 )
-from turnip_text.doc import DocAnchors, DocMutator, DocSetup, FormatContext
+from turnip_text.doc import DocAnchors, DocMutator, DocSetup, FmtEnv
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.render.dyn_dispatch import DynDispatch
@@ -59,13 +59,11 @@ class RefEmitterDispatch(Generic[TRenderer_contra]):
 
     anchor_kind_to_method: Dict[str, str]
 
-    anchor_default: Optional[Callable[[TRenderer_contra, FormatContext, Anchor], None]]
-    backref_default: Optional[
-        Callable[[TRenderer_contra, FormatContext, Backref], None]
-    ]
+    anchor_default: Optional[Callable[[TRenderer_contra, FmtEnv, Anchor], None]]
+    backref_default: Optional[Callable[[TRenderer_contra, FmtEnv, Backref], None]]
 
-    anchor_table: Dict[str, Callable[[TRenderer_contra, FormatContext, Anchor], None]]
-    backref_table: Dict[str, Callable[[TRenderer_contra, FormatContext, Backref], None]]
+    anchor_table: Dict[str, Callable[[TRenderer_contra, FmtEnv, Anchor], None]]
+    backref_table: Dict[str, Callable[[TRenderer_contra, FmtEnv, Backref], None]]
 
     def __init__(self) -> None:
         super().__init__()
@@ -78,8 +76,8 @@ class RefEmitterDispatch(Generic[TRenderer_contra]):
     def register_anchor_render_method(
         self,
         method: str,
-        anchor: Callable[[TRenderer_contra, FormatContext, Anchor], None],
-        backref: Callable[[TRenderer_contra, FormatContext, Backref], None],
+        anchor: Callable[[TRenderer_contra, FmtEnv, Anchor], None],
+        backref: Callable[[TRenderer_contra, FmtEnv, Backref], None],
         can_be_default: bool = True,
     ) -> None:
         if method in self.anchor_table:
@@ -101,7 +99,7 @@ class RefEmitterDispatch(Generic[TRenderer_contra]):
 
     def get_anchor_emitter(
         self, a: Anchor
-    ) -> Callable[[TRenderer_contra, FormatContext, Anchor], None]:
+    ) -> Callable[[TRenderer_contra, FmtEnv, Anchor], None]:
         method = self.anchor_kind_to_method.get(a.kind)
         if method is None:
             if self.anchor_default is None:
@@ -113,7 +111,7 @@ class RefEmitterDispatch(Generic[TRenderer_contra]):
 
     def get_backref_emitter(
         self, backref_kind: str
-    ) -> Callable[[TRenderer_contra, FormatContext, Backref], None]:
+    ) -> Callable[[TRenderer_contra, FmtEnv, Backref], None]:
         method = self.anchor_kind_to_method.get(backref_kind)
         if method is None:
             if self.backref_default is None:
@@ -127,9 +125,9 @@ class RefEmitterDispatch(Generic[TRenderer_contra]):
 class EmitterDispatch(Generic[TRenderer_contra]):
     """Performs DynDispatch for block, inline, and header emitters"""
 
-    block_inline_emitters: DynDispatch[[TRenderer_contra, FormatContext], None]
+    block_inline_emitters: DynDispatch[[TRenderer_contra, FmtEnv], None]
     header_emitters: DynDispatch[
-        [BlockScope, Iterator[DocSegment], TRenderer_contra, FormatContext],
+        [BlockScope, Iterator[DocSegment], TRenderer_contra, FmtEnv],
         None,
     ]
 
@@ -141,7 +139,7 @@ class EmitterDispatch(Generic[TRenderer_contra]):
     def register_block_or_inline(
         self,
         type: Type[TBlockOrInline],
-        renderer: Callable[[TBlockOrInline, TRenderer_contra, FormatContext], None],
+        renderer: Callable[[TBlockOrInline, TRenderer_contra, FmtEnv], None],
     ) -> None:
         self.block_inline_emitters.register_handler(type, renderer)
 
@@ -154,7 +152,7 @@ class EmitterDispatch(Generic[TRenderer_contra]):
                 BlockScope,
                 Iterator[DocSegment],
                 TRenderer_contra,
-                FormatContext,
+                FmtEnv,
             ],
             None,
         ],
@@ -165,7 +163,7 @@ class EmitterDispatch(Generic[TRenderer_contra]):
         self,
         n: TBlockOrInline,
         renderer: TRenderer_contra,
-        fmt: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         f = self.block_inline_emitters.get_handler(n)
         if f is None:
@@ -176,7 +174,7 @@ class EmitterDispatch(Generic[TRenderer_contra]):
         self,
         s: DocSegment,
         renderer: TRenderer_contra,
-        fmt: FormatContext,
+        fmt: FmtEnv,
     ) -> None:
         f = self.header_emitters.get_handler(s.header)
         if f is None:
@@ -248,7 +246,7 @@ class Writable(Protocol):
 
 
 class Renderer(abc.ABC):
-    fmt: FormatContext
+    fmt: FmtEnv
     anchors: DocAnchors
     handlers: EmitterDispatch  # type: ignore[type-arg]
     write_to: Writable

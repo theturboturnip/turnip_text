@@ -5,7 +5,7 @@ from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple, T
 
 from turnip_text import Block, DocSegment, Document, Header, Inline, Paragraph, Text
 from turnip_text.build_system import JobInputFile, JobOutputFile
-from turnip_text.doc import DocAnchors, DocSetup, DocState, FormatContext
+from turnip_text.doc import DocAnchors, DocEnv, DocSetup, FmtEnv
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.render import (
     EmitterDispatch,

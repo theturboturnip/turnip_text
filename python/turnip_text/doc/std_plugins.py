@@ -32,7 +32,7 @@ from turnip_text import (
     Text,
     TurnipTextSource,
 )
-from turnip_text.doc import DocPlugin, DocState, FormatContext, stateful, stateless
+from turnip_text.doc import DocEnv, DocPlugin, FmtEnv, in_doc, pure_fmt
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.user_nodes import NodePortal, UserNode
 from turnip_text.helpers import block_scope_builder, inline_scope_builder, paragraph_of
@@ -170,16 +170,16 @@ class TableOfContents(Block):
 
 
 class StructureHeaderGenerator(InlineScopeBuilder):
-    doc: DocState
+    doc_env: DocEnv
     weight: int
     label: Optional[str]
     num: bool
 
     def __init__(
-        self, doc: DocState, weight: int, label: Optional[str], num: bool
+        self, doc_env: DocEnv, weight: int, label: Optional[str], num: bool
     ) -> None:
         super().__init__()
-        self.doc = doc
+        self.doc_env = doc_env
         self.weight = weight
         self.label = label
         self.num = num
@@ -187,7 +187,7 @@ class StructureHeaderGenerator(InlineScopeBuilder):
     def __call__(
         self, label: Optional[str] = None, num: bool = True
     ) -> "StructureHeaderGenerator":
-        return StructureHeaderGenerator(self.doc, self.weight, label, num)
+        return StructureHeaderGenerator(self.doc_env, self.weight, label, num)
 
     def build_from_inlines(self, inlines: InlineScope) -> StructureHeader:
         kind = f"h{self.weight}"
@@ -196,7 +196,7 @@ class StructureHeaderGenerator(InlineScopeBuilder):
         if self.num:
             return StructureHeader(
                 title=inlines,
-                anchor=self.doc.anchors.register_new_anchor(kind, self.label),
+                anchor=self.doc_env.anchors.register_new_anchor(kind, self.label),
                 weight=weight,
             )
         return StructureHeader(title=inlines, anchor=None, weight=weight)
@@ -211,33 +211,33 @@ class StructureDocPlugin(DocPlugin):
             # TableOfContents, # TODO
         )
 
-    @stateful
+    @in_doc
     def heading1(
-        self, state: DocState, label: Optional[str] = None, num: bool = True
+        self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
     ) -> InlineScopeBuilder:
-        return StructureHeaderGenerator(state, 1, label, num)
+        return StructureHeaderGenerator(doc_env, 1, label, num)
 
-    @stateful
+    @in_doc
     def heading2(
-        self, state: DocState, label: Optional[str] = None, num: bool = True
+        self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
     ) -> InlineScopeBuilder:
-        return StructureHeaderGenerator(state, 2, label, num)
+        return StructureHeaderGenerator(doc_env, 2, label, num)
 
-    @stateful
+    @in_doc
     def heading3(
-        self, state: DocState, label: Optional[str] = None, num: bool = True
+        self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
     ) -> InlineScopeBuilder:
-        return StructureHeaderGenerator(state, 3, label, num)
+        return StructureHeaderGenerator(doc_env, 3, label, num)
 
-    @stateful
+    @in_doc
     def heading4(
-        self, state: DocState, label: Optional[str] = None, num: bool = True
+        self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
     ) -> InlineScopeBuilder:
-        return StructureHeaderGenerator(state, 4, label, num)
+        return StructureHeaderGenerator(doc_env, 4, label, num)
 
     # TODO
-    # @stateless
-    # def toc(self, fmt: FormatContext) -> TableOfContents:
+    # @pure_fmt
+    # def toc(self, fmt: FmtEnv) -> TableOfContents:
     #     return TableOfContents()
 
 
@@ -255,20 +255,20 @@ class CitationDocPlugin(DocPlugin):
         )
 
     def _mutate_document(
-        self, doc: DocState, fmt: FormatContext, toplevel: Document
+        self, doc_env: DocEnv, fmt: FmtEnv, toplevel: Document
     ) -> Document:
         if not self._has_bib:
             toplevel.push_segment(
                 DocSegment(
-                    doc.heading1(num=False) @ "Bibliography",
+                    doc_env.heading1(num=False) @ "Bibliography",
                     BlockScope([Bibliography()]),
                     [],
                 )
             )
         return toplevel
 
-    @stateful
-    def cite(self, doc: DocState, *citekeys: str) -> Inline:
+    @in_doc
+    def cite(self, doc_env: DocEnv, *citekeys: str) -> Inline:
         citekey_set: set[str] = set(citekeys)
         for c in citekey_set:
             if not isinstance(c, str):
@@ -276,12 +276,12 @@ class CitationDocPlugin(DocPlugin):
         self._has_citations = True
         return Citation(citekeys=citekey_set, citenote=None)
 
-    @stateless
-    def citeauthor(self, fmt: FormatContext, citekey: str) -> Inline:
+    @pure_fmt
+    def citeauthor(self, fmt: FmtEnv, citekey: str) -> Inline:
         return CiteAuthor(citekey)
 
-    @stateful
-    def bibliography(self, doc: DocState) -> Bibliography:
+    @in_doc
+    def bibliography(self, doc_env: DocEnv) -> Bibliography:
         self._has_bib = True
         return Bibliography()
 
@@ -303,11 +303,11 @@ class FootnoteDocPlugin(DocPlugin):
     def _countables(self) -> Sequence[str]:
         return ("footnote",)
 
-    @stateful
-    def footnote(self, doc: DocState) -> InlineScopeBuilder:
+    @in_doc
+    def footnote(self, doc_env: DocEnv) -> InlineScopeBuilder:
         @inline_scope_builder
         def footnote_builder(contents: InlineScope) -> Inline:
-            anchor = doc.anchors.register_new_anchor_with_float(
+            anchor = doc_env.anchors.register_new_anchor_with_float(
                 "footnote", None, lambda anchor: FootnoteContents(anchor, contents)
             )
             self.footnotes_with_refs.add(anchor.id)
@@ -315,8 +315,8 @@ class FootnoteDocPlugin(DocPlugin):
 
         return footnote_builder
 
-    @stateless
-    def footnote_ref(self, fmt: FormatContext, footnote_id: str) -> Inline:
+    @pure_fmt
+    def footnote_ref(self, fmt: FmtEnv, footnote_id: str) -> Inline:
         if (not self.allow_multiple_refs) and (footnote_id in self.footnotes_with_refs):
             raise ValueError(f"Tried to refer to footnote {footnote_id} twice!")
         self.footnotes_with_refs.add(footnote_id)
@@ -324,12 +324,12 @@ class FootnoteDocPlugin(DocPlugin):
             portal_to=Backref(id=footnote_id, kind="footnote", label_contents=None)
         )
 
-    @stateful
-    def footnote_text(self, doc: DocState, footnote_id: str) -> InlineScopeBuilder:
+    @in_doc
+    def footnote_text(self, doc_env: DocEnv, footnote_id: str) -> InlineScopeBuilder:
         # Store the contents of a block scope and associate them with a specific footnote label
         @inline_scope_builder
         def handle_block_contents(contents: InlineScope) -> Optional[Block]:
-            doc.anchors.register_new_anchor_with_float(
+            doc_env.anchors.register_new_anchor_with_float(
                 "footnote",
                 footnote_id,
                 lambda anchor: FootnoteContents(anchor, contents),
@@ -425,8 +425,8 @@ class UrlDocPlugin(DocPlugin):
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
         return (NamedUrl,)
 
-    @stateless
-    def url(self, fmt: FormatContext, url: str, name: Optional[str] = None) -> Inline:
+    @pure_fmt
+    def url(self, fmt: FmtEnv, url: str, name: Optional[str] = None) -> Inline:
         if not isinstance(url, str):
             raise ValueError(f"Url {url} must be a string")
         if name is not None and not isinstance(name, str):
@@ -438,6 +438,6 @@ class UrlDocPlugin(DocPlugin):
 
 
 class SubfileDocPlugin(DocPlugin):
-    @stateful
-    def subfile(self, doc: DocState, project_relative_path: str) -> TurnipTextSource:
-        return doc.build_sys.resolve_turnip_text_source(project_relative_path)
+    @in_doc
+    def subfile(self, doc_env: DocEnv, project_relative_path: str) -> TurnipTextSource:
+        return doc_env.build_sys.resolve_turnip_text_source(project_relative_path)

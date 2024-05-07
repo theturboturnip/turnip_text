@@ -2,7 +2,7 @@ from enum import IntEnum
 from typing import Dict
 
 from turnip_text import Raw, Text
-from turnip_text.doc import FormatContext
+from turnip_text.doc import FmtEnv
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.render.latex.renderer import (
     LatexBackrefMethodImpl,
@@ -40,7 +40,7 @@ class LatexHyperlink(LatexBackrefMethodImpl):
         self.manual_counter_method[spec.latex_counter] = spec.get_manual_fmt()
 
     def emit_anchor(
-        self, anchor: Anchor, renderer: "LatexRenderer", fmt: FormatContext
+        self, anchor: Anchor, renderer: "LatexRenderer", fmt: FmtEnv
     ) -> None:
         renderer.emit_raw(
             f"\\hypertarget{{{anchor.canonical()}}}{{}}"
@@ -51,7 +51,7 @@ class LatexHyperlink(LatexBackrefMethodImpl):
         backref: Backref,
         anchor: Anchor,
         renderer: "LatexRenderer",
-        _fmt: FormatContext,
+        _fmt: FmtEnv,
     ) -> None:
         renderer.emit_macro("hyperlink")
         renderer.emit_braced(Raw(anchor.canonical()))
@@ -96,7 +96,7 @@ class LatexCleveref(LatexBackrefMethodImpl):
             renderer.emit_break_sentence()
 
     def emit_anchor(
-        self, anchor: Anchor, renderer: "LatexRenderer", fmt: FormatContext
+        self, anchor: Anchor, renderer: "LatexRenderer", fmt: FmtEnv
     ) -> None:
         renderer.emit_raw(f"\\label{{{anchor.canonical()}}}")
 
@@ -105,7 +105,7 @@ class LatexCleveref(LatexBackrefMethodImpl):
         backref: Backref,
         anchor: Anchor,
         renderer: "LatexRenderer",
-        _fmt: FormatContext,
+        _fmt: FmtEnv,
     ) -> None:
         raw_anchor = Raw(anchor.canonical())
         if backref.label_contents:
@@ -128,7 +128,7 @@ class LatexPageRef(LatexBackrefMethodImpl):
         pass
 
     def emit_anchor(
-        self, anchor: Anchor, renderer: "LatexRenderer", _fmt: FormatContext
+        self, anchor: Anchor, renderer: "LatexRenderer", _fmt: FmtEnv
     ) -> None:
         renderer.emit_macro("phantomsection")
         renderer.emit_newline()  # TODO not sure this is necessary but it's included in a lot of examples
@@ -139,7 +139,7 @@ class LatexPageRef(LatexBackrefMethodImpl):
         backref: Backref,
         anchor: Anchor,
         renderer: "LatexRenderer",
-        _fmt: FormatContext,
+        _fmt: FmtEnv,
     ) -> None:
         raw_anchor = Raw(anchor.canonical())
         if backref.label_contents:
