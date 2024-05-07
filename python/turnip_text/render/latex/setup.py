@@ -207,7 +207,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
             set(self.latex_counter_to_tt_counter.keys()),
         )
 
-    def reqire_document_class(self, document_class: str) -> None:
+    def require_document_class(self, document_class: str) -> None:
         if self.document_class is not UNSET and self.document_class != document_class:
             raise RuntimeError(
                 f"Conflicting document_class requirements: '{self.document_class}' and '{document_class}'"

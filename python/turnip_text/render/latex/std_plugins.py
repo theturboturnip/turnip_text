@@ -59,7 +59,7 @@ class ArticleRenderPlugin(LatexPlugin):
             self.level_to_latex = [None, "section", "subsection", "subsubsection"]
 
     def _register(self, setup: LatexSetup) -> None:
-        setup.reqire_document_class("article")
+        setup.require_document_class("article")
         # TODO enable more backref methods
         backref_methods = (LatexBackrefMethod.Cleveref, LatexBackrefMethod.Hyperlink)
         # Declare the preexisting LaTeX counters
