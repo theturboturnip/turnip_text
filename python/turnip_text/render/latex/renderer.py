@@ -2,14 +2,14 @@ import abc
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Set, Tuple, Union
+from typing import Dict, Iterator, List, Optional, Set, Union
 
 from turnip_text import Block, DocSegment, Document, Inline, Raw, Text
-from turnip_text.doc import DocSetup, FmtEnv
 from turnip_text.doc.anchors import Anchor, Backref
-from turnip_text.helpers import MaybeUnset
+from turnip_text.env_plugins import FmtEnv
+from turnip_text.env_setup import EnvSetup
 from turnip_text.render import EmitterDispatch, Renderer, Writable
-from turnip_text.render.counters import CounterChainValue, CounterState
+from turnip_text.render.counters import CounterState
 from turnip_text.render.manual_numbering import (
     ARABIC_NUMBERING,
     LOWER_ALPH_NUMBERING,
@@ -17,7 +17,6 @@ from turnip_text.render.manual_numbering import (
     UPPER_ALPH_NUMBERING,
     UPPER_ROMAN_NUMBERING,
     BasicManualNumbering,
-    ManualNumbering,
     SimpleCounterFormat,
 )
 
@@ -163,7 +162,7 @@ class LatexRenderer(Renderer):
 
     def __init__(
         self,
-        doc_setup: DocSetup,
+        doc_setup: EnvSetup,
         requirements: LatexRequirements,
         tt_counters: CounterState,
         handlers: EmitterDispatch["LatexRenderer"],

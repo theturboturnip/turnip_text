@@ -1,7 +1,6 @@
 from typing import Dict, Iterator, List, Optional
 
 from turnip_text import BlockScope, DocSegment, Raw
-from turnip_text.doc import FmtEnv
 from turnip_text.doc.std_plugins import (
     Bibliography,
     Citation,
@@ -16,6 +15,7 @@ from turnip_text.doc.std_plugins import (
     NamedUrl,
     StructureHeader,
 )
+from turnip_text.env_plugins import FmtEnv
 from turnip_text.render import RenderPlugin
 from turnip_text.render.latex.backrefs import LatexBackrefMethod
 from turnip_text.render.latex.renderer import LatexCounterStyle, LatexRenderer

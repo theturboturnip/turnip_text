@@ -1,20 +1,18 @@
 import html
 from contextlib import contextmanager
 from enum import Enum
-from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple, Type
+from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple
 
-from turnip_text import Block, DocSegment, Document, Header, Inline, Paragraph, Text
+from turnip_text import Block, Document, Header, Inline, Paragraph, Text
 from turnip_text.build_system import JobInputFile, JobOutputFile
-from turnip_text.doc import DocAnchors, DocEnv, DocSetup, FmtEnv
 from turnip_text.doc.anchors import Anchor, Backref
+from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
+from turnip_text.env_setup import EnvSetup
 from turnip_text.render import (
     EmitterDispatch,
-    RefEmitterDispatch,
     Renderer,
     RenderPlugin,
     RenderSetup,
-    VisitorFilter,
-    VisitorFunc,
     Writable,
 )
 from turnip_text.render.counters import (
@@ -28,7 +26,6 @@ from turnip_text.render.manual_numbering import (
     LOWER_ROMAN_NUMBERING,
     UPPER_ALPH_NUMBERING,
     UPPER_ROMAN_NUMBERING,
-    ManualNumbering,
     SimpleCounterFormat,
 )
 
@@ -67,7 +64,7 @@ class MarkdownRenderer(Renderer):
 
     def __init__(
         self,
-        doc_setup: DocSetup,
+        doc_setup: EnvSetup,
         handlers: EmitterDispatch["MarkdownRenderer"],
         counters: CounterState,
         counter_rendering: Dict[str, MarkdownCounterFormat],
@@ -293,7 +290,7 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
 
     def register_file_generator_jobs(
         self,
-        doc_setup: DocSetup,
+        doc_setup: EnvSetup,
         document: Document,
         output_file_name: Optional[str],
     ) -> None:

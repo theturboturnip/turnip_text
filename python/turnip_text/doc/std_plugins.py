@@ -1,7 +1,8 @@
+import re
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from typing import (
-    Any,
     Callable,
     Dict,
     Iterable,
@@ -10,7 +11,6 @@ from typing import (
     Sequence,
     Set,
     Tuple,
-    Type,
     Union,
     cast,
 )
@@ -20,33 +20,30 @@ from typing_extensions import override
 from turnip_text import (
     Block,
     BlockScope,
-    BlockScopeBuilder,
     DocSegment,
     Document,
     Header,
     Inline,
     InlineScope,
     InlineScopeBuilder,
-    Paragraph,
-    Sentence,
     Text,
     TurnipTextSource,
 )
-from turnip_text.doc import DocEnv, DocPlugin, FmtEnv, in_doc, pure_fmt
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.user_nodes import NodePortal, UserNode
-from turnip_text.helpers import block_scope_builder, inline_scope_builder, paragraph_of
+from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
+from turnip_text.helpers import block_scope_builder, inline_scope_builder
 
 
-def STD_DOC_PLUGINS(allow_multiple_footnote_refs: bool = False) -> List[DocPlugin]:
+def STD_DOC_PLUGINS(allow_multiple_footnote_refs: bool = False) -> List[EnvPlugin]:
     return [
-        StructureDocPlugin(),
-        CitationDocPlugin(),
-        FootnoteDocPlugin(allow_multiple_refs=allow_multiple_footnote_refs),
-        ListDocPlugin(),
-        InlineFormatDocPlugin(),
-        UrlDocPlugin(),
-        SubfileDocPlugin(),
+        StructureEnvPlugin(),
+        CitationEnvPlugin(),
+        FootnoteEnvPlugin(allow_multiple_refs=allow_multiple_footnote_refs),
+        ListEnvPlugin(),
+        InlineFormatEnvPlugin(),
+        UrlEnvPlugin(),
+        SubfileEnvPlugin(),
     ]
 
 
@@ -196,13 +193,13 @@ class StructureHeaderGenerator(InlineScopeBuilder):
         if self.num:
             return StructureHeader(
                 title=inlines,
-                anchor=self.doc_env.anchors.register_new_anchor(kind, self.label),
+                anchor=self.doc_env.register_new_anchor(kind, self.label),
                 weight=weight,
             )
         return StructureHeader(title=inlines, anchor=None, weight=weight)
 
 
-class StructureDocPlugin(DocPlugin):
+class StructureEnvPlugin(EnvPlugin):
     def _doc_nodes(
         self,
     ) -> Sequence[type[Block] | type[Inline] | type[Header]]:
@@ -241,7 +238,7 @@ class StructureDocPlugin(DocPlugin):
     #     return TableOfContents()
 
 
-class CitationDocPlugin(DocPlugin):
+class CitationEnvPlugin(EnvPlugin):
     _has_citations: bool = False
     _has_bib: bool = False
 
@@ -286,7 +283,7 @@ class CitationDocPlugin(DocPlugin):
         return Bibliography()
 
 
-class FootnoteDocPlugin(DocPlugin):
+class FootnoteEnvPlugin(EnvPlugin):
     allow_multiple_refs: bool
     footnotes_with_refs: Set[str]
 
@@ -307,7 +304,7 @@ class FootnoteDocPlugin(DocPlugin):
     def footnote(self, doc_env: DocEnv) -> InlineScopeBuilder:
         @inline_scope_builder
         def footnote_builder(contents: InlineScope) -> Inline:
-            anchor = doc_env.anchors.register_new_anchor_with_float(
+            anchor = doc_env.register_new_anchor_with_float(
                 "footnote", None, lambda anchor: FootnoteContents(anchor, contents)
             )
             self.footnotes_with_refs.add(anchor.id)
@@ -329,7 +326,7 @@ class FootnoteDocPlugin(DocPlugin):
         # Store the contents of a block scope and associate them with a specific footnote label
         @inline_scope_builder
         def handle_block_contents(contents: InlineScope) -> Optional[Block]:
-            doc_env.anchors.register_new_anchor_with_float(
+            doc_env.register_new_anchor_with_float(
                 "footnote",
                 footnote_id,
                 lambda anchor: FootnoteContents(anchor, contents),
@@ -339,7 +336,7 @@ class FootnoteDocPlugin(DocPlugin):
         return handle_block_contents
 
 
-class InlineFormatDocPlugin(DocPlugin):
+class InlineFormatEnvPlugin(EnvPlugin):
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
         return (InlineFormatted,)
 
@@ -385,7 +382,7 @@ class InlineFormatDocPlugin(DocPlugin):
         )
 
 
-class ListDocPlugin(DocPlugin):
+class ListEnvPlugin(EnvPlugin):
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
         return (DisplayList, DisplayListItem)
 
@@ -421,7 +418,7 @@ class ListDocPlugin(DocPlugin):
         return DisplayListItem(contents=block_scope)
 
 
-class UrlDocPlugin(DocPlugin):
+class UrlEnvPlugin(EnvPlugin):
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
         return (NamedUrl,)
 
@@ -437,7 +434,109 @@ class UrlDocPlugin(DocPlugin):
         )
 
 
-class SubfileDocPlugin(DocPlugin):
+class SubfileEnvPlugin(EnvPlugin):
     @in_doc
     def subfile(self, doc_env: DocEnv, project_relative_path: str) -> TurnipTextSource:
         return doc_env.build_sys.resolve_turnip_text_source(project_relative_path)
+
+
+class DocAnchors(EnvPlugin):
+    """Responsible for keeping track of all the anchors in a document.
+
+    Has enough information to convert a Backref to the Anchor that it refers to (inferring the kind)
+    and retrieve information associated with the anchor.
+    Allows document code to create anchors with `register_new_anchor()` or `register_new_anchor_with_float()`.
+    Any backref can be converted to an Anchor (usually for rendering purposes) with `lookup_backref()`.
+    The data associated with an Anchor in `register_new_anchor_with_float()` can be retrieved with an Anchor `lookup_anchor_float()` or a Backref to that Anchor `lookup_backref_float()`.
+
+    Anchors can be created without knowing their ID, at which point this will generate an ID from a monotonic per-kind counter.
+    To avoid overlap with user-defined IDs, user-defined IDs must contain at least one alphabetic latin character (upper or lowercase).
+
+    This is a EnvPlugin so that it can use the @in_doc annotation to avoid creating new anchors after the document is frozen.
+    """
+
+    #
+
+    _anchor_kind_counters: Dict[str, int]
+    _anchor_id_to_possible_kinds: Dict[str, Dict[str, Anchor]]
+    _anchored_floats: Dict[Anchor, Block]  # TODO rename floating_space
+
+    # Anchor IDs, if they're user-defined, they must be
+    _VALID_USER_ANCHOR_ID_REGEX = re.compile(r"\w*[a-zA-Z]\w*")
+
+    def __init__(self) -> None:
+        self._anchor_kind_counters = defaultdict(lambda: 1)
+        self._anchor_id_to_possible_kinds = defaultdict(dict)
+        self._anchored_floats = {}
+
+    @in_doc
+    def register_new_anchor(
+        self, doc_env: DocEnv, kind: str, id: Optional[str]
+    ) -> Anchor:
+        """
+        When inside the document, create a new anchor.
+        """
+        if id is None:
+            id = str(self._anchor_kind_counters[kind])
+        else:
+            # Guarantee no overlap with auto-generated anchor IDs
+            assert self._VALID_USER_ANCHOR_ID_REGEX.match(
+                id
+            ), "User-defined anchor IDs must have at least one alphabetic character"
+
+        if self._anchor_id_to_possible_kinds[id].get(kind) is not None:
+            raise ValueError(
+                f"Tried to register anchor kind={kind}, id={id} when it already existed"
+            )
+
+        l = Anchor(
+            kind=kind,
+            id=id,
+        )
+        self._anchor_kind_counters[kind] += 1
+        self._anchor_id_to_possible_kinds[id][kind] = l
+        return l
+
+    def register_new_anchor_with_float(
+        self,
+        kind: str,
+        id: Optional[str],
+        float_gen: Callable[[Anchor], Block],
+    ) -> Anchor:
+        a = self.register_new_anchor(kind, id)
+        self._anchored_floats[a] = float_gen(a)
+        return a
+
+    def lookup_backref(self, backref: Backref) -> Anchor:
+        """
+        Should be called by renderers to resolve a backref into an anchor.
+        The renderer can then retrieve the counters for the anchor.
+        """
+
+        if backref.id not in self._anchor_id_to_possible_kinds:
+            raise ValueError(
+                f"Backref {backref} refers to an ID '{backref.id}' with no anchor!"
+            )
+
+        possible_kinds = self._anchor_id_to_possible_kinds[backref.id]
+
+        if backref.kind is None:
+            if len(possible_kinds) != 1:
+                raise ValueError(
+                    f"Backref {backref} doesn't specify the kind of anchor it's referring to, and there are multiple with that ID: {possible_kinds}"
+                )
+            only_possible_anchor = next(iter(possible_kinds.values()))
+            return only_possible_anchor
+        else:
+            if backref.kind not in possible_kinds:
+                raise ValueError(
+                    f"Backref {backref} specifies an anchor of kind {backref.kind}, which doesn't exist for ID {backref.id}: {possible_kinds}"
+                )
+            return possible_kinds[backref.kind]
+
+    def lookup_anchor_float(self, anchor: Anchor) -> Optional[Block]:
+        return self._anchored_floats.get(anchor)
+
+    def lookup_backref_float(self, backref: Backref) -> Tuple[Anchor, Optional[Block]]:
+        a = self.lookup_backref(backref)
+        return a, self._anchored_floats.get(a)

@@ -11,8 +11,8 @@ from turnip_text.build_system import (
     SimpleBuildSystem,
     SplitBuildSystem,
 )
-from turnip_text.doc import DocSetup
 from turnip_text.doc.std_plugins import STD_DOC_PLUGINS
+from turnip_text.env_setup import EnvSetup
 from turnip_text.render import Renderer
 from turnip_text.render.latex.renderer import LatexCounterStyle
 from turnip_text.render.latex.setup import LatexSetup
@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
     # Parse into a BuildSystem which always takes input from the filesystem, but either writes out to an in-memory filesystem or the real filesystem depending on the requested output argument.
     parse_and_emit(
-        DocSetup(
+        EnvSetup(
             SplitBuildSystem(
                 input_build_sys=real_build_sys,
                 output_build_sys=(
@@ -81,7 +81,7 @@ if __name__ == "__main__":
 
     # Parse into a BuildSystem which always takes input from the filesystem, but either writes out to an in-memory filesystem or the real filesystem depending on the requested output argument.
     parse_and_emit(
-        DocSetup(
+        EnvSetup(
             SplitBuildSystem(
                 input_build_sys=real_build_sys,
                 output_build_sys=(real_build_sys if args.omd else in_memory_build_sys),
@@ -95,7 +95,7 @@ if __name__ == "__main__":
 
     # Parse into a BuildSystem which always takes input from the filesystem, but either writes out to an in-memory filesystem or the real filesystem depending on the requested output argument.
     parse_and_emit(
-        DocSetup(
+        EnvSetup(
             SplitBuildSystem(
                 input_build_sys=real_build_sys,
                 output_build_sys=(

@@ -1,17 +1,4 @@
-from typing import (
-    Any,
-    Dict,
-    Generator,
-    Iterable,
-    Iterator,
-    List,
-    Optional,
-    Sequence,
-    Set,
-    Tuple,
-    Type,
-    Union,
-)
+from typing import Generator, Iterator, List, Sequence, Set, Tuple
 
 from turnip_text import (
     Block,
@@ -24,8 +11,8 @@ from turnip_text import (
     Raw,
     Text,
 )
-from turnip_text.doc import DocEnv, FmtEnv
-from turnip_text.doc.anchors import Anchor, Backref
+from turnip_text.doc.anchors import Backref
+from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.doc.std_plugins import (
     Bibliography,
     Citation,
@@ -40,21 +27,8 @@ from turnip_text.doc.std_plugins import (
     NamedUrl,
     StructureHeader,
 )
-from turnip_text.helpers import paragraph_of
-from turnip_text.render import (
-    EmitterDispatch,
-    RefEmitterDispatch,
-    RenderPlugin,
-    VisitorFilter,
-    VisitorFunc,
-)
-from turnip_text.render.counters import (
-    CounterChainValue,
-    CounterLink,
-    CounterState,
-    build_counter_hierarchy,
-)
-from turnip_text.render.manual_numbering import ARABIC_NUMBERING, SimpleCounterFormat
+from turnip_text.env_plugins import DocEnv, FmtEnv
+from turnip_text.render.manual_numbering import SimpleCounterFormat
 from turnip_text.render.markdown.renderer import (
     MarkdownCounterStyle,
     MarkdownPlugin,

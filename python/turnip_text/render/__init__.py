@@ -1,11 +1,7 @@
 import abc
-import io
-import os
 from contextlib import contextmanager
 from typing import (
-    Any,
     Callable,
-    Concatenate,
     Dict,
     Generator,
     Generic,
@@ -13,15 +9,12 @@ from typing import (
     Iterator,
     List,
     Optional,
-    ParamSpec,
     Protocol,
-    Sequence,
     Set,
     Tuple,
     Type,
     TypeVar,
     Union,
-    overload,
 )
 
 from turnip_text import (
@@ -37,9 +30,11 @@ from turnip_text import (
     Sentence,
     Text,
 )
-from turnip_text.doc import DocAnchors, DocMutator, DocSetup, FmtEnv
 from turnip_text.doc.anchors import Anchor, Backref
-from turnip_text.doc.user_nodes import UserNode
+from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
+from turnip_text.doc.std_plugins import DocAnchors
+from turnip_text.env_plugins import EnvPlugin, FmtEnv
+from turnip_text.env_setup import EnvSetup
 from turnip_text.render.dyn_dispatch import DynDispatch
 
 T = TypeVar("T")
@@ -59,11 +54,11 @@ class RefEmitterDispatch(Generic[TRenderer_contra]):
 
     anchor_kind_to_method: Dict[str, str]
 
-    anchor_default: Optional[Callable[[TRenderer_contra, FmtEnv, Anchor], None]]
-    backref_default: Optional[Callable[[TRenderer_contra, FmtEnv, Backref], None]]
+    anchor_default: Optional[Callable[[TRenderer_contra, "FmtEnv", Anchor], None]]
+    backref_default: Optional[Callable[[TRenderer_contra, "FmtEnv", Backref], None]]
 
-    anchor_table: Dict[str, Callable[[TRenderer_contra, FmtEnv, Anchor], None]]
-    backref_table: Dict[str, Callable[[TRenderer_contra, FmtEnv, Backref], None]]
+    anchor_table: Dict[str, Callable[[TRenderer_contra, "FmtEnv", Anchor], None]]
+    backref_table: Dict[str, Callable[[TRenderer_contra, "FmtEnv", Backref], None]]
 
     def __init__(self) -> None:
         super().__init__()
@@ -76,8 +71,8 @@ class RefEmitterDispatch(Generic[TRenderer_contra]):
     def register_anchor_render_method(
         self,
         method: str,
-        anchor: Callable[[TRenderer_contra, FmtEnv, Anchor], None],
-        backref: Callable[[TRenderer_contra, FmtEnv, Backref], None],
+        anchor: Callable[[TRenderer_contra, "FmtEnv", Anchor], None],
+        backref: Callable[[TRenderer_contra, "FmtEnv", Backref], None],
         can_be_default: bool = True,
     ) -> None:
         if method in self.anchor_table:
@@ -99,7 +94,7 @@ class RefEmitterDispatch(Generic[TRenderer_contra]):
 
     def get_anchor_emitter(
         self, a: Anchor
-    ) -> Callable[[TRenderer_contra, FmtEnv, Anchor], None]:
+    ) -> Callable[[TRenderer_contra, "FmtEnv", Anchor], None]:
         method = self.anchor_kind_to_method.get(a.kind)
         if method is None:
             if self.anchor_default is None:
@@ -111,7 +106,7 @@ class RefEmitterDispatch(Generic[TRenderer_contra]):
 
     def get_backref_emitter(
         self, backref_kind: str
-    ) -> Callable[[TRenderer_contra, FmtEnv, Backref], None]:
+    ) -> Callable[[TRenderer_contra, "FmtEnv", Backref], None]:
         method = self.anchor_kind_to_method.get(backref_kind)
         if method is None:
             if self.backref_default is None:
@@ -125,9 +120,9 @@ class RefEmitterDispatch(Generic[TRenderer_contra]):
 class EmitterDispatch(Generic[TRenderer_contra]):
     """Performs DynDispatch for block, inline, and header emitters"""
 
-    block_inline_emitters: DynDispatch[[TRenderer_contra, FmtEnv], None]
+    block_inline_emitters: DynDispatch[[TRenderer_contra, "FmtEnv"], None]
     header_emitters: DynDispatch[
-        [BlockScope, Iterator[DocSegment], TRenderer_contra, FmtEnv],
+        [BlockScope, Iterator[DocSegment], TRenderer_contra, "FmtEnv"],
         None,
     ]
 
@@ -139,7 +134,7 @@ class EmitterDispatch(Generic[TRenderer_contra]):
     def register_block_or_inline(
         self,
         type: Type[TBlockOrInline],
-        renderer: Callable[[TBlockOrInline, TRenderer_contra, FmtEnv], None],
+        renderer: Callable[[TBlockOrInline, TRenderer_contra, "FmtEnv"], None],
     ) -> None:
         self.block_inline_emitters.register_handler(type, renderer)
 
@@ -174,7 +169,7 @@ class EmitterDispatch(Generic[TRenderer_contra]):
         self,
         s: DocSegment,
         renderer: TRenderer_contra,
-        fmt: FmtEnv,
+        fmt: "FmtEnv",
     ) -> None:
         f = self.header_emitters.get_handler(s.header)
         if f is None:
@@ -185,68 +180,12 @@ class EmitterDispatch(Generic[TRenderer_contra]):
         return set(self.block_inline_emitters.keys()).union(self.header_emitters.keys())
 
 
-VisitorFilter = Tuple[Type[Any], ...] | Type[Any] | None
-VisitorFunc = Callable[[Any], None]
-
-
-class DocumentDfsPass:
-    visitors: List[Tuple[VisitorFilter, VisitorFunc]]
-
-    def __init__(self, visitors: List[Tuple[VisitorFilter, VisitorFunc]]) -> None:
-        self.visitors = visitors
-
-    def dfs_over_document(self, document: Document, anchors: DocAnchors) -> None:
-        # Floats are parsed when their portals are encountered
-        dfs_queue: List[Block | Inline | DocSegment | Header] = []
-        dfs_queue.extend(reversed((document.contents, *document.segments)))
-        visited_floats: Set[Anchor] = set()
-        while dfs_queue:
-            node = dfs_queue.pop()
-
-            # Visit the node
-            for v_type, v_f in self.visitors:
-                if v_type is None or isinstance(node, v_type):
-                    v_f(node)
-
-            # Extract children as a reversed iterator.
-            # reversed is important because we pop the last thing in the queue off first.
-            children: Iterable[Block | Inline | DocSegment | Header] | None = None
-            if isinstance(node, (BlockScope, InlineScope)):
-                children = reversed(tuple(node))
-            elif isinstance(node, DocSegment):
-                children = reversed((node.header, node.contents, *node.subsegments))
-            elif isinstance(node, Paragraph):
-                inls: List[Inline] = []
-                for s in reversed(list(node)):
-                    inls.extend(reversed(list(s)))
-                children = inls
-            elif node is None:
-                children = None
-            elif isinstance(node, UserNode):
-                contents = node.child_nodes()
-                children = reversed(list(contents)) if contents is not None else None
-            if children:
-                dfs_queue.extend(children)
-
-            if hasattr(node, "portal_to") and node.portal_to:
-                if isinstance(node.portal_to, Backref):
-                    portal_to = [node.portal_to]
-                else:
-                    portal_to = node.portal_to
-                for backref in reversed(portal_to):
-                    anchor, portal_contents = anchors.lookup_backref_float(backref)
-                    if anchor in visited_floats:
-                        raise ValueError(f"Multiple nodes are portals to {anchor}")
-                    if portal_contents:
-                        dfs_queue.append(portal_contents)
-
-
 class Writable(Protocol):
     def write(self, s: str, /) -> int: ...
 
 
 class Renderer(abc.ABC):
-    fmt: FmtEnv
+    fmt: "FmtEnv"
     anchors: DocAnchors
     handlers: EmitterDispatch  # type: ignore[type-arg]
     write_to: Writable
@@ -261,7 +200,7 @@ class Renderer(abc.ABC):
 
     def __init__(
         self: TRenderer,
-        doc_setup: DocSetup,
+        doc_setup: EnvSetup,
         handlers: EmitterDispatch[TRenderer],
         write_to: Writable,
     ) -> None:
@@ -464,7 +403,7 @@ class RenderSetup(abc.ABC, Generic[TRenderer]):
     @abc.abstractmethod
     def register_file_generator_jobs(
         self,
-        doc_setup: DocSetup,
+        doc_setup: EnvSetup,
         document: Document,
         output_file_name: Optional[str],
     ) -> None:
@@ -472,7 +411,7 @@ class RenderSetup(abc.ABC, Generic[TRenderer]):
         ...
 
 
-class RenderPlugin(DocMutator, Generic[TRenderer_contra, TRenderSetup]):
+class RenderPlugin(Generic[TRenderer_contra, TRenderSetup], EnvPlugin):
     def _register(self, setup: TRenderSetup) -> None:
         return None
 

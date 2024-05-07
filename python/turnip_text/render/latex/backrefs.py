@@ -2,15 +2,14 @@ from enum import IntEnum
 from typing import Dict
 
 from turnip_text import Raw, Text
-from turnip_text.doc import FmtEnv
 from turnip_text.doc.anchors import Anchor, Backref
+from turnip_text.env_plugins import FmtEnv
 from turnip_text.render.latex.renderer import (
     LatexBackrefMethodImpl,
     LatexCounterFormat,
     LatexCounterSpec,
     LatexRenderer,
 )
-from turnip_text.render.manual_numbering import SimpleCounterFormat
 
 
 class LatexBackrefMethod(IntEnum):

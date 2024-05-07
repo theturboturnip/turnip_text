@@ -36,19 +36,14 @@ from typing import Any, List, Optional, Set, Tuple, Type, TypeVar, Union, overlo
 
 from turnip_text import Block, Header, Inline, TurnipTextSource
 from turnip_text.build_system import BuildSystem
-from turnip_text.doc import DocMutator, DocSetup
-from turnip_text.render import (
-    DocumentDfsPass,
-    RenderSetup,
-    TRenderer,
-    VisitorFilter,
-    VisitorFunc,
-    Writable,
-)
+from turnip_text.doc.dfs import DocumentDfsPass
+from turnip_text.env_plugins import EnvPlugin
+from turnip_text.env_setup import EnvSetup
+from turnip_text.render import RenderPlugin, RenderSetup, TRenderer
 
 
 def parse_and_emit(
-    doc_setup: DocSetup,
+    doc_setup: EnvSetup,
     render_setup: RenderSetup[TRenderer],
     output_file_name: str,
 ) -> None:
@@ -59,7 +54,7 @@ def parse_and_emit(
     exported_nodes: Set[Type[Union[Block, Inline, Header]]] = set()
     exported_countables: Set[str] = set()
 
-    def apply_mutation(m: DocMutator) -> None:
+    def apply_mutation(m: EnvPlugin) -> None:
         nonlocal document, exported_nodes, exported_countables
 
         exported_nodes.update(m._doc_nodes())
