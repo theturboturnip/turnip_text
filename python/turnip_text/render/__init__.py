@@ -224,7 +224,7 @@ class DocumentDfsPass:
                 children = None
             elif isinstance(node, UserNode):
                 contents = node.child_nodes()
-                children = reversed(list(contents)) if contents is not None else None  # type: ignore
+                children = reversed(list(contents)) if contents is not None else None
             if children:
                 dfs_queue.extend(children)
 
