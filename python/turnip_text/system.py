@@ -30,45 +30,43 @@
    The Renderer iterates through the frozen document, emitting the elements by calling into RendererPlugin-defined functions.
    This mutates internal RendererPlugin state, may take info from the RenderSetup e.g. resolved LaTeX package information, consumes the document, and mutates a maybe-passed-in IO handle."""
 
-import io
-import os
-from typing import Any, List, Optional, Set, Tuple, Type, TypeVar, Union, overload
+from typing import List, Set, Type, Union
 
-from turnip_text import Block, Header, Inline, TurnipTextSource
+from turnip_text import Block, Header, Inline, parse_file
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc.dfs import DocumentDfsPass
+from turnip_text.doc.std_plugins import DocAnchors
 from turnip_text.env_plugins import EnvPlugin
-from turnip_text.env_setup import EnvSetup
-from turnip_text.render import RenderPlugin, RenderSetup, TRenderer
+from turnip_text.render import RenderSetup, TRenderer
 
 
 def parse_and_emit(
-    doc_setup: EnvSetup,
+    build_sys: BuildSystem,
+    doc_project_relative_path: str,
     render_setup: RenderSetup[TRenderer],
     output_file_name: str,
 ) -> None:
+    anchors = DocAnchors()
+    plugins_with_anchors: List[EnvPlugin] = list(render_setup.plugins)
+    plugins_with_anchors.append(anchors)
+    fmt, doc_env = EnvPlugin._make_contexts(build_sys, plugins_with_anchors)
+
     # Phase 1 - Parsing
-    document = doc_setup.parse()
+    src = build_sys.resolve_turnip_text_source(doc_project_relative_path)
+    document = parse_file(src, doc_env.__dict__)
 
     # Phase 2 - Mutation
     exported_nodes: Set[Type[Union[Block, Inline, Header]]] = set()
     exported_countables: Set[str] = set()
 
-    def apply_mutation(m: EnvPlugin) -> None:
-        nonlocal document, exported_nodes, exported_countables
-
-        exported_nodes.update(m._doc_nodes())
-        exported_countables.update(m._countables())
+    for plugin in plugins_with_anchors:
+        exported_nodes.update(plugin._doc_nodes())
+        exported_countables.update(plugin._countables())
         # TODO we need to handle mutations differently
-        document = m._mutate_document(doc_setup.doc_env, doc_setup.fmt, document)
-
-    for doc_plugin in doc_setup.plugins:
-        apply_mutation(doc_plugin)
-    for render_plugin in render_setup.plugins:
-        apply_mutation(render_plugin)
+        document = plugin._mutate_document(doc_env, fmt, document)
 
     # Now freeze the document so other code can't mutate it
-    doc_setup.freeze()
+    doc_env._frozen = True
 
     # TODO right now the document parsing process uses portals instead of actually expecting the mutation phase to pull things out of floating-space. Once that changes, re-enable this check.
     # if doc_setup.anchors._anchored_floats:
@@ -95,11 +93,13 @@ def parse_and_emit(
     # Phase 3 - Visiting and Counting
     DocumentDfsPass(render_setup.gen_dfs_visitors()).dfs_over_document(
         document,
-        doc_setup.anchors,
+        anchors,
     )
 
     # Phase 4 - Rendering
     # Create the main document render jobs
-    render_setup.register_file_generator_jobs(doc_setup, document, output_file_name)
+    render_setup.register_file_generator_jobs(
+        fmt, anchors, document, build_sys, output_file_name
+    )
     # Run all the jobs accumulated in the build system.
-    doc_setup.build_sys.run_jobs()
+    build_sys.run_jobs()

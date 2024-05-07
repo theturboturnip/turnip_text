@@ -35,18 +35,6 @@ from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
 from turnip_text.helpers import block_scope_builder, inline_scope_builder
 
 
-def STD_DOC_PLUGINS(allow_multiple_footnote_refs: bool = False) -> List[EnvPlugin]:
-    return [
-        StructureEnvPlugin(),
-        CitationEnvPlugin(),
-        FootnoteEnvPlugin(allow_multiple_refs=allow_multiple_footnote_refs),
-        ListEnvPlugin(),
-        InlineFormatEnvPlugin(),
-        UrlEnvPlugin(),
-        SubfileEnvPlugin(),
-    ]
-
-
 @dataclass(frozen=True)
 class FootnoteRef(Inline, NodePortal):
     portal_to: Backref
@@ -418,6 +406,7 @@ class ListEnvPlugin(EnvPlugin):
         return DisplayListItem(contents=block_scope)
 
 
+# TODO merge UrlEnv, SubfileEnv, Inline(?)Env into PrimitivesEnvPlugin?
 class UrlEnvPlugin(EnvPlugin):
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
         return (NamedUrl,)

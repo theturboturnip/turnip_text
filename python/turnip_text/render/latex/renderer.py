@@ -6,8 +6,8 @@ from typing import Dict, Iterator, List, Optional, Set, Union
 
 from turnip_text import Block, DocSegment, Document, Inline, Raw, Text
 from turnip_text.doc.anchors import Anchor, Backref
+from turnip_text.doc.std_plugins import DocAnchors
 from turnip_text.env_plugins import FmtEnv
-from turnip_text.env_setup import EnvSetup
 from turnip_text.render import EmitterDispatch, Renderer, Writable
 from turnip_text.render.counters import CounterState
 from turnip_text.render.manual_numbering import (
@@ -162,14 +162,15 @@ class LatexRenderer(Renderer):
 
     def __init__(
         self,
-        doc_setup: EnvSetup,
+        fmt: FmtEnv,
+        anchors: DocAnchors,
         requirements: LatexRequirements,
         tt_counters: CounterState,
         handlers: EmitterDispatch["LatexRenderer"],
         # TODO config option to write the full counter setup regardless of what we think the defaults are?
         write_to: Writable,
     ) -> None:
-        super().__init__(doc_setup, handlers, write_to)
+        super().__init__(fmt, anchors, handlers, write_to)
         self.requirements = requirements
         self.tt_counters = tt_counters
 

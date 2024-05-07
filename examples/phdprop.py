@@ -1,9 +1,6 @@
 import argparse
-import io
 import json
-from io import StringIO
 from pathlib import Path
-from typing import List, Sequence, Type, TypeVar
 
 from turnip_text import *
 from turnip_text.build_system import (
@@ -11,16 +8,10 @@ from turnip_text.build_system import (
     SimpleBuildSystem,
     SplitBuildSystem,
 )
-from turnip_text.doc.std_plugins import STD_DOC_PLUGINS
-from turnip_text.env_setup import EnvSetup
-from turnip_text.render import Renderer
 from turnip_text.render.latex.renderer import LatexCounterStyle
 from turnip_text.render.latex.setup import LatexSetup
 from turnip_text.render.latex.std_plugins import STD_LATEX_ARTICLE_RENDER_PLUGINS
-from turnip_text.render.manual_numbering import (
-    LOWER_ROMAN_NUMBERING,
-    SimpleCounterFormat,
-)
+from turnip_text.render.manual_numbering import SimpleCounterFormat
 from turnip_text.render.markdown.renderer import (
     HtmlSetup,
     MarkdownCounterStyle,
@@ -57,16 +48,11 @@ if __name__ == "__main__":
 
     # Parse into a BuildSystem which always takes input from the filesystem, but either writes out to an in-memory filesystem or the real filesystem depending on the requested output argument.
     parse_and_emit(
-        EnvSetup(
-            SplitBuildSystem(
-                input_build_sys=real_build_sys,
-                output_build_sys=(
-                    real_build_sys if args.olatex else in_memory_build_sys
-                ),
-            ),
-            "phdprop.ttext",
-            STD_DOC_PLUGINS(),
+        SplitBuildSystem(
+            input_build_sys=real_build_sys,
+            output_build_sys=(real_build_sys if args.olatex else in_memory_build_sys),
         ),
+        "phdprop.ttext",
         LatexSetup(
             STD_LATEX_ARTICLE_RENDER_PLUGINS(use_chapters=False),
             standalone=False,
@@ -81,30 +67,22 @@ if __name__ == "__main__":
 
     # Parse into a BuildSystem which always takes input from the filesystem, but either writes out to an in-memory filesystem or the real filesystem depending on the requested output argument.
     parse_and_emit(
-        EnvSetup(
-            SplitBuildSystem(
-                input_build_sys=real_build_sys,
-                output_build_sys=(real_build_sys if args.omd else in_memory_build_sys),
-            ),
-            "phdprop.ttext",
-            STD_DOC_PLUGINS(),
+        SplitBuildSystem(
+            input_build_sys=real_build_sys,
+            output_build_sys=(real_build_sys if args.omd else in_memory_build_sys),
         ),
+        "phdprop.ttext",
         MarkdownSetup(STD_MARKDOWN_RENDER_PLUGINS(use_chapters=False)),
         args.omd,
     )
 
     # Parse into a BuildSystem which always takes input from the filesystem, but either writes out to an in-memory filesystem or the real filesystem depending on the requested output argument.
     parse_and_emit(
-        EnvSetup(
-            SplitBuildSystem(
-                input_build_sys=real_build_sys,
-                output_build_sys=(
-                    real_build_sys if args.ohtml else in_memory_build_sys
-                ),
-            ),
-            "phdprop.ttext",
-            STD_DOC_PLUGINS(),
+        SplitBuildSystem(
+            input_build_sys=real_build_sys,
+            output_build_sys=(real_build_sys if args.ohtml else in_memory_build_sys),
         ),
+        "phdprop.ttext",
         HtmlSetup(
             STD_MARKDOWN_RENDER_PLUGINS(use_chapters=False),
             requested_counter_formatting={

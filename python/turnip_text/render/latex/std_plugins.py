@@ -4,16 +4,23 @@ from turnip_text import BlockScope, DocSegment, Raw
 from turnip_text.doc.std_plugins import (
     Bibliography,
     Citation,
+    CitationEnvPlugin,
     CiteAuthor,
     DisplayList,
     DisplayListItem,
     DisplayListType,
     FootnoteContents,
+    FootnoteEnvPlugin,
     FootnoteRef,
+    InlineFormatEnvPlugin,
     InlineFormatted,
     InlineFormattingType,
+    ListEnvPlugin,
     NamedUrl,
+    StructureEnvPlugin,
     StructureHeader,
+    SubfileEnvPlugin,
+    UrlEnvPlugin,
 )
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.render import RenderPlugin
@@ -28,19 +35,19 @@ LatexPlugin = RenderPlugin[LatexSetup]
 def STD_LATEX_ARTICLE_RENDER_PLUGINS(
     use_chapters: bool,
     indent_list_items: bool = True,
-    requested_counter_links: Optional[Dict[Optional[str], str]] = None,
 ) -> List[LatexPlugin]:
     return [
-        ArticleRenderPlugin(use_chapters),
-        UncheckedBiblatexRenderPlugin(),
-        FootnoteRenderPlugin(),
-        ListRenderPlugin(indent_list_items),
-        InlineFormatRenderPlugin(),
-        UrlRenderPlugin(),
+        LatexStructurePlugin_Article(use_chapters),
+        LatexBiblatexPlugin_Unchecked(),
+        LatexFootnotePlugin(),
+        LatexListPlugin(indent_list_items),
+        LatexInlineFormatPlugin(),
+        LatexUrlPlugin(),
+        LatexSubfilePlugin(),
     ]
 
 
-class ArticleRenderPlugin(LatexPlugin):
+class LatexStructurePlugin_Article(LatexPlugin, StructureEnvPlugin):
     level_to_latex: List[Optional[str]]
 
     # TODO this might need to enable \part?
@@ -120,7 +127,7 @@ class ArticleRenderPlugin(LatexPlugin):
             renderer.emit_segment(s)
 
 
-class UncheckedBiblatexRenderPlugin(LatexPlugin):
+class LatexBiblatexPlugin_Unchecked(LatexPlugin, CitationEnvPlugin):
     def _register(self, setup: LatexSetup) -> None:
         setup.emitter.register_block_or_inline(Citation, self._emit_cite)
         setup.emitter.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
@@ -157,7 +164,7 @@ class UncheckedBiblatexRenderPlugin(LatexPlugin):
         renderer.emit_break_paragraph()
 
 
-class FootnoteRenderPlugin(LatexPlugin):
+class LatexFootnotePlugin(LatexPlugin, FootnoteEnvPlugin):
     def _register(self, setup: LatexSetup) -> None:
         setup.emitter.register_block_or_inline(FootnoteRef, self._emit_footnote)
         setup.emitter.register_block_or_inline(
@@ -185,7 +192,7 @@ class FootnoteRenderPlugin(LatexPlugin):
         renderer.emit_braced(footnote_contents.contents)
 
 
-class ListRenderPlugin(LatexPlugin):
+class LatexListPlugin(LatexPlugin, ListEnvPlugin):
     indent_list_items: bool = True
 
     def __init__(self, indent_list_items: bool = True):
@@ -230,7 +237,7 @@ FORMAT_TYPE_TO_MACRO = {
 }
 
 
-class InlineFormatRenderPlugin(LatexPlugin):
+class LatexInlineFormatPlugin(LatexPlugin, InlineFormatEnvPlugin):
     # TODO If we don't use squotes,dquotes manually it would make sense to use enquote from csquotes package
     def _register(self, setup: LatexSetup) -> None:
         setup.emitter.register_block_or_inline(InlineFormatted, self._emit_formatted)
@@ -255,7 +262,7 @@ class InlineFormatRenderPlugin(LatexPlugin):
             renderer.emit_braced(f.contents)
 
 
-class UrlRenderPlugin(LatexPlugin):
+class LatexUrlPlugin(LatexPlugin, UrlEnvPlugin):
     def _register(self, setup: LatexSetup) -> None:
         setup.request_latex_package("hyperref", "URL rendering")
         setup.emitter.register_block_or_inline(NamedUrl, self._emit_url)
@@ -280,3 +287,7 @@ class UrlRenderPlugin(LatexPlugin):
             renderer.emit_macro("href")
             renderer.emit_braced(Raw(url.url.replace("#", "\\#")))
             renderer.emit_braced(*url.name)
+
+
+class LatexSubfilePlugin(LatexPlugin, SubfileEnvPlugin):
+    pass

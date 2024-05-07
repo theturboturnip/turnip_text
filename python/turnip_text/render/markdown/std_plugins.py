@@ -16,16 +16,23 @@ from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.doc.std_plugins import (
     Bibliography,
     Citation,
+    CitationEnvPlugin,
     CiteAuthor,
     DisplayList,
     DisplayListItem,
     DisplayListType,
     FootnoteContents,
+    FootnoteEnvPlugin,
     FootnoteRef,
+    InlineFormatEnvPlugin,
     InlineFormatted,
     InlineFormattingType,
+    ListEnvPlugin,
     NamedUrl,
+    StructureEnvPlugin,
     StructureHeader,
+    SubfileEnvPlugin,
+    UrlEnvPlugin,
 )
 from turnip_text.env_plugins import DocEnv, FmtEnv
 from turnip_text.render.manual_numbering import SimpleCounterFormat
@@ -42,16 +49,17 @@ def STD_MARKDOWN_RENDER_PLUGINS(
     indent_list_items: bool = True,
 ) -> List[MarkdownPlugin]:
     return [
-        StructureRenderPlugin(use_chapters),
-        UncheckedBibMarkdownRenderPlugin(),
-        FootnoteAtEndRenderPlugin(),
-        ListRenderPlugin(indent_list_items),
-        InlineFormatRenderPlugin(),
-        UrlRenderPlugin(),
+        MarkdownStructurePlugin(use_chapters),
+        MarkdownCitationPlugin_UncheckedBib(),
+        MarkdownFootnotePlugin_AtEnd(),
+        MarkdownListPlugin(indent_list_items),
+        MarkdownInlineFormatPlugin(),
+        MarkdownUrlPlugin(),
+        MarkdownSubfilePlugin(),
     ]
 
 
-class StructureRenderPlugin(MarkdownPlugin):
+class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
     _has_chapter: bool
 
     def __init__(self, use_chapters: bool) -> None:
@@ -128,7 +136,7 @@ class StructureRenderPlugin(MarkdownPlugin):
             renderer.emit_segment(s)
 
 
-class UncheckedBibMarkdownRenderPlugin(MarkdownPlugin):
+class MarkdownCitationPlugin_UncheckedBib(MarkdownPlugin, CitationEnvPlugin):
     _ordered_citations: List[str]
     _referenced_citations: Set[str]
 
@@ -205,7 +213,8 @@ class FootnoteList(Block):
 
 # TODO FootnoteBeforeNextParagraphRenderPlugin
 # - FootnoteAfterBlock may try to emit something in the middle of a custom block, Paragraphs are (I think?) guaranteed to be inside a BlockScope and we can kind emit them there
-class FootnoteAtEndRenderPlugin(MarkdownPlugin):
+# TODO this is effectively an alternate/nonstandard implementation - move it out, we haven't agreed on a standard footntoe plugin
+class MarkdownFootnotePlugin_AtEnd(MarkdownPlugin, FootnoteEnvPlugin):
     footnote_anchors: List[Backref]
 
     def __init__(self) -> None:
@@ -215,11 +224,12 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
     def _doc_nodes(
         self,
     ) -> Sequence[type[Block] | type[Inline] | type[Header]]:
-        return [FootnoteList]
+        return [FootnoteList] + list(super()._doc_nodes())
 
     def _mutate_document(
         self, doc_env: DocEnv, fmt: FmtEnv, toplevel: Document
     ) -> Document:
+        toplevel = super()._mutate_document(doc_env, fmt, toplevel)
         toplevel.push_segment(
             DocSegment(
                 doc_env.heading1(num=False) @ "Footnotes",
@@ -270,7 +280,7 @@ class FootnoteAtEndRenderPlugin(MarkdownPlugin):
         renderer.emit_break_paragraph()
 
 
-class ListRenderPlugin(MarkdownPlugin):
+class MarkdownListPlugin(MarkdownPlugin, ListEnvPlugin):
     indent_list_items: bool = True
 
     def __init__(self, indent_list_items: bool = True):
@@ -363,7 +373,7 @@ FORMAT_TYPE_TO_HTML = {
 }
 
 
-class InlineFormatRenderPlugin(MarkdownPlugin):
+class MarkdownInlineFormatPlugin(MarkdownPlugin, InlineFormatEnvPlugin):
     def _register(self, setup: MarkdownSetup) -> None:
         setup.emitter.register_block_or_inline(InlineFormatted, self._emit_formatted)
 
@@ -395,7 +405,7 @@ class InlineFormatRenderPlugin(MarkdownPlugin):
             renderer.emit_raw(surround)
 
 
-class UrlRenderPlugin(MarkdownPlugin):
+class MarkdownUrlPlugin(MarkdownPlugin, UrlEnvPlugin):
     def _register(self, setup: MarkdownSetup) -> None:
         setup.emitter.register_block_or_inline(NamedUrl, self._emit_url)
 
@@ -406,3 +416,7 @@ class UrlRenderPlugin(MarkdownPlugin):
         fmt: FmtEnv,
     ) -> None:
         renderer.emit_url(url.url, InlineScope(list(url.name)) if url.name else None)
+
+
+class MarkdownSubfilePlugin(MarkdownPlugin, SubfileEnvPlugin):
+    pass

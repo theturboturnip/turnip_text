@@ -4,10 +4,11 @@ from enum import Enum
 from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple
 
 from turnip_text import Block, Document, Header, Inline, Paragraph, Text
-from turnip_text.build_system import JobInputFile, JobOutputFile
+from turnip_text.build_system import BuildSystem, JobInputFile, JobOutputFile
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
-from turnip_text.env_setup import EnvSetup
+from turnip_text.doc.std_plugins import DocAnchors
+from turnip_text.env_plugins import FmtEnv
 from turnip_text.render import (
     EmitterDispatch,
     Renderer,
@@ -64,14 +65,15 @@ class MarkdownRenderer(Renderer):
 
     def __init__(
         self,
-        doc_setup: EnvSetup,
+        fmt: FmtEnv,
+        anchors: DocAnchors,
         handlers: EmitterDispatch["MarkdownRenderer"],
         counters: CounterState,
         counter_rendering: Dict[str, MarkdownCounterFormat],
         write_to: Writable,
         html_mode: bool = False,
     ) -> None:
-        super().__init__(doc_setup, handlers, write_to)
+        super().__init__(fmt, anchors, handlers, write_to)
         self.counters = counters
         self.counter_rendering = counter_rendering
         # Once you're in HTML mode, you can't drop down to Markdown mode again.
@@ -290,15 +292,18 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
 
     def register_file_generator_jobs(
         self,
-        doc_setup: EnvSetup,
+        fmt: FmtEnv,
+        anchors: DocAnchors,
         document: Document,
+        build_sys: BuildSystem,
         output_file_name: Optional[str],
     ) -> None:
         # Make a render job and register it in the build system.
         def render_job(_ins: Dict[str, JobInputFile], out: JobOutputFile) -> None:
             with out.open_write_text() as write_to:
                 renderer = MarkdownRenderer(
-                    doc_setup,
+                    fmt,
+                    anchors,
                     self.emitter,
                     self.counters,
                     self.counter_rendering,
@@ -309,7 +314,7 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
 
         default_output_file_name = "document.html" if self.html_only else "document.md"
 
-        doc_setup.build_sys.register_file_generator(
+        build_sys.register_file_generator(
             render_job,
             inputs={},
             output_relative_path=output_file_name or default_output_file_name,

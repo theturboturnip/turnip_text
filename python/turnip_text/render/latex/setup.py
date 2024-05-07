@@ -2,9 +2,10 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple, Union, cast
 
 from turnip_text import Block, Document, Header, Inline
-from turnip_text.build_system import JobInputFile, JobOutputFile
+from turnip_text.build_system import BuildSystem, JobInputFile, JobOutputFile
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
-from turnip_text.env_setup import EnvSetup
+from turnip_text.doc.std_plugins import DocAnchors
+from turnip_text.env_plugins import FmtEnv
 from turnip_text.helpers import UNSET, MaybeUnset
 from turnip_text.render import EmitterDispatch, RenderPlugin, RenderSetup
 from turnip_text.render.counters import (
@@ -331,8 +332,10 @@ class LatexSetup(RenderSetup[LatexRenderer]):
 
     def register_file_generator_jobs(
         self,
-        doc_setup: EnvSetup,
+        fmt: FmtEnv,
+        anchors: DocAnchors,
         document: Document,
+        build_sys: BuildSystem,
         output_file_name: Optional[str],
     ) -> None:
         if self.document_class is UNSET:
@@ -381,7 +384,8 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         def render_job(_ins: Dict[str, JobInputFile], out: JobOutputFile) -> None:
             with out.open_write_text() as write_to:
                 renderer = LatexRenderer(
-                    doc_setup,
+                    fmt,
+                    anchors,
                     requirements,
                     self.tt_counters,
                     self.emitter,
@@ -389,7 +393,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
                 )
                 renderer.emit_document(document)
 
-        doc_setup.build_sys.register_file_generator(
+        build_sys.register_file_generator(
             render_job,
             inputs={},
             output_relative_path=output_file_name or "document.tex",

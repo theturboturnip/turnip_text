@@ -30,11 +30,11 @@ from turnip_text import (
     Sentence,
     Text,
 )
+from turnip_text.build_system import BuildSystem
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.doc.std_plugins import DocAnchors
 from turnip_text.env_plugins import EnvPlugin, FmtEnv
-from turnip_text.env_setup import EnvSetup
 from turnip_text.render.dyn_dispatch import DynDispatch
 
 T = TypeVar("T")
@@ -185,7 +185,7 @@ class Writable(Protocol):
 
 
 class Renderer(abc.ABC):
-    fmt: "FmtEnv"
+    fmt: FmtEnv
     anchors: DocAnchors
     handlers: EmitterDispatch  # type: ignore[type-arg]
     write_to: Writable
@@ -200,12 +200,13 @@ class Renderer(abc.ABC):
 
     def __init__(
         self: TRenderer,
-        doc_setup: EnvSetup,
+        fmt: FmtEnv,
+        anchors: DocAnchors,
         handlers: EmitterDispatch[TRenderer],
         write_to: Writable,
     ) -> None:
-        self.fmt = doc_setup.fmt
-        self.anchors = doc_setup.anchors
+        self.fmt = fmt
+        self.anchors = anchors
         self.handlers = handlers
         self.write_to = write_to
 
@@ -403,8 +404,10 @@ class RenderSetup(abc.ABC, Generic[TRenderer]):
     @abc.abstractmethod
     def register_file_generator_jobs(
         self,
-        doc_setup: EnvSetup,
+        fmt: FmtEnv,
+        anchors: DocAnchors,
         document: Document,
+        build_sys: BuildSystem,
         output_file_name: Optional[str],
     ) -> None:
         """Register the actual job to render the necessary files out from toplevel_segment into doc_setup.build_sys."""
