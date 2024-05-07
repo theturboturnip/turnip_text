@@ -119,13 +119,28 @@ class DocPlugin(DocMutator):
     # Should always be non-None when the plugin's emitted functions are called.
     # Can't be handled by e.g. a metaclass, because that would require the doc_env and fmt to
     # effectively be global state.
-    _doc_env: "DocEnv" = None  # type: ignore
-    _fmt: "FmtEnv" = None  # type: ignore
+    __doc_env: "DocEnv" = None  # type: ignore
+    __fmt: "FmtEnv" = None  # type: ignore
 
     def __init_ctx(self, fmt: "FmtEnv", doc_env: "DocEnv") -> None:
-        assert self._doc_env is None and self._fmt is None
-        self._doc_env = doc_env
-        self._fmt = fmt
+        assert self.__doc_env is None and self.__fmt is None
+        self.__doc_env = doc_env
+        self.__fmt = fmt
+
+    @property
+    def _doc_env(self) -> "DocEnv":
+        """Retrieve the doc_env execution environment, if the document hasn't been frozen.
+        raises RuntimeError if the document is frozen."""
+        if self.__doc_env._frozen:
+            raise RuntimeError(
+                "Can't run an in_env function, or retrieve doc_env, when the doc is frozen!"
+            )
+        return self.__doc_env
+
+    @property
+    def _fmt(self) -> "FmtEnv":
+        """Retrieve the fmt 'format' environment with only @pure_fmt annotated functions."""
+        return self.__fmt
 
     @property
     def _plugin_name(self) -> str:
@@ -230,8 +245,6 @@ def in_doc(
     """
 
     def wrapper(plugin: TDocPlugin, /, *args: Any, **kwargs: Any) -> T:
-        if plugin._doc_env._frozen:
-            raise RuntimeError("Can't run an in_env function when the doc is frozen!")
         return f(plugin, plugin._doc_env, *args, **kwargs)
 
     wrapper._in_doc = True  # type: ignore
