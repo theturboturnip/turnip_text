@@ -81,7 +81,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
 
     def __init__(
         self,
-        plugins: Iterable[RenderPlugin[LatexRenderer, "LatexSetup"]],
+        plugins: Iterable[RenderPlugin["LatexSetup"]],
         standalone: bool = False,
         counter_link_override: Optional[Iterable[CounterLink]] = None,
         latex_counter_format_override: Optional[Dict[str, LatexCounterFormat]] = None,

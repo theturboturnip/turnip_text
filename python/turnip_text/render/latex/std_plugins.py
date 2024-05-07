@@ -22,7 +22,7 @@ from turnip_text.render.latex.renderer import LatexCounterStyle, LatexRenderer
 from turnip_text.render.latex.setup import LatexCounterDecl, LatexSetup
 from turnip_text.render.manual_numbering import SimpleCounterFormat
 
-LatexPlugin = RenderPlugin[LatexRenderer, LatexSetup]
+LatexPlugin = RenderPlugin[LatexSetup]
 
 
 def STD_LATEX_ARTICLE_RENDER_PLUGINS(

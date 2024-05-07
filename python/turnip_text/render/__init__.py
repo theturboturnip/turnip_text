@@ -380,11 +380,11 @@ TRenderSetup = TypeVar("TRenderSetup", bound="RenderSetup", contravariant=True) 
 
 
 class RenderSetup(abc.ABC, Generic[TRenderer]):
-    plugins: Iterable["RenderPlugin[TRenderer]"]  # type: ignore[type-arg]
+    plugins: Iterable["RenderPlugin"]  # type: ignore[type-arg]
 
     def __init__(
         self: TRenderSetup,
-        plugins: Iterable["RenderPlugin[TRenderer, TRenderSetup]"],
+        plugins: Iterable["RenderPlugin[TRenderSetup]"],
     ) -> None:
         super().__init__()
         self.plugins = plugins
@@ -411,7 +411,23 @@ class RenderSetup(abc.ABC, Generic[TRenderer]):
         ...
 
 
-class RenderPlugin(Generic[TRenderer_contra, TRenderSetup], EnvPlugin):
+# I have previously been worried about what happens if a renderer-agnostic subclass of EnvPlugin
+# (for example, NamedUrlPlugin which is defined as system-agnostic at the top level)
+# is then combined with RenderPlugin.
+# This would be fine, because RenderPlugin is a *disjoint* subclass of EnvPlugin.
+# In other languages this would result in a diamond problem, where you might have
+# multiple "copies" of the same superclass inside the subclass, but Python doesn't work that way.
+#
+# If it overrode any EnvPlugin function, you'd get a conflict between the RenderPlugin version
+# of that function and the e.g. NamedUrlPlugin version. That conflict would be solved according
+# to the Method Resolution Order, which itself relies on the ordering of subclassing.
+# Subclass1(RenderPlugin, NamedUrlPlugin) and Subclass2(NamedUrlPlugin, RenderPlugin) would have *different*
+# method resolutions, the leftmost superclass is picked for method resolution first.
+#
+# As it stands, if you subclass both the Method Resolution Order will be Subclass, (RenderPlugin, NamedUrlPlugin or vice versa), EnvPlugin.
+# NamedUrlPlugin will always come before EnvPlugin, so all the NamedUrl methods will be as expected.
+# Because RenderPlugin is disjoint from EnvPlugin, and we can assume NamedUrlPlugin is disjoint from RenderPlugin, the methods will always resolve as one expects. No diamond problem.
+class RenderPlugin(Generic[TRenderSetup], EnvPlugin):
     def _register(self, setup: TRenderSetup) -> None:
         return None
 

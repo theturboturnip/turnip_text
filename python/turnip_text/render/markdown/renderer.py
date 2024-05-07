@@ -226,7 +226,7 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
 
     def __init__(
         self,
-        plugins: Iterable[RenderPlugin[MarkdownRenderer, "MarkdownSetup"]],
+        plugins: Iterable[RenderPlugin["MarkdownSetup"]],
         requested_counter_formatting: Dict[str, MarkdownCounterFormat] = {},
         requested_counter_links: Optional[Iterable[CounterLink]] = None,
         html_only: bool = False,
@@ -319,7 +319,7 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
 class HtmlSetup(MarkdownSetup):
     def __init__(
         self,
-        plugins: Iterable[RenderPlugin[MarkdownRenderer, "MarkdownSetup"]],
+        plugins: Iterable[RenderPlugin["MarkdownSetup"]],
         requested_counter_formatting: Dict[str, MarkdownCounterFormat] = {},
         requested_counter_links: Optional[Iterable[CounterLink]] = None,
     ) -> None:
@@ -331,4 +331,4 @@ class HtmlSetup(MarkdownSetup):
         )
 
 
-MarkdownPlugin = RenderPlugin[MarkdownRenderer, MarkdownSetup]
+MarkdownPlugin = RenderPlugin[MarkdownSetup]
