@@ -39,13 +39,7 @@ from turnip_text import (
 )
 from turnip_text.doc import DocAnchors, DocMutator, DocSetup, FormatContext
 from turnip_text.doc.anchors import Anchor, Backref
-from turnip_text.render.counters import (
-    CounterChainValue,
-    CounterLink,
-    CounterState,
-    DocCounter,
-    build_counter_hierarchy,
-)
+from turnip_text.doc.user_nodes import UserNode
 from turnip_text.render.dyn_dispatch import DynDispatch
 
 T = TypeVar("T")
@@ -230,8 +224,8 @@ class DocumentDfsPass:
                 children = inls
             elif node is None:
                 children = None
-            else:
-                contents = getattr(node, "contents", None)
+            elif isinstance(node, UserNode):
+                contents = node.child_nodes()
                 children = reversed(list(contents)) if contents is not None else None  # type: ignore
             if children is not None:
                 dfs_queue.extend(children)
@@ -242,11 +236,11 @@ class DocumentDfsPass:
                 else:
                     portal_to = node.portal_to
                 for backref in reversed(portal_to):
-                    anchor, contents = anchors.lookup_backref_float(backref)
+                    anchor, portal_contents = anchors.lookup_backref_float(backref)
                     if anchor in visited_floats:
                         raise ValueError(f"Multiple nodes are portals to {anchor}")
-                    if contents:
-                        dfs_queue.append(contents)
+                    if portal_contents:
+                        dfs_queue.append(portal_contents)
 
 
 class Writable(Protocol):

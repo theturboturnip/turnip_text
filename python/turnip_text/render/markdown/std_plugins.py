@@ -137,7 +137,7 @@ class StructureRenderPlugin(MarkdownPlugin):
                         renderer.anchor_to_number_text(head.anchor),
                         Raw(" "),
                     )
-                renderer.emit(head.contents)
+                renderer.emit(head.title)
         else:
             renderer.emit_raw("#" * (head.weight) + " ")
             if head.anchor:
@@ -146,7 +146,7 @@ class StructureRenderPlugin(MarkdownPlugin):
                     renderer.anchor_to_number_text(head.anchor),
                     Raw(" "),
                 )
-            renderer.emit(head.contents)
+            renderer.emit(head.title)
 
         renderer.emit_break_paragraph()
         renderer.emit_blockscope(contents)
@@ -191,12 +191,12 @@ class UncheckedBibMarkdownRenderPlugin(MarkdownPlugin):
         # TODO what happens with unmarkdownable labels? e.g. labels with backslash or something. need to check that when loading.
         # TODO also maybe people wouldn't want those labels being exposed?
 
-        if cite.contents:
+        if cite.citenote:
             renderer.emit(Text("("))
         for citekey in cite.citekeys:
             renderer.emit(ctx.url(f"#{citekey}") @ f"[{citekey}]")
-        if cite.contents:
-            renderer.emit(cite.contents, Text(", )"))
+        if cite.citenote:
+            renderer.emit(cite.citenote, Text(", )"))
 
     def _emit_citeauthor(
         self,
@@ -431,6 +431,4 @@ class UrlRenderPlugin(MarkdownPlugin):
         renderer: MarkdownRenderer,
         fmt: FormatContext,
     ) -> None:
-        renderer.emit_url(
-            url.url, InlineScope(list(url.contents)) if url.contents else None
-        )
+        renderer.emit_url(url.url, InlineScope(list(url.name)) if url.name else None)

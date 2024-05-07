@@ -15,6 +15,8 @@ from typing import (
     cast,
 )
 
+from typing_extensions import override
+
 from turnip_text import (
     Block,
     BlockScope,
@@ -32,14 +34,7 @@ from turnip_text import (
 )
 from turnip_text.doc import DocPlugin, DocState, FormatContext, stateful, stateless
 from turnip_text.doc.anchors import Anchor, Backref
-from turnip_text.doc.user_nodes import (
-    NodePortal,
-    UserAnchorBlock,
-    UserAnchorHeader,
-    UserBlock,
-    UserInline,
-    VisitableNode,
-)
+from turnip_text.doc.user_nodes import NodePortal, UserNode
 from turnip_text.helpers import block_scope_builder, inline_scope_builder, paragraph_of
 
 
@@ -66,22 +61,21 @@ class FootnoteContents(Block):
     contents: Inline
 
 
-@dataclass(frozen=True)
-class HeadedBlock(UserAnchorBlock):
-    contents: Tuple[Inline, BlockScope]
-    num: bool = True
-
-
 # Moons ago I considered replacing this with Backref. This should not be replaced with Backref,
 # because it has specific context in how it is rendered. Renderer plugins may mutate the document
 # and replace these with Backrefs if they so choose.
 @dataclass(frozen=True)
-class Citation(UserInline):
-    contents: InlineScope | None  # the citation note
+class Citation(UserNode, Inline, InlineScopeBuilder):
+    citenote: InlineScope | None
     citekeys: Set[str]
+    anchor = None
+
+    @override
+    def child_nodes(self) -> InlineScope | None:
+        return self.citenote
 
     def build_from_inlines(self, inls: InlineScope) -> Inline:
-        return Citation(citekeys=self.citekeys, contents=inls)
+        return Citation(citekeys=self.citekeys, citenote=inls)
 
 
 @dataclass(frozen=True)
@@ -94,12 +88,17 @@ class Bibliography(Block):
 
 
 @dataclass(frozen=True)
-class NamedUrl(UserInline, InlineScopeBuilder):
-    contents: Iterable[Inline] | None
+class NamedUrl(UserNode, Inline, InlineScopeBuilder):
+    name: Iterable[Inline] | None
     url: str
+    anchor = None
+
+    @override
+    def child_nodes(self) -> Iterable[Inline] | None:
+        return self.name
 
     def build_from_inlines(self, inls: InlineScope) -> Inline:
-        return NamedUrl(url=self.url, contents=inls)
+        return NamedUrl(url=self.url, name=inls)
 
 
 class DisplayListType(Enum):
@@ -108,14 +107,26 @@ class DisplayListType(Enum):
 
 
 @dataclass(frozen=True)
-class DisplayList(UserBlock):
-    contents: List[Union["DisplayList", "DisplayListItem"]]
+class DisplayList(UserNode, Block):
     list_type: DisplayListType  # TODO could reuse Numbering from render.counters?
+    contents: List[
+        Union["DisplayList", "DisplayListItem"]
+    ]  # TODO could replace DisplayListItem with Block? Auto-attach dots?
+    anchor = None
+
+    @override
+    def child_nodes(self) -> Iterable[Block | Inline] | None:
+        return self.contents
 
 
 @dataclass(frozen=True)
-class DisplayListItem(UserBlock):
+class DisplayListItem(UserNode, Block):
     contents: BlockScope
+    anchor = None
+
+    @override
+    def child_nodes(self) -> Iterable[Block | Inline] | None:
+        return self.contents
 
 
 # TODO strikethrough? sub/superscript?
@@ -130,18 +141,27 @@ class InlineFormattingType(Enum):
 
 
 @dataclass(frozen=True)
-class InlineFormatted(UserInline):
-    contents: InlineScope
+class InlineFormatted(UserNode, Inline):
     format_type: InlineFormattingType
+    contents: InlineScope
+    anchor = None
+
+    @override
+    def child_nodes(self) -> Iterable[Block | Inline] | None:
+        return self.contents
 
 
 @dataclass(frozen=True)
-class StructureHeader(UserAnchorHeader):
-    contents: InlineScope  # The title of the segment
-    anchor: Optional[
-        Anchor
-    ]  # May be None if this DocSegment is unnumbered. Otherwise necessary so it can be counted, but the ID may be None
+class StructureHeader(UserNode, Header):
+    title: InlineScope  # The title of the segment
+    anchor: Anchor | None
+    """Set to None if the header as a whole is unnumbered.
+    Has a non-None Anchor with `id == None` if the header is numbered, but didn't have a label."""
     weight: int
+
+    @override
+    def child_nodes(self) -> InlineScope:
+        return self.title
 
 
 @dataclass(frozen=True)
@@ -175,11 +195,11 @@ class StructureHeaderGenerator(InlineScopeBuilder):
 
         if self.num:
             return StructureHeader(
-                contents=inlines,
+                title=inlines,
                 anchor=self.doc.anchors.register_new_anchor(kind, self.label),
                 weight=weight,
             )
-        return StructureHeader(contents=inlines, anchor=None, weight=weight)
+        return StructureHeader(title=inlines, anchor=None, weight=weight)
 
 
 class StructureDocPlugin(DocPlugin):
@@ -254,7 +274,7 @@ class CitationDocPlugin(DocPlugin):
             if not isinstance(c, str):
                 raise ValueError(f"Inappropriate citation key: {c}. Must be a string")
         self._has_citations = True
-        return Citation(citekeys=citekey_set, contents=None)
+        return Citation(citekeys=citekey_set, citenote=None)
 
     @stateless
     def citeauthor(self, fmt: FormatContext, citekey: str) -> Inline:
@@ -412,7 +432,7 @@ class UrlDocPlugin(DocPlugin):
         if name is not None and not isinstance(name, str):
             raise ValueError(f"Url name {name} must be a string if not None")
         return NamedUrl(
-            contents=(Text(name),) if name is not None else None,
+            name=(Text(name),) if name is not None else None,
             url=url,
         )
 

@@ -108,7 +108,7 @@ class ArticleRenderPlugin(LatexPlugin):
             renderer.emit_macro(latex_name)  # i.e. r"\section"
         else:
             renderer.emit_macro(latex_name + "*")
-        renderer.emit_braced(head.contents)  # i.e. r"\section*" + "{Section Name}"
+        renderer.emit_braced(head.title)  # i.e. r"\section*" + "{Section Name}"
         if head.anchor:
             renderer.emit(
                 head.anchor
@@ -130,8 +130,8 @@ class UncheckedBiblatexRenderPlugin(LatexPlugin):
         self, cite: Citation, renderer: LatexRenderer, ctx: FormatContext
     ) -> None:
         renderer.emit_macro("cite")
-        if cite.contents:
-            renderer.emit_sqr_bracketed(cite.contents)
+        if cite.citenote:
+            renderer.emit_sqr_bracketed(cite.citenote)
         renderer.emit_braced(Raw(",".join(cite.citekeys)))
 
     def _emit_citeauthor(
@@ -275,10 +275,10 @@ class UrlRenderPlugin(LatexPlugin):
 
         # TODO this breaks if the hash is already escaped :|
 
-        if url.contents is None:
+        if url.name is None:
             renderer.emit_macro("url")
             renderer.emit_braced(Raw(url.url.replace("#", "\\#")))
         else:
             renderer.emit_macro("href")
             renderer.emit_braced(Raw(url.url.replace("#", "\\#")))
-            renderer.emit_braced(*url.contents)
+            renderer.emit_braced(*url.name)
