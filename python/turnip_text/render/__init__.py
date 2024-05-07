@@ -212,7 +212,7 @@ class DocumentDfsPass:
 
             # Extract children as a reversed iterator.
             # reversed is important because we pop the last thing in the queue off first.
-            children: Iterable[Block | Inline | DocSegment | Header]
+            children: Iterable[Block | Inline | DocSegment | Header] | None = None
             if isinstance(node, (BlockScope, InlineScope)):
                 children = reversed(tuple(node))
             elif isinstance(node, DocSegment):
@@ -227,7 +227,7 @@ class DocumentDfsPass:
             elif isinstance(node, UserNode):
                 contents = node.child_nodes()
                 children = reversed(list(contents)) if contents is not None else None  # type: ignore
-            if children is not None:
+            if children:
                 dfs_queue.extend(children)
 
             if hasattr(node, "portal_to") and node.portal_to:
