@@ -30,7 +30,7 @@
    The Renderer iterates through the frozen document, emitting the elements by calling into RendererPlugin-defined functions.
    This mutates internal RendererPlugin state, may take info from the RenderSetup e.g. resolved LaTeX package information, consumes the document, and mutates a maybe-passed-in IO handle."""
 
-from typing import List, Sequence, Set, Type, Union
+from typing import List, Optional, Sequence, Set, Type, Union
 
 from turnip_text import Block, Header, Inline, parse_file
 from turnip_text.build_system import (
@@ -47,7 +47,7 @@ from turnip_text.render import RenderPlugin, TRenderSetup
 def parse_and_emit(
     build_sys: BuildSystem,
     src_path: ProjectRelativePath,
-    out_path: OutputRelativePath,
+    out_path: Optional[OutputRelativePath],
     render_setup: TRenderSetup,
     plugins: Sequence[RenderPlugin[TRenderSetup]],
 ) -> None:

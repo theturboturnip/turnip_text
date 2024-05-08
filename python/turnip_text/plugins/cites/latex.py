@@ -134,15 +134,12 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
         fmt: FmtEnv,
     ) -> None:
         renderer.emit_newline()
-        renderer.emit_macro("pagebreak")
-        renderer.emit_newline()
         renderer.emit_raw("{")
         with renderer.indent(4):
             renderer.emit_newline()
             renderer.emit_macro("raggedright")
             renderer.emit_newline()
-            renderer.emit_macro("printbibliography")
-            renderer.emit_sqr_bracketed(Raw("heading=bibintoc"))
+            renderer.emit_raw("\\printbibliography[heading=none]")
             renderer.emit_newline()
         renderer.emit_raw("}")
         renderer.emit_newline()

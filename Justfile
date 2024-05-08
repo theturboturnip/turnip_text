@@ -46,4 +46,4 @@ example:
 
 _example:
 	maturin develop --extras=typing,test
-	python ./examples/phdprop.py
+	python ./examples/phdprop.py -olatex document.tex
