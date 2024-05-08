@@ -6,8 +6,8 @@ from typing import Dict, Iterator, List, Optional, Set, Union
 
 from turnip_text import Block, DocSegment, Document, Inline, Raw, Text
 from turnip_text.doc.anchors import Anchor, Backref
-from turnip_text.doc.std_plugins import DocAnchors
 from turnip_text.env_plugins import FmtEnv
+from turnip_text.plugins.anchors import StdAnchorPlugin
 from turnip_text.render import EmitterDispatch, Renderer, Writable
 from turnip_text.render.counters import CounterState
 from turnip_text.render.manual_numbering import (
@@ -163,7 +163,7 @@ class LatexRenderer(Renderer):
     def __init__(
         self,
         fmt: FmtEnv,
-        anchors: DocAnchors,
+        anchors: StdAnchorPlugin,
         requirements: LatexRequirements,
         tt_counters: CounterState,
         handlers: EmitterDispatch["LatexRenderer"],

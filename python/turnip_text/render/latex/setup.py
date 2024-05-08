@@ -4,9 +4,9 @@ from typing import Dict, Iterable, List, Optional, Tuple, Union, cast
 from turnip_text import Block, Document, Header, Inline
 from turnip_text.build_system import BuildSystem, JobInputFile, JobOutputFile
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
-from turnip_text.doc.std_plugins import DocAnchors
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.helpers import UNSET, MaybeUnset
+from turnip_text.plugins.anchors import StdAnchorPlugin
 from turnip_text.render import EmitterDispatch, RenderPlugin, RenderSetup
 from turnip_text.render.counters import (
     CounterHierarchy,
@@ -31,6 +31,8 @@ from turnip_text.render.latex.renderer import (
     LatexRenderer,
     LatexRequirements,
 )
+
+LatexPlugin = RenderPlugin["LatexSetup"]
 
 
 @dataclass
@@ -333,7 +335,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
     def register_file_generator_jobs(
         self,
         fmt: FmtEnv,
-        anchors: DocAnchors,
+        anchors: StdAnchorPlugin,
         document: Document,
         build_sys: BuildSystem,
         output_file_name: Optional[str],

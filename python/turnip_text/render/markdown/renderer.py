@@ -7,8 +7,8 @@ from turnip_text import Block, Document, Header, Inline, Paragraph, Text
 from turnip_text.build_system import BuildSystem, JobInputFile, JobOutputFile
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
-from turnip_text.doc.std_plugins import DocAnchors
 from turnip_text.env_plugins import FmtEnv
+from turnip_text.plugins.anchors import StdAnchorPlugin
 from turnip_text.render import (
     EmitterDispatch,
     Renderer,
@@ -66,7 +66,7 @@ class MarkdownRenderer(Renderer):
     def __init__(
         self,
         fmt: FmtEnv,
-        anchors: DocAnchors,
+        anchors: StdAnchorPlugin,
         handlers: EmitterDispatch["MarkdownRenderer"],
         counters: CounterState,
         counter_rendering: Dict[str, MarkdownCounterFormat],
@@ -293,7 +293,7 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
     def register_file_generator_jobs(
         self,
         fmt: FmtEnv,
-        anchors: DocAnchors,
+        anchors: StdAnchorPlugin,
         document: Document,
         build_sys: BuildSystem,
         output_file_name: Optional[str],

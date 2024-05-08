@@ -35,8 +35,8 @@ from typing import List, Set, Type, Union
 from turnip_text import Block, Header, Inline, parse_file
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc.dfs import DocumentDfsPass
-from turnip_text.doc.std_plugins import DocAnchors
 from turnip_text.env_plugins import EnvPlugin
+from turnip_text.plugins.anchors import StdAnchorPlugin
 from turnip_text.render import RenderSetup, TRenderer
 
 
@@ -46,7 +46,7 @@ def parse_and_emit(
     render_setup: RenderSetup[TRenderer],
     output_file_name: str,
 ) -> None:
-    anchors = DocAnchors()
+    anchors = StdAnchorPlugin()
     plugins_with_anchors: List[EnvPlugin] = list(render_setup.plugins)
     plugins_with_anchors.append(anchors)
     fmt, doc_env = EnvPlugin._make_contexts(build_sys, plugins_with_anchors)

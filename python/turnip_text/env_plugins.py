@@ -27,6 +27,11 @@ P = ParamSpec("P")
 
 
 class EnvPlugin:
+    """
+    The base class for all plugins that provide functions for
+    the turnip_text document/formatting *environments*, hence the name.
+    """
+
     # Initialized when the plugin is included into the MutableState,
     # which is after the plugin is constructed.
     # Should always be non-None when the plugin's emitted functions are called.
@@ -71,6 +76,7 @@ class EnvPlugin:
         """
         return []
 
+    # TODO fix
     def _mutate_document(
         self, doc_env: "DocEnv", fmt: "FmtEnv", toplevel: Document
     ) -> Document:
@@ -82,7 +88,7 @@ class EnvPlugin:
 
     def _interface(self) -> Dict[str, Any]:
         """
-        Define the interface available to the renderer context,
+        Define the interface available to the document/formatting environments,
         and thus all eval-brackets in evaluated documents.
 
         By default, finds all public variables, member functions, and static functions.
@@ -120,6 +126,8 @@ class EnvPlugin:
         build_sys: BuildSystem,
         plugins: Sequence["EnvPlugin"],
     ) -> Tuple["FmtEnv", "DocEnv"]:
+        """Given a set of EnvPlugins, build a FmtEnv with annotated @pure_fmt functions + plain value, and DocEnv with annotated @in_doc functions, from the contents of all plugins.
+        Is a method of EnvPlugin so it can use internal methods that begin with __"""
         fmt = FmtEnv()
         doc_env = DocEnv(build_sys, fmt)
 
@@ -238,7 +246,7 @@ class DocEnv:
     build_sys: BuildSystem
     doc: "DocEnv"
     fmt: "FmtEnv"
-    # TODO move this into DocAnchors plugin
+    # TODO move this into StdAnchorPlugin plugin
     # This can be used by all document code to create backrefs, optionally with custom labels.
     backref = Backref
 
