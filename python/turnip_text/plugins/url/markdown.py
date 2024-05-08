@@ -18,4 +18,5 @@ class MarkdownUrlPlugin(MarkdownPlugin, UrlEnvPlugin):
         renderer: MarkdownRenderer,
         fmt: FmtEnv,
     ) -> None:
+        # FUTURE could use reference-style links?
         renderer.emit_url(url.url, InlineScope(list(url.name)) if url.name else None)

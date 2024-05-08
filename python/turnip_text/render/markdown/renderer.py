@@ -162,27 +162,38 @@ class MarkdownRenderer(Renderer):
                 f"Can't handle url {url} with a <, >, \", or ) in it. Please use proper percent-encoding to escape it."
             )
 
-        if self.in_html_mode:
-            assert ">" not in url and "<" not in url and '"' not in url
-            self.emit_raw(f'<a href="{url}">')
+        if not self.in_html_mode:
+            # We're in markdown mode, see if we can do <url> syntax
+            # That depends on not having a label, and the url not having a > which would close it early
+            # (which would be fixed by URL ampersend-quoting or percent-encoding,
+            # but I doubt I can rely on markdown parsers handling that properly)
+            if label is None and ">" not in url:
+                self.emit_raw(f"<{url}>")
+                return
+            # Ok, we can't do that - see if we can do [name](url) syntax
+            # That depends on the url not having a ) which would close it early
+            elif ")" not in url:
+                self.emit_raw("[")
+                # The label could still be None here if ">" is in a url
+                if label is None:
+                    self.emit_unescapedtext(Text(url))
+                else:
+                    self.emit(label)
+                self.emit_raw(f"]({url})")
+                return
+
+        # In all other cases, do HTML <a> urls, which have a reliable escape method but aren't pretty
+        with self.html_mode():
+            self.emit_raw(f'<a href="{html.escape(url)}">')
             if label is None:
-                # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal markdown
+                # Set the "name" of the URL to the text of the URL
                 self.emit_unescapedtext(Text(url))
             else:
                 self.emit(label)
             self.emit_raw("</a>")
-        else:
-            assert ")" not in url
-            self.emit_raw("[")
-            if label is None:
-                # Set the "name" of the URL to the text of the URL - escaped so it can be read as normal markdown
-                self.emit_unescapedtext(Text(url))
-            else:
-                self.emit(label)
-            self.emit_raw(f"]({url})")
 
     def emit_anchor(self, anchor: Anchor) -> None:
-        self.emit_empty_tag("a", f'id="{anchor.canonical()}"')
+        self.emit_empty_tag("a", f'id="{html.escape(anchor.canonical())}"')
 
     def emit_backref(self, backref: Backref) -> None:
         anchor = self.anchors.lookup_backref(backref)
