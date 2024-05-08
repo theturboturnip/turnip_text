@@ -8,7 +8,7 @@
    e.g. footnotes or figures which may have their definitions "float" from their point-of-definition to different places in the text stream.
 2. Mutating
    The document plugins and language-specific renderer plugins may both want to inject new state into the document once the user has completed it.
-   e.g. Collating all todo items created inside the document by the user and making a secondary list of them.
+   e.g. Collating all citations created inside the document by the user and making a secondary list of them.
    e.g. Creating Bibliography section at the end of the document?
    This phase must also pull all items out of "floating space" and insert them somewhere definitive inside the document.
    TODO i haven't decided whether it's sensible to allow plugins to put more things in floating space and hope someone else pulls them out - my instinct is probably not.
