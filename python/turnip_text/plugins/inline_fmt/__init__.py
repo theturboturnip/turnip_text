@@ -4,7 +4,7 @@ from typing import Iterable, Sequence
 
 from typing_extensions import override
 
-from turnip_text import Block, Inline, InlineScope
+from turnip_text import Block, Inline, InlineScope, Text
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import EnvPlugin
 from turnip_text.helpers import inline_scope_builder
@@ -36,6 +36,10 @@ class InlineFormatted(UserNode, Inline):
 class InlineFormatEnvPlugin(EnvPlugin):
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
         return (InlineFormatted,)
+
+    nbsp = Text("\u00A0")
+    endash = Text("\u2013")
+    emdash = Text("\u2014")
 
     @inline_scope_builder
     @staticmethod

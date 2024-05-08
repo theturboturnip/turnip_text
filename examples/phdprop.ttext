@@ -151,7 +151,7 @@ Integrated GPUs (e.g. Arm Mali GPUs, packaged on the same SoC as the CPU) don't 
 
 On top of isolating VMs from each other, a further level of translation is added on the GPU side: Nvidia and AMD external GPUs have their own dedicated MMUs for virtual-to-physical address translation.
 This is in large part due to the idea of [enquote]{Shared Virtual Memory} (SVM), where the CPU and GPU share an address space, and pointers to SVM can be seamlessly dereferenced on both.
-OpenCL~2.0 and Nvidia's CUDA APIs both support this concept [cite("intelOpenCLSharedVirtual2014","nvidiacorporationUnifiedMemoryCUDA2017")] to varying degrees.
+OpenCL[nbsp]2.0 and Nvidia's CUDA APIs both support this concept [cite("intelOpenCLSharedVirtual2014","nvidiacorporationUnifiedMemoryCUDA2017")] to varying degrees.
 
 In most cases, SVM has to be allocated through special API functions (e.g. CUDA Managed Memory, OpenCL Buffer Memory) and coherence is coarse: on CUDA, SVM pages are dynamically migrated between the CPU and GPU on-demand, rather than synchronizing individual loads and stores.
 This means page tables on CUDA devices track the [enquote]{Aperture} of each page, denoting which memory the page currently occupies[cite("nvidiacorporationPascalMMUFormat2016")].
@@ -165,7 +165,7 @@ Linux has introduced a Heterogeneous Memory Management kernel module[cite("linux
 
 Nvidia's Arm-based Tegra SoCs take a different approach where both the CPU and GPU use the same System MMU and DRAM[cite("nvidiacorporationNVIDIAJetsonTX22017")].
 This is also done on SoCs with Arm GPUs[cite("armltdMemoryManagementEmbedded2013")].
-On Tegra, GPUs can also snoop the CPU cache without using NVLink[cite("nvidiacorporationS8868CUDAXavier2018")]{Slide~24}, which they call I/O Coherency.
+On Tegra, GPUs can also snoop the CPU cache without using NVLink[cite("nvidiacorporationS8868CUDAXavier2018")]{Slide[nbsp]24}, which they call I/O Coherency.
 
 The computing industry as a whole is leaning towards unifying device-attached memory with processor memory.
 CXL[cite("cxlconsortiumComputeExpressLink2021")] is a standardized protocol from Intel built on PCIe which uses three sub-protocols (CXL.io, CXL.cache, CXL.memory) to allow fine-grained coherence between device and host memory.
@@ -173,7 +173,7 @@ CXL[cite("cxlconsortiumComputeExpressLink2021")] is a standardized protocol from
 This is a promising protocol, and it has the backing of Nvidia, AMD, and Arm.
 It may become more relevant for GPUs in the future, but for now at least Nvidia has no reason to move away from NVLink.
 It also hasn't yet been widely implemented.
-The first Intel CPUs to support it (Sapphire Rapids microarchitecture [cite("intelAcceleratingPossibilitiesHPC2021")]{Slide~16}) are due to come out in 2022 [cite("intelUpdatesIntelNextGen2021")].
+The first Intel CPUs to support it (Sapphire Rapids microarchitecture [cite("intelAcceleratingPossibilitiesHPC2021")]{Slide[nbsp]16}) are due to come out in 2022 [cite("intelUpdatesIntelNextGen2021")].
 
 The idea of a coherent, unified address space and view of memory across all devices is compelling, especially given the convenience it affords some software.
 However, if not applied with care, it could compromise security and performance.

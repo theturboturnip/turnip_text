@@ -345,6 +345,11 @@ class LatexRenderer(Renderer):
             "#": "\#",
             "&": "\&",
             "~": "\~{}",
+            # Unicode NBSP -> LaTeX ~ NBSP
+            "\u00A0": "~",
+            # Unicode en, emdashes -> LaTeX dash shortcuts
+            "\u2013": "--",
+            "\u2014": "---",
         }
         data = t.text
         for c, replace_with in ascii_map.items():
