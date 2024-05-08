@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple, Union, cast
 
+from typing_extensions import override
+
 from turnip_text import Block, Document, Header, Inline
 from turnip_text.build_system import BuildSystem, JobInputFile, JobOutputFile
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
@@ -84,13 +86,12 @@ class LatexSetup(RenderSetup[LatexRenderer]):
 
     def __init__(
         self,
-        plugins: Iterable[RenderPlugin["LatexSetup"]],
         standalone: bool = False,
         counter_link_override: Optional[Iterable[CounterLink]] = None,
         latex_counter_format_override: Optional[Dict[str, LatexCounterFormat]] = None,
         # TODO config for the backref methods
     ) -> None:
-        super().__init__(plugins)
+        super().__init__()
 
         self.standalone = standalone
 
@@ -128,10 +129,16 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         )
         self.request_latex_package("cleveref", "backrefs using cleveref")
 
+    @override
+    def register_plugins(
+        self,
+        build_sys: BuildSystem,
+        plugins: Iterable["RenderPlugin[LatexSetup]"],
+    ) -> None:
         # This allows plugins to register with the emitter and request specific counter links, packages, declare tt counters, etc.
-        for p in plugins:
-            p._register(self)
+        super().register_plugins(build_sys, plugins)
 
+        # We can now process the counters and things the plugins requested.
         latex_used_but_not_declared = set(
             latex_counter
             for latex_counter in self.latex_counter_to_tt_counter.keys()

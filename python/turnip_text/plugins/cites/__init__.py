@@ -20,7 +20,7 @@ from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
 # Moons ago I considered replacing this with Backref. This should not be replaced with Backref,
 # because it has specific context in how it is rendered. Renderer plugins may mutate the document
 # and replace these with Backrefs if they so choose.
-@dataclass(frozen=True)
+@dataclass
 class Citation(UserNode, Inline, InlineScopeBuilder):
     citenote: InlineScope | None
     citekeys: Set[str]
@@ -69,20 +69,24 @@ class CitationEnvPlugin(EnvPlugin):
             )
         return toplevel
 
-    @in_doc
-    def cite(self, doc_env: DocEnv, *citekeys: str) -> Inline:
+    def cite(self, *citekeys: str) -> Inline:
+        if not citekeys:
+            raise ValueError("Must provide at least one citekey to cite()")
         citekey_set: set[str] = set(citekeys)
         for c in citekey_set:
             if not isinstance(c, str):
                 raise ValueError(f"Inappropriate citation key: {c}. Must be a string")
-        self._has_citations = True
         return Citation(citekeys=citekey_set, citenote=None)
 
-    @pure_fmt
-    def citeauthor(self, fmt: FmtEnv, citekey: str) -> Inline:
+    def citeauthor(self, citekey: str) -> Inline:
         return CiteAuthor(citekey)
 
     @in_doc
     def bibliography(self, doc_env: DocEnv) -> Bibliography:
         self._has_bib = True
         return Bibliography()
+
+    # If a citation happens inside a Raw emitted without going through this plugin,
+    # you can register that fact here.
+    def register_raw_cite(self, *citekeys: str) -> None:
+        pass

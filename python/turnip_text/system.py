@@ -30,29 +30,37 @@
    The Renderer iterates through the frozen document, emitting the elements by calling into RendererPlugin-defined functions.
    This mutates internal RendererPlugin state, may take info from the RenderSetup e.g. resolved LaTeX package information, consumes the document, and mutates a maybe-passed-in IO handle."""
 
-from typing import List, Set, Type, Union
+from typing import List, Sequence, Set, Type, Union
 
 from turnip_text import Block, Header, Inline, parse_file
-from turnip_text.build_system import BuildSystem
+from turnip_text.build_system import (
+    BuildSystem,
+    OutputRelativePath,
+    ProjectRelativePath,
+)
 from turnip_text.doc.dfs import DocumentDfsPass
 from turnip_text.env_plugins import EnvPlugin
 from turnip_text.plugins.anchors import StdAnchorPlugin
-from turnip_text.render import RenderSetup, TRenderer
+from turnip_text.render import RenderPlugin, TRenderSetup
 
 
 def parse_and_emit(
     build_sys: BuildSystem,
-    doc_project_relative_path: str,
-    render_setup: RenderSetup[TRenderer],
-    output_file_name: str,
+    src_path: ProjectRelativePath,
+    out_path: OutputRelativePath,
+    render_setup: TRenderSetup,
+    plugins: Sequence[RenderPlugin[TRenderSetup]],
 ) -> None:
+    # Phase 0 - Setup plugins, contexts, and initialize the render setup
     anchors = StdAnchorPlugin()
-    plugins_with_anchors: List[EnvPlugin] = list(render_setup.plugins)
+    plugins_with_anchors: List[EnvPlugin] = list(plugins)
     plugins_with_anchors.append(anchors)
     fmt, doc_env = EnvPlugin._make_contexts(build_sys, plugins_with_anchors)
 
+    render_setup.register_plugins(build_sys, plugins)
+
     # Phase 1 - Parsing
-    src = build_sys.resolve_turnip_text_source(doc_project_relative_path)
+    src = build_sys.resolve_turnip_text_source(src_path)
     document = parse_file(src, doc_env.__dict__)
 
     # Phase 2 - Mutation
@@ -99,7 +107,7 @@ def parse_and_emit(
     # Phase 4 - Rendering
     # Create the main document render jobs
     render_setup.register_file_generator_jobs(
-        fmt, anchors, document, build_sys, output_file_name
+        fmt, anchors, document, build_sys, out_path
     )
     # Run all the jobs accumulated in the build system.
     build_sys.run_jobs()

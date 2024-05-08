@@ -329,7 +329,7 @@ class LatexRenderer(Renderer):
 
     # TODO override emit_sentence to get sentence-break-whitespace at the end of each sentence?
 
-    def emit_unescapedtext(self, t: Text) -> None:
+    def emit_text(self, t: Text) -> None:
         # TODO make sure whitespace we emit here *isn't* sentence break whitespace?
 
         # note - right now this assumes we're using a unicode-compatible setup and thus don't need to escape unicode characters.

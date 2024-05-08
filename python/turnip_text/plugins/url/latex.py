@@ -1,4 +1,5 @@
 from turnip_text import Raw
+from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.url import NamedUrl, UrlEnvPlugin
 from turnip_text.render.latex.renderer import LatexRenderer
@@ -6,7 +7,7 @@ from turnip_text.render.latex.setup import LatexPlugin, LatexSetup
 
 
 class LatexUrlPlugin(LatexPlugin, UrlEnvPlugin):
-    def _register(self, setup: LatexSetup) -> None:
+    def _register(self, build_sys: BuildSystem, setup: LatexSetup) -> None:
         setup.request_latex_package("hyperref", "URL rendering")
         setup.emitter.register_block_or_inline(NamedUrl, self._emit_url)
 

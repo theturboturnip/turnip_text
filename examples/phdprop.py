@@ -53,8 +53,8 @@ if __name__ == "__main__":
             output_build_sys=(real_build_sys if args.olatex else in_memory_build_sys),
         ),
         "phdprop.ttext",
+        args.olatex,
         LatexSetup(
-            STD_LATEX_ARTICLE_RENDER_PLUGINS(use_chapters=False),
             standalone=False,
             latex_counter_format_override={
                 "section": SimpleCounterFormat(
@@ -62,7 +62,11 @@ if __name__ == "__main__":
                 ),
             },
         ),
-        args.olatex,
+        STD_LATEX_ARTICLE_RENDER_PLUGINS(
+            use_chapters=False,
+            bib="phdprop_bib_biblatex.bib",
+            bib_output="example.bib",
+        ),
     )
 
     # Parse into a BuildSystem which always takes input from the filesystem, but either writes out to an in-memory filesystem or the real filesystem depending on the requested output argument.
@@ -72,8 +76,12 @@ if __name__ == "__main__":
             output_build_sys=(real_build_sys if args.omd else in_memory_build_sys),
         ),
         "phdprop.ttext",
-        MarkdownSetup(STD_MARKDOWN_RENDER_PLUGINS(use_chapters=False)),
         args.omd,
+        MarkdownSetup(),
+        STD_MARKDOWN_RENDER_PLUGINS(
+            use_chapters=False,
+            bib="phdprop_bib_csl.json",
+        ),
     )
 
     # Parse into a BuildSystem which always takes input from the filesystem, but either writes out to an in-memory filesystem or the real filesystem depending on the requested output argument.
@@ -83,8 +91,8 @@ if __name__ == "__main__":
             output_build_sys=(real_build_sys if args.ohtml else in_memory_build_sys),
         ),
         "phdprop.ttext",
+        args.ohtml,
         HtmlSetup(
-            STD_MARKDOWN_RENDER_PLUGINS(use_chapters=False),
             requested_counter_formatting={
                 "footnote": SimpleCounterFormat(
                     "", style=MarkdownCounterStyle.RomanLower
@@ -92,7 +100,10 @@ if __name__ == "__main__":
             },
             requested_counter_links=[("h1", "footnote")],
         ),
-        args.ohtml,
+        STD_MARKDOWN_RENDER_PLUGINS(
+            use_chapters=False,
+            bib="phdprop_bib_csl.json",
+        ),
     )
 
     for (

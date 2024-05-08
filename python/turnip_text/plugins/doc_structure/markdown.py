@@ -1,6 +1,7 @@
 from typing import Iterator
 
 from turnip_text import BlockScope, DocSegment, Raw
+from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.doc_structure import StructureEnvPlugin, StructureHeader
 from turnip_text.render.manual_numbering import SimpleCounterFormat
@@ -19,7 +20,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
         super().__init__()
         self._has_chapter = use_chapters
 
-    def _register(self, setup: MarkdownSetup) -> None:
+    def _register(self, build_sys: BuildSystem, setup: MarkdownSetup) -> None:
         setup.emitter.register_header(StructureHeader, self._emit_structure)
         setup.define_counter_rendering(
             "h1",

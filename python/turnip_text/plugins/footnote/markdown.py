@@ -1,6 +1,7 @@
 from typing import List, Sequence, Tuple
 
 from turnip_text import Block, BlockScope, DocSegment, Document, Header, Inline, Text
+from turnip_text.build_system import BuildSystem
 from turnip_text.doc.anchors import Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import DocEnv, FmtEnv
@@ -50,7 +51,7 @@ class MarkdownFootnotePlugin_AtEnd(MarkdownPlugin, FootnoteEnvPlugin):
         )
         return toplevel
 
-    def _register(self, setup: MarkdownSetup) -> None:
+    def _register(self, build_sys: BuildSystem, setup: MarkdownSetup) -> None:
         setup.emitter.register_block_or_inline(FootnoteRef, self._emit_footnote_ref)
         setup.emitter.register_block_or_inline(
             FootnoteContents, lambda _, __, ___: None

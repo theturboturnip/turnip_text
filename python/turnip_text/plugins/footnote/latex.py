@@ -1,3 +1,4 @@
+from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.footnote import (
     FootnoteContents,
@@ -9,7 +10,7 @@ from turnip_text.render.latex.setup import LatexPlugin, LatexSetup
 
 
 class LatexFootnotePlugin(LatexPlugin, FootnoteEnvPlugin):
-    def _register(self, setup: LatexSetup) -> None:
+    def _register(self, build_sys: BuildSystem, setup: LatexSetup) -> None:
         setup.emitter.register_block_or_inline(FootnoteRef, self._emit_footnote)
         setup.emitter.register_block_or_inline(
             FootnoteContents, lambda _, __, ___: None

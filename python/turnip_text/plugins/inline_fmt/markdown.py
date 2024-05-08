@@ -1,3 +1,4 @@
+from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.inline_fmt import (
     InlineFormatEnvPlugin,
@@ -27,7 +28,7 @@ FORMAT_TYPE_TO_HTML = {
 
 
 class MarkdownInlineFormatPlugin(MarkdownPlugin, InlineFormatEnvPlugin):
-    def _register(self, setup: MarkdownSetup) -> None:
+    def _register(self, build_sys: BuildSystem, setup: MarkdownSetup) -> None:
         setup.emitter.register_block_or_inline(InlineFormatted, self._emit_formatted)
 
     def _emit_formatted(

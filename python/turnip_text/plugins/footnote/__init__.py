@@ -1,22 +1,33 @@
 from dataclasses import dataclass
-from typing import Optional, Sequence, Set
+from typing import Iterable, Optional, Sequence, Set
+
+from typing_extensions import override
 
 from turnip_text import Block, Header, Inline, InlineScope, InlineScopeBuilder
 from turnip_text.doc.anchors import Anchor, Backref
-from turnip_text.doc.user_nodes import NodePortal
+from turnip_text.doc.user_nodes import NodePortal, UserNode
 from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
 from turnip_text.helpers import inline_scope_builder
 
 
 @dataclass(frozen=True)
-class FootnoteRef(Inline, NodePortal):
+class FootnoteRef(UserNode, Inline, NodePortal):
     portal_to: Backref
+    anchor = None
+
+    @override
+    def child_nodes(self) -> Iterable[Block | Inline] | None:
+        return None
 
 
 @dataclass(frozen=True)
-class FootnoteContents(Block):
+class FootnoteContents(UserNode, Block):
     anchor: Anchor
     contents: Inline
+
+    @override
+    def child_nodes(self) -> Iterable[Block | Inline] | None:
+        return (self.contents,)
 
 
 class FootnoteEnvPlugin(EnvPlugin):

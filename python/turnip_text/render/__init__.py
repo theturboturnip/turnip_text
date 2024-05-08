@@ -225,9 +225,7 @@ class Renderer(abc.ABC):
         handlers.register_block_or_inline(
             InlineScope, lambda inls, r, fmt: r.emit_inlinescope(inls)
         )
-        handlers.register_block_or_inline(
-            Text, lambda t, r, fmt: r.emit_unescapedtext(t)
-        )
+        handlers.register_block_or_inline(Text, lambda t, r, fmt: r.emit_text(t))
         handlers.register_block_or_inline(Raw, lambda t, r, fmt: r.emit_raw(t.data))
         # handlers.register_block_or_inline(
         #     Anchor, lambda a, r, fmt: r.ref_handler.get_anchor_emitter(a)(r, fmt, a)
@@ -290,11 +288,11 @@ class Renderer(abc.ABC):
         self.emit_newline()
 
     @abc.abstractmethod
-    def emit_unescapedtext(self, t: Text) -> None:
+    def emit_text(self, t: Text) -> None:
         """
         Given some text, emit a string that will look like that text exactly in the given backend.
         """
-        raise NotImplementedError(f"Need to implement emit_unescapedtext")
+        raise NotImplementedError(f"Need to implement emit_text")
 
     def emit(
         self,
@@ -383,12 +381,14 @@ TRenderSetup = TypeVar("TRenderSetup", bound="RenderSetup", contravariant=True) 
 class RenderSetup(abc.ABC, Generic[TRenderer]):
     plugins: Iterable["RenderPlugin"]  # type: ignore[type-arg]
 
-    def __init__(
+    def register_plugins(
         self: TRenderSetup,
+        build_sys: BuildSystem,
         plugins: Iterable["RenderPlugin[TRenderSetup]"],
     ) -> None:
-        super().__init__()
-        self.plugins = plugins
+        self.plugins = list(plugins)
+        for plugin in plugins:
+            plugin._register(build_sys, self)
 
     @abc.abstractmethod
     def gen_dfs_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]: ...
@@ -431,7 +431,7 @@ class RenderSetup(abc.ABC, Generic[TRenderer]):
 # NamedUrlPlugin will always come before EnvPlugin, so all the NamedUrl methods will be as expected.
 # Because RenderPlugin is disjoint from EnvPlugin, and we can assume NamedUrlPlugin is disjoint from RenderPlugin, the methods will always resolve as one expects. No diamond problem.
 class RenderPlugin(Generic[TRenderSetup], EnvPlugin):
-    def _register(self, setup: TRenderSetup) -> None:
+    def _register(self, build_sys: BuildSystem, setup: TRenderSetup) -> None:
         return None
 
     # Return a list of (filter, visitor) functions which are run in parallel over a single DFS pass on the frozen document.

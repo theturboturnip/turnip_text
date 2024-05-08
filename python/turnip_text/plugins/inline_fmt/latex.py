@@ -1,3 +1,4 @@
+from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.inline_fmt import (
     InlineFormatEnvPlugin,
@@ -18,7 +19,7 @@ FORMAT_TYPE_TO_MACRO = {
 
 class LatexInlineFormatPlugin(LatexPlugin, InlineFormatEnvPlugin):
     # TODO If we don't use squotes,dquotes manually it would make sense to use enquote from csquotes package
-    def _register(self, setup: LatexSetup) -> None:
+    def _register(self, build_sys: BuildSystem, setup: LatexSetup) -> None:
         setup.emitter.register_block_or_inline(InlineFormatted, self._emit_formatted)
 
     def _emit_formatted(

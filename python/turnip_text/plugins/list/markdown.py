@@ -1,5 +1,6 @@
 from typing import Generator
 
+from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.list import (
     DisplayList,
@@ -20,7 +21,7 @@ class MarkdownListPlugin(MarkdownPlugin, ListEnvPlugin):
     def __init__(self, indent_list_items: bool = True):
         self.indent_list_items = indent_list_items
 
-    def _register(self, setup: MarkdownSetup) -> None:
+    def _register(self, build_sys: BuildSystem, setup: MarkdownSetup) -> None:
         setup.emitter.register_block_or_inline(DisplayList, self._emit_list)
         setup.emitter.register_block_or_inline(DisplayListItem, self._emit_list_item)
 

@@ -81,7 +81,7 @@ class MarkdownRenderer(Renderer):
         # If they didn't, we start in Markdown mode.
         self.html_mode_stack = [html_mode]
 
-    def emit_unescapedtext(self, t: Text) -> None:
+    def emit_text(self, t: Text) -> None:
         if self.in_html_mode:
             self.emit_raw(html.escape(t.text))
         else:
@@ -176,7 +176,7 @@ class MarkdownRenderer(Renderer):
                 self.emit_raw("[")
                 # The label could still be None here if ">" is in a url
                 if label is None:
-                    self.emit_unescapedtext(Text(url))
+                    self.emit_text(Text(url))
                 else:
                     self.emit(label)
                 self.emit_raw(f"]({url})")
@@ -187,7 +187,7 @@ class MarkdownRenderer(Renderer):
             self.emit_raw(f'<a href="{html.escape(url)}">')
             if label is None:
                 # Set the "name" of the URL to the text of the URL
-                self.emit_unescapedtext(Text(url))
+                self.emit_text(Text(url))
             else:
                 self.emit(label)
             self.emit_raw("</a>")
@@ -239,12 +239,11 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
 
     def __init__(
         self,
-        plugins: Iterable[RenderPlugin["MarkdownSetup"]],
         requested_counter_formatting: Dict[str, MarkdownCounterFormat] = {},
         requested_counter_links: Optional[Iterable[CounterLink]] = None,
         html_only: bool = False,
     ) -> None:
-        super().__init__(plugins)
+        super().__init__()
         self.html_only = html_only
         self.emitter = MarkdownRenderer.default_emitter_dispatch()
         self.counter_rendering = {}
@@ -254,9 +253,14 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
             self.requested_counter_links = []
         for counter, counter_format in requested_counter_formatting.items():
             self.define_counter_rendering(counter, counter_format)
+
+    def register_plugins(
+        self,
+        build_sys: BuildSystem,
+        plugins: Iterable[RenderPlugin["MarkdownSetup"]],
+    ) -> None:
         # This allows plugins to register with the emitter and request specific counter links
-        for p in plugins:
-            p._register(self)
+        super().register_plugins(build_sys, plugins)
         # Now we know the full hierarchy we can build the CounterState
         self.counters = CounterState(
             build_counter_hierarchy(
@@ -335,12 +339,10 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
 class HtmlSetup(MarkdownSetup):
     def __init__(
         self,
-        plugins: Iterable[RenderPlugin["MarkdownSetup"]],
         requested_counter_formatting: Dict[str, MarkdownCounterFormat] = {},
         requested_counter_links: Optional[Iterable[CounterLink]] = None,
     ) -> None:
         super().__init__(
-            plugins,
             requested_counter_formatting,
             requested_counter_links,
             html_only=True,

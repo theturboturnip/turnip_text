@@ -1,4 +1,5 @@
 from turnip_text import InlineScope
+from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.url import NamedUrl, UrlEnvPlugin
 from turnip_text.render.markdown.renderer import (
@@ -9,7 +10,7 @@ from turnip_text.render.markdown.renderer import (
 
 
 class MarkdownUrlPlugin(MarkdownPlugin, UrlEnvPlugin):
-    def _register(self, setup: MarkdownSetup) -> None:
+    def _register(self, build_sys: BuildSystem, setup: MarkdownSetup) -> None:
         setup.emitter.register_block_or_inline(NamedUrl, self._emit_url)
 
     def _emit_url(

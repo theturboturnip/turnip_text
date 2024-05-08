@@ -58,12 +58,14 @@ class DocumentDfsPass:
                 dfs_queue.extend(children)
 
             if hasattr(node, "portal_to") and node.portal_to:
+                print(f"Found portal {node.portal_to}")
                 if isinstance(node.portal_to, Backref):
                     portal_to = [node.portal_to]
                 else:
                     portal_to = node.portal_to
                 for backref in reversed(portal_to):
                     anchor, portal_contents = anchors.lookup_backref_float(backref)
+                    print(portal_contents)
                     if anchor in visited_floats:
                         raise ValueError(f"Multiple nodes are portals to {anchor}")
                     if portal_contents:

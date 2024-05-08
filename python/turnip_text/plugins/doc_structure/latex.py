@@ -1,6 +1,7 @@
 from typing import Iterator, List, Optional
 
 from turnip_text import BlockScope, DocSegment
+from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.doc_structure import StructureEnvPlugin, StructureHeader
 from turnip_text.render.latex.backrefs import LatexBackrefMethod
@@ -27,7 +28,7 @@ class LatexStructurePlugin_Article(LatexPlugin, StructureEnvPlugin):
         else:
             self.level_to_latex = [None, "section", "subsection", "subsubsection"]
 
-    def _register(self, setup: LatexSetup) -> None:
+    def _register(self, build_sys: BuildSystem, setup: LatexSetup) -> None:
         setup.require_document_class("article")
         # TODO enable more backref methods
         backref_methods = (LatexBackrefMethod.Cleveref, LatexBackrefMethod.Hyperlink)
@@ -87,6 +88,3 @@ class LatexStructurePlugin_Article(LatexPlugin, StructureEnvPlugin):
         renderer.emit_blockscope(contents)
         for s in subsegments:
             renderer.emit_segment(s)
-
-
-print(LatexStructurePlugin_Article.__mro__)

@@ -81,6 +81,9 @@ FileJob = Callable[[FileJobInputs, JobOutputFile], None]
 
 
 class BuildSystem(abc.ABC):
+    """A BuildSystem manages Jobs which take input files, process them, and save results to output files.
+    It is also an abstraction over a potentially-virtual file system."""
+
     file_jobs: Dict[OutputRelativePath, Tuple[Dict[str, ProjectRelativePath], FileJob]]
 
     def __init__(self) -> None:
@@ -93,7 +96,7 @@ class BuildSystem(abc.ABC):
     ) -> TurnipTextSource: ...
 
     @abc.abstractmethod
-    def _resolve_input_file(
+    def resolve_input_file(
         self, project_relative_path: ProjectRelativePath
     ) -> JobInputFile: ...
 
@@ -121,7 +124,7 @@ class BuildSystem(abc.ABC):
         for output_relative_path, (relative_inputs, job) in self.file_jobs.items():
             out_file = self._resolve_output_file(output_relative_path)
             in_files = {
-                name: self._resolve_input_file(project_relative_path)
+                name: self.resolve_input_file(project_relative_path)
                 for name, project_relative_path in relative_inputs.items()
             }
             job(in_files, out_file)
@@ -184,7 +187,7 @@ class SimpleBuildSystem(BuildSystem):
             str(self._resolve_project_relpath(project_relative_path)), encoding=encoding
         )
 
-    def _resolve_input_file(
+    def resolve_input_file(
         self, project_relative_path: ProjectRelativePath
     ) -> JobInputFile:
         return RealJobInputFile(self._resolve_project_relpath(project_relative_path))
@@ -254,7 +257,7 @@ class InMemoryBuildSystem(BuildSystem):
             return TurnipTextSource(project_relative_path, data.decode(encoding))
         raise ValueError(f"Input file '{project_relative_path}' doesn't exist")
 
-    def _resolve_input_file(self, project_relative_path: str) -> JobInputFile:
+    def resolve_input_file(self, project_relative_path: str) -> JobInputFile:
         data = self.input_files.get(project_relative_path)
         if data:
             return InMemoryInputFile(data)
@@ -363,10 +366,10 @@ class StackBuildSystem(BuildSystem):
             f"None of the supplementary build systems had '{project_relative_path}'"
         )
 
-    def _resolve_input_file(self, project_relative_path: str) -> JobInputFile:
+    def resolve_input_file(self, project_relative_path: str) -> JobInputFile:
         for b in self._build_systems:
             try:
-                return b._resolve_input_file(project_relative_path)
+                return b.resolve_input_file(project_relative_path)
             except:
                 continue
         raise ValueError(
@@ -409,8 +412,8 @@ class SplitBuildSystem(BuildSystem):
             project_relative_path, encoding
         )
 
-    def _resolve_input_file(self, project_relative_path: str) -> JobInputFile:
-        return self._input_build_sys._resolve_input_file(project_relative_path)
+    def resolve_input_file(self, project_relative_path: str) -> JobInputFile:
+        return self._input_build_sys.resolve_input_file(project_relative_path)
 
     def _resolve_output_file(self, output_relative_path: str) -> JobOutputFile:
         return self._output_build_sys._resolve_output_file(output_relative_path)
