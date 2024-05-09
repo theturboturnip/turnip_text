@@ -6,10 +6,11 @@ from typing_extensions import override
 from turnip_text import Block, Inline, InlineScope, InlineScopeBuilder, Text
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import EnvPlugin, FmtEnv, pure_fmt
+from turnip_text.helpers import UserInlineScopeBuilder
 
 
 @dataclass(frozen=True)
-class NamedUrl(UserNode, Inline, InlineScopeBuilder):
+class NamedUrl(UserNode, Inline, UserInlineScopeBuilder):
     name: Iterable[Inline] | None
     url: str
     anchor = None

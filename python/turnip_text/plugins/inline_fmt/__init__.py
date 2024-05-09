@@ -37,10 +37,6 @@ class InlineFormatEnvPlugin(EnvPlugin):
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
         return (InlineFormatted,)
 
-    nbsp = Text("\u00A0")
-    endash = Text("\u2013")
-    emdash = Text("\u2014")
-
     @inline_scope_builder
     @staticmethod
     def italic(items: InlineScope) -> Inline:

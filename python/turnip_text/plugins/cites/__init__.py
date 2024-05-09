@@ -15,13 +15,14 @@ from turnip_text import (
 )
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
+from turnip_text.helpers import UserInlineScopeBuilder
 
 
 # Moons ago I considered replacing this with Backref. This should not be replaced with Backref,
 # because it has specific context in how it is rendered. Renderer plugins may mutate the document
 # and replace these with Backrefs if they so choose.
 @dataclass
-class Citation(UserNode, Inline, InlineScopeBuilder):
+class Citation(UserNode, Inline, UserInlineScopeBuilder):
     citenote: InlineScope | None
     citekeys: Set[str]
     anchor = None

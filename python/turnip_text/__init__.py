@@ -75,27 +75,23 @@ class Header(Protocol):
     weight: int = 0
 
 
-class BlockScopeBuilder(abc.ABC):
-    @abc.abstractmethod
-    def build_from_blocks(self, bs: BlockScope) -> Optional[Block | Header]: ...
-
-    def __matmul__(self, maybe_b: "CoercibleToBlockScope") -> Optional[Block | Header]:
-        bs = coerce_to_block_scope(maybe_b)
-        return self.build_from_blocks(bs)
+@runtime_checkable
+class BlockScopeBuilder(Protocol):
+    def build_from_blocks(
+        self, bs: BlockScope
+    ) -> Union[Header, Block, Inline, None]: ...
 
 
-class InlineScopeBuilder(abc.ABC):
-    @abc.abstractmethod
-    def build_from_inlines(self, inls: InlineScope) -> Inline | Header: ...
-
-    def __matmul__(self, maybe_inls: "CoercibleToInlineScope") -> Inline | Header:
-        inls = coerce_to_inline_scope(maybe_inls)
-        return self.build_from_inlines(inls)
+@runtime_checkable
+class InlineScopeBuilder(Protocol):
+    def build_from_inlines(
+        self, inls: InlineScope
+    ) -> Union[Header, Block, Inline, None]: ...
 
 
 @runtime_checkable
 class RawScopeBuilder(Protocol):
-    def build_from_raw(self, raw: str) -> Union[Inline, Block]: ...
+    def build_from_raw(self, raw: str) -> Union[Header, Block, Inline, None]: ...
 
 
 # The types that can be coerced into an Inline, in the order they are checked and attempted.

@@ -7,6 +7,7 @@ from turnip_text import Block, Header, Inline, InlineScope, InlineScopeBuilder
 from turnip_text.doc.anchors import Anchor
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import DocEnv, EnvPlugin, in_doc
+from turnip_text.helpers import UserInlineScopeBuilder
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,7 @@ class TableOfContents(Block):
     pass
 
 
-class StructureHeaderGenerator(InlineScopeBuilder):
+class StructureHeaderGenerator(UserInlineScopeBuilder):
     doc_env: DocEnv
     weight: int
     label: Optional[str]

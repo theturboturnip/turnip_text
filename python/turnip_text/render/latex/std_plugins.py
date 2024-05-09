@@ -10,7 +10,7 @@ from turnip_text.plugins.doc_structure.latex import (
 from turnip_text.plugins.footnote.latex import LatexFootnotePlugin
 from turnip_text.plugins.inline_fmt.latex import LatexInlineFormatPlugin
 from turnip_text.plugins.list.latex import LatexListPlugin
-from turnip_text.plugins.subfile.latex import LatexSubfilePlugin
+from turnip_text.plugins.primitives.latex import LatexPrimitivesPlugin
 from turnip_text.plugins.url.latex import LatexUrlPlugin
 from turnip_text.render.latex.setup import LatexPlugin
 
@@ -28,7 +28,7 @@ def STD_LATEX_ARTICLE_RENDER_PLUGINS(
         LatexListPlugin(indent_list_items),
         LatexInlineFormatPlugin(),
         LatexUrlPlugin(),
-        LatexSubfilePlugin(),
+        LatexPrimitivesPlugin(),
     ]
     if bib:
         plugins.append(LatexBiblatexCitationPlugin(bib, bib_output))
