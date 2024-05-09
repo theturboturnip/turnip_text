@@ -8,6 +8,7 @@ from turnip_text.build_system import (
     SimpleBuildSystem,
     SplitBuildSystem,
 )
+from turnip_text.render.latex.backrefs import LatexBackrefMethod
 from turnip_text.render.latex.renderer import LatexCounterStyle
 from turnip_text.render.latex.setup import LatexSetup
 from turnip_text.render.latex.std_plugins import STD_LATEX_ARTICLE_RENDER_PLUGINS
@@ -61,9 +62,16 @@ if __name__ == "__main__":
                     "section", LatexCounterStyle.RomanUpper, postfix_for_child="-"
                 ),
             },
+            # You can exclude certain supported backref methods if you want
+            legal_backref_methods=[
+                LatexBackrefMethod.Cleveref,
+                LatexBackrefMethod.Hyperlink,
+                LatexBackrefMethod.PageRef,
+            ],
         ),
         STD_LATEX_ARTICLE_RENDER_PLUGINS(
-            use_chapters=False,
+            h1="chapter",
+            doc_class="report",
             bib="phdprop_bib_biblatex.bib",
             bib_output="example.bib",
         ),

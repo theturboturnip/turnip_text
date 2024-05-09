@@ -1,9 +1,12 @@
 from enum import IntEnum
 from typing import Dict
 
+from typing_extensions import override
+
 from turnip_text import Raw, Text
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.env_plugins import FmtEnv
+from turnip_text.render.latex.package_resolver import LatexPackageResolver
 from turnip_text.render.latex.renderer import (
     LatexBackrefMethodImpl,
     LatexCounterFormat,
@@ -33,11 +36,17 @@ class LatexHyperlink(LatexBackrefMethodImpl):
         super().__init__()
         self.manual_counter_method = {}
 
+    @override
+    def request_packages(self, package_resolver: LatexPackageResolver) -> None:
+        package_resolver.request_latex_package("hyperref", "backrefs")
+
+    @override
     def emit_config_for_fmt(
         self, spec: LatexCounterSpec, _renderer: LatexRenderer
     ) -> None:
         self.manual_counter_method[spec.latex_counter] = spec.get_manual_fmt()
 
+    @override
     def emit_anchor(
         self, anchor: Anchor, renderer: "LatexRenderer", fmt: FmtEnv
     ) -> None:
@@ -45,6 +54,7 @@ class LatexHyperlink(LatexBackrefMethodImpl):
             f"\\hypertarget{{{anchor.canonical()}}}{{}}"
         )  # TODO include caption for anchor?
 
+    @override
     def emit_backref(
         self,
         backref: Backref,
@@ -69,6 +79,17 @@ class LatexCleveref(LatexBackrefMethodImpl):
     capitalize = True
     nameinref = True
 
+    @override
+    def request_packages(self, package_resolver: LatexPackageResolver) -> None:
+        package_resolver.request_latex_package("hyperref", "fallback for cleveref")
+        cleveref_options = []
+        if self.capitalize:
+            cleveref_options.append("capitalize")
+        if self.nameinref:
+            cleveref_options.append("nameinref")
+        package_resolver.request_latex_package("cleveref", "backrefs", cleveref_options)
+
+    @override
     def emit_config_for_fmt(
         self, spec: LatexCounterSpec, renderer: LatexRenderer
     ) -> None:
@@ -94,11 +115,13 @@ class LatexCleveref(LatexBackrefMethodImpl):
             )
             renderer.emit_break_sentence()
 
+    @override
     def emit_anchor(
         self, anchor: Anchor, renderer: "LatexRenderer", fmt: FmtEnv
     ) -> None:
         renderer.emit_raw(f"\\label{{{anchor.canonical()}}}")
 
+    @override
     def emit_backref(
         self,
         backref: Backref,
@@ -121,11 +144,17 @@ class LatexPageRef(LatexBackrefMethodImpl):
 
     description = "pageref"
 
+    @override
+    def request_packages(self, package_resolver: LatexPackageResolver) -> None:
+        package_resolver.request_latex_package("hyperref", "fallback for pageref")
+
+    @override
     def emit_config_for_fmt(
         self, _spec: LatexCounterSpec, _renderer: LatexRenderer
     ) -> None:
         pass
 
+    @override
     def emit_anchor(
         self, anchor: Anchor, renderer: "LatexRenderer", _fmt: FmtEnv
     ) -> None:
@@ -133,6 +162,7 @@ class LatexPageRef(LatexBackrefMethodImpl):
         renderer.emit_newline()  # TODO not sure this is necessary but it's included in a lot of examples
         renderer.emit_raw(f"\\label{{{anchor.canonical()}}}")
 
+    @override
     def emit_backref(
         self,
         backref: Backref,

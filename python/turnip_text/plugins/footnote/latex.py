@@ -18,7 +18,7 @@ class LatexFootnotePlugin(LatexPlugin, FootnoteEnvPlugin):
         # This internally uses the footnote counter but it's a *magic* counter that doesn't correspond 1:1 to a turnip_text counter in value
         # For example the value is page dependent
         # => don't treat it as a normal counter
-        setup.declare_magic_tt_and_latex_counter(
+        setup.counter_resolver.declare_magic_tt_and_latex_counter(
             tt_counter="footnote", latex_counter="footnote"
         )
 

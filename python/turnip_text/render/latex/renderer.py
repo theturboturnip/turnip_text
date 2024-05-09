@@ -2,7 +2,7 @@ import abc
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Iterator, List, Optional, Set, Union
+from typing import Dict, Iterator, List, Optional, Union
 
 from turnip_text import Block, DocSegment, Document, Inline, Raw, Text
 from turnip_text.doc.anchors import Anchor, Backref
@@ -10,6 +10,10 @@ from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.anchors import StdAnchorPlugin
 from turnip_text.render import EmitterDispatch, Renderer, Writable
 from turnip_text.render.counters import CounterState
+from turnip_text.render.latex.package_resolver import (
+    LatexPackageRequirements,
+    LatexPackageResolver,
+)
 from turnip_text.render.manual_numbering import (
     ARABIC_NUMBERING,
     LOWER_ALPH_NUMBERING,
@@ -66,6 +70,8 @@ COUNTER_STYLE_TO_MANUAL = {
 
 
 LatexCounterFormat = SimpleCounterFormat[LatexCounterStyle]
+"""A descripton of how LaTeX renders a counter,
+which can be rendered manually by turnip_text or be applied to LaTeX in the preamble."""
 
 
 # A class that emits anchors and backrefs in a specific way.
@@ -73,6 +79,9 @@ LatexCounterFormat = SimpleCounterFormat[LatexCounterStyle]
 # Implementations are stored in backrefs.py
 class LatexBackrefMethodImpl(abc.ABC):
     description: str
+
+    @abc.abstractmethod
+    def request_packages(self, package_resolver: LatexPackageResolver) -> None: ...
 
     @abc.abstractmethod
     def emit_config_for_fmt(
@@ -100,22 +109,6 @@ class LatexBackrefMethodImpl(abc.ABC):
 
 
 @dataclass
-class LatexPackageRequirements:
-    package: str
-    reasons: List[str]
-    options: Set[str]
-
-    def as_latex_preamble_comment(self) -> str:
-        line = f"\\usepackage"
-        if self.options:
-            line += f"[{','.join(self.options)}]"
-        line += f"{{{self.package}}}"
-        if self.reasons:
-            line += f" % for {', '.join(self.reasons)}"
-        return line
-
-
-@dataclass
 class LatexCounterSpec:
     """The specification for a Latex counter"""
 
@@ -129,7 +122,9 @@ class LatexCounterSpec:
     """If this was provided_by_docclass_or_package, what is the standard 'reset counter' for this counter?"""
     reset_latex_counter: Optional[str]
 
-    fallback_fmt: LatexCounterFormat
+    default_fmt: LatexCounterFormat
+    """If this was provided_by_docclass_or_package, how does LaTeX render it normally?
+    Otherwise, how would you like it to be rendered normally"""
     override_fmt: Optional[LatexCounterFormat]
 
     # TODO should this be optional?
@@ -138,22 +133,22 @@ class LatexCounterSpec:
     def get_manual_fmt(self) -> LatexCounterFormat:
         if self.override_fmt:
             return self.override_fmt
-        return self.fallback_fmt
+        return self.default_fmt
 
 
 @dataclass
 class LatexRequirements:
-    document_class: Optional[str]  # May be None if the document is not standalone
+    document_class: Optional[
+        str
+    ]  # If None, the document is not standalone and shouldn't have a preamble
     shell_escape: List[str]
     packages: Dict[str, LatexPackageRequirements]
     tt_counter_to_latex: Dict[str, LatexCounterSpec]
     """A mapping of (turnip_text counter) -> LatexCounterSpec for the LaTeX counter mapping to that turnip_text counter. No restrictions on ordering."""
     latex_counter_to_latex: Dict[str, LatexCounterSpec]
     """A mapping of LaTeX counter -> its LatexCounterSpec. Must iterate in a hierarchy compatible order i.e. if x is a reset counter for y then x must appear before y."""
-    magic_tt_counters: Dict[str, str]
+    magic_tt_counter_to_latex_counter: Dict[str, str]
     """A mapping of (turnip_text counter) -> (magic LaTeX counter). Magic LaTeX counters are incremented in a way turnip_text cannot predict."""
-
-    # TODO fixup package order
 
 
 class LatexRenderer(Renderer):
@@ -203,7 +198,7 @@ class LatexRenderer(Renderer):
             for (
                 tt_counter,
                 latex_counter,
-            ) in self.requirements.magic_tt_counters.items():
+            ) in self.requirements.magic_tt_counter_to_latex_counter.items():
                 self.emit_comment_line(
                     f"turnip_text counter '{tt_counter}' maps to magic LaTeX '{latex_counter}' which turnip_text cannot predict"
                 )
@@ -263,26 +258,45 @@ class LatexRenderer(Renderer):
                 # A counter's formatting in LaTeX is ({parent counter}{parent counter.postfix_for_child}{numbering(this counter)})
                 # By default, LaTeX uses {parent counter}.{arabic(this counter)}
                 # => the counter's formatting will get updated if
-                # - it uses non-arabic numbering
-                # - it's parent doesn't use a period as a postfix-for-child
+                # - it uses numbering that doesn't match the default
+                #   - the default numbering for new counters is arabic
+                #   - otherwise the default numbering is defined in the counter spec
+                # - it's parent doesn't use the default postfix-for-child
+                #   - the default for new counters is a period '.'
+                #   - otherwise the default is defined in the parent's counter spec
                 reasons_to_reset_counter_fmt = []
                 latex_counter_fmt = latex_counter_spec.get_manual_fmt()
-                if latex_counter_fmt.style != LatexCounterStyle.Arabic:
+                default_numbering_style = (
+                    latex_counter_spec.default_fmt.style
+                    if latex_counter_spec.provided_by_docclass_or_package
+                    else LatexCounterStyle.Arabic
+                )
+                if latex_counter_fmt.style != default_numbering_style:
                     reasons_to_reset_counter_fmt.append(
                         f"it uses non-default numbering {latex_counter_fmt.style.value}"
                     )
 
-                reset_counter_fmt = (
-                    self.requirements.latex_counter_to_latex[
+                if latex_counter_spec.reset_latex_counter:
+                    reset_counter_spec = self.requirements.latex_counter_to_latex[
                         latex_counter_spec.reset_latex_counter
-                    ].get_manual_fmt()
-                    if latex_counter_spec.reset_latex_counter
-                    else None
-                )
-                if reset_counter_fmt and reset_counter_fmt.postfix_for_child != ".":
-                    reasons_to_reset_counter_fmt.append(
-                        f"parent counter '{latex_counter_spec.reset_latex_counter}' uses a non-default parent-child separator '{reset_counter_fmt.postfix_for_child}'"
+                    ]
+                    reset_counter_fmt = reset_counter_spec.get_manual_fmt()
+                    # NOTE it's difficult to define the "default" for non-custom counter specs.
+                    # Effectively we want "does out reset_counter_spec formatting differ to what LaTeX has"
+                    # and if the counter spec is predefined then it could use different separators for different
+                    # subcounters
+                    # e.g. if B and C both reset on A, B could be defined in LaTeX as A.B and C could be A-C.
+                    default_postfix = (
+                        reset_counter_spec.default_fmt.postfix_for_child
+                        if latex_counter_spec.provided_by_docclass_or_package
+                        else "."
                     )
+                    if reset_counter_fmt.postfix_for_child != default_postfix:
+                        reasons_to_reset_counter_fmt.append(
+                            f"parent counter '{latex_counter_spec.reset_latex_counter}' uses a non-default parent-child separator '{reset_counter_fmt.postfix_for_child}'"
+                        )
+                else:
+                    reset_counter_fmt = None
 
                 if reasons_to_reset_counter_fmt:
                     self.emit_comment_line(

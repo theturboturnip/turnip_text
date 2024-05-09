@@ -899,6 +899,7 @@ impl Document {
     const __hash__: Option<Py<PyAny>> = None;
 }
 
+/// TODO weight => depth everywhere
 /// This is used for implicit structure.
 /// It's created by Python code by emitting a Header with some Weight, and the Weight is used to implicitly open and close scopes
 ///

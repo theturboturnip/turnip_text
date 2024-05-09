@@ -8,7 +8,7 @@ from turnip_text.render.latex.setup import LatexPlugin, LatexSetup
 
 class LatexUrlPlugin(LatexPlugin, UrlEnvPlugin):
     def _register(self, build_sys: BuildSystem, setup: LatexSetup) -> None:
-        setup.request_latex_package("hyperref", "URL rendering")
+        setup.package_resolver.request_latex_package("hyperref", "URL rendering")
         setup.emitter.register_block_or_inline(NamedUrl, self._emit_url)
 
     def _emit_url(

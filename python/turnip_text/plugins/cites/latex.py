@@ -87,11 +87,12 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
                 output_relative_path=self._minimal_bib_name,
             )
 
-        setup.request_latex_package(
+        # TODO bulk package requests
+        setup.package_resolver.request_latex_package(
             "csquotes", reason="bibliography (for babel and biblatex)"
         )
-        setup.request_latex_package("babel", reason="bibliography")
-        setup.request_latex_package("biblatex", reason="bibliography")
+        setup.package_resolver.request_latex_package("babel", reason="bibliography")
+        setup.package_resolver.request_latex_package("biblatex", reason="bibliography")
 
         setup.emitter.register_block_or_inline(Citation, self._emit_citation)
         setup.emitter.register_block_or_inline(CiteAuthor, self._emit_citeauthor)

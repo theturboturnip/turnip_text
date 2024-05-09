@@ -353,7 +353,6 @@ class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
     ) -> None:
         # self._bib stores the keys as all lowercase
         anchor_target = f"#cite-{next(iter(citation.citekeys)).lower()}"
-        print("emit", citation)
         citeproc_cite: citeproc.Citation = citation.citeproc_cite  # type:ignore
         renderer.emit(
             fmt.url(anchor_target)

@@ -81,7 +81,7 @@ TNumbering = TypeVar("TNumbering", bound=ManualNumbering)
 @dataclass
 class SimpleCounterFormat(Generic[TNumbering]):
     """
-    The numbering style for a given counter and how it's combined with other counters.
+    The formatting (name and numbering style) for a given counter, and how it's combined with other counters.
     """
 
     name: str
