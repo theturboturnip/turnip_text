@@ -63,7 +63,7 @@ class CitationEnvPlugin(EnvPlugin):
         if not self._has_bib:
             toplevel.push_segment(
                 DocSegment(
-                    doc_env.heading1(num=False) @ "Bibliography",
+                    doc_env.h1(num=False) @ "Bibliography",
                     BlockScope([Bibliography()]),
                     [],
                 )

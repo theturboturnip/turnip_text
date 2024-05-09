@@ -221,7 +221,6 @@ RESERVED_ENV_PLUGIN_EXPORTS = [
     "doc",
     "fmt",
     "anchors",
-    "backref",
 ]
 
 
@@ -246,9 +245,6 @@ class DocEnv:
     build_sys: BuildSystem
     doc: "DocEnv"
     fmt: "FmtEnv"
-    # TODO move this into StdAnchorPlugin plugin
-    # This can be used by all document code to create backrefs, optionally with custom labels.
-    backref = Backref
 
     def __init__(self, build_sys: BuildSystem, fmt: "FmtEnv") -> None:
         self.build_sys = build_sys

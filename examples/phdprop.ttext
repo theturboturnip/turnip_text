@@ -1,6 +1,6 @@
 [-
-section=heading1
-subsection=heading2
+section=h1
+subsection=h2
 -]
 
 [section()]{ Introduction/Extended Abstract }
@@ -146,6 +146,8 @@ AMD's MxGPU virtualization physically segments GPU memory and gives each VM a ti
 When using SR-IOV, Nvidia's vGPU technology physically segments both the memory and the actual computation units, to avoid side-channel attacks, and allows multiple VMs to execute on different partitions at once.
 Integrated GPUs (e.g. Arm Mali GPUs, packaged on the same SoC as the CPU) don't necessarily use SR-IOV, but do isolate resources similarly[cite("armltdArmMaliG78AEProduct2020")].
 
+[backref("appxi")]
+
 # ------------------------------------
 [subsection()]{GPU Virtual Memory}
 
@@ -188,3 +190,7 @@ This dichotomy between a unified view and a more performant, domain-aware view w
 
 #-------------------------
 [subfile("phdprop_subfile_first_year_plan.ttext")]
+
+[appendix("appxi")]{Test Appendix}
+
+Wow some stuff in an appendix!

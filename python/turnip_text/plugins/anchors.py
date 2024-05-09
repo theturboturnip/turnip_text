@@ -24,6 +24,9 @@ class StdAnchorPlugin(EnvPlugin):
 
     #
 
+    # This can be used by all document code to create backrefs, optionally with custom labels.
+    backref = Backref
+
     _anchor_kind_counters: Dict[str, int]
     _anchor_id_to_possible_kinds: Dict[str, Dict[str, Anchor]]
     _anchored_floats: Dict[Anchor, Block]  # TODO rename floating_space

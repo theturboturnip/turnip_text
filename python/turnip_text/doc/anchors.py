@@ -59,10 +59,10 @@ class Backref(Inline, InlineScopeBuilder):
     e.g. a figure with ID='fred' and a footnote with ID='fred'."""
 
     id: str
-    kind: Optional[
-        str
-    ]  # Usually there should be exactly one Anchor for every one ID. This is used to disambiguate otherwise
-    label_contents: Optional[Inline]  # Override for label
+    kind: Optional[str] = (
+        None  # Usually there should be exactly one Anchor for every one ID. This is used to disambiguate otherwise
+    )
+    label_contents: Optional[Inline] = None  # Override for label
 
     def build_from_inlines(self, inls: InlineScope) -> Inline:
         assert self.label_contents is None

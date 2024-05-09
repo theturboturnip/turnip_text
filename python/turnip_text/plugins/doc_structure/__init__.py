@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Union
 
 from typing_extensions import override
 
@@ -24,6 +24,17 @@ class StructureHeader(UserNode, Header):
 
 
 @dataclass(frozen=True)
+class AppendixHeader(UserNode, Header):
+    title: InlineScope  # The title of the segment
+    anchor: Anchor
+    weight: int
+
+    @override
+    def child_nodes(self) -> InlineScope:
+        return self.title
+
+
+@dataclass(frozen=True)
 class TableOfContents(Block):
     pass
 
@@ -33,32 +44,46 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
     weight: int
     label: Optional[str]
     num: bool
+    appendix: bool
 
     def __init__(
-        self, doc_env: DocEnv, weight: int, label: Optional[str], num: bool
+        self,
+        doc_env: DocEnv,
+        weight: int,
+        label: Optional[str],
+        num: bool,
+        appendix: bool = False,
     ) -> None:
         super().__init__()
         self.doc_env = doc_env
         self.weight = weight
         self.label = label
         self.num = num
+        self.appendix = appendix
 
     def __call__(
         self, label: Optional[str] = None, num: bool = True
     ) -> "StructureHeaderGenerator":
-        return StructureHeaderGenerator(self.doc_env, self.weight, label, num)
+        return StructureHeaderGenerator(
+            self.doc_env, self.weight, label, num, self.appendix
+        )
 
-    def build_from_inlines(self, inlines: InlineScope) -> StructureHeader:
-        kind = f"h{self.weight}"
+    def build_from_inlines(self, inlines: InlineScope) -> Header:
+        if self.appendix:
+            kind = "appendix"
+        else:
+            kind = f"h{self.weight}"
         weight = self.weight
 
+        ty = AppendixHeader if self.appendix else StructureHeader
+
         if self.num:
-            return StructureHeader(
+            return ty(
                 title=inlines,
                 anchor=self.doc_env.register_new_anchor(kind, self.label),
                 weight=weight,
-            )
-        return StructureHeader(title=inlines, anchor=None, weight=weight)
+            )  # type: ignore
+        return ty(title=inlines, anchor=None, weight=weight)  # type: ignore
 
 
 class StructureEnvPlugin(EnvPlugin):
@@ -71,28 +96,45 @@ class StructureEnvPlugin(EnvPlugin):
         )
 
     @in_doc
-    def heading1(
-        self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
+    def h(
+        self,
+        doc_env: DocEnv,
+        weight: int,
+        label: Optional[str] = None,
+        num: bool = True,
     ) -> InlineScopeBuilder:
-        return StructureHeaderGenerator(doc_env, 1, label, num)
+        return StructureHeaderGenerator(doc_env, weight, label, num)
 
     @in_doc
-    def heading2(
+    def h1(
         self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
     ) -> InlineScopeBuilder:
-        return StructureHeaderGenerator(doc_env, 2, label, num)
+        return self.h(1, label, num)
 
     @in_doc
-    def heading3(
+    def h2(
         self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
     ) -> InlineScopeBuilder:
-        return StructureHeaderGenerator(doc_env, 3, label, num)
+        return self.h(2, label, num)
 
     @in_doc
-    def heading4(
+    def h3(
         self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
     ) -> InlineScopeBuilder:
-        return StructureHeaderGenerator(doc_env, 4, label, num)
+        return self.h(3, label, num)
+
+    @in_doc
+    def h4(
+        self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
+    ) -> InlineScopeBuilder:
+        return self.h(4, label, num)
+
+    @in_doc
+    def appendix(self, doc_env, label: Optional[str] = None) -> InlineScopeBuilder:
+        """Builds an inline scope to create a header that starts an appendix at weight=1."""
+        return StructureHeaderGenerator(
+            doc_env, weight=1, label=label, num=True, appendix=True
+        )
 
     # TODO
     # @pure_fmt

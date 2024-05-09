@@ -44,7 +44,7 @@ class MarkdownFootnotePlugin_AtEnd(MarkdownPlugin, FootnoteEnvPlugin):
         toplevel = super()._mutate_document(doc_env, fmt, toplevel)
         toplevel.push_segment(
             DocSegment(
-                doc_env.heading1(num=False) @ "Footnotes",
+                doc_env.h1(num=False) @ "Footnotes",
                 BlockScope([FootnoteList()]),
                 [],
             )
