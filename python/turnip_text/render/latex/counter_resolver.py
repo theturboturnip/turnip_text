@@ -46,12 +46,6 @@ class ResolvedTTAndLatexCounters:
     """Mapping of (magic turnip_text counter) to (magic latex counter)"""
     latex_renderable_counters: List[LatexCounterSpec]
     """The final set of LaTeX counters, structured in a way the LatexRenderer can understand."""
-    # latex_counter_hierarchy: CounterHierarchy
-    # """The hierarchy of LaTeX counters.
-
-    # Magic LaTeX counters are *not* stored."""
-    # latex_counter_to_parent: Dict[str, Optional[str]]
-    # """The mapping if LaTeX counters to LaTeX counter parents."""
     backref_impls: List[LatexBackrefMethodImpl]
     """A list of unique backref implementations used by the counters in `latex_counters`.
     Each element appears once, but this isn't a set because LatexBackrefMethodImpl doesn't need to be hashable."""
