@@ -67,8 +67,8 @@ if __name__ == "__main__":
             ],
         ),
         STD_LATEX_ARTICLE_RENDER_PLUGINS(
-            h1="chapter",
-            doc_class="report",
+            h1="section",
+            doc_class="article",
             bib="phdprop_bib_biblatex.bib",
             bib_output="example.bib",
         ),

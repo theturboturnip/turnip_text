@@ -310,17 +310,25 @@ class LatexRenderer(Renderer):
                         f"Redefining format for '{latex_counter}' because {','.join(reasons_to_reset_counter_fmt)}"
                     )
                     fmt = latex_counter_spec.get_manual_fmt()
+                    # \renewcommamd{\thecounter}{\theresetcounter{}postfix\style{latex_counter}}\n
+
+                    # \renewcommand
                     self.emit_macro("renewcommand")
+                    # \renewcommamd{\thecounter}{
                     self.emit_raw(f"{{\\the{latex_counter}}}{{")
+                    # \renewcommamd{\thecounter}{\theresetcounter{}postfix
                     if reset_counter_fmt:
                         self.emit(
                             Raw(f"\\the{latex_counter_spec.reset_latex_counter}{{}}"),
                             Text(reset_counter_fmt.postfix_for_child),
                         )
+                    # \renewcommamd{\thecounter}{\theresetcounter{}postfix\style
                     self.emit_macro(fmt.style.value)
+                    # \renewcommamd{\thecounter}{\theresetcounter{}postfix\style{latex_counter}
                     self.emit_braced(Raw(latex_counter))
                     # Do not apply fmt.postfix_for_end here - if you do, it'll get lumped in with children
-                    self.emit_raw("}}\n")
+                    # \renewcommamd{\thecounter}{\theresetcounter{}postfix\style{latex_counter}}\n
+                    self.emit_raw("}\n")
 
                 backref_impl = latex_counter_spec.backref_impl
                 if backref_impl:
@@ -362,6 +370,9 @@ class LatexRenderer(Renderer):
 
     def emit_text(self, t: Text) -> None:
         # TODO make sure whitespace we emit here *isn't* sentence break whitespace?
+
+        # TODO: if using OT1 fontenc  this fails (:
+        # Need \usepackage[T1]{fontenc}
 
         # note - right now this assumes we're using a unicode-compatible setup and thus don't need to escape unicode characters.
         # note - order is important here because the subsitutions may introduce more special characters.
