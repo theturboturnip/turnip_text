@@ -21,6 +21,8 @@ from turnip_text.render.markdown.renderer import (
     MarkdownSetup,
 )
 
+# TODO: in Markdown citations should be Backrefs, bibliography items should be Blocks
+
 
 class MarkdownCitationPlugin_UncheckedBib(MarkdownPlugin, CitationEnvPlugin):
     _ordered_citations: List[str]
@@ -84,7 +86,7 @@ class MarkdownCitationPlugin_UncheckedBib(MarkdownPlugin, CitationEnvPlugin):
         # TODO actual reference rendering!
         def bib_gen() -> Generator[None, None, None]:
             for citekey in self._referenced_citations:
-                renderer.emit_empty_tag("a", f'id="{citekey}"')
+                renderer.emit_empty_tag("a", f'id="cite-{citekey}"')
                 renderer.emit(
                     Text(f"[{citekey}]: TODO make citation text for {citekey}"),
                 )
@@ -384,7 +386,7 @@ class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
     ) -> None:
         def bib_cites_gen() -> Generator[None, None, None]:
             for citekey, item in zip(self._bib.keys, self._bib.bibliography()):
-                renderer.emit_empty_tag("a", f'id="{citekey}"')
+                renderer.emit_empty_tag("a", f'id="cite-{citekey}"')
                 renderer.emit_raw(str(item))
                 yield None
 
