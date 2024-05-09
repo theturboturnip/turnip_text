@@ -59,7 +59,7 @@ class LatexBiblatexPlugin_Unchecked(LatexPlugin, CitationEnvPlugin):
 
 
 class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
-    _bibtex_path: ProjectRelativePath
+    _biblatex_path: ProjectRelativePath
     _citation_db: BibLatexCitationDB
     _minimal_bib_name: Optional[OutputRelativePath]
 
@@ -69,16 +69,14 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
         output_bib_name: Optional[OutputRelativePath] = None,
     ) -> None:
         if bibtex_path:
-            self._bibtex_path = bibtex_path
+            self._biblatex_path = bibtex_path
         else:
             raise ValueError(f"Specify bibtex_path")
 
         self._minimal_bib_name = output_bib_name
 
-        # TODO correct preamble
-
     def _register(self, build_sys: BuildSystem, setup: LatexSetup) -> None:
-        self._citation_db = BibLatexCitationDB(build_sys, [self._bibtex_path])
+        self._citation_db = BibLatexCitationDB(build_sys, [self._biblatex_path])
 
         if self._minimal_bib_name:
             build_sys.register_file_generator(
@@ -86,6 +84,8 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
                 inputs={},
                 output_relative_path=self._minimal_bib_name,
             )
+        else:
+            print()
 
         # TODO bulk package requests
         setup.package_resolver.request_latex_package(
@@ -98,6 +98,8 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
         setup.emitter.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
         setup.emitter.register_block_or_inline(Bibliography, self._emit_bibliography)
 
+        setup.add_preamble_section(self._emit_preamble)
+
     def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
         def visit_cite_or_citeauthor(c: Union[Citation, CiteAuthor]) -> None:
             if isinstance(c, CiteAuthor):
@@ -107,6 +109,22 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
                     self._citation_db.register_entry_used(k)
 
         return [((Citation, CiteAuthor), visit_cite_or_citeauthor)]
+
+    def _emit_preamble(self, renderer: LatexRenderer) -> None:
+        if self._minimal_bib_name:
+            renderer.emit_comment_headline(
+                f"Setup bibliography for {self.__class__.__name__}"
+            )
+            renderer.emit_macro("addbibresource")
+            renderer.emit_braced(Raw(self._minimal_bib_name))
+        else:
+            renderer.emit_comment_headline(
+                "Not including bibfile for {self.__class__.__name__}, because none was generated."
+            )
+            renderer.emit_comment_line(
+                f"It is your responsibility to copy '{self._biblatex_path}' somewhere into the output directory,"
+            )
+            renderer.emit_comment_line("and change this LaTeX to include it manually.")
 
     def _emit_citation(
         self,

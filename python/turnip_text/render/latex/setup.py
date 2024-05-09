@@ -1,4 +1,4 @@
-from typing import Dict, Iterable, List, Optional, Tuple, cast
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, cast
 
 from typing_extensions import override
 
@@ -37,6 +37,9 @@ class LatexSetup(RenderSetup[LatexRenderer]):
     counter_resolver: LatexCounterResolver
     resolved_counters: Optional[ResolvedTTAndLatexCounters]
 
+    preamble_callbacks: List[Callable[[LatexRenderer], None]]
+    """Callbacks registered by plugins to emit things in the preamble."""
+
     emitter: EmitterDispatch[LatexRenderer]
 
     def __init__(
@@ -60,6 +63,8 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         )
         self.resolved_counters = None
 
+        self.preamble_callbacks = []
+
         self.emitter = LatexRenderer.default_emitter_dispatch()
 
     @override
@@ -80,6 +85,9 @@ class LatexSetup(RenderSetup[LatexRenderer]):
                 f"Conflicting document_class requirements: '{self.document_class}' and '{document_class}'"
             )
         self.document_class = document_class
+
+    def add_preamble_section(self, callback: Callable[[LatexRenderer], None]) -> None:
+        self.preamble_callbacks.append(callback)
 
     def gen_dfs_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
         resolved_counters = self.resolved_counters
@@ -149,6 +157,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
             document_class,
             shell_escape=self.package_resolver.shell_escape_reasons,
             packages=self.package_resolver.requested_packages,
+            preamble_callbacks=self.preamble_callbacks,
             tt_counter_to_latex=tt_counter_to_spec,
             latex_counter_to_latex=latex_counter_to_spec,
             magic_tt_counter_to_latex_counter=resolved_counters.magic_tt_counter_to_latex_counter,

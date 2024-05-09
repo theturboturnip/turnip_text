@@ -2,7 +2,7 @@ import abc
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Iterator, List, Optional, Union
+from typing import Callable, Dict, Iterator, List, Optional, Union
 
 from turnip_text import Block, DocSegment, Document, Inline, Raw, Text
 from turnip_text.doc.anchors import Anchor, Backref
@@ -143,6 +143,13 @@ class LatexRequirements:
     ]  # If None, the document is not standalone and shouldn't have a preamble
     shell_escape: List[str]
     packages: Dict[str, LatexPackageRequirements]
+
+    preamble_callbacks: List[Callable[["LatexRenderer"], None]]
+    """A set of unordered callbacks to emit various components of preamble.
+    
+    If documentclass is None, these are called at the start of the document (technically not in the preamble.)
+    If documentclass is non-None, these are called before emitting \\begin{document}."""
+
     tt_counter_to_latex: Dict[str, LatexCounterSpec]
     """A mapping of (turnip_text counter) -> LatexCounterSpec for the LaTeX counter mapping to that turnip_text counter. No restrictions on ordering."""
     latex_counter_to_latex: Dict[str, LatexCounterSpec]
@@ -330,14 +337,24 @@ class LatexRenderer(Renderer):
                     )
 
             self.emit_comment_headline("...done configuring counters")
-
             self.emit_break_paragraph()
+
+            # Emit custom preamble contents in the preamble
+            for callback in self.requirements.preamble_callbacks:
+                callback(self)
+                self.emit_break_paragraph()
+
             with self.emit_env("document", indent=0):
                 super().emit_document(doc)
         else:
             self.emit_comment_headline("Required packages:")
             for package, reason in self.requirements.packages.items():
                 self.emit_comment_line(reason.as_latex_preamble_comment())
+
+            # Emit custom preamble contents in the preamble
+            for callback in self.requirements.preamble_callbacks:
+                callback(self)
+                self.emit_break_paragraph()
 
             super().emit_document(doc)
 
