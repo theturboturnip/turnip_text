@@ -86,7 +86,7 @@ class LatexCleveref(LatexBackrefMethodImpl):
         if self.capitalize:
             cleveref_options.append("capitalize")
         if self.nameinref:
-            cleveref_options.append("nameinref")
+            cleveref_options.append("nameinlink")
         package_resolver.request_latex_package("cleveref", "backrefs", cleveref_options)
 
     @override
