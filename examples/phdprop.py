@@ -49,10 +49,7 @@ if __name__ == "__main__":
 
     # Parse into a BuildSystem which always takes input from the filesystem, but either writes out to an in-memory filesystem or the real filesystem depending on the requested output argument.
     parse_and_emit(
-        SplitBuildSystem(
-            input_build_sys=real_build_sys,
-            output_build_sys=(real_build_sys if args.olatex else in_memory_build_sys),
-        ),
+        real_build_sys,
         "phdprop.ttext",
         args.olatex,
         LatexSetup(
@@ -79,10 +76,7 @@ if __name__ == "__main__":
 
     # Parse into a BuildSystem which always takes input from the filesystem, but either writes out to an in-memory filesystem or the real filesystem depending on the requested output argument.
     parse_and_emit(
-        SplitBuildSystem(
-            input_build_sys=real_build_sys,
-            output_build_sys=(real_build_sys if args.omd else in_memory_build_sys),
-        ),
+        real_build_sys,
         "phdprop.ttext",
         args.omd,
         MarkdownSetup(),
@@ -94,10 +88,7 @@ if __name__ == "__main__":
 
     # Parse into a BuildSystem which always takes input from the filesystem, but either writes out to an in-memory filesystem or the real filesystem depending on the requested output argument.
     parse_and_emit(
-        SplitBuildSystem(
-            input_build_sys=real_build_sys,
-            output_build_sys=(real_build_sys if args.ohtml else in_memory_build_sys),
-        ),
+        real_build_sys,
         "phdprop.ttext",
         args.ohtml,
         HtmlSetup(
