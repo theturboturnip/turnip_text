@@ -211,6 +211,7 @@ def order_packages(
     if "biblatex" in packages:
         # https://mirrors.ibiblio.org/CTAN/macros/latex/contrib/biblatex/doc/biblatex.pdf
         # "When using the hyperref package, it is preferable to load it after biblatex"
+        # FUTURE it may be nice to treat this as a "soft" requirement?
         sorter.add("hyperref", "biblatex")
 
         # Section 1.5.5 incompatible packages
