@@ -13,6 +13,7 @@ from turnip_text.render.counters import CounterState
 from turnip_text.render.latex.package_resolver import (
     LatexPackageRequirements,
     LatexPackageResolver,
+    ResolvedLatexPackages,
 )
 from turnip_text.render.manual_numbering import (
     ARABIC_NUMBERING,
@@ -141,8 +142,9 @@ class LatexRequirements:
     document_class: Optional[
         str
     ]  # If None, the document is not standalone and shouldn't have a preamble
+
     shell_escape: List[str]
-    packages: Dict[str, LatexPackageRequirements]
+    packages: List[LatexPackageRequirements]
 
     preamble_callbacks: List[Callable[["LatexRenderer"], None]]
     """A set of unordered callbacks to emit various components of preamble.
@@ -187,14 +189,11 @@ class LatexRenderer(Renderer):
         if self.requirements.document_class:
             self.emit_raw(f"\\documentclass{{{self.requirements.document_class}}}")
             self.emit_break_paragraph()
-            for package, reason in self.requirements.packages.items():
-                self.emit_comment_line(f"{reason.package} required for")
-                for r in reason.reasons:
+            for package in self.requirements.packages:
+                self.emit_comment_line(f"{package.package} required for")
+                for r in package.reasons:
                     self.emit_comment_line(f"- {r}")
-                self.emit_macro("usepackage")
-                if reason.options:
-                    self.emit_raw("[" + ",".join(reason.options) + "]")
-                self.emit_raw("{" + reason.package + "}")
+                self.emit_raw(package.as_latex_preamble_line(with_reason=False))
                 self.emit_break_sentence()
 
             self.emit_break_paragraph()
@@ -356,8 +355,8 @@ class LatexRenderer(Renderer):
                 super().emit_document(doc)
         else:
             self.emit_comment_headline("Required packages:")
-            for package, reason in self.requirements.packages.items():
-                self.emit_comment_line(reason.as_latex_preamble_comment())
+            for package in self.requirements.packages:
+                self.emit_comment_line(package.as_latex_preamble_line(with_reason=True))
 
             # Emit custom preamble contents in the preamble
             for callback in self.requirements.preamble_callbacks:

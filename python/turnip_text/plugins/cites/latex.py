@@ -87,12 +87,22 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
         else:
             print()
 
-        # TODO bulk package requests
         setup.package_resolver.request_latex_package(
             "csquotes", reason="bibliography (for babel and biblatex)"
         )
-        setup.package_resolver.request_latex_package("babel", reason="bibliography")
-        setup.package_resolver.request_latex_package("biblatex", reason="bibliography")
+        # FUTURE multilingual support shouldn't just pass british in here
+        setup.package_resolver.request_latex_package(
+            "babel", reason="bibliography", options=["british"]
+        )
+        setup.package_resolver.request_latex_package(
+            "biblatex",
+            reason="bibliography",
+            options=[
+                ("backend", "biber"),
+                ("dateabbrev", "false"),
+                ("style", "numeric"),
+            ],
+        )
 
         setup.emitter.register_block_or_inline(Citation, self._emit_citation)
         setup.emitter.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
