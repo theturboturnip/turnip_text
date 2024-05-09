@@ -35,18 +35,24 @@ class LatexPackageResolver:
         self.shell_escape_reasons.append(reason)
 
     def request_latex_package(
-        self, package: str, reason: str, options: Iterable[str] | None = None
+        self, package: str, reason: str, options: str | Iterable[str] | None = None
     ) -> None:
         package_obj = self.requested_packages.get(package, None)
+        if isinstance(options, str):
+            options_set = {options}
+        elif options is None:
+            options_set = set()
+        else:
+            # options is some iterable
+            options_set = set(options)
         if package_obj is None:
             # Wasn't in the dict
             self.requested_packages[package] = LatexPackageRequirements(
                 package=package,
                 reasons=[reason],
-                options=set(options) if options else set(),
+                options=options_set,
             )
         else:
             package_obj.reasons.append(reason)
             # TODO check conflicts between options
-            if options:
-                package_obj.options.update(options)
+            package_obj.options.update(options_set)

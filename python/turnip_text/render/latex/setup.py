@@ -57,6 +57,13 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         self.document_class = UNSET
 
         self.package_resolver = LatexPackageResolver()
+        # Default packages
+        self.package_resolver.request_latex_package(
+            "fontenc", "allows a wider array of text characters", "T1"
+        )
+        self.package_resolver.request_latex_package(
+            "lmodern", "basic standard font for T1 text encoding"
+        )
 
         self.counter_resolver = LatexCounterResolver(
             counter_link_override, latex_counter_format_override, legal_backref_methods
