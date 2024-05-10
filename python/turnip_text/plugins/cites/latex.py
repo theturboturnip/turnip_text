@@ -84,8 +84,6 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
                 inputs={},
                 output_relative_path=self._minimal_bib_name,
             )
-        else:
-            print()
 
         setup.package_resolver.request_latex_package(
             "csquotes", reason="bibliography (for babel and biblatex)"

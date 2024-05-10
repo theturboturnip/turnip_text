@@ -46,6 +46,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         self,
         standalone: bool = False,
         counter_link_override: Optional[Iterable[CounterLink]] = None,
+        # TODO make this be in terms of tt_counter so the whole thing is tt_counters?
         latex_counter_format_override: Optional[Dict[str, LatexCounterFormat]] = None,
         legal_backref_methods: Optional[List[LatexBackrefMethod]] = None,
         # TODO config for the backref methods

@@ -58,6 +58,7 @@ if __name__ == "__main__":
                 "section": SimpleCounterFormat(
                     "section", LatexCounterStyle.RomanUpper, postfix_for_child="-"
                 ),
+                "appendix": SimpleCounterFormat("Appx.", LatexCounterStyle.AlphUpper),
             },
             # You can exclude certain supported backref methods if you want
             legal_backref_methods=[

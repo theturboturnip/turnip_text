@@ -243,13 +243,8 @@ class LatexCounterResolver:
                     f"Can't change parent of magic turnip_text counter '{child}' to '{parent}' - magic counters cannot be parented"
                 )
 
+        # Prioritize "override" counter links over what the plugins declare as default.
         full_latex_counter_links = [
-            (
-                decl.default_reset_latex_counter,
-                latex_counter,
-            )
-            for latex_counter, decl in self.declared_latex_counters.items()
-        ] + [
             (
                 (
                     self.tt_counter_to_latex_counter[parent]
@@ -259,6 +254,12 @@ class LatexCounterResolver:
                 self.tt_counter_to_latex_counter[child],
             )
             for parent, child in self.tt_counter_links
+        ] + [
+            (
+                decl.default_reset_latex_counter,
+                latex_counter,
+            )
+            for latex_counter, decl in self.declared_latex_counters.items()
         ]
         latex_counter_hierarchy = build_counter_hierarchy(
             full_latex_counter_links, set(self.declared_latex_counters.keys())
