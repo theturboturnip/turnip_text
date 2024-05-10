@@ -425,7 +425,7 @@ impl ProcessorStacks {
         }
     }
 
-    pub fn finalize(self, py: Python) -> TTResult<Py<Document>> {
+    pub fn finalize(self) -> Py<Document> {
         if self.stacks.len() > 0 {
             panic!(
                 "Called finalize() on Processorstacks when there were stacks left - forgot to \
@@ -434,7 +434,7 @@ impl ProcessorStacks {
         }
         match Rc::try_unwrap(self.top) {
             Err(_) => panic!(),
-            Ok(refcell_top) => refcell_top.into_inner().finalize(py),
+            Ok(refcell_top) => refcell_top.into_inner().finalize(),
         }
     }
 }

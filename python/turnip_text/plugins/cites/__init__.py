@@ -61,13 +61,10 @@ class CitationEnvPlugin(EnvPlugin):
         self, doc_env: DocEnv, fmt: FmtEnv, toplevel: Document
     ) -> Document:
         if not self._has_bib:
-            toplevel.append_segment(
-                DocSegment(
-                    doc_env.h1(num=False) @ "Bibliography",
-                    BlockScope([Bibliography()]),
-                    [],
-                )
-            )
+            toplevel.append_header(
+                doc_env.h1(num=False) @ "Bibliography"
+            ).contents.append_block(Bibliography())
+
         return toplevel
 
     def cite(self, *citekeys: str) -> Inline:

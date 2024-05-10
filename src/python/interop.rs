@@ -284,7 +284,54 @@ impl PyTypeclass for Inline {
 }
 
 /// Typeclass representing the header for a document segment, which is rendered before any other element in the segment
-/// and defines how it interacts with other segments through the weight parameter. See [DocSegment].
+/// and defines how it interacts with other segments through the weight parameter.
+///
+/// TODO weight => depth everywhere
+/// This is used for implicit structure.
+/// It's created by Python code by emitting a Header with some Weight, and the Weight is used to implicitly open and close scopes
+///
+/// ```text
+/// [heading("Blah")] # -> Header(weight=0)
+///
+/// # This paragraph is implicitly included as a child of DocSegment().text
+/// some text
+///
+/// [subheading("Sub-Blah")] # -> Header(weight=1)
+/// # the weight is greater than for the Section -> the subsection is implicitly included as a subsegment of section
+///
+/// Some other text in a subsection
+///
+/// [heading("Blah 2")] # -> Header(weight=0)
+/// # the weight is <=subsection -> subsection 1.1 automatically ends, subheading.build_doc_segment() called
+/// # the weight is <=section -> section 1 automatically ends, heading.build_doc_segment() called
+///
+/// Some other text in a second section
+/// ```
+///
+/// There can be weird interactions with manual scopes.
+/// It may be confusing for a renderer to find Section containing Manual Scope containing Subsection,
+/// having the Subsection not as a direct child of the Section.
+/// Thus we allow manual scopes to be opened and closed as usual, but we don't allow Headers *within* them.
+/// Effectively Headers must only exist at the "top level" - they may be enclosed by Headers directly, but nothing else.
+///
+/// An example error from mixing explicit and implicit scoping:
+/// ```text
+/// [section("One")]
+///
+/// this text is clearly in section 1
+///
+/// {
+///     [subsection("One.One")]
+///
+///     this text is clearly in subsection 1.1...
+/// } # Maybe this should be an error? but then it's only a problem if there's bare text underneath...
+///
+/// but where is this?? # This is really the error.
+///
+/// [subsection("One.Two")]
+///
+/// this text is clearly in subsection 1.2
+/// ```
 #[derive(Debug, Clone)]
 pub struct Header {}
 impl Header {
@@ -868,24 +915,33 @@ impl TurnipTextSource {
     }
 }
 
+/// A document with frontmatter `content` and the roots of a tree of [DocSegment]s.
+///
+/// Maintains the invariant from [DocSegmentList]:
+/// - foreach adjacent pair `seg_a, seg_b` in `segments`, `seg_a.header.weight >= seg_b.header.weight`
+///   i.e. `not(seg_a.header.weight < seg_b.header.weight)`
+///   i.e. there are no pairs such that `seg_a` *should* contain `seg_b`
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Document {
     pub contents: Py<BlockScope>,
-    pub segments: PyInstanceList<DocSegment>,
+    pub segments: DocSegmentList,
 }
 impl Document {
-    pub fn new_rs(contents: Py<BlockScope>, segments: PyInstanceList<DocSegment>) -> Self {
-        Self { contents, segments }
+    pub fn empty(py: Python) -> PyResult<Self> {
+        Ok(Self {
+            contents: Py::new(py, BlockScope::new_empty(py))?,
+            segments: DocSegmentList::empty(py),
+        })
     }
 }
 #[pymethods]
 impl Document {
     #[new]
-    pub fn new(contents: Py<BlockScope>, segments: &Bound<'_, PyList>) -> PyResult<Self> {
+    pub fn new(contents: Py<BlockScope>, segments: &Bound<'_, PySequence>) -> PyResult<Self> {
         Ok(Self {
             contents,
-            segments: PyInstanceList::wrap_list(segments)?,
+            segments: DocSegmentList::new(segments)?,
         })
     }
     #[getter]
@@ -896,8 +952,24 @@ impl Document {
     pub fn segments<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyIterator>> {
         self.segments.list(py).as_sequence().iter()
     }
-    pub fn append_segment(&self, py: Python, segment: Py<DocSegment>) -> PyResult<()> {
-        self.segments.append_checked(segment.bind(py))
+    pub fn append_header<'py>(
+        &'py self,
+        py: Python<'py>,
+        new_header: &'py Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, DocSegment>> {
+        // First, make sure the header is a header - this means we provide a good error message to user Python
+        let new_header = PyTcRef::of_friendly(new_header, "input to .append_header()")?;
+        self.segments.append_header(py, new_header)
+    }
+    pub fn insert_header<'py>(
+        &'py self,
+        py: Python<'py>,
+        index: usize,
+        new_header: &'py Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'_, DocSegment>> {
+        // First, make sure the header is a header - this means we provide a good error message to user Python
+        let new_header = PyTcRef::of_friendly(new_header, "input to .insert_header()")?;
+        self.segments.insert_header(py, index, new_header)
     }
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         Ok(self.contents.bind(py).eq(other.contents.bind(py))?
@@ -921,71 +993,38 @@ impl Document {
     const __hash__: Option<Py<PyAny>> = None;
 }
 
-/// TODO weight => depth everywhere
-/// This is used for implicit structure.
-/// It's created by Python code by emitting a Header with some Weight, and the Weight is used to implicitly open and close scopes
+/// A segment of a [Document] with a [Header], frontmatter `contents`, and a list of `subsegments` all with greater weight than the weight of its [Header].
 ///
-/// ```text
-/// [heading("Blah")] # -> Header(weight=0)
-///
-/// # This paragraph is implicitly included as a child of DocSegment().text
-/// some text
-///
-/// [subheading("Sub-Blah")] # -> Header(weight=1)
-/// # the weight is greater than for the Section -> the subsection is implicitly included as a subsegment of section
-///
-/// Some other text in a subsection
-///
-/// [heading("Blah 2")] # -> Header(weight=0)
-/// # the weight is <=subsection -> subsection 1.1 automatically ends, subheading.build_doc_segment() called
-/// # the weight is <=section -> section 1 automatically ends, heading.build_doc_segment() called
-///
-/// Some other text in a second section
-/// ```
-///
-/// There can be weird interactions with manual scopes.
-/// It may be confusing for a renderer to find Section containing Manual Scope containing Subsection,
-/// having the Subsection not as a direct child of the Section.
-/// Thus we allow manual scopes to be opened and closed as usual, but we don't allow DocSegments *within* them.
-/// Effectively DocSegments must only exist at the "top level" - they may be enclosed by DocSegments directly, but nothing else.
-///
-/// An example error from mixing explicit and implicit scoping:
-/// ```text
-/// [section("One")]
-///
-/// this text is clearly in section 1
-///
-/// {
-///     [subsection("One.One")]
-///
-///     this text is clearly in subsection 1.1...
-/// } # Maybe this should be an error? but then it's only a problem if there's bare text underneath...
-///
-/// but where is this?? # This is really the error.
-///
-/// [subsection("One.Two")]
-///
-/// this text is clearly in subsection 1.2
-/// ```
+/// Maintains two invariants:
+/// - foreach entry `subseg` in `subsegments`, `self.header.weight < subseg.header.weight`
+/// - foreach adjacent pair `subseg_a, subseg_b` in `subsegments`, `subseg_a.header.weight >= subseg_b.header.weight`
+///   i.e. `not(subseg_a.header.weight < subseg_b.header.weight)`
+///   i.e. there are no pairs such that `subseg_a` *should* contain `subseg_b`
+/// Uses [DocSegmentList] to maintain the invariant that
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct DocSegment {
     pub header: PyTcRef<Header>,
     pub contents: Py<BlockScope>,
-    pub subsegments: PyInstanceList<DocSegment>,
+    pub subsegments: DocSegmentList,
 }
+#[pymethods]
 impl DocSegment {
-    pub fn new_checked(
-        py: Python,
-        header: PyTcRef<Header>,
+    #[new]
+    pub fn new(
+        header: &Bound<'_, PyAny>,
         contents: Py<BlockScope>,
-        subsegments: PyInstanceList<DocSegment>,
+        subsegments: &Bound<'_, PySequence>,
     ) -> PyResult<Self> {
+        // First, make sure the header is a header - this means we provide a good error message to user Python
+        let py = header.py();
+        let header = PyTcRef::of_friendly(header, "input to DocSegment __init__")?;
+
+        let subsegments = DocSegmentList::new(subsegments)?;
         let weight = Header::get_weight(py, header.bind(py))?;
-        for subsegment in subsegments.list(py).iter() {
+        for subsegment in subsegments.__iter__(py)? {
             let subweight = {
-                let subsegment: Py<DocSegment> = subsegment.extract()?;
-                let subsegment = subsegment.borrow(py);
+                let subsegment = subsegment?.downcast::<DocSegment>()?.borrow();
                 let subheader = subsegment.header.bind(py);
                 Header::get_weight(py, subheader)?
             };
@@ -997,26 +1036,10 @@ impl DocSegment {
                 )));
             }
         }
-
         Ok(Self {
             header,
             contents,
             subsegments,
-        })
-    }
-}
-#[pymethods]
-impl DocSegment {
-    #[new]
-    pub fn new(
-        header: &Bound<'_, PyAny>,
-        contents: Py<BlockScope>,
-        subsegments: &Bound<'_, PyList>,
-    ) -> PyResult<Self> {
-        Ok(Self {
-            header: PyTcRef::of_friendly(header, "input to DocSegment __init__")?,
-            contents,
-            subsegments: PyInstanceList::wrap_list(subsegments)?,
         })
     }
     #[getter]
@@ -1031,17 +1054,43 @@ impl DocSegment {
     pub fn subsegments<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyIterator>> {
         self.subsegments.list(py).as_sequence().iter()
     }
-    pub fn append_subsegment(&self, py: Python<'_>, subsegment: Py<DocSegment>) -> PyResult<()> {
+    pub fn append_header<'py>(
+        &'py self,
+        py: Python<'py>,
+        new_header: &'py Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, DocSegment>> {
+        // First, make sure the header is a header - this means we provide a good error message to user Python
+        let new_header = PyTcRef::of_friendly(new_header, "input to .append_header()")?;
+
         let weight = Header::get_weight(py, self.header.bind(py))?;
-        let subweight = Header::get_weight(py, subsegment.borrow(py).header.bind(py))?;
+        let subweight = Header::get_weight(py, new_header.bind(py))?;
         if subweight <= weight {
             return Err(PyValueError::new_err(format!(
                 "Trying to add to a DocSegment with weight {weight} but the provided \
-                         subsegment has weight {subweight} which is smaller. Only larger \
+                         subheader has weight {subweight} which is lower or equal. Only larger \
                          subweights are allowed."
             )));
         };
-        self.subsegments.append_checked(subsegment.bind(py))
+        self.subsegments.append_header(py, new_header)
+    }
+    pub fn insert_header<'py>(
+        &'py self,
+        py: Python<'py>,
+        index: usize,
+        new_header: &'py Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, DocSegment>> {
+        // First, make sure the header is a header - this means we provide a good error message to user Python
+        let new_header = PyTcRef::of_friendly(new_header, "input to .insert_header()")?;
+        let weight = Header::get_weight(py, self.header.bind(py))?;
+        let subweight = Header::get_weight(py, new_header.bind(py))?;
+        if subweight <= weight {
+            return Err(PyValueError::new_err(format!(
+                "Trying to add to a DocSegment with weight {weight} but the provided \
+                         subheader has weight {subweight} which is lower or equal. Only larger \
+                         subweights are allowed."
+            )));
+        };
+        self.subsegments.insert_header(py, index, new_header)
     }
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         Ok(self.header.bind(py).eq(other.header.bind(py))?
@@ -1066,4 +1115,239 @@ impl DocSegment {
     }
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
+}
+
+/// INTERNAL ONLY, not released to Python.
+/// Implements common behaviour for Document and DocSegment.
+///
+/// A list of DocSegments that maintains the invariant that for any pair of adjacent segments in the list (A, B),
+/// A.header.weight >= B.header.weight i.e. there is no scenario where two segments can be adjacent when one should
+/// be merged into the other.
+///
+/// Public interface allows insertion of Headers, returning a new DocSegment which may already have elements inside it to maintain the invariant.
+///
+/// Maintains one invariant:
+/// - foreach adjacent pair `subseg_a, subseg_b`, `subseg_a.header.weight >= subseg_b.header.weight`
+///   i.e. `not(subseg_a.header.weight < subseg_b.header.weight)`
+///   i.e. there are no pairs such that `subseg_a` *should* contain `subseg_b`
+///
+/// This invariant is always maintained, and holds under removal of arbitrary elements
+/// (e.g. for [A, B, C], `A >= B >= C` => `A >= C` => [A, C] is also valid)
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct DocSegmentList(Py<PyList>);
+impl DocSegmentList {
+    pub fn empty(py: Python) -> Self {
+        Self(PyList::empty_bound(py).into())
+    }
+
+    /// If the segment currently at the end of the list has a lower weight than the new segment, merge the new segment into the end of it.
+    /// Otherwise insert the new segment directly to the end.
+    ///
+    /// i.e. for the empty list, new list = [X]
+    /// otherwise the list is (stuff) + [A], if A.weight >= X.weight then get (stuff) + [A, X] else get (stuff) + [A.append(X)]
+    fn append_full_subsegment(
+        &self,
+        new_docsegment: &Bound<'_, DocSegment>,
+        new_weight: i64,
+    ) -> PyResult<()> {
+        let py = new_docsegment.py();
+        let self_list = self.0.bind(py);
+        if self_list.is_empty() {
+            self_list.append(new_docsegment)
+        } else {
+            // Safe to call this - there are no elements after (len - 1) so no work is required to uphold the invariant for that side.
+            self.merge_or_insert_after_index(new_docsegment, new_weight, self_list.len() - 1)
+        }
+    }
+
+    /// If the segment currently at `index` has a lower weight than the new segment, merge the new segment into the end of it.
+    /// Otherwise insert the new segment *after* `index`.
+    ///
+    /// Maintains the invariant for (self[index], new_docsegment), other code is required to maintain the invariant for (new_docsegment, self[index + 1], self[index + 2]...)
+    fn merge_or_insert_after_index(
+        &self,
+        new_docsegment: &Bound<'_, DocSegment>,
+        new_weight: i64,
+        index: usize,
+    ) -> PyResult<()> {
+        let py = new_docsegment.py();
+        let self_list = self.0.bind(py);
+        let elem = self_list.get_item(index)?;
+        let elem = elem.downcast::<DocSegment>()?;
+        let elem_weight = Header::get_weight(py, &elem.borrow().header.bind(py))?;
+        // We are trying to insert `new_docsegment` after `elem`.
+        // We need to uphold the invariant `elem.header.weight >= new_docsegment.header.weight`.
+        // If that isn't true, we need to insert `new_docsegment` inside `elem` instead.
+        if elem_weight < new_weight {
+            elem.borrow()
+                .subsegments
+                .append_full_subsegment(new_docsegment, new_weight)
+        } else {
+            // To insert *after* elem[index], insert *at* [index + 1]
+            self_list.insert(index + 1, new_docsegment)
+        }
+    }
+
+    /// Removes and returns the run of DocSegments at + after `index` which have `weight` > `new_weight`.
+    /// After this function is called, `index` may be one past the end of the list
+    /// Pseudocode;
+    /// ```python
+    /// segments = []
+    /// while self[index].weight > new_weight:
+    ///     segments.append_segment(self.delete_at(index))
+    /// ```
+    ///
+    /// Maintains the invariant for (new_docsegment)
+    fn extract_heavier_items<'py>(
+        &'py self,
+        py: Python<'py>,
+        new_weight: i64,
+        index: usize,
+    ) -> PyResult<Bound<PyList>> {
+        let new_list = PyList::empty_bound(py);
+        let self_list = self.0.bind(py);
+        while index < self_list.len() {
+            let item_at_index = self_list.get_item(index)?;
+            let segment_at_index = item_at_index.downcast::<DocSegment>()?;
+            let header = &segment_at_index.borrow().header;
+            let weight = Header::get_weight(py, header.bind(py))?;
+            if weight <= new_weight {
+                break;
+            } else {
+                self_list.del_item(index)?;
+                new_list.append(segment_at_index)?;
+            }
+        }
+        Ok(new_list)
+    }
+
+    pub fn list<'py>(&self, py: Python<'py>) -> &Bound<'py, PyList> {
+        self.0.bind(py)
+    }
+
+    /// Create a new DocSegmentList. Raises ValueError if the invariant is not upheld.
+    pub fn new(seq: &Bound<'_, PySequence>) -> PyResult<Self> {
+        let py = seq.py();
+        let list = PyList::empty_bound(py);
+
+        let mut last_weight = None;
+        for obj in seq.iter()? {
+            let obj = obj?;
+            let obj = obj.downcast::<DocSegment>()?;
+            let obj_weight = Header::get_weight(py, obj.borrow().header.bind(py))?;
+
+            match last_weight {
+                Some(last_weight) => {
+                    if last_weight < obj_weight {
+                        return Err(PyValueError::new_err(format!("Sequence given to DocSegmentList had an element of weight {last_weight} followed by an element of weight {obj_weight}.\nThe invariant of this list is that for each pair of adjacent elements (A, B) A has a greater weight than B.")));
+                    }
+                }
+                None => {}
+            }
+            last_weight = Some(obj_weight);
+
+            list.append(obj)?
+        }
+        Ok(Self(list.into()))
+    }
+
+    /// Take a header, find its weight, create a DocSegment from it, and push that to the end of this list
+    /// or into the subsegments of the last element to maintain the invariant.
+    ///
+    /// For example, if the list currently has two elements `[A, B]` and you call `append_header(X)`,
+    /// `[A, B, X]` is only allowed if B.weight >= X.weight, otherwise X must be appended into B's subsegments.
+    pub fn append_header<'py>(
+        &self,
+        py: Python<'py>,
+        header: PyTcRef<Header>,
+    ) -> PyResult<Bound<'py, DocSegment>> {
+        let new_weight = Header::get_weight(py, header.bind(py))?;
+
+        let new_docsegment = Py::new(
+            py,
+            DocSegment {
+                header,
+                contents: Py::new(py, BlockScope::new_empty(py))?,
+                subsegments: Self(PyList::empty_bound(py).into()),
+            },
+        )?
+        .into_bound(py);
+
+        // Maintains the invariant between the current final list element and the new element
+        self.append_full_subsegment(&new_docsegment, new_weight)?;
+
+        Ok(new_docsegment)
+    }
+    /// Take a header, create a DocSegment with that header and insert it into the DocSegment tree
+    /// and based on its weight insert it before the element indicated by `index`.
+    ///
+    /// The new docsegment may not be a direct element of `self`, but may be in one of the children of `self` instead, if it comes after an element with lower weight.
+    /// For example, if the list has two elements `[A, B]` and `X` is inserted between them, there are two possibilities:
+    /// - `[A, X, B]` is allowed if `A.weight >= X.weight`.
+    /// - `[A.append_header(X), B]` must be done if `A.weight < X.weight` to maintain the invariant.
+    ///
+    /// The new docsegment may be pre-created with children if its weight is smaller than subsequent elements.
+    /// For example if the list has three elements `[A, B, C]` and `X` is inserted after `A`, there are four possiblities:
+    /// - `[A.append(X), B, C]` is allowed if `A.weight < X.weight`
+    ///     - e.g. A = 100, X = 101
+    /// - `[A, X, B, C]` is allowed if `A.weight >= X.weight` and `X.weight >= B.weight`
+    ///     - e.g. A = 100, X = 10, B = 5
+    /// - `[A, X.append(B), C]` is allowed if `A.weight >= X.weight`, `X.weight < B.weight`, and `X.weight >= C.weight`
+    ///     - e.g. A = 100, X = 10, B = 75, C = 5
+    /// - `[A, X.append(B, C)]` is allowed if `A.weight >= X.weight`, `X.weight < B.weight`, and `X.weight < C.weight`
+    ///     - e.g. A = 100, X = 10, B = 75, C = 50
+    pub fn insert_header<'py>(
+        &self,
+        py: Python<'py>,
+        index: usize,
+        header: PyTcRef<Header>,
+    ) -> PyResult<Bound<'py, DocSegment>> {
+        let new_weight = Header::get_weight(py, header.bind(py))?;
+
+        let new_docsegment = Py::new(
+            py,
+            DocSegment {
+                header,
+                contents: Py::new(py, BlockScope::new_empty(py))?,
+                // Enforces the invariant for elements after the insertion point
+                subsegments: Self(self.extract_heavier_items(py, new_weight, index)?.into()),
+            },
+        )?
+        .into_bound(py);
+
+        // Need to maintain the invariant for elements before the insertion point
+        if index == 0 {
+            // There are no elements before the insertion point
+            self.0.bind(py).insert(0, &new_docsegment)?
+        } else {
+            // There are elements, and this function enforces the invariant for them
+            self.merge_or_insert_after_index(&new_docsegment, new_weight, index - 1)?
+        }
+
+        Ok(new_docsegment)
+    }
+
+    pub fn __len__(&self, py: Python) -> usize {
+        self.0.bind(py).len()
+    }
+    pub fn __iter__<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyIterator>> {
+        self.0.bind(py).as_sequence().iter()
+    }
+
+    pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
+        self.0.bind(py).eq(other.0.bind(py))
+    }
+    pub fn __str__(&self, py: Python) -> PyResult<String> {
+        Ok(format!(
+            "DocSegmentList(<{} segments>)",
+            self.0.bind(py).len()
+        ))
+    }
+    pub fn __repr__(&self, py: Python) -> PyResult<String> {
+        Ok(format!(
+            r#"DocSegmentList({})"#,
+            self.0.bind(py).str()?.to_str()?
+        ))
+    }
 }

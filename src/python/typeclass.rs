@@ -2,7 +2,6 @@ use std::marker::PhantomData;
 
 use pyo3::{
     exceptions::PyTypeError,
-    intern,
     prelude::*,
     types::{PyList, PySequence},
     PyClass,
@@ -131,11 +130,7 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
     }
 
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
-        self.0
-            .bind(py)
-            .getattr(intern!(py, "__eq__"))?
-            .call1((other.0.bind(py),))?
-            .is_truthy()
+        self.0.bind(py).eq(other.0.bind(py))
     }
     pub fn __repr__(&self, py: Python) -> PyResult<String> {
         Ok(format!(

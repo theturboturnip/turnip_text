@@ -172,8 +172,6 @@ impl TurnipTextParser {
             };
         }
 
-        self.builders
-            .finalize(py)
-            .map_err(|err| (self.files, err).into())
+        Ok(self.builders.finalize())
     }
 }

@@ -67,15 +67,21 @@ def test_document_can_hold_docsegments():
     )
 
 
-def test_document_can_append_docsegments():
+def test_document_can_append_headers():
     d = Document(contents=BlockScope([]), segments=[])
-    d.append_segment(
-        DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[])
+    d.append_header(CustomHeader())
+
+
+def test_document_can_insert_headers():
+    d = Document(
+        contents=BlockScope([]),
+        segments=[DocSegment(CustomHeader(), BlockScope([]), [])],
     )
+    d.insert_header(0, CustomHeader())
 
 
 def test_document_must_only_have_docsegments():
-    filter = r"instance of DocSegment, but it wasn't"
+    filter = r"cannot be converted to 'DocSegment'"
     with pytest.raises(TypeError, match=filter):
         Document(
             contents=BlockScope([]),
@@ -130,18 +136,33 @@ def test_document_must_only_have_docsegments():
         )
 
 
-def test_document_must_only_append_docsegments():
-    # This error is in PyO3's generated harness, because the Rust code expects specific types.
-    filter = r"cannot be converted to 'DocSegment'"
+def test_document_must_only_append_headers():
+    filter = r"instance of Header, but it didn't have the properties.*is_header.*weight"
     p = Document(contents=BlockScope([]), segments=[])
     with pytest.raises(TypeError, match=filter):
-        p.append_segment(None)
+        p.append_header(None)
     with pytest.raises(TypeError, match=filter):
-        p.append_segment(1)
+        p.append_header(1)
     with pytest.raises(TypeError, match=filter):
-        p.append_segment("blah")
+        p.append_header("blah")
     with pytest.raises(TypeError, match=filter):
-        p.append_segment(object())
+        p.append_header(object())
+
+
+def test_document_must_only_insert_headers():
+    filter = r"instance of Header, but it didn't have the properties.*is_header.*weight"
+    p = Document(
+        contents=BlockScope([]),
+        segments=[DocSegment(CustomHeader(), BlockScope([]), [])],
+    )
+    with pytest.raises(TypeError, match=filter):
+        p.insert_header(0, None)
+    with pytest.raises(TypeError, match=filter):
+        p.insert_header(0, 1)
+    with pytest.raises(TypeError, match=filter):
+        p.insert_header(0, "blah")
+    with pytest.raises(TypeError, match=filter):
+        p.insert_header(0, object())
 
 
 # DocSegment
@@ -222,19 +243,30 @@ def test_docsegment_can_hold_docsegments():
     )
 
 
-def test_docsegment_can_append_docsegments():
+def test_docsegment_can_append_headers():
     d = DocSegment(
         header=CustomHeader(weight=-1),
         contents=BlockScope([]),
         subsegments=[],
     )
-    d.append_subsegment(
-        DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[])
+    d.append_header(CustomHeader())
+
+
+def test_docsegment_can_insert_headers():
+    d = DocSegment(
+        header=CustomHeader(weight=-1),
+        contents=BlockScope([]),
+        subsegments=[
+            DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[]),
+            DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[]),
+            DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[]),
+        ],
     )
+    d.insert_header(2, CustomHeader())
 
 
 def test_docsegment_must_only_have_docsegments():
-    filter = r"instance of DocSegment, but it wasn't"
+    filter = r"cannot be converted to 'DocSegment'"
     with pytest.raises(TypeError, match=filter):
         DocSegment(
             header=CustomHeader(weight=-1),
@@ -293,18 +325,30 @@ def test_docsegment_must_only_have_docsegments():
         )
 
 
-def test_docsegment_must_only_append_docsegments():
-    # This error is in PyO3's generated harness, because the Rust code expects specific types.
-    filter = r"cannot be converted to 'DocSegment'"
+def test_docsegment_must_only_append_headers():
+    filter = r"instance of Header, but it didn't have the properties.*is_header.*weight"
     p = DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[])
     with pytest.raises(TypeError, match=filter):
-        p.append_subsegment(None)
+        p.append_header(None)
     with pytest.raises(TypeError, match=filter):
-        p.append_subsegment(1)
+        p.append_header(1)
     with pytest.raises(TypeError, match=filter):
-        p.append_subsegment("blah")
+        p.append_header("blah")
     with pytest.raises(TypeError, match=filter):
-        p.append_subsegment(object())
+        p.append_header(object())
+
+
+def test_docsegment_must_only_insert_headers():
+    filter = r"instance of Header, but it didn't have the properties.*is_header.*weight"
+    p = DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[])
+    with pytest.raises(TypeError, match=filter):
+        p.insert_header(1, None)
+    with pytest.raises(TypeError, match=filter):
+        p.insert_header(1, 1)
+    with pytest.raises(TypeError, match=filter):
+        p.insert_header(1, "blah")
+    with pytest.raises(TypeError, match=filter):
+        p.insert_header(1, object())
 
 
 # BlockScope
