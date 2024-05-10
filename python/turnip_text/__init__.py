@@ -1,14 +1,4 @@
-import abc
-from typing import (
-    Iterable,
-    Iterator,
-    List,
-    Optional,
-    Protocol,
-    Sequence,
-    Union,
-    runtime_checkable,
-)
+from typing import Protocol, Sequence, Union, runtime_checkable
 
 __all__ = [
     "Block",
@@ -95,27 +85,25 @@ class RawScopeBuilder(Protocol):
 
 
 # The types that can be coerced into an Inline, in the order they are checked and attempted.
-# List[Inline] is coerced by wrapping it in an InlineScope
-CoercibleToInline = Union[Inline, List[Inline], str, int, float]
+# Sequence[Inline] is coerced by wrapping it in a list and wrapping that in an InlineScope
+CoercibleToInline = Union[Inline, str, Sequence[Inline], int, float]
 
 # The types that can be coerced into an InlineScope, in the order they are checked and attempted.
 # 1. InlineScopes are passed through.
 # 2. Coercion to Inline is attempted, and must succeed.
-# 3. If it coerced to InlineScope by the inline process (i.e. it was originally List[Inline]),
+# 3. If it coerced to InlineScope by the inline process (i.e. it was originally Sequence[Inline]),
 # that InlineScope is passed through.
 # 4. Otherwise the plain Inline is wrapped in InlineScope([plain_inline])
 CoercibleToInlineScope = Union[InlineScope, CoercibleToInline]
 
 # The types that can be coerced into a Block, in the order they are checked and attempted
-CoercibleToBlock = Union[
-    List[Block], Block, Paragraph, Sentence, CoercibleToInlineScope
-]
+CoercibleToBlock = Union[Block, Sentence, Sequence[Block], CoercibleToInline]
 
 # The types that can be coerced into a BlockScope, in the order they are checked and attempted
 CoercibleToBlockScope = Union[BlockScope, CoercibleToBlock]
 
 
-def join_inlines(inlines: Iterable[Inline], joiner: Inline) -> InlineScope:
+def join_inlines(inlines: Sequence[Inline], joiner: Inline) -> InlineScope:
     """Equivalent of string.join, but for joining any set of Inlines with a joiner Inline"""
     new_inlines = [val for i in inlines for val in (i, joiner)]
     if new_inlines:

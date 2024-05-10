@@ -1,12 +1,11 @@
-import abc
 from typing import (
     Any,
     Dict,
-    Iterable,
     Iterator,
     List,
     Optional,
     Protocol,
+    Sequence,
     Union,
     runtime_checkable,
 )
@@ -41,26 +40,24 @@ class RawScopeBuilder(Protocol):
     def build_from_raw(self, raw: str) -> Union[Header, Block, Inline, None]: ...
 
 # The types that can be coerced into an Inline, in the order they are checked and attempted.
-# List[Inline] is coerced by wrapping it in an InlineScope
-CoercibleToInline = Union[Inline, List[Inline], str, int, float]
+# Sequence[Inline] is coerced by wrapping it in an InlineScope
+CoercibleToInline = Union[Inline, str, Sequence[Inline], int, float]
 
 # The types that can be coerced into an InlineScope, in the order they are checked and attempted.
 # 1. InlineScopes are passed through.
 # 2. Coercion to Inline is attempted, and must succeed.
-# 3. If it coerced to InlineScope by the inline process (i.e. it was originally List[Inline]),
+# 3. If it coerced to InlineScope by the inline process (i.e. it was originally Sequence[Inline]),
 # that InlineScope is passed through.
 # 4. Otherwise the plain Inline is wrapped in InlineScope([plain_inline])
 CoercibleToInlineScope = Union[InlineScope, CoercibleToInline]
 
 # The types that can be coerced into a Block, in the order they are checked and attempted
-CoercibleToBlock = Union[
-    List[Block], Block, Paragraph, Sentence, CoercibleToInlineScope
-]
+CoercibleToBlock = Union[Block, Sentence, Sequence[Block], CoercibleToInline]
 
 # The types that can be coerced into a BlockScope, in the order they are checked and attempted
 CoercibleToBlockScope = Union[BlockScope, CoercibleToBlock]
 
-def join_inlines(inlines: Iterable[Inline], joiner: Inline) -> InlineScope:
+def join_inlines(inlines: Sequence[Inline], joiner: Inline) -> InlineScope:
     """Equivalent of string.join, but for joining any set of Inlines with a joiner Inline"""
     ...
 
@@ -93,7 +90,7 @@ class Raw(Inline):
 # Note - Sentence is NOT an Inline. This means there's always a hierarchy of Paragraph -> many Sentences -> many Inlines.
 # InlineScopes can be nested, Sentences cannot.
 class Sentence:
-    def __init__(self, list: Optional[List[Inline]] = None): ...
+    def __init__(self, seq: Optional[Sequence[Inline]] = None): ...
     def __len__(self) -> int: ...
     # Iterate over the inline blocks in the sentence
     def __iter__(self) -> Iterator[Inline]: ...
@@ -101,7 +98,7 @@ class Sentence:
     def append_inline(self, node: Inline) -> None: ...
 
 class Paragraph(Block):
-    def __init__(self, list: Optional[List[Sentence]] = None): ...
+    def __init__(self, seq: Optional[Sequence[Sentence]] = None): ...
     def __len__(self) -> int: ...
     # Iterate over the sentences in the Paragraph
     def __iter__(self) -> Iterator[Sentence]: ...
@@ -109,7 +106,7 @@ class Paragraph(Block):
     def append_sentence(self, s: Sentence) -> None: ...
 
 class BlockScope(Block):
-    def __init__(self, list: Optional[List[Block]] = None): ...
+    def __init__(self, seq: Optional[Sequence[Block]] = None): ...
     def __len__(self) -> int: ...
     # Iterate over the blocks in the BlockScope
     def __iter__(self) -> Iterator[Block]: ...
@@ -117,7 +114,7 @@ class BlockScope(Block):
     def append_block(self, b: Block) -> None: ...
 
 class InlineScope(Inline):
-    def __init__(self, list: Optional[List[Inline]] = None): ...
+    def __init__(self, seq: Optional[Sequence[Inline]] = None): ...
     def __len__(self) -> int: ...
     # Iterate over the inline items in the InlineScope
     def __iter__(self) -> Iterator[Inline]: ...

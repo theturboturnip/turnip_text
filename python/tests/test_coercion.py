@@ -29,6 +29,12 @@ def test_inline_coercion_of_list_of_inline():
     assert coerce_to_inline_scope(ts) == InlineScope(ts)
 
 
+def test_inline_coercion_of_tuple_of_inline():
+    ts = (CustomInline(), CustomInline(), CustomInline())
+    assert coerce_to_inline(ts) == InlineScope(ts)
+    assert coerce_to_inline_scope(ts) == InlineScope(ts)
+
+
 def test_inline_coercion_of_str():
     s = "Some Text"
     assert coerce_to_inline(s) == Text(s)
@@ -81,6 +87,12 @@ def test_block_coercion_of_list_of_blocks():
     assert coerce_to_block_scope(bs) == BlockScope(bs)
 
 
+def test_block_coercion_of_tuple_of_blocks():
+    bs = (CustomBlock(), CustomBlock(), CustomBlock())
+    assert coerce_to_block(bs) == BlockScope(bs)
+    assert coerce_to_block_scope(bs) == BlockScope(bs)
+
+
 def test_block_coercion_of_sentence():
     s = Sentence([Text("Some Text"), Raw("And Some Raw"), CustomInline()])
     assert coerce_to_block(s) == Paragraph([s])
@@ -102,6 +114,14 @@ def test_block_coercion_of_inline_scope():
 # List of inlines -> InlineScope -> Paragraph(Sentence(InlineScope))
 def test_block_coercion_of_list_of_inlines():
     i = [CustomInline()]
+    assert coerce_to_block(i) == Paragraph([Sentence([InlineScope(i)])])
+    assert coerce_to_block_scope(i) == BlockScope(
+        [Paragraph([Sentence([InlineScope(i)])])]
+    )
+
+
+def test_block_coercion_of_tuple_of_inlines():
+    i = (CustomInline(),)
     assert coerce_to_block(i) == Paragraph([Sentence([InlineScope(i)])])
     assert coerce_to_block_scope(i) == BlockScope(
         [Paragraph([Sentence([InlineScope(i)])])]

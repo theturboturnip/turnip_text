@@ -5,7 +5,7 @@ use pyo3::{
     exceptions::{PyTypeError, PyValueError},
     intern,
     prelude::*,
-    types::{PyDict, PyFloat, PyIterator, PyList, PyLong, PyString},
+    types::{PyDict, PyFloat, PyIterator, PyList, PyLong, PySequence, PyString},
 };
 
 use crate::interpreter::{RecursionConfig, TurnipTextParser};
@@ -82,18 +82,19 @@ pub fn coerce_to_inline_pytcref<'py>(
     if let Ok(inl) = PyTcRef::of(obj) {
         return Ok(inl);
     }
-    // 2. if it's a List of Inline, return InlineScope(it)
-    // Here we first check if it's a list, then if so try to create an InlineScope - this will verify if it's a list of Inlines.
-    if let Ok(py_list) = obj.downcast::<PyList>() {
-        if let Ok(inline_scope) = InlineScope::new(py, Some(&py_list)) {
-            let inline_scope = Py::new(py, inline_scope)?;
-            return Ok(PyTcRef::of_unchecked(inline_scope.bind(py)));
-        }
-    }
-    // 3. if it's str, return Text(it)
+    // 2. if it's str, return Text(it)
+    // Do this before checking sequence-ness because str is a sequence of str.
     if let Ok(py_str) = obj.downcast::<PyString>() {
         let unescaped_text = Py::new(py, Text::new(py_str))?;
         return Ok(PyTcRef::of_unchecked(unescaped_text.bind(py)));
+    }
+    // 3. if it's an Sequence of Inline, return InlineScope(it)
+    // Here we first check if it's sequence, then if so try to create an InlineScope - this will verify if it's a list of Inlines.
+    if let Ok(seq) = obj.downcast::<PySequence>() {
+        if let Ok(inline_scope) = InlineScope::new(py, Some(&seq)) {
+            let inline_scope = Py::new(py, inline_scope)?;
+            return Ok(PyTcRef::of_unchecked(inline_scope.bind(py)));
+        }
     }
     // 4. if it's float, return Text(str(it))
     // 5. if it's int, return Text(str(it))
@@ -127,7 +128,7 @@ pub fn coerce_to_inline_scope<'py>(
     // 4. otherwise return InlineScope([that])
     return Ok(Py::new(
         py,
-        InlineScope::new(py, Some(&PyList::new_bound(py, [obj])))?,
+        InlineScope::new(py, Some(&PyList::new_bound(py, [obj]).as_sequence()))?,
     )?);
 }
 
@@ -144,21 +145,22 @@ pub fn coerce_to_block_pytcref<'py>(
     if let Ok(block) = PyTcRef::of(obj) {
         return Ok(block);
     }
-    // 2. if it's a list of Block, wrap it in a BlockScope and return it
-    // Here we first check if it's a list, then if so try to create a BlockScope - this will verify if it's a list of Blocks.
-    if let Ok(py_list) = obj.downcast::<PyList>() {
-        if let Ok(block_scope) = BlockScope::new(py, Some(&py_list)) {
-            let block_scope = Py::new(py, block_scope)?;
-            return Ok(PyTcRef::of_unchecked(block_scope.bind(py)));
-        }
-    }
-    // 3. if it's a Sentence, wrap it in a list -> Paragraph
+    // 2. if it's a Sentence, wrap it in a list -> Paragraph
+    // Do this before checking if it's a sequence, because Sentence is a sequence of InlineScope
     if let Ok(sentence) = obj.extract::<Py<Sentence>>() {
         let paragraph = Py::new(
             py,
-            Paragraph::new(py, Some(&PyList::new_bound(py, [sentence])))?,
+            Paragraph::new(py, Some(&PyList::new_bound(py, [sentence]).as_sequence()))?,
         )?;
         return Ok(PyTcRef::of_unchecked(paragraph.bind(py)));
+    }
+    // 3. if it's an sequence of Block, wrap it in a BlockScope and return it
+    // Here we first check if it's sequence, then if so try to create a BlockScope - this will verify if it's a list of Blocks.
+    if let Ok(seq) = obj.downcast::<PySequence>() {
+        if let Ok(block_scope) = BlockScope::new(py, Some(&seq)) {
+            let block_scope = Py::new(py, block_scope)?;
+            return Ok(PyTcRef::of_unchecked(block_scope.bind(py)));
+        }
     }
     // 4. if it can be coerced to an Inline, wrap that in list -> Sentence -> list -> Paragraph and return it
     if let Ok(inl) = coerce_to_inline(py, obj) {
@@ -166,13 +168,16 @@ pub fn coerce_to_block_pytcref<'py>(
             py,
             Paragraph::new(
                 py,
-                Some(&PyList::new_bound(
-                    py,
-                    [Py::new(
+                Some(
+                    &PyList::new_bound(
                         py,
-                        Sentence::new(py, Some(&PyList::new_bound(py, [inl])))?,
-                    )?],
-                )),
+                        [Py::new(
+                            py,
+                            Sentence::new(py, Some(&PyList::new_bound(py, [inl]).as_sequence()))?,
+                        )?],
+                    )
+                    .as_sequence(),
+                ),
             )?,
         )?;
         return Ok(PyTcRef::of_unchecked(paragraph.bind(py)));
@@ -202,7 +207,7 @@ pub fn coerce_to_block_scope<'py>(
     // 4. otherwise return BlockScope([that])
     return Ok(Py::new(
         py,
-        BlockScope::new(py, Some(&PyList::new_bound(py, [obj])))?,
+        BlockScope::new(py, Some(&PyList::new_bound(py, [obj]).as_sequence()))?,
     )?);
 }
 
@@ -600,10 +605,10 @@ impl Sentence {
 #[pymethods]
 impl Sentence {
     #[new]
-    #[pyo3(signature = (list=None))]
-    pub fn new(py: Python, list: Option<&Bound<'_, PyList>>) -> PyResult<Self> {
-        match list {
-            Some(list) => Ok(Self(PyTypeclassList::wrap_list(list)?)),
+    #[pyo3(signature = (seq=None))]
+    pub fn new(py: Python, seq: Option<&Bound<'_, PySequence>>) -> PyResult<Self> {
+        match seq {
+            Some(seq) => Ok(Self(PyTypeclassList::wrap_seq(&seq)?)),
             None => Ok(Self(PyTypeclassList::new(py))),
         }
     }
@@ -649,10 +654,10 @@ impl Paragraph {
 #[pymethods]
 impl Paragraph {
     #[new]
-    #[pyo3(signature = (list=None))]
-    pub fn new(py: Python, list: Option<&Bound<'_, PyList>>) -> PyResult<Self> {
-        match list {
-            Some(list) => Ok(Self(PyInstanceList::wrap_list(list)?)),
+    #[pyo3(signature = (seq=None))]
+    pub fn new(py: Python, seq: Option<&Bound<'_, PySequence>>) -> PyResult<Self> {
+        match seq {
+            Some(seq) => Ok(Self(PyInstanceList::wrap_seq(&seq)?)),
             None => Ok(Self(PyInstanceList::new(py))),
         }
     }
@@ -708,10 +713,10 @@ impl BlockScope {
 #[pymethods]
 impl BlockScope {
     #[new]
-    #[pyo3(signature = (list=None))]
-    pub fn new(py: Python, list: Option<&Bound<'_, PyList>>) -> PyResult<Self> {
-        match list {
-            Some(list) => Ok(Self(PyTypeclassList::wrap_list(list)?)),
+    #[pyo3(signature = (seq=None))]
+    pub fn new(py: Python, seq: Option<&Bound<'_, PySequence>>) -> PyResult<Self> {
+        match seq {
+            Some(seq) => Ok(Self(PyTypeclassList::wrap_seq(&seq)?)),
             None => Ok(Self(PyTypeclassList::new(py))),
         }
     }
@@ -762,10 +767,10 @@ impl InlineScope {
 #[pymethods]
 impl InlineScope {
     #[new]
-    #[pyo3(signature = (list=None))]
-    pub fn new(py: Python, list: Option<&Bound<'_, PyList>>) -> PyResult<Self> {
-        match list {
-            Some(list) => Ok(Self(PyTypeclassList::wrap_list(list)?)),
+    #[pyo3(signature = (seq=None))]
+    pub fn new(py: Python, seq: Option<&Bound<'_, PySequence>>) -> PyResult<Self> {
+        match seq {
+            Some(seq) => Ok(Self(PyTypeclassList::wrap_seq(&seq)?)),
             None => Ok(Self(PyTypeclassList::new(py))),
         }
     }

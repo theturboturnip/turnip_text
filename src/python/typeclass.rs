@@ -4,7 +4,7 @@ use pyo3::{
     exceptions::PyTypeError,
     intern,
     prelude::*,
-    types::{PyIterator, PyList},
+    types::{PyList, PySequence},
     PyClass,
 };
 
@@ -82,10 +82,10 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
         Self(PyList::empty_bound(py).into(), PhantomData::default())
     }
 
-    /// Given a Python iterable, append_checked each element into a list
-    pub fn wrap_iter(iter: &Bound<'_, PyIterator>) -> PyResult<Self> {
-        let list = Self::new(iter.py());
-        for obj in iter {
+    /// Given a Python sequence, append_checked each element into a list
+    pub fn wrap_seq(seq: &Bound<'_, PySequence>) -> PyResult<Self> {
+        let list = Self::new(seq.py());
+        for obj in seq.iter()? {
             list.append_checked(&obj?)?;
         }
         Ok(list)
