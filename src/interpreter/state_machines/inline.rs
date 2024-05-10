@@ -77,8 +77,8 @@ impl InlineLevelProcessor<ParagraphInlineMode> {
         let current_sentence = py_internal_alloc(py, Sentence::new_empty(py))?;
         current_sentence
             .borrow_mut(py)
-            .push_inline(inline)
-            .expect_pyok("Sentence::push_inline with presumed inline");
+            .append_inline(inline)
+            .expect_pyok("Sentence::append_inline with presumed inline");
         Ok(Self {
             inner: ParagraphInlineMode {
                 ctx: ParseContext::new(inline_ctx.first_tok(), inline_ctx.last_tok()),
@@ -113,8 +113,8 @@ impl ParagraphInlineMode {
             // Push the old one into the paragraph
             self.para
                 .borrow_mut(py)
-                .push_sentence(py, sentence)
-                .expect_pyok("Paragraph::push_sentence with Sentence");
+                .append_sentence(py, sentence)
+                .expect_pyok("Paragraph::append_sentence with Sentence");
         }
         Ok(())
     }
@@ -281,8 +281,8 @@ impl InlineMode for ParagraphInlineMode {
         );
         self.current_sentence
             .borrow_mut(py)
-            .push_inline(inl)
-            .expect_pyok("Sentence::push_inline with presumed Inline");
+            .append_inline(inl)
+            .expect_pyok("Sentence::append_inline with presumed Inline");
         Ok(())
     }
 }
@@ -436,8 +436,8 @@ impl InlineMode for KnownInlineScopeInlineMode {
         );
         self.inline_scope
             .borrow_mut(py)
-            .push_inline(inl)
-            .expect_pyok("InlineScope::push_inline with presumed Inline");
+            .append_inline(inl)
+            .expect_pyok("InlineScope::append_inline with presumed Inline");
         Ok(())
     }
 }

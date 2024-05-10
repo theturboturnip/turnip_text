@@ -178,8 +178,8 @@ impl InterimDocument {
         };
         Ok(child_list_ref
             .borrow_mut(py)
-            .push_block(block)
-            .expect_pyok("BlockScope::push_block with presumed Block"))
+            .append_block(block)
+            .expect_pyok("BlockScope::append_block with presumed Block"))
     }
 }
 

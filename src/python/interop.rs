@@ -603,7 +603,7 @@ impl Sentence {
     #[pyo3(signature = (list=None))]
     pub fn new(py: Python, list: Option<&Bound<'_, PyList>>) -> PyResult<Self> {
         match list {
-            Some(list) => Ok(Self(PyTypeclassList::from(list)?)),
+            Some(list) => Ok(Self(PyTypeclassList::wrap_list(list)?)),
             None => Ok(Self(PyTypeclassList::new(py))),
         }
     }
@@ -615,8 +615,11 @@ impl Sentence {
         self.0.list(py).as_sequence().iter()
     }
 
-    pub fn push_inline(&mut self, node: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.0.append_checked(node)
+    pub fn append_inline(&mut self, obj: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.0.append_checked(obj)
+    }
+    pub fn insert_inline(&self, index: usize, obj: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.0.insert_checked(index, obj)
     }
 
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
@@ -649,7 +652,7 @@ impl Paragraph {
     #[pyo3(signature = (list=None))]
     pub fn new(py: Python, list: Option<&Bound<'_, PyList>>) -> PyResult<Self> {
         match list {
-            Some(list) => Ok(Self(PyInstanceList::from(list)?)),
+            Some(list) => Ok(Self(PyInstanceList::wrap_list(list)?)),
             None => Ok(Self(PyInstanceList::new(py))),
         }
     }
@@ -666,8 +669,16 @@ impl Paragraph {
         self.0.list(py).as_sequence().iter()
     }
 
-    pub fn push_sentence(&mut self, py: Python, sentence: Py<Sentence>) -> PyResult<()> {
+    pub fn append_sentence(&mut self, py: Python, sentence: Py<Sentence>) -> PyResult<()> {
         self.0.append_checked(sentence.bind(py))
+    }
+    pub fn insert_sentence(
+        &self,
+        py: Python,
+        index: usize,
+        sentence: Py<Sentence>,
+    ) -> PyResult<()> {
+        self.0.insert_checked(index, sentence.bind(py))
     }
 
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
@@ -700,7 +711,7 @@ impl BlockScope {
     #[pyo3(signature = (list=None))]
     pub fn new(py: Python, list: Option<&Bound<'_, PyList>>) -> PyResult<Self> {
         match list {
-            Some(list) => Ok(Self(PyTypeclassList::from(list)?)),
+            Some(list) => Ok(Self(PyTypeclassList::wrap_list(list)?)),
             None => Ok(Self(PyTypeclassList::new(py))),
         }
     }
@@ -717,8 +728,11 @@ impl BlockScope {
         self.0.list(py).as_sequence().iter()
     }
 
-    pub fn push_block(&mut self, node: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.0.append_checked(node)
+    pub fn append_block(&mut self, obj: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.0.append_checked(obj)
+    }
+    pub fn insert_block(&self, index: usize, obj: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.0.insert_checked(index, obj)
     }
 
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
@@ -751,7 +765,7 @@ impl InlineScope {
     #[pyo3(signature = (list=None))]
     pub fn new(py: Python, list: Option<&Bound<'_, PyList>>) -> PyResult<Self> {
         match list {
-            Some(list) => Ok(Self(PyTypeclassList::from(list)?)),
+            Some(list) => Ok(Self(PyTypeclassList::wrap_list(list)?)),
             None => Ok(Self(PyTypeclassList::new(py))),
         }
     }
@@ -768,8 +782,11 @@ impl InlineScope {
         self.0.list(py).as_sequence().iter()
     }
 
-    pub fn push_inline(&mut self, node: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.0.append_checked(node)
+    pub fn append_inline(&mut self, obj: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.0.append_checked(obj)
+    }
+    pub fn insert_inline(&self, index: usize, obj: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.0.insert_checked(index, obj)
     }
 
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
@@ -863,7 +880,7 @@ impl Document {
     pub fn new(contents: Py<BlockScope>, segments: &Bound<'_, PyList>) -> PyResult<Self> {
         Ok(Self {
             contents,
-            segments: PyInstanceList::from(segments)?,
+            segments: PyInstanceList::wrap_list(segments)?,
         })
     }
     #[getter]
@@ -874,7 +891,7 @@ impl Document {
     pub fn segments<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyIterator>> {
         self.segments.list(py).as_sequence().iter()
     }
-    pub fn push_segment(&self, py: Python<'_>, segment: Py<DocSegment>) -> PyResult<()> {
+    pub fn append_segment(&self, py: Python, segment: Py<DocSegment>) -> PyResult<()> {
         self.segments.append_checked(segment.bind(py))
     }
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
@@ -994,7 +1011,7 @@ impl DocSegment {
         Ok(Self {
             header: PyTcRef::of_friendly(header, "input to DocSegment __init__")?,
             contents,
-            subsegments: PyInstanceList::from(subsegments)?,
+            subsegments: PyInstanceList::wrap_list(subsegments)?,
         })
     }
     #[getter]
@@ -1009,7 +1026,7 @@ impl DocSegment {
     pub fn subsegments<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyIterator>> {
         self.subsegments.list(py).as_sequence().iter()
     }
-    pub fn push_subsegment(&self, py: Python<'_>, subsegment: Py<DocSegment>) -> PyResult<()> {
+    pub fn append_subsegment(&self, py: Python<'_>, subsegment: Py<DocSegment>) -> PyResult<()> {
         let weight = Header::get_weight(py, self.header.bind(py))?;
         let subweight = Header::get_weight(py, subsegment.borrow(py).header.bind(py))?;
         if subweight <= weight {

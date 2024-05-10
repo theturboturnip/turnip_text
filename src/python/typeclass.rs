@@ -1,6 +1,12 @@
 use std::marker::PhantomData;
 
-use pyo3::{exceptions::PyTypeError, intern, prelude::*, types::PyList, PyClass};
+use pyo3::{
+    exceptions::PyTypeError,
+    intern,
+    prelude::*,
+    types::{PyIterator, PyList},
+    PyClass,
+};
 
 pub trait PyTypeclass {
     const NAME: &'static str;
@@ -76,8 +82,17 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
         Self(PyList::empty_bound(py).into(), PhantomData::default())
     }
 
-    /// Given a pre-existing Python list, pass in
-    pub fn from(list: &Bound<'_, PyList>) -> PyResult<Self> {
+    /// Given a Python iterable, append_checked each element into a list
+    pub fn wrap_iter(iter: &Bound<'_, PyIterator>) -> PyResult<Self> {
+        let list = Self::new(iter.py());
+        for obj in iter {
+            list.append_checked(&obj?)?;
+        }
+        Ok(list)
+    }
+
+    /// Given a pre-existing Python list, check all elements
+    pub fn wrap_list(list: &Bound<'_, PyList>) -> PyResult<Self> {
         for obj in list {
             if let Some(err) = T::get_typeclass_err(&obj, "list element")? {
                 return Err(err);
@@ -94,6 +109,17 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
             None => {
                 // It fits the typeclass
                 self.0.bind(obj.py()).append(obj)?;
+                Ok(())
+            }
+            Some(err) => Err(err),
+        }
+    }
+
+    pub fn insert_checked(&self, index: usize, obj: &Bound<'_, PyAny>) -> PyResult<()> {
+        match T::get_typeclass_err(obj, "new list element")? {
+            None => {
+                // It fits the typeclass
+                self.0.bind(obj.py()).insert(index, obj)?;
                 Ok(())
             }
             Some(err) => Err(err),

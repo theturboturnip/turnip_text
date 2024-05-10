@@ -130,7 +130,9 @@ class StructureEnvPlugin(EnvPlugin):
         return self.h(4, label, num)
 
     @in_doc
-    def appendix(self, doc_env, label: Optional[str] = None) -> InlineScopeBuilder:
+    def appendix(
+        self, doc_env: DocEnv, label: Optional[str] = None
+    ) -> InlineScopeBuilder:
         """Builds an inline scope to create a header that starts an appendix at weight=1."""
         return StructureHeaderGenerator(
             doc_env, weight=1, label=label, num=True, appendix=True

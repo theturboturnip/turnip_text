@@ -1,4 +1,5 @@
 import pytest
+
 from turnip_text import *
 
 
@@ -25,7 +26,7 @@ def test_paragraph_can_hold_sentences():
 
 def test_paragraph_can_append_sentences():
     p = Paragraph([])
-    p.push_sentence(Sentence([]))
+    p.append_sentence(Sentence([]))
 
 
 def test_paragraph_must_only_have_sentences():
@@ -45,13 +46,13 @@ def test_paragraph_must_only_append_sentences():
     filter = r"cannot be converted to 'Sentence'"
     p = Paragraph([])
     with pytest.raises(TypeError, match=filter):
-        p.push_sentence(None)
+        p.append_sentence(None)
     with pytest.raises(TypeError, match=filter):
-        p.push_sentence(1)
+        p.append_sentence(1)
     with pytest.raises(TypeError, match=filter):
-        p.push_sentence("blah")
+        p.append_sentence("blah")
     with pytest.raises(TypeError, match=filter):
-        p.push_sentence(object())
+        p.append_sentence(object())
 
 
 # Document
@@ -68,7 +69,7 @@ def test_document_can_hold_docsegments():
 
 def test_document_can_append_docsegments():
     d = Document(contents=BlockScope([]), segments=[])
-    d.push_segment(
+    d.append_segment(
         DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[])
     )
 
@@ -134,13 +135,13 @@ def test_document_must_only_append_docsegments():
     filter = r"cannot be converted to 'DocSegment'"
     p = Document(contents=BlockScope([]), segments=[])
     with pytest.raises(TypeError, match=filter):
-        p.push_segment(None)
+        p.append_segment(None)
     with pytest.raises(TypeError, match=filter):
-        p.push_segment(1)
+        p.append_segment(1)
     with pytest.raises(TypeError, match=filter):
-        p.push_segment("blah")
+        p.append_segment("blah")
     with pytest.raises(TypeError, match=filter):
-        p.push_segment(object())
+        p.append_segment(object())
 
 
 # DocSegment
@@ -227,7 +228,7 @@ def test_docsegment_can_append_docsegments():
         contents=BlockScope([]),
         subsegments=[],
     )
-    d.push_subsegment(
+    d.append_subsegment(
         DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[])
     )
 
@@ -297,13 +298,13 @@ def test_docsegment_must_only_append_docsegments():
     filter = r"cannot be converted to 'DocSegment'"
     p = DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[])
     with pytest.raises(TypeError, match=filter):
-        p.push_subsegment(None)
+        p.append_subsegment(None)
     with pytest.raises(TypeError, match=filter):
-        p.push_subsegment(1)
+        p.append_subsegment(1)
     with pytest.raises(TypeError, match=filter):
-        p.push_subsegment("blah")
+        p.append_subsegment("blah")
     with pytest.raises(TypeError, match=filter):
-        p.push_subsegment(object())
+        p.append_subsegment(object())
 
 
 # BlockScope
@@ -313,9 +314,9 @@ def test_block_scope_can_hold_blocks():
 
 def test_block_scope_can_append_blocks():
     scope = BlockScope([])
-    scope.push_block(CustomBlock())
-    scope.push_block(Paragraph([]))
-    scope.push_block(BlockScope([]))
+    scope.append_block(CustomBlock())
+    scope.append_block(Paragraph([]))
+    scope.append_block(BlockScope([]))
 
 
 def test_block_scope_must_only_have_blocks():
@@ -335,13 +336,13 @@ def test_block_scope_must_only_append_blocks():
     filter = r"instance of Block, but it didn't have property is_block=True"
     bs = BlockScope([])
     with pytest.raises(TypeError, match=filter):
-        bs.push_block(None)
+        bs.append_block(None)
     with pytest.raises(TypeError, match=filter):
-        bs.push_block(1)
+        bs.append_block(1)
     with pytest.raises(TypeError, match=filter):
-        bs.push_block("blah")
+        bs.append_block("blah")
     with pytest.raises(TypeError, match=filter):
-        bs.push_block(CustomInline())
+        bs.append_block(CustomInline())
 
 
 # InlineScope
@@ -351,10 +352,10 @@ def test_inline_scope_can_hold_inlines():
 
 def test_inline_scope_can_append_inlines():
     scope = InlineScope([])
-    scope.push_inline(CustomInline())
-    scope.push_inline(Text(""))
-    scope.push_inline(Raw(""))
-    scope.push_inline(InlineScope([]))
+    scope.append_inline(CustomInline())
+    scope.append_inline(Text(""))
+    scope.append_inline(Raw(""))
+    scope.append_inline(InlineScope([]))
 
 
 def test_inline_scope_must_only_have_inlines():
@@ -374,13 +375,13 @@ def test_inline_scope_must_only_append_inlines():
     filter = r"instance of Inline, but it didn't have property is_inline=True"
     scope = InlineScope([])
     with pytest.raises(TypeError, match=filter):
-        scope.push_inline(None)
+        scope.append_inline(None)
     with pytest.raises(TypeError, match=filter):
-        scope.push_inline(1)
+        scope.append_inline(1)
     with pytest.raises(TypeError, match=filter):
-        scope.push_inline("blah")
+        scope.append_inline("blah")
     with pytest.raises(TypeError, match=filter):
-        scope.push_inline(CustomBlock())
+        scope.append_inline(CustomBlock())
 
 
 # Sentence
@@ -390,10 +391,10 @@ def test_sentence_can_hold_inlines():
 
 def test_sentence_can_append_inlines():
     scope = Sentence([])
-    scope.push_inline(CustomInline())
-    scope.push_inline(Text(""))
-    scope.push_inline(Raw(""))
-    scope.push_inline(InlineScope([]))
+    scope.append_inline(CustomInline())
+    scope.append_inline(Text(""))
+    scope.append_inline(Raw(""))
+    scope.append_inline(InlineScope([]))
 
 
 def test_sentence_must_only_have_inlines():
@@ -413,10 +414,10 @@ def test_sentence_must_only_append_inlines():
     filter = r"instance of Inline, but it didn't have property is_inline=True"
     scope = Sentence([])
     with pytest.raises(TypeError, match=filter):
-        scope.push_inline(None)
+        scope.append_inline(None)
     with pytest.raises(TypeError, match=filter):
-        scope.push_inline(1)
+        scope.append_inline(1)
     with pytest.raises(TypeError, match=filter):
-        scope.push_inline("blah")
+        scope.append_inline("blah")
     with pytest.raises(TypeError, match=filter):
-        scope.push_inline(CustomBlock())
+        scope.append_inline(CustomBlock())

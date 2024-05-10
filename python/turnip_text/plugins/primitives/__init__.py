@@ -99,7 +99,7 @@ class PrimitivesPlugin(abc.ABC, EnvPlugin):
             del self.captured[name]
         return val
 
-    def if_cond(self, cond) -> UserBlockOrInlineScopeBuilder:
+    def if_cond(self, cond: bool) -> UserBlockOrInlineScopeBuilder:
         """
         If the condition evaluates to true, returns a builder which immediately
         passes through blocks and inline scopes given.
