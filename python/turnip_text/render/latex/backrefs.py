@@ -19,6 +19,7 @@ class LatexBackrefMethod(IntEnum):
     Cleveref = 0
     Hyperlink = 1
     PageRef = 2
+    ManualRef = 3
 
 
 # TODO latex \autoref support?
@@ -181,3 +182,52 @@ class LatexPageRef(LatexBackrefMethodImpl):
             )  ## hooooo boy yeah this isn't great... capitalization is annoying
             renderer.emit_macro("pageref")
             renderer.emit_braced(raw_anchor)
+
+
+class LatexManualRef(LatexBackrefMethodImpl):
+    """A means of referring back to a position in the document using the \\label and \\hyperref or \\ref where possible."""
+
+    manual_counter_method: Dict[str, LatexCounterFormat]
+
+    description: str = "\\label, \\ref and \\hyperref"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.manual_counter_method = {}
+
+    @override
+    def request_packages(self, package_resolver: LatexPackageResolver) -> None:
+        package_resolver.request_latex_package("hyperref", "backrefs")
+
+    @override
+    def emit_config_for_fmt(
+        self, spec: LatexCounterSpec, _renderer: LatexRenderer
+    ) -> None:
+        self.manual_counter_method[spec.latex_counter] = spec.get_manual_fmt()
+
+    @override
+    def emit_anchor(
+        self, anchor: Anchor, renderer: "LatexRenderer", fmt: FmtEnv
+    ) -> None:
+        renderer.emit_raw(
+            f"\\label{{{anchor.canonical()}}}"
+        )  # TODO include caption for anchor?
+
+    @override
+    def emit_backref(
+        self,
+        backref: Backref,
+        anchor: Anchor,
+        renderer: "LatexRenderer",
+        fmt: FmtEnv,
+    ) -> None:
+        if backref.label_contents is None:
+            renderer.emit(
+                renderer.get_anchor_name(anchor),
+                fmt.nbsp,
+                Raw(f"\\ref{{{anchor.canonical()}}}"),
+            )
+        else:
+            renderer.emit_macro("hyperref")
+            renderer.emit_sqr_bracketed(Raw(anchor.canonical()))
+            renderer.emit_braced(backref.label_contents)

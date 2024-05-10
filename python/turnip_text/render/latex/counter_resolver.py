@@ -13,6 +13,7 @@ from turnip_text.render.latex.backrefs import (
     LatexBackrefMethod,
     LatexCleveref,
     LatexHyperlink,
+    LatexManualRef,
     LatexPageRef,
 )
 from turnip_text.render.latex.renderer import (
@@ -111,6 +112,7 @@ class LatexCounterResolver:
             LatexBackrefMethod.Cleveref: LatexCleveref(),
             LatexBackrefMethod.Hyperlink: LatexHyperlink(),
             LatexBackrefMethod.PageRef: LatexPageRef(),
+            LatexBackrefMethod.ManualRef: LatexManualRef(),
         }
         if legal_backref_methods:
             # redefine backref_impls only with keys in legal_backref_methods

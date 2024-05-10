@@ -64,6 +64,7 @@ if __name__ == "__main__":
                 LatexBackrefMethod.Cleveref,
                 LatexBackrefMethod.Hyperlink,
                 LatexBackrefMethod.PageRef,
+                LatexBackrefMethod.ManualRef,
             ],
         ),
         STD_LATEX_ARTICLE_RENDER_PLUGINS(

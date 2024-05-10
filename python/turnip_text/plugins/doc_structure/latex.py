@@ -78,7 +78,11 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
     def _register(self, build_sys: BuildSystem, setup: LatexSetup) -> None:
         setup.require_document_class(self.doc_class)
         # TODO enable more backref methods
-        backref_methods = (LatexBackrefMethod.Cleveref, LatexBackrefMethod.Hyperlink)
+        backref_methods = (
+            LatexBackrefMethod.Cleveref,
+            LatexBackrefMethod.Hyperlink,
+            LatexBackrefMethod.ManualRef,
+        )
         # Declare the preexisting LaTeX counters
         counters = [
             (None, "part"),
@@ -125,7 +129,7 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
                     "Appendix", LatexCounterStyle.AlphUpper
                 ),
             ),
-            (LatexBackrefMethod.Hyperlink),  # TODO make this work with cleveref
+            backref_methods,
         )
         setup.counter_resolver.declare_tt_counter("appendix", "appendix")
 
@@ -170,8 +174,15 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
         renderer: LatexRenderer,
         fmt: FmtEnv,
     ) -> None:
-        # Step the LaTeX counter
-        renderer.emit_raw(r"\stepcounter{appendix}")
+        # Step the LaTeX counter - do this before the section header so that when you click it zips to the start of the header.
+        renderer.emit_comment_headline(
+            "New appendix - refstep the counter here so the label attaches to it"
+        )
+        # This is imperfect - FUTURE better appendix counter
+        renderer.emit_raw("\\refstepcounter{appendix}")
+        renderer.emit(
+            head.anchor
+        )  # i.e. r"\refstepcounter{appendix}\label{appendix:1}"
         # TODO Will this screw up the ToC?
         # Emit \chapter* or \section* with the counter hardcoded
         latex_name = "section" if self.doc_class == "article" else "chapter"
@@ -183,10 +194,6 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
             Text(" "),
             head.title,
         )  # i.e. r"\section*" + "{Appendix A --- Section Name}"
-        if head.anchor:
-            renderer.emit(
-                head.anchor
-            )  # i.e. r"\section*{Section Name}\label{h1:Section_Name}"
         renderer.emit_break_paragraph()
         # Now emit the rest of the damn doc :)
         renderer.emit_blockscope(contents)
