@@ -109,9 +109,10 @@ class PrimitivesPlugin(abc.ABC, EnvPlugin):
         return PassthroughBuilder() if cond else NullBuilder()
 
     @abc.abstractmethod
-    def raw(self, lang: str) -> UserRawScopeBuilder:
+    def raw(self, lang: str, **kwargs: Any) -> UserRawScopeBuilder:
         """
         If the document is being rendered in the given language, emit the raw content directly into the output.
+        kwargs are included to communicate extra information to specific languages, and arbitrary kwargs should never cause type errors
         """
         ...
 

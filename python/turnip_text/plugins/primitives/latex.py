@@ -1,3 +1,5 @@
+from typing import Any
+
 from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.helpers import (
@@ -11,7 +13,8 @@ from turnip_text.render.latex.setup import LatexPlugin, LatexSetup
 
 
 class LatexPrimitivesPlugin(LatexPlugin, PrimitivesPlugin):
-    def raw(self, lang: str) -> UserRawScopeBuilder:
+    # TODO add a preamble=True flag to append code to the preamble?
+    def raw(self, lang: str, **kwargs: Any) -> UserRawScopeBuilder:
         lang = lang.lower().strip()
         if lang in ["tex", "latex"]:
             return PassthroughRawBuilder()

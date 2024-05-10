@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Sequence
 
 from turnip_text import Block, Header, Inline, Raw, RawScopeBuilder
 from turnip_text.build_system import BuildSystem
@@ -32,7 +32,7 @@ class MarkdownOnlyRawWrapper(UserRawScopeBuilder):
 
 
 class MarkdownPrimitivesPlugin(MarkdownPlugin, PrimitivesPlugin):
-    def raw(self, lang: str) -> UserRawScopeBuilder:
+    def raw(self, lang: str, **kwargs: Any) -> UserRawScopeBuilder:
         lang = lang.lower().strip()
         if lang in ["md", "markdown"]:
             # Markdown is only allowed in contexts where we aren't doing HTML.
