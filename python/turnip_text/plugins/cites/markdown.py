@@ -5,10 +5,11 @@ from typing import Generator, List, Optional, Set, Tuple
 
 import citeproc  # type: ignore
 
-from turnip_text import Text
+from turnip_text import Block, BlockScope, Raw, Text
 from turnip_text.build_system import BuildSystem, ProjectRelativePath
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import FmtEnv
+from turnip_text.helpers import paragraph_of
 from turnip_text.plugins.cites import (
     Bibliography,
     Citation,
@@ -384,15 +385,17 @@ class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
         renderer: MarkdownRenderer,
         fmt: FmtEnv,
     ) -> None:
-        def bib_cites_gen() -> Generator[None, None, None]:
-            for citekey, item in zip(self._bib.keys, self._bib.bibliography()):
-                renderer.emit_empty_tag("a", f'id="cite-{citekey}"')
-                renderer.emit_raw(str(item))
-                yield None
-
         # The citeproc formatter producess HTML
         with renderer.html_mode():
-            renderer.emit_join_gen(
-                bib_cites_gen(),
-                renderer.emit_break_paragraph,
+            renderer.emit(
+                BlockScope(
+                    [
+                        paragraph_of(
+                            Raw(f'<a id="cite-{citekey}"></a>{str(bibitem_html)}')
+                        )
+                        for citekey, bibitem_html in zip(
+                            self._bib.keys, self._bib.bibliography()
+                        )
+                    ]
+                )
             )

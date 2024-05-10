@@ -5,6 +5,7 @@ from turnip_text.build_system import BuildSystem
 from turnip_text.doc.anchors import Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import DocEnv, FmtEnv
+from turnip_text.helpers import paragraph_of
 from turnip_text.plugins.footnote import (
     FootnoteContents,
     FootnoteEnvPlugin,
@@ -82,7 +83,6 @@ class MarkdownFootnotePlugin_AtEnd(MarkdownPlugin, FootnoteEnvPlugin):
                 anchor,
                 renderer.anchor_to_ref_text(anchor),
                 Text(f": "),
-                footnote.contents,
+                paragraph_of(footnote.contents),
             )
-            renderer.emit_break_sentence()
-        renderer.emit_break_paragraph()
+            renderer.emit_break_paragraph()
