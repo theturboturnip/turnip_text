@@ -237,6 +237,7 @@ class LatexRenderer(Renderer):
                                     latex_counter_spec.default_reset_latex_counter  # type: ignore[arg-type]
                                 )
                             )
+                            self.emit_break_sentence()
                         else:
                             # counterwithin = pass in (slave counter) (new master counter) and it will set the connection to (new master counter)
                             self.emit_macro("counterwithin")
@@ -244,6 +245,7 @@ class LatexRenderer(Renderer):
                             self.emit_braced(
                                 Raw(latex_counter_spec.reset_latex_counter)
                             )
+                            self.emit_break_sentence()
                 else:
                     if tt_counter:
                         self.emit_comment_line(
@@ -259,6 +261,7 @@ class LatexRenderer(Renderer):
                         self.emit_sqr_bracketed(
                             Raw(latex_counter_spec.reset_latex_counter)
                         )
+                    self.emit_break_sentence()
 
                 # Setup counter numbering
                 # A counter's formatting in LaTeX is ({parent counter}{parent counter.postfix_for_child}{numbering(this counter)})
