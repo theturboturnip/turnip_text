@@ -437,5 +437,6 @@ class RenderPlugin(Generic[TRenderSetup], EnvPlugin):
     # Return a list of (filter, visitor) functions which are run in parallel over a single DFS pass on the frozen document.
     # Right now there are no usecases for emitting serial sets of DFS passes, because these fundamentally don't mutate state.
     # If you have some complex computation on the state of the document, you can glean all necessary information up front and then do the computation.
+    # TODO make this empty-list instead of None
     def _make_visitors(self) -> Optional[List[Tuple[VisitorFilter, VisitorFunc]]]:
         return None

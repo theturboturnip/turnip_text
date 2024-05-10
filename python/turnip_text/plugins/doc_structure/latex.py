@@ -1,12 +1,13 @@
-from typing import Iterator, List, Literal, Optional, Tuple
+from typing import Iterator, List, Literal, Optional, Tuple, cast
 
-from turnip_text import BlockScope, DocSegment, Text
+from turnip_text import BlockScope, DocSegment, Raw, Text
 from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.doc_structure import (
     AppendixHeader,
     StructureEnvPlugin,
     StructureHeader,
+    TableOfContents,
 )
 from turnip_text.render.latex.backrefs import LatexBackrefMethod
 from turnip_text.render.latex.counter_resolver import LatexCounterDecl
@@ -62,9 +63,7 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
     ) -> None:
         super().__init__()
         if doc_class == "article" and h1 == "chapter":
-            raise ValueError(
-                "'chapter's  are not available in document class 'article'"
-            )
+            raise ValueError("'chapter's are not available in document class 'article'")
         # Generate a list like level_to_latex but where index [1] is the value specified in h1.
         self.level_to_latex = LatexDocumentClassPlugin_Basic.level_to_latex[
             LatexDocumentClassPlugin_Basic.level_to_latex.index(h1) - 1 :
@@ -134,8 +133,38 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
         setup.counter_resolver.declare_tt_counter("appendix", "appendix")
 
         setup.emitter.register_header(StructureHeader, self._emit_structure_header)
-        # TODO test this
         setup.emitter.register_header(AppendixHeader, self._emit_appendix_header)
+        setup.emitter.register_block_or_inline(TableOfContents, self._emit_toc)
+
+    def _emit_toc(
+        self,
+        toc: TableOfContents,
+        renderer: LatexRenderer,
+        fmt: FmtEnv,
+    ) -> None:
+        if toc.depth <= 0:
+            return
+
+        # Figure out the LaTeX depth to set \tocdepth to
+        # Take our turnip_text depth, convert it to a LaTeX macro, and map that macro to LaTeX depth.
+        LATEX_TO_DEPTH = {
+            "part": -1,
+            "chapter": 0,
+            "section": 1,
+            "subsection": 2,
+            "subsubsection": 3,
+            "paragraph": 4,
+            "subparagraph": 5,
+        }
+        # level_to_latex[0] = None, toc.depth is not 0
+        latex_macro_to_include = cast(str, self.level_to_latex[toc.depth])
+        requested_latex_depth = LATEX_TO_DEPTH[latex_macro_to_include]
+        renderer.emit_macro("setcounter")
+        renderer.emit_braced(Raw("tocdepth"))
+        renderer.emit_braced(Raw(str(requested_latex_depth)))
+        renderer.emit_break_sentence()
+        renderer.emit_macro("tableofcontents")
+        renderer.emit_break_paragraph()
 
     def _emit_structure_header(
         self,
@@ -183,7 +212,7 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
         renderer.emit(
             head.anchor
         )  # i.e. r"\refstepcounter{appendix}\label{appendix:1}"
-        # TODO Will this screw up the ToC?
+        # TODO This doesn't appear in the ToC at allllllllllll
         # Emit \chapter* or \section* with the counter hardcoded
         latex_name = "section" if self.doc_class == "article" else "chapter"
         renderer.emit_macro(latex_name + "*")

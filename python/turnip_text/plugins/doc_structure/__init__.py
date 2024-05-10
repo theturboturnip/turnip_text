@@ -6,7 +6,7 @@ from typing_extensions import override
 from turnip_text import Block, Header, Inline, InlineScope, InlineScopeBuilder
 from turnip_text.doc.anchors import Anchor
 from turnip_text.doc.user_nodes import UserNode
-from turnip_text.env_plugins import DocEnv, EnvPlugin, in_doc
+from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
 from turnip_text.helpers import UserInlineScopeBuilder
 
 
@@ -36,7 +36,7 @@ class AppendixHeader(UserNode, Header):
 
 @dataclass(frozen=True)
 class TableOfContents(Block):
-    pass
+    depth: int
 
 
 class StructureHeaderGenerator(UserInlineScopeBuilder):
@@ -92,7 +92,7 @@ class StructureEnvPlugin(EnvPlugin):
     ) -> Sequence[type[Block] | type[Inline] | type[Header]]:
         return (
             StructureHeader,
-            # TableOfContents, # TODO
+            TableOfContents,
         )
 
     @in_doc
@@ -138,7 +138,6 @@ class StructureEnvPlugin(EnvPlugin):
             doc_env, weight=1, label=label, num=True, appendix=True
         )
 
-    # TODO
-    # @pure_fmt
-    # def toc(self, fmt: FmtEnv) -> TableOfContents:
-    #     return TableOfContents()
+    @pure_fmt
+    def toc(self, fmt: FmtEnv, depth: int = 3) -> TableOfContents:
+        return TableOfContents(depth)

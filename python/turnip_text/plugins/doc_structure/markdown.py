@@ -1,12 +1,16 @@
-from typing import Iterator, Union
+from typing import Iterator, List, Tuple, Union
 
-from turnip_text import BlockScope, DocSegment, Raw
+from turnip_text import BlockScope, DocSegment, Raw, Text
 from turnip_text.build_system import BuildSystem
+from turnip_text.doc.anchors import Backref
+from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import FmtEnv
+from turnip_text.helpers import paragraph_of
 from turnip_text.plugins.doc_structure import (
     AppendixHeader,
     StructureEnvPlugin,
     StructureHeader,
+    TableOfContents,
 )
 from turnip_text.render.manual_numbering import SimpleCounterFormat
 from turnip_text.render.markdown.renderer import (
@@ -25,6 +29,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
         self._has_chapter = use_chapters
 
     def _register(self, build_sys: BuildSystem, setup: MarkdownSetup) -> None:
+        setup.emitter.register_block_or_inline(TableOfContents, self._emit_toc)
         setup.emitter.register_header(StructureHeader, self._emit_structure)
         setup.emitter.register_header(AppendixHeader, self._emit_appendix)
         setup.define_counter_rendering(
@@ -68,6 +73,49 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
         setup.request_counter_parent("h2", parent_counter="h1")
         setup.request_counter_parent("h3", parent_counter="h2")
         setup.request_counter_parent("h4", parent_counter="h3")
+
+    known_headers: List[Union[StructureHeader, AppendixHeader]]
+
+    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
+        self.known_headers = []
+
+        def visit_header(s: Union[StructureHeader, AppendixHeader]) -> None:
+            self.known_headers.append(s)
+
+        return [((StructureHeader, AppendixHeader), visit_header)]
+
+    def _emit_toc(
+        self,
+        toc: TableOfContents,
+        renderer: MarkdownRenderer,
+        fmt: FmtEnv,
+    ) -> None:
+        renderer.emit(
+            fmt.itemize
+            @ [
+                fmt.item
+                @ BlockScope(
+                    [
+                        paragraph_of(
+                            Backref(
+                                id=header.anchor.id,
+                                kind=header.anchor.kind,
+                                label_contents=(
+                                    fmt.bold
+                                    @ [
+                                        renderer.anchor_to_number_text(header.anchor),
+                                        Text(" - "),
+                                        header.title,
+                                    ]
+                                ),
+                            )
+                        )
+                    ]
+                )
+                for header in self.known_headers
+                if (header.weight <= toc.depth) and (header.anchor)
+            ]
+        )
 
     def _emit_structure(
         self,

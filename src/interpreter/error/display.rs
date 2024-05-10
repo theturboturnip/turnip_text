@@ -596,7 +596,7 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                 notes.push(format!("{stringified_obj} is a type, not an object - maybe you need to construct an instance?"));
             } else if obj.is_callable() {
                 // Otherwise if it's callable, suggest calling it
-                notes.push("This object is callable - try calling it to get a builder?".into());
+                notes.push("This object is callable - try calling it?".into());
             }
             // If it's a different builder, suggest building with the correct argument
             if matches!(BlockScopeBuilder::fits_typeclass(obj), Ok(true)) {
