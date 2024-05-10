@@ -155,6 +155,12 @@ def resolve_package_options(
             if "apacite" in all_packages and "normalem" not in deduped_opts:
                 deduped_opts["normalem"] = None
             return as_list(deduped_opts)
+        case "hyperref":
+            deduped_opts = remove_dupe_options(package, opts)
+            # Section 11 of hyperref documentation
+            if "footnote" in all_packages:
+                deduped_opts["hyperfootnotes"] = "false"
+            return as_list(deduped_opts)
         case _:
             deduped_opts = remove_dupe_options(package, opts)
             return as_list(deduped_opts)
@@ -238,6 +244,66 @@ def order_packages(
         if incompat:
             raise_compat_error(
                 "biblatex", *incompat, reason="BibLaTeX documentation says so"
+            )
+
+    # From hyperref docs:
+    # "Package longtable must be put before hyperref and arydshln,
+    # hyperref after arydshln generates an error"
+    sorter.add("hyperref", "longtable")
+    sorter.add("arydshln", "longtable")
+    sorter.add("arydshln", "hyperref")
+
+    # Other from hyperref docs
+    sorter.add("titleref", "nameref")
+    sorter.add("hyperref", "titleref")
+
+    # Technically ltabptch not necessary anymore...
+    if "longtable" in packages:
+        sorter.add("ltabptch", "longtable")
+
+    if "hyperref" in packages:
+        # Section 11 of hyperref documentation
+
+        sorter.add("algorithm", "hyperref")
+        sorter.add(
+            "amsrefs", "hyperref"
+        )  # hyperref docs note it is unclear if this is necessary
+        sorter.add(
+            "chappg", "hyperref"
+        )  # chappg uses something that hyperref redefines
+        sorter.add("dblaccnt", "hyperref")
+        sorter.add("ellipsis", "hyperref")
+        sorter.add("hyperref", "float")
+        sorter.add("linguex", "hyperref")
+        sorter.add("hyperref", "longtable")
+        sorter.add("hyperref", "ltabptch")
+        sorter.add("hyperref", "multind")
+        sorter.add("hyperref", "natbib")
+        sorter.add("hyperref", "setspace")
+        sorter.add("hyperref", "vietnam")
+
+        # TODO how to handle tabularx
+        # "Linked footnotes are not supported inside environment tabularx, because they uses the optional argument of \footnotetext, see section ‘Limitations’.
+
+        incompat = {
+            "bibentry",  # Technically this requires a workaround
+            "bigfoot",
+            "count1to",  # Technically this requires a workaround
+            "easyeqn",
+            "endnotes",
+            # foiltex < 2.1.4b fails, ignoring because people must have upgraded by now
+            "mathenv",  # Breaks eqnarray
+            "minitoc-hyper",
+            # "nomencl", # it's substandard because it doesn't link to the nomenclature
+            "ntheorem",
+            "ntheorem-hyper",
+            "prettyref",  # Requires a workaround
+            "titlesec",
+        }
+        incompat.intersection_update(*packages.keys())
+        if incompat:
+            raise_compat_error(
+                "hyperref", *incompat, reason="hyperref documentation says so"
             )
 
     return [
