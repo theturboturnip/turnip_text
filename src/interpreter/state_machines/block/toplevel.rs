@@ -15,21 +15,28 @@ use crate::{
 
 use super::{BlockLevelProcessor, BlockMode};
 
-/// At the top level of the document, headers are allowed and manipulate the InterimDocumentStructure.
+/// At the top level of the document, headers are allowed and manipulate the document.
 pub struct TopLevelBlockMode {
-    structure: InterimDocument,
+    document: Py<Document>,
+    /// The BlockScope associated with the most recently created DocSegment.
+    /// This will always be the bottommost DocSegment of the document.
+    topmost_block: Py<BlockScope>,
 }
 impl BlockLevelProcessor<TopLevelBlockMode> {
     pub fn new(py: Python) -> TTResult<Self> {
+        let document = Document::empty(py).expect_pyok("Allocating Document");
+        let topmost_block = document.contents.clone_ref(py);
+        let document = py_internal_alloc(py, document)?;
         Ok(Self {
             inner: TopLevelBlockMode {
-                structure: InterimDocument::new(py)?,
+                document,
+                topmost_block,
             },
             expects_n_blank_lines_after: None,
         })
     }
     pub fn finalize(self) -> Py<Document> {
-        self.inner.structure.finalize()
+        self.inner.document
     }
 }
 impl BlockMode for TopLevelBlockMode {
@@ -53,7 +60,12 @@ impl BlockMode for TopLevelBlockMode {
         header: PyTcRef<Header>,
         _header_ctx: ParseContext,
     ) -> TTResult<ProcStatus> {
-        self.structure.push_segment_header(py, header)?;
+        let bound_document = self.document.bind(py).borrow();
+        let docsegment = bound_document
+            .append_header(py, header.bind(py))
+            .expect_pyok("DocSegment::append_header with presumed Header");
+        self.topmost_block = docsegment.borrow().contents.clone_ref(py);
+
         Ok(ProcStatus::Continue)
     }
 
@@ -63,46 +75,11 @@ impl BlockMode for TopLevelBlockMode {
         block: BlockElem,
         _block_ctx: ParseContext,
     ) -> TTResult<ProcStatus> {
-        self.structure.push_to_topmost_block(py, block.bind(py))?;
-        Ok(ProcStatus::Continue)
-    }
-}
-
-/// Provides a simple interface to a [Document] in-progress
-/// FUTURE could merge into the TopLevelBlock mode but that might make code less clean
-pub struct InterimDocument {
-    document: Py<Document>,
-    topmost_block: Py<BlockScope>,
-}
-impl InterimDocument {
-    pub fn new(py: Python) -> TTResult<Self> {
-        let document = Document::empty(py).expect_pyok("Allocating Document");
-        let topmost_block = document.contents.clone_ref(py);
-        let document = py_internal_alloc(py, document)?;
-        Ok(Self {
-            document,
-            topmost_block,
-        })
-    }
-
-    pub fn finalize(self) -> Py<Document> {
-        self.document
-    }
-
-    fn push_segment_header(&mut self, py: Python, header: PyTcRef<Header>) -> TTResult<()> {
-        let bound_document = self.document.bind(py).borrow();
-        let docsegment = bound_document
-            .append_header(py, header.bind(py))
-            .expect_pyok("push_segment_header");
-        self.topmost_block = docsegment.borrow().contents.clone_ref(py);
-        Ok(())
-    }
-
-    fn push_to_topmost_block(&self, py: Python, block: &Bound<'_, PyAny>) -> TTResult<()> {
-        Ok(self
-            .topmost_block
+        self.topmost_block
             .borrow_mut(py)
-            .append_block(block)
-            .expect_pyok("BlockScope::append_block with presumed Block"))
+            .append_block(block.bind(py))
+            .expect_pyok("BlockScope::append_block with presumed Block");
+
+        Ok(ProcStatus::Continue)
     }
 }
