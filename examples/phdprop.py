@@ -3,22 +3,15 @@ import json
 from pathlib import Path
 
 from turnip_text import *
-from turnip_text.build_system import (
-    InMemoryBuildSystem,
-    SimpleBuildSystem,
-    SplitBuildSystem,
-)
+from turnip_text.build_system import InMemoryBuildSystem, SimpleBuildSystem
 from turnip_text.render.latex.backrefs import LatexBackrefMethod
 from turnip_text.render.latex.renderer import LatexCounterStyle
 from turnip_text.render.latex.setup import LatexSetup
 from turnip_text.render.latex.std_plugins import STD_LATEX_ARTICLE_RENDER_PLUGINS
-from turnip_text.render.manual_numbering import SimpleCounterFormat
-from turnip_text.render.markdown.renderer import (
-    HtmlSetup,
-    MarkdownCounterStyle,
-    MarkdownSetup,
-)
+from turnip_text.render.manual_numbering import SimpleCounterFormat, SimpleCounterStyle
+from turnip_text.render.markdown.renderer import HtmlSetup, MarkdownSetup
 from turnip_text.render.markdown.std_plugins import STD_MARKDOWN_RENDER_PLUGINS
+from turnip_text.render.pandoc import PandocSetup
 from turnip_text.system import parse_and_emit
 
 
@@ -40,6 +33,7 @@ if __name__ == "__main__":
     parser.add_argument("-olatex", type=str)
     parser.add_argument("-omd", type=str)
     parser.add_argument("-ohtml", type=str)
+    parser.add_argument("-odocx", type=str)
     args = parser.parse_args()
 
     real_build_sys = SimpleBuildSystem(
@@ -47,7 +41,7 @@ if __name__ == "__main__":
     )
     in_memory_build_sys = InMemoryBuildSystem(input_files={})
 
-    # Parse into a BuildSystem which always takes input from the filesystem, but either writes out to an in-memory filesystem or the real filesystem depending on the requested output argument.
+    # LaTeX
     parse_and_emit(
         real_build_sys,
         "phdprop.ttext",
@@ -76,7 +70,7 @@ if __name__ == "__main__":
         ),
     )
 
-    # Parse into a BuildSystem which always takes input from the filesystem, but either writes out to an in-memory filesystem or the real filesystem depending on the requested output argument.
+    # Markdown
     parse_and_emit(
         real_build_sys,
         "phdprop.ttext",
@@ -88,16 +82,14 @@ if __name__ == "__main__":
         ),
     )
 
-    # Parse into a BuildSystem which always takes input from the filesystem, but either writes out to an in-memory filesystem or the real filesystem depending on the requested output argument.
+    # HTML
     parse_and_emit(
         real_build_sys,
         "phdprop.ttext",
         args.ohtml,
         HtmlSetup(
             requested_counter_formatting={
-                "footnote": SimpleCounterFormat(
-                    "", style=MarkdownCounterStyle.RomanLower
-                )
+                "footnote": SimpleCounterFormat("", style=SimpleCounterStyle.RomanLower)
             },
             requested_counter_links=[("h1", "footnote")],
         ),
@@ -106,6 +98,9 @@ if __name__ == "__main__":
             bib="phdprop_bib_csl.json",
         ),
     )
+
+    # Pandoc (autodetects from output, in this case DOCX)
+    parse_and_emit(real_build_sys, "phdprop.ttext", "document.docx", PandocSetup(), [])
 
     for (
         output_file_name,

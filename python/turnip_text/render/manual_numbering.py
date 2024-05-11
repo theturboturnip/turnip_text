@@ -1,8 +1,9 @@
 import string
 from dataclasses import dataclass
+from enum import Enum
 from typing import Generic, Protocol, Sequence, Tuple, TypeVar
 
-from turnip_text import Inline, InlineScope, Text
+from turnip_text import Text
 
 
 class ManualNumbering(Protocol):
@@ -74,6 +75,29 @@ UPPER_ROMAN_NUMBERING = RomanManualNumbering(upper=True)
 LOWER_ALPH_NUMBERING = BasicManualNumbering("0" + string.ascii_lowercase)
 UPPER_ALPH_NUMBERING = BasicManualNumbering("0" + string.ascii_uppercase)
 
+
+class SimpleCounterStyle(Enum):
+    """
+    Possible numbering styles for a counter. This is only for the counter number itself, not the surrounding content e.g. dots between numbers.
+    """
+
+    Arabic = "arabic"
+    AlphLower = "alph"
+    AlphUpper = "Alph"
+    RomanLower = "roman"
+    RomanUpper = "Roman"
+
+    def __getitem__(self, num: int) -> str:
+        return COUNTER_STYLE_TO_MANUAL[self][num]
+
+
+COUNTER_STYLE_TO_MANUAL = {
+    SimpleCounterStyle.Arabic: ARABIC_NUMBERING,
+    SimpleCounterStyle.AlphLower: LOWER_ALPH_NUMBERING,
+    SimpleCounterStyle.AlphUpper: UPPER_ALPH_NUMBERING,
+    SimpleCounterStyle.RomanLower: LOWER_ROMAN_NUMBERING,
+    SimpleCounterStyle.RomanUpper: UPPER_ROMAN_NUMBERING,
+}
 
 TNumbering = TypeVar("TNumbering", bound=ManualNumbering)
 

@@ -42,7 +42,6 @@ def smart_arg_split(inner: str) -> List[str]:
     assert depth == 0
     if item_in_progress:
         items.append(item_in_progress)
-    print(inner, items)
     return items
 
 
@@ -85,6 +84,44 @@ def parse_pan_type_str(s: str, on_fwd_ref: Callable[[str], None]) -> str:
 PAN_CONSTRUCTOR_REGEX = re.compile(r"(\w+)\((.*)\)$")
 
 
+def constructor_typedef(
+    constructor_str: str, on_sub_type: Callable[[str], None], superclass: str = ""
+) -> Tuple[str, str]:
+    # Assume this isn't of a union with a subclass
+    match = PAN_CONSTRUCTOR_REGEX.match(constructor_str.strip())
+    if not match:
+        raise RuntimeError(f"data_type {constructor_str} didn't match regex")
+    subclass_type_name = match.group(1)
+    subclass_type_args = [
+        arg for arg in smart_arg_split(match.group(2).strip()) if arg.strip()
+    ]
+    arg_type_list = (
+        [parse_pan_type_str(arg, on_sub_type) for arg in subclass_type_args]
+        if subclass_type_args
+        else []
+    )
+    init_arg_list = [f"arg{i}: {arg_type}" for i, arg_type in enumerate(arg_type_list)]
+
+    class_def = f"class {subclass_type_name}"
+    if superclass:
+        class_def += f"({superclass})"
+    class_def += (
+        f":\n\tdef __init__(self, {', '.join(init_arg_list)}) -> None:\n\t\t...\n"
+    )
+
+    for i, arg_type in enumerate(arg_type_list):
+        if len(arg_type_list) > 1:
+            class_def += f"\t@overload\n"
+        class_def += (
+            f"\tdef __getitem__(self, index: Literal[{i}]) -> {arg_type}:\n\t\t...\n"
+        )
+    # if len(arg_type_list) > 1:
+    #     # base case for __getitem__
+    #     class_def += f"\tdef __getitem__(self, index: int) -> Any:\n\t\t...\n"
+
+    return subclass_type_name, class_def
+
+
 def main(out_path: str) -> None:
     # A stack of types to examine
     type_queue: List[str] = ["Pandoc"]
@@ -99,51 +136,29 @@ def main(out_path: str) -> None:
         type_queue.append(t)
 
     while type_queue:
-        to_examine = type_queue.pop()
-        if to_examine in examined_types:
+        type_name = type_queue.pop()
+        if type_name in examined_types:
             continue
 
-        actual_type: Type = getattr(pan, to_examine)
+        actual_type: Type = getattr(pan, type_name)
 
         if actual_type in builtin_types:
-            type_defs[to_examine] = f"{to_examine} = {actual_type.__name__}"
+            type_defs[type_name] = f"{type_name} = {actual_type.__name__}"
         elif issubclass(actual_type, pan.TypeDef):
             # This is a basic typedef
             # e.g. pan.Attr -> 'Attr = (Text, [Text], [(Text, Text)])
             rhs = str(actual_type).split(" = ")[1]
             # Parse the RHS, adding new types to the list if they're included inside
-            type_defs[to_examine] = (
-                f"{to_examine} = {parse_pan_type_str(rhs, add_type)}"
-            )
+            type_defs[type_name] = f"{type_name} = {parse_pan_type_str(rhs, add_type)}"
         elif issubclass(actual_type, pan.Data):
             if issubclass(actual_type, pan.Constructor):
-                data_type = str(actual_type)
-                # Assume this isn't of a union with a subclass
-                match = PAN_CONSTRUCTOR_REGEX.match(data_type.strip())
-                if not match:
-                    raise RuntimeError(f"data_type {data_type} didn't match regex")
-                subclass_type_name = match.group(1)
-                subclass_type_args = [
-                    arg
-                    for arg in smart_arg_split(match.group(2).strip())
-                    if arg.strip()
-                ]
-                arg_list = (
-                    [
-                        f"arg{i}: {parse_pan_type_str(arg, add_type)}"
-                        for (i, arg) in enumerate(subclass_type_args)
-                    ]
-                    if subclass_type_args
-                    else []
-                )
-                type_defs[subclass_type_name] = (
-                    f"class {subclass_type_name}:\n\tdef __init__(self, {', '.join(arg_list)}) -> None:\n\t\t...\n"
-                )
-                examined_types.add(subclass_type_name)
+                _, class_def = constructor_typedef(str(actual_type), add_type)
+                type_defs[type_name] = class_def
+                examined_types.add(type_name)
             else:
                 # Abstract datatype = a union type
                 # Empty class definition
-                type_defs[to_examine] = f"class {to_examine}:\n\tpass\n"
+                type_defs[type_name] = f"class {type_name}:\n\tpass\n"
                 # Add the union elements to the search stack
                 data_types = str(actual_type).split(" = ")[1].split("|")
                 # str(actual_type) formatted e.g. as
@@ -153,38 +168,22 @@ def main(out_path: str) -> None:
                 #       | CodeBlock(Attr, Text)
                 # => take RHS to remove Block = , split on |, then strip and take the first part before ( (if present)
                 for data_type in data_types:
-                    match = PAN_CONSTRUCTOR_REGEX.match(data_type.strip())
-                    if not match:
-                        raise RuntimeError(f"data_type {data_type} didn't match regex")
-                    subclass_type_name = match.group(1)
-                    subclass_type_args = [
-                        arg
-                        for arg in smart_arg_split(match.group(2).strip())
-                        if arg.strip()
-                    ]
-                    print(data_type, subclass_type_name, subclass_type_args)
-                    arg_list = (
-                        [
-                            f"arg{i}: {parse_pan_type_str(arg, add_type)}"
-                            for (i, arg) in enumerate(subclass_type_args)
-                        ]
-                        if subclass_type_args
-                        else []
+                    subclass_type_name, class_def = constructor_typedef(
+                        data_type, add_type, superclass=type_name
                     )
-                    type_defs[subclass_type_name] = (
-                        f"class {subclass_type_name}({to_examine}):\n\tdef __init__(self, {', '.join(arg_list)})-> None:\n\t\t...\n"
-                    )
+                    type_defs[subclass_type_name] = class_def
                     examined_types.add(subclass_type_name)
         else:
             raise RuntimeError(
-                f"Don't know how to handle type {to_examine} = {actual_type}"
+                f"Don't know how to handle type {type_name} = {actual_type}"
             )
 
-        examined_types.add(to_examine)
+        examined_types.add(type_name)
 
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("# Autogenerated by generate_pandoc_typestub.py\n\n")
-        f.write("from typing import Dict, List, Tuple, Optional\n\n")
+        f.write("from typing import Dict, List, Tuple, Optional, Literal\n")
+        f.write("from typing_extensions import overload\n\n")
         for type_name, type_def in type_defs.items():
             f.write(type_def)
             f.write("\n")

@@ -1,6 +1,5 @@
 import html
 from contextlib import contextmanager
-from enum import Enum
 from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple
 
 from turnip_text import Block, Document, Header, Inline, Paragraph, Text
@@ -21,41 +20,9 @@ from turnip_text.render.counters import (
     CounterState,
     build_counter_hierarchy,
 )
-from turnip_text.render.manual_numbering import (
-    ARABIC_NUMBERING,
-    LOWER_ALPH_NUMBERING,
-    LOWER_ROMAN_NUMBERING,
-    UPPER_ALPH_NUMBERING,
-    UPPER_ROMAN_NUMBERING,
-    SimpleCounterFormat,
-)
+from turnip_text.render.manual_numbering import SimpleCounterFormat, SimpleCounterStyle
 
-
-class MarkdownCounterStyle(Enum):
-    """
-    Possible numbering styles for a counter. This is only for the counter number itself, not the surrounding content e.g. dots between numbers.
-    """
-
-    Arabic = "arabic"
-    AlphLower = "alph"
-    AlphUpper = "Alph"
-    RomanLower = "roman"
-    RomanUpper = "Roman"
-
-    def __getitem__(self, num: int) -> str:
-        return COUNTER_STYLE_TO_MANUAL[self][num]
-
-
-COUNTER_STYLE_TO_MANUAL = {
-    MarkdownCounterStyle.Arabic: ARABIC_NUMBERING,
-    MarkdownCounterStyle.AlphLower: LOWER_ALPH_NUMBERING,
-    MarkdownCounterStyle.AlphUpper: UPPER_ALPH_NUMBERING,
-    MarkdownCounterStyle.RomanLower: LOWER_ROMAN_NUMBERING,
-    MarkdownCounterStyle.RomanUpper: UPPER_ROMAN_NUMBERING,
-}
-
-
-MarkdownCounterFormat = SimpleCounterFormat[MarkdownCounterStyle]
+MarkdownCounterFormat = SimpleCounterFormat[SimpleCounterStyle]
 
 
 class MarkdownRenderer(TextRenderer):

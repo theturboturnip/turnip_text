@@ -1,6 +1,6 @@
 from typing import List, Sequence, Tuple
 
-from turnip_text import Block, BlockScope, DocSegment, Document, Header, Inline, Text
+from turnip_text import Block, Document, Header, Inline, Text
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc.anchors import Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
@@ -11,9 +11,8 @@ from turnip_text.plugins.footnote import (
     FootnoteEnvPlugin,
     FootnoteRef,
 )
-from turnip_text.render.manual_numbering import SimpleCounterFormat
+from turnip_text.render.manual_numbering import SimpleCounterFormat, SimpleCounterStyle
 from turnip_text.render.markdown.renderer import (
-    MarkdownCounterStyle,
     MarkdownPlugin,
     MarkdownRenderer,
     MarkdownSetup,
@@ -53,7 +52,7 @@ class MarkdownFootnotePlugin_AtEnd(MarkdownPlugin, FootnoteEnvPlugin):
         setup.emitter.register_block_or_inline(FootnoteList, self._emit_footnotes)
         setup.define_counter_rendering(
             "footnote",
-            SimpleCounterFormat(name="^", style=MarkdownCounterStyle.Arabic),
+            SimpleCounterFormat(name="^", style=SimpleCounterStyle.Arabic),
         )
 
     def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:

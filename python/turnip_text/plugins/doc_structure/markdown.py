@@ -13,9 +13,8 @@ from turnip_text.plugins.doc_structure import (
     TableOfContents,
     TitleBlock,
 )
-from turnip_text.render.manual_numbering import SimpleCounterFormat
+from turnip_text.render.manual_numbering import SimpleCounterFormat, SimpleCounterStyle
 from turnip_text.render.markdown.renderer import (
-    MarkdownCounterStyle,
     MarkdownPlugin,
     MarkdownRenderer,
     MarkdownSetup,
@@ -38,35 +37,35 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
             "h1",
             SimpleCounterFormat(
                 name=("chapter" if self._has_chapter else "section"),
-                style=MarkdownCounterStyle.Arabic,
+                style=SimpleCounterStyle.Arabic,
             ),
         )
         setup.define_counter_rendering(
             "h2",
             SimpleCounterFormat(
                 name=("section" if self._has_chapter else "subsection"),
-                style=MarkdownCounterStyle.Arabic,
+                style=SimpleCounterStyle.Arabic,
             ),
         )
         setup.define_counter_rendering(
             "h3",
             SimpleCounterFormat(
                 name=("subsection" if self._has_chapter else "subsubsection"),
-                style=MarkdownCounterStyle.Arabic,
+                style=SimpleCounterStyle.Arabic,
             ),
         )
         setup.define_counter_rendering(
             "h4",
             SimpleCounterFormat(
                 name=("subsubsection" if self._has_chapter else "subsubsubsection"),
-                style=MarkdownCounterStyle.Arabic,
+                style=SimpleCounterStyle.Arabic,
             ),
         )
         setup.define_counter_rendering(
             "appendix",
             SimpleCounterFormat(
                 name="appendix",
-                style=MarkdownCounterStyle.AlphUpper,
+                style=SimpleCounterStyle.AlphUpper,
             ),
         )
         # TODO this shouldn't be necessary, there's a bug in the counter code

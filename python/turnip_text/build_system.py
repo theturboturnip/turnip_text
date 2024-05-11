@@ -55,6 +55,12 @@ class JobFile(abc.ABC):
 
 # TODO accept all other params to open()?
 class JobInputFile(JobFile, abc.ABC):
+    @property
+    @abc.abstractmethod
+    def path(self) -> ProjectRelativePath:
+        """The internal path of this file. Always exists, not usable with filesystem functions."""
+        ...
+
     # TODO define how multiple-reader is handled
     @abc.abstractmethod
     def open_read_bin(self) -> ContextManager[ByteReader]: ...
@@ -64,6 +70,12 @@ class JobInputFile(JobFile, abc.ABC):
 
 
 class JobOutputFile(JobFile, abc.ABC):
+    @property
+    @abc.abstractmethod
+    def path(self) -> OutputRelativePath:
+        """The internal path of this file. Always exists, not usable with filesystem functions."""
+        ...
+
     # TODO define how multiple-writer is handled.
     @abc.abstractmethod
     def open_write_bin(self) -> ContextManager[ByteWriter]: ...
@@ -190,22 +202,34 @@ class SimpleBuildSystem(BuildSystem):
     def resolve_input_file(
         self, project_relative_path: ProjectRelativePath
     ) -> JobInputFile:
-        return RealJobInputFile(self._resolve_project_relpath(project_relative_path))
+        return RealJobInputFile(
+            self._resolve_project_relpath(project_relative_path),
+            relpath=project_relative_path,
+        )
 
     def _resolve_output_file(
         self, output_relative_path: OutputRelativePath
     ) -> JobOutputFile:
-        return RealJobOutputFile(self._resolve_output_relpath(output_relative_path))
+        return RealJobOutputFile(
+            self._resolve_output_relpath(output_relative_path),
+            relpath=output_relative_path,
+        )
 
 
 class RealJobInputFile(JobInputFile):
     """Implementation of JobInputFile for "real" files that exist in an external filesystem"""
 
+    _relpath: ProjectRelativePath
     _path: Path
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, relpath: ProjectRelativePath) -> None:
         super().__init__()
         self._path = path
+        self._relpath = relpath
+
+    @property
+    def path(self) -> ProjectRelativePath:
+        return self._relpath
 
     @property
     def external_path(self) -> Optional[ResolvedPath]:
@@ -221,11 +245,17 @@ class RealJobInputFile(JobInputFile):
 class RealJobOutputFile(JobOutputFile):
     """Implementation of JobOutputFile for "real" files that exist in an external filesystem"""
 
+    _relpath: OutputRelativePath
     _path: Path
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, relpath: OutputRelativePath) -> None:
         super().__init__()
         self._path = path
+        self._relpath = relpath
+
+    @property
+    def path(self) -> OutputRelativePath:
+        return self._relpath
 
     @property
     def external_path(self) -> Optional[ResolvedPath]:
@@ -260,7 +290,7 @@ class InMemoryBuildSystem(BuildSystem):
     def resolve_input_file(self, project_relative_path: str) -> JobInputFile:
         data = self.input_files.get(project_relative_path)
         if data:
-            return InMemoryInputFile(data)
+            return InMemoryInputFile(project_relative_path, data)
         raise ValueError(f"Input file '{project_relative_path}' doesn't exist")
 
     def _resolve_output_file(self, output_relative_path: str) -> JobOutputFile:
@@ -268,7 +298,7 @@ class InMemoryBuildSystem(BuildSystem):
         f = self.output_files.get(output_relative_path)
         if f:
             return f
-        f = InMemoryOutputFile()
+        f = InMemoryOutputFile(output_relative_path)
         self.output_files[output_relative_path] = f
         return f
 
@@ -279,11 +309,17 @@ class InMemoryBuildSystem(BuildSystem):
 class InMemoryInputFile(JobInputFile):
     """Implementation of JobInputFile for a file from an in-memory filesystem"""
 
+    _relpath: ProjectRelativePath
     _data: bytes
 
-    def __init__(self, data: bytes) -> None:
+    def __init__(self, relpath: ProjectRelativePath, data: bytes) -> None:
         super().__init__()
+        self._relpath = relpath
         self._data = data
+
+    @property
+    def path(self) -> ProjectRelativePath:
+        return self._relpath
 
     @property
     def external_path(self) -> None:
@@ -324,11 +360,17 @@ def non_closing_text_wrapper(
 class InMemoryOutputFile(JobOutputFile):
     """Implementation of JobInputFile for a file from an in-memory filesystem"""
 
+    _relpath: OutputRelativePath
     _bytes_writer: io.BytesIO
 
-    def __init__(self) -> None:
+    def __init__(self, relpath: OutputRelativePath) -> None:
         super().__init__()
+        self._relpath = relpath
         self._bytes_writer = io.BytesIO()
+
+    @property
+    def path(self) -> OutputRelativePath:
+        return self._relpath
 
     @property
     def external_path(self) -> None:
