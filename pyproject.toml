@@ -15,6 +15,7 @@ classifiers = [
 dependencies = [
     "citeproc-py ~= 0.6.0",
     "bibtexparser == 1.4.0",
+    "pandoc ~= 2.3.0",
 ]
 
 
