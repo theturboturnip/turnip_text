@@ -6,6 +6,7 @@ from typing_extensions import override
 from turnip_text import (
     Block,
     CoercibleToInline,
+    Document,
     Header,
     Inline,
     InlineScope,
@@ -126,6 +127,15 @@ class StructureEnvPlugin(EnvPlugin):
             TableOfContents,
             TitleBlock,
         )
+
+    # TODO an option to not do this?
+    def _mutate_document(self, doc_env: DocEnv, fmt: FmtEnv, doc: Document) -> None:
+        super()._mutate_document(doc_env, fmt, doc)
+        # TODO better DFS walking
+        if not any(isinstance(b, TableOfContents) for b in doc.contents):
+            doc.contents.insert_block(0, self.toc())
+        if self._metadata and not any(isinstance(b, TitleBlock) for b in doc.contents):
+            doc.contents.insert_block(0, self.title_block())
 
     def _set_metadata(
         self,

@@ -70,8 +70,7 @@ def parse_and_emit(
     for plugin in plugins_with_anchors:
         exported_nodes.update(plugin._doc_nodes())
         exported_countables.update(plugin._countables())
-        # TODO we need to handle mutations differently
-        document = plugin._mutate_document(doc_env, fmt, document)
+        plugin._mutate_document(doc_env, fmt, document)
 
     # Now freeze the document so other code can't mutate it
     doc_env._frozen = True

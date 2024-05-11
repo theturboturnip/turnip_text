@@ -39,14 +39,11 @@ class MarkdownFootnotePlugin_AtEnd(MarkdownPlugin, FootnoteEnvPlugin):
     ) -> Sequence[type[Block] | type[Inline] | type[Header]]:
         return [FootnoteList] + list(super()._doc_nodes())
 
-    def _mutate_document(
-        self, doc_env: DocEnv, fmt: FmtEnv, toplevel: Document
-    ) -> Document:
-        toplevel = super()._mutate_document(doc_env, fmt, toplevel)
-        toplevel.append_header(
-            doc_env.h1(num=False) @ "Footnotes"
-        ).contents.append_block(FootnoteList())
-        return toplevel
+    def _mutate_document(self, doc_env: DocEnv, fmt: FmtEnv, doc: Document) -> None:
+        super()._mutate_document(doc_env, fmt, doc)
+        doc.append_header(doc_env.h1(num=False) @ "Footnotes").contents.append_block(
+            FootnoteList()
+        )
 
     def _register(self, build_sys: BuildSystem, setup: MarkdownSetup) -> None:
         setup.emitter.register_block_or_inline(FootnoteRef, self._emit_footnote_ref)

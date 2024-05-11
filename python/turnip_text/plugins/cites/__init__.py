@@ -57,15 +57,13 @@ class CitationEnvPlugin(EnvPlugin):
             Bibliography,
         )
 
-    def _mutate_document(
-        self, doc_env: DocEnv, fmt: FmtEnv, toplevel: Document
-    ) -> Document:
+    def _mutate_document(self, doc_env: DocEnv, fmt: FmtEnv, doc: Document) -> None:
+        super()._mutate_document(doc_env, fmt, doc)
+        # TODO better doc DFS walking to find Bibliography
         if not self._has_bib:
-            toplevel.append_header(
+            doc.append_header(
                 doc_env.h1(num=False) @ "Bibliography"
             ).contents.append_block(Bibliography())
-
-        return toplevel
 
     def cite(self, *citekeys: str) -> Inline:
         if not citekeys:

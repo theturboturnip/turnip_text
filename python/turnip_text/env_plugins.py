@@ -76,15 +76,11 @@ class EnvPlugin:
         """
         return []
 
-    # TODO fix
-    def _mutate_document(
-        self, doc_env: "DocEnv", fmt: "FmtEnv", toplevel: Document
-    ) -> Document:
+    def _mutate_document(self, doc_env: "DocEnv", fmt: "FmtEnv", doc: Document) -> None:
         """
-        Mutate the toplevel_contents or toplevel_segments to add things as you please.
-        You may make a copy and return it
+        Mutate the document as you please.
         """
-        return toplevel
+        return None
 
     def _interface(self) -> Dict[str, Any]:
         """
