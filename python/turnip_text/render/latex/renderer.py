@@ -8,12 +8,11 @@ from turnip_text import Block, DocSegment, Document, Inline, Raw, Text
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.anchors import StdAnchorPlugin
-from turnip_text.render import EmitterDispatch, Renderer, Writable
+from turnip_text.render import EmitterDispatch, TextRenderer, Writable
 from turnip_text.render.counters import CounterState
 from turnip_text.render.latex.package_resolver import (
     LatexPackageRequirements,
     LatexPackageResolver,
-    ResolvedLatexPackages,
 )
 from turnip_text.render.manual_numbering import (
     ARABIC_NUMBERING,
@@ -160,7 +159,7 @@ class LatexRequirements:
     """A mapping of (turnip_text counter) -> (magic LaTeX counter). Magic LaTeX counters are incremented in a way turnip_text cannot predict."""
 
 
-class LatexRenderer(Renderer):
+class LatexRenderer(TextRenderer):
     requirements: LatexRequirements
     tt_counters: CounterState
 
@@ -194,7 +193,7 @@ class LatexRenderer(Renderer):
                 for r in package.reasons:
                     self.emit_comment_line(f"- {r}")
                 self.emit_raw(package.as_latex_preamble_line(with_reason=False))
-                self.emit_break_sentence()
+                self.emit_newline()
 
             self.emit_break_paragraph()
             self.emit_comment_headline("Configuring counters...")
@@ -237,7 +236,7 @@ class LatexRenderer(Renderer):
                                     latex_counter_spec.default_reset_latex_counter  # type: ignore[arg-type]
                                 )
                             )
-                            self.emit_break_sentence()
+                            self.emit_newline()
                         else:
                             # counterwithin = pass in (slave counter) (new master counter) and it will set the connection to (new master counter)
                             self.emit_macro("counterwithin")
@@ -245,7 +244,7 @@ class LatexRenderer(Renderer):
                             self.emit_braced(
                                 Raw(latex_counter_spec.reset_latex_counter)
                             )
-                            self.emit_break_sentence()
+                            self.emit_newline()
                 else:
                     if tt_counter:
                         self.emit_comment_line(
@@ -261,7 +260,7 @@ class LatexRenderer(Renderer):
                         self.emit_sqr_bracketed(
                             Raw(latex_counter_spec.reset_latex_counter)
                         )
-                    self.emit_break_sentence()
+                    self.emit_newline()
 
                 # Setup counter numbering
                 # A counter's formatting in LaTeX is ({parent counter}{parent counter.postfix_for_child}{numbering(this counter)})
@@ -427,13 +426,13 @@ class LatexRenderer(Renderer):
     def emit_env(self, name: str, indent: int = 4) -> Iterator[None]:
         self.emit_raw(f"\\begin{{{name}}}")
         self.push_indent(indent)
-        self.emit_break_sentence()
+        self.emit_newline()
 
         try:
             yield
         finally:
             self.pop_indent(indent)
-            self.emit_break_sentence()
+            self.emit_newline()
             self.emit_raw(f"\end{{{name}}}")
 
     def emit_anchor(self, anchor: Anchor) -> None:

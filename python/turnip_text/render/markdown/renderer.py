@@ -11,9 +11,9 @@ from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.anchors import StdAnchorPlugin
 from turnip_text.render import (
     EmitterDispatch,
-    Renderer,
     RenderPlugin,
     RenderSetup,
+    TextRenderer,
     Writable,
 )
 from turnip_text.render.counters import (
@@ -58,7 +58,7 @@ COUNTER_STYLE_TO_MANUAL = {
 MarkdownCounterFormat = SimpleCounterFormat[MarkdownCounterStyle]
 
 
-class MarkdownRenderer(Renderer):
+class MarkdownRenderer(TextRenderer):
     html_mode_stack: List[bool]
     counters: CounterState
     counter_rendering: Dict[str, MarkdownCounterFormat]

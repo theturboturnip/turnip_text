@@ -47,13 +47,10 @@ class LatexBiblatexPlugin_Unchecked(LatexPlugin, CitationEnvPlugin):
         renderer: LatexRenderer,
         fmt: FmtEnv,
     ) -> None:
-        renderer.emit_raw("{")
-        renderer.emit_break_sentence()
+        renderer.emit_raw("{\n")
         with renderer.indent(4):
-            renderer.emit_raw("\\raggedright")
-            renderer.emit_break_sentence()
-            renderer.emit_raw("\\printbibliography[heading=none]")
-            renderer.emit_break_sentence()
+            renderer.emit_raw("\\raggedright\n")
+            renderer.emit_raw("\\printbibliography[heading=none]\n")
         renderer.emit_raw("}")
         renderer.emit_break_paragraph()
 

@@ -56,9 +56,8 @@ class MarkdownListPlugin(MarkdownPlugin, ListEnvPlugin):
                     yield None
 
             tag = "ol" if numbered else "ul"
-            renderer.emit_raw(f"<{tag}>")
+            renderer.emit_raw(f"<{tag}>\n")
             with renderer.indent(4):
-                renderer.emit_break_sentence()
                 renderer.emit_join_gen(emit_elem(), renderer.emit_break_sentence)
             renderer.emit_raw(f"</{tag}>")
         else:

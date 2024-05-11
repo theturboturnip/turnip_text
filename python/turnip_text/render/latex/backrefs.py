@@ -114,7 +114,7 @@ class LatexCleveref(LatexBackrefMethodImpl):
                 Text(fmt.postfix_for_end),
                 Raw("#3"),
             )
-            renderer.emit_break_sentence()
+            renderer.emit_newline()
 
     @override
     def emit_anchor(

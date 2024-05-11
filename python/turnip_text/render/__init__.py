@@ -17,6 +17,8 @@ from typing import (
     Union,
 )
 
+from typing_extensions import override
+
 from turnip_text import (
     Block,
     BlockScope,
@@ -43,6 +45,7 @@ THeader = TypeVar("THeader", bound=Header)
 TVisitable = TypeVar("TVisitable", bound=Union[Block, Inline, Header])
 TRenderer = TypeVar("TRenderer", bound="Renderer")
 TRenderer_contra = TypeVar("TRenderer_contra", bound="Renderer", contravariant=True)
+TTextRenderer = TypeVar("TTextRenderer", bound="TextRenderer")
 TVisitorOutcome = TypeVar("TVisitorOutcome")
 
 
@@ -190,14 +193,6 @@ class Renderer(abc.ABC):
     handlers: EmitterDispatch  # type: ignore[type-arg]
     write_to: Writable
 
-    _indent: str = ""
-    # After emitting a newline with emit_newline, this is set.
-    # The next call to emit_raw will emit _indent.
-    # This is important if you want to change the indent after something has already emitted a newline,
-    # e.g. if you wrap emit_paragraph() in indent(4), the emit_paragraph() will emit a final newline but *not* immediately emit the indent of 4, so subsequent emissions are nicely indented.
-    # In the same way, if you emit a newline *then* change the indent, the next emitted item will have the new indent applied.
-    _need_indent: bool = False
-
     def __init__(
         self: TRenderer,
         fmt: FmtEnv,
@@ -226,33 +221,8 @@ class Renderer(abc.ABC):
             InlineScope, lambda inls, r, fmt: r.emit_inlinescope(inls)
         )
         handlers.register_block_or_inline(Text, lambda t, r, fmt: r.emit_text(t))
-        handlers.register_block_or_inline(Raw, lambda t, r, fmt: r.emit_raw(t.data))
-        # handlers.register_block_or_inline(
-        #     Anchor, lambda a, r, fmt: r.ref_handler.get_anchor_emitter(a)(r, fmt, a)
-        # )
-        # handlers.register_block_or_inline(
-        #     Backref,
-        #     lambda b, r, fmt: r.ref_handler.get_backref_emitter(
-        #         r.anchors.lookup_backref(b).kind
-        #     )(r, fmt, b),
-        # )
-
-        # ref_handlers: RefEmitterDispatch[TRenderer] = RefEmitterDispatch()
 
         return handlers
-
-    def emit_raw(self, x: str) -> None:
-        """
-        The function on which all emitters are based.
-        """
-        if self._need_indent:
-            self.write_to.write(self._indent)
-            self._need_indent = False
-        self.write_to.write(x)
-
-    def emit_newline(self) -> None:
-        self.write_to.write("\n")
-        self._need_indent = True
 
     def emit_join(
         self,
@@ -280,12 +250,13 @@ class Renderer(abc.ABC):
             except StopIteration:
                 break
 
+    @abc.abstractmethod
     def emit_break_sentence(self) -> None:
-        self.emit_newline()
+        raise NotImplementedError(f"Need to implement emit_break_sentence")
 
+    @abc.abstractmethod
     def emit_break_paragraph(self) -> None:
-        self.emit_newline()
-        self.emit_newline()
+        raise NotImplementedError(f"Need to implement emit_break_paragraph")
 
     @abc.abstractmethod
     def emit_text(self, t: Text) -> None:
@@ -354,6 +325,47 @@ class Renderer(abc.ABC):
         # Default: join internal inline elements directly
         for i in s:
             self.emit_inline(i)
+
+
+class TextRenderer(Renderer):
+    """Subclass of Renderer for rendering to text-based output formats like LaTeX, Markdown, or HTML."""
+
+    _indent: str = ""
+    # After emitting a newline with emit_newline, this is set.
+    # The next call to emit_raw will emit _indent.
+    # This is important if you want to change the indent after something has already emitted a newline,
+    # e.g. if you wrap emit_paragraph() in indent(4), the emit_paragraph() will emit a final newline but *not* immediately emit the indent of 4, so subsequent emissions are nicely indented.
+    # In the same way, if you emit a newline *then* change the indent, the next emitted item will have the new indent applied.
+    _need_indent: bool = False
+
+    @override
+    @classmethod
+    def default_emitter_dispatch(
+        cls: Type[TTextRenderer],
+    ) -> EmitterDispatch[TTextRenderer]:
+        handlers = super().default_emitter_dispatch()
+        handlers.register_block_or_inline(Raw, lambda t, r, fmt: r.emit_raw(t.data))
+
+        return handlers
+
+    def emit_raw(self, x: str) -> None:
+        if self._need_indent:
+            self.write_to.write(self._indent)
+            self._need_indent = False
+        self.write_to.write(x)
+
+    def emit_newline(self) -> None:
+        self.write_to.write("\n")
+        self._need_indent = True
+
+    @override
+    def emit_break_sentence(self) -> None:
+        self.emit_newline()
+
+    @override
+    def emit_break_paragraph(self) -> None:
+        self.emit_newline()
+        self.emit_newline()
 
     def push_indent(self, n: int) -> None:
         self._indent += " " * n

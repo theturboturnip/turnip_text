@@ -169,7 +169,7 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
             if self._metadata.authors:
                 renderer.emit_macro("author")
                 renderer.emit_braced(join_inlines(self._metadata.authors, Text(", ")))
-                renderer.emit_break_sentence()
+                renderer.emit_newline()
             else:
                 renderer.emit_comment_line("No authors supplied")
         else:
@@ -199,10 +199,10 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
         renderer.emit_macro("setcounter")
         renderer.emit_braced(Raw("tocdepth"))
         renderer.emit_braced(Raw(str(requested_latex_depth)))
-        renderer.emit_break_sentence()
+        renderer.emit_newline()
         # Actually get the tableofcontents
         renderer.emit_macro("tableofcontents")
-        renderer.emit_break_paragraph()
+        renderer.emit_newline()
 
     def _emit_title(
         self,
@@ -211,7 +211,7 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
         fmt: FmtEnv,
     ) -> None:
         renderer.emit_macro("maketitle")
-        renderer.emit_break_sentence()
+        renderer.emit_newline()
 
     def _emit_structure_header(
         self,
