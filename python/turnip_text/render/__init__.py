@@ -190,27 +190,50 @@ class Writable(Protocol):
 class Renderer(abc.ABC):
     fmt: FmtEnv
     anchors: StdAnchorPlugin
-    handlers: EmitterDispatch  # type: ignore[type-arg]
-    write_to: Writable
 
     def __init__(
         self: TRenderer,
         fmt: FmtEnv,
         anchors: StdAnchorPlugin,
-        handlers: EmitterDispatch[TRenderer],
-        write_to: Writable,
     ) -> None:
         self.fmt = fmt
         self.anchors = anchors
+
+
+class TextRenderer(Renderer):
+    """Subclass of Renderer for rendering to text-based output formats like LaTeX, Markdown, or HTML.
+
+    Uses emit-based in-situ rendering where the document is written in one clean pass.
+    """
+
+    handlers: EmitterDispatch  # type: ignore[type-arg]
+    write_to: Writable
+
+    _indent: str = ""
+    # After emitting a newline with emit_newline, this is set.
+    # The next call to emit_raw will emit _indent.
+    # This is important if you want to change the indent after something has already emitted a newline,
+    # e.g. if you wrap emit_paragraph() in indent(4), the emit_paragraph() will emit a final newline but *not* immediately emit the indent of 4, so subsequent emissions are nicely indented.
+    # In the same way, if you emit a newline *then* change the indent, the next emitted item will have the new indent applied.
+    _need_indent: bool = False
+
+    def __init__(
+        self: TTextRenderer,
+        fmt: FmtEnv,
+        anchors: StdAnchorPlugin,
+        handlers: EmitterDispatch[TTextRenderer],
+        write_to: Writable,
+    ) -> None:
+        super().__init__(fmt, anchors)
         self.handlers = handlers
         self.write_to = write_to
 
     @classmethod
     def default_emitter_dispatch(
-        cls: Type[TRenderer],
-    ) -> EmitterDispatch[TRenderer]:
-        """This is a convenience method that generates the most basic EmitterDispatch for a renderer. It is meant to be called by RenderSetup classes. It can be overridden in renderers that provide more than the basic emitters."""
-        handlers: EmitterDispatch[TRenderer] = EmitterDispatch()
+        cls: Type[TTextRenderer],
+    ) -> EmitterDispatch[TTextRenderer]:
+        """This is a convenience method that generates the most basic EmitterDispatch for a TextRenderer. It is meant to be called by RenderSetup classes. It can be overridden in renderers that provide more than the basic emitters."""
+        handlers: EmitterDispatch[TTextRenderer] = EmitterDispatch()
         handlers.register_block_or_inline(
             BlockScope, lambda bs, r, fmt: r.emit_blockscope(bs)
         )
@@ -221,6 +244,7 @@ class Renderer(abc.ABC):
             InlineScope, lambda inls, r, fmt: r.emit_inlinescope(inls)
         )
         handlers.register_block_or_inline(Text, lambda t, r, fmt: r.emit_text(t))
+        handlers.register_block_or_inline(Raw, lambda t, r, fmt: r.emit_raw(t.data))
 
         return handlers
 
@@ -250,13 +274,12 @@ class Renderer(abc.ABC):
             except StopIteration:
                 break
 
-    @abc.abstractmethod
     def emit_break_sentence(self) -> None:
-        raise NotImplementedError(f"Need to implement emit_break_sentence")
+        self.emit_newline()
 
-    @abc.abstractmethod
     def emit_break_paragraph(self) -> None:
-        raise NotImplementedError(f"Need to implement emit_break_paragraph")
+        self.emit_newline()
+        self.emit_newline()
 
     @abc.abstractmethod
     def emit_text(self, t: Text) -> None:
@@ -326,28 +349,6 @@ class Renderer(abc.ABC):
         for i in s:
             self.emit_inline(i)
 
-
-class TextRenderer(Renderer):
-    """Subclass of Renderer for rendering to text-based output formats like LaTeX, Markdown, or HTML."""
-
-    _indent: str = ""
-    # After emitting a newline with emit_newline, this is set.
-    # The next call to emit_raw will emit _indent.
-    # This is important if you want to change the indent after something has already emitted a newline,
-    # e.g. if you wrap emit_paragraph() in indent(4), the emit_paragraph() will emit a final newline but *not* immediately emit the indent of 4, so subsequent emissions are nicely indented.
-    # In the same way, if you emit a newline *then* change the indent, the next emitted item will have the new indent applied.
-    _need_indent: bool = False
-
-    @override
-    @classmethod
-    def default_emitter_dispatch(
-        cls: Type[TTextRenderer],
-    ) -> EmitterDispatch[TTextRenderer]:
-        handlers = super().default_emitter_dispatch()
-        handlers.register_block_or_inline(Raw, lambda t, r, fmt: r.emit_raw(t.data))
-
-        return handlers
-
     def emit_raw(self, x: str) -> None:
         if self._need_indent:
             self.write_to.write(self._indent)
@@ -357,15 +358,6 @@ class TextRenderer(Renderer):
     def emit_newline(self) -> None:
         self.write_to.write("\n")
         self._need_indent = True
-
-    @override
-    def emit_break_sentence(self) -> None:
-        self.emit_newline()
-
-    @override
-    def emit_break_paragraph(self) -> None:
-        self.emit_newline()
-        self.emit_newline()
 
     def push_indent(self, n: int) -> None:
         self._indent += " " * n
