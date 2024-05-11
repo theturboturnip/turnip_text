@@ -22,9 +22,9 @@ from turnip_text.helpers import UserInlineScopeBuilder
 
 @dataclass
 class BasicMetadata:
-    title: Optional[Text]
-    subtitle: Optional[Text]
-    authors: List[Text]
+    title: Optional[Inline]
+    subtitle: Optional[Inline]
+    authors: List[Inline]
     # TODO
     # date: Optional[Inline]
 
@@ -140,18 +140,18 @@ class StructureEnvPlugin(EnvPlugin):
     def _set_metadata(
         self,
         /,
-        title: Optional[str] = None,
-        subtitle: Optional[str] = None,
-        authors: Optional[Sequence[str]] = None,
+        title: Optional[CoercibleToInline] = None,
+        subtitle: Optional[CoercibleToInline] = None,
+        authors: Optional[Sequence[CoercibleToInline]] = None,
     ) -> BasicMetadata:
         """If self.metadata hasn't already been set, set it to a new BasicMetadata object with the given arguments.
         Otherwise raise a ValueError()"""
         if self._metadata:
             raise ValueError("Cannot set document metadata twice")
         self._metadata = BasicMetadata(
-            title=Text(title) if title else None,
-            subtitle=Text(subtitle) if subtitle else None,
-            authors=[Text(author) for author in authors] if authors else [],
+            title=coerce_to_inline(title) if title else None,
+            subtitle=coerce_to_inline(subtitle) if subtitle else None,
+            authors=[coerce_to_inline(author) for author in authors] if authors else [],
         )
         return self._metadata
 
@@ -160,9 +160,9 @@ class StructureEnvPlugin(EnvPlugin):
         self,
         doc_env: DocEnv,
         /,
-        title: Optional[str] = None,
-        subtitle: Optional[str] = None,
-        authors: Optional[Sequence[str]] = None,
+        title: Optional[CoercibleToInline] = None,
+        subtitle: Optional[CoercibleToInline] = None,
+        authors: Optional[Sequence[CoercibleToInline]] = None,
     ) -> None:
         if (title is None) and (subtitle is None) and (authors is None):
             return
@@ -177,9 +177,9 @@ class StructureEnvPlugin(EnvPlugin):
         self,
         doc_env: DocEnv,
         /,
-        title: Optional[str] = None,
-        subtitle: Optional[str] = None,
-        authors: Optional[Sequence[str]] = None,
+        title: Optional[CoercibleToInline] = None,
+        subtitle: Optional[CoercibleToInline] = None,
+        authors: Optional[Sequence[CoercibleToInline]] = None,
     ) -> TitleBlock:
         if (title is None) and (subtitle is None) and (authors is None):
             if not self._metadata:

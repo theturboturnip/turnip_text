@@ -78,6 +78,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
 
         # TODO emit pandoc yaml preamble for Markdown
         # TODO emit <html><head> blah for HTML?
+        # TODO note that in HTML <title> doesn't accept formatting inside
 
     known_headers: List[Union[BasicHeader, AppendixHeader]]
 

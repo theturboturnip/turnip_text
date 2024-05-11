@@ -142,6 +142,7 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
         setup.emitter.register_block_or_inline(TitleBlock, self._emit_title)
 
         # TODO make this only supply an option to hyperref, not implicitly include it
+        # TODO use hypersetup to set the name manually to textified version
         setup.package_resolver.request_latex_package(
             "hyperref", "PDF metadata", ["pdfusetitle", "unicode"]
         )
