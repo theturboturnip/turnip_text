@@ -1,3 +1,6 @@
+from typing import cast
+
+from turnip_text import Text
 from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.inline_fmt import (
@@ -15,7 +18,7 @@ FORMAT_TYPE_TO_MARKDOWN = {
     InlineFormattingType.Bold: "**",
     InlineFormattingType.Italic: "*",
     InlineFormattingType.Emph: "*",  # = italic
-    InlineFormattingType.Strong: "**",  # = bold
+    InlineFormattingType.Strong: "**",
 }
 
 FORMAT_TYPE_TO_HTML = {
@@ -24,6 +27,7 @@ FORMAT_TYPE_TO_HTML = {
     InlineFormattingType.Underline: "u",
     InlineFormattingType.Emph: "em",
     InlineFormattingType.Strong: "strong",
+    InlineFormattingType.Mono: "code",
 }
 
 
@@ -52,6 +56,18 @@ class MarkdownInlineFormatPlugin(MarkdownPlugin, InlineFormatEnvPlugin):
             # Have to go into html mode for this
             with renderer.emit_tag("u"):
                 renderer.emit(f.contents)
+        elif f.format_type == InlineFormattingType.Mono:
+            if all(isinstance(i, Text) for i in f.contents):
+                # Markdown ` doesn't allow special formatting inside
+                renderer.emit_raw("`")
+                for text in f.contents:
+                    renderer.emit_raw(cast(Text, text).text.replace("`", "\\`"))
+                renderer.emit_raw("`")
+            else:
+                # If there is special formatting inside, just use HTML
+                with renderer.html_mode():
+                    with renderer.emit_tag("code"):
+                        renderer.emit(f.contents)
         else:
             surround = FORMAT_TYPE_TO_MARKDOWN[f.format_type]
             renderer.emit_raw(surround)

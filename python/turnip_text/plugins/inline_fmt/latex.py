@@ -14,6 +14,7 @@ FORMAT_TYPE_TO_MACRO = {
     InlineFormattingType.Underline: "underline",
     InlineFormattingType.Emph: "emph",
     InlineFormattingType.Strong: "strong",
+    InlineFormattingType.Mono: "texttt",
 }
 
 

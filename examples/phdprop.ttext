@@ -4,7 +4,8 @@ subsection=h2
 
 set_metadata(
     title="Example PhD Proposal",
-    subtitle="Look at what turnip_text can do!",
+    # TODO it would be good to make coercion recursive, so we don't need tt.Text here
+    subtitle=[tt.Text("Look at what "), mono @ "turnip_text", tt.Text(" can do!")],
     authors=["Samuel W. Stark"]
 )
 -]

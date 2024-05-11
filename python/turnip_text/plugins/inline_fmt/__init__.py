@@ -19,6 +19,7 @@ class InlineFormattingType(Enum):
     Strong = 4  # Usually bold
     SingleQuote = 5
     DoubleQuote = 6
+    Mono = 7
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,12 @@ class InlineFormatEnvPlugin(EnvPlugin):
     @staticmethod
     def strong(items: InlineScope) -> Inline:
         return InlineFormatted(contents=items, format_type=InlineFormattingType.Strong)
+
+    @inline_scope_builder
+    @staticmethod
+    def mono(items: InlineScope) -> Inline:
+        """Intended for monospaced text, such as code, but never provides syntax highlighting."""
+        return InlineFormatted(contents=items, format_type=InlineFormattingType.Mono)
 
     @inline_scope_builder
     @staticmethod
