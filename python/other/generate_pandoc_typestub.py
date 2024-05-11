@@ -137,7 +137,7 @@ def main(out_path: str) -> None:
                     else []
                 )
                 type_defs[subclass_type_name] = (
-                    f"class {subclass_type_name}:\n\tdef __init__(self, {', '.join(arg_list)}):\n\t\t...\n"
+                    f"class {subclass_type_name}:\n\tdef __init__(self, {', '.join(arg_list)}) -> None:\n\t\t...\n"
                 )
                 examined_types.add(subclass_type_name)
             else:
@@ -172,7 +172,7 @@ def main(out_path: str) -> None:
                         else []
                     )
                     type_defs[subclass_type_name] = (
-                        f"class {subclass_type_name}({to_examine}):\n\tdef __init__(self, {', '.join(arg_list)}):\n\t\t...\n"
+                        f"class {subclass_type_name}({to_examine}):\n\tdef __init__(self, {', '.join(arg_list)})-> None:\n\t\t...\n"
                     )
                     examined_types.add(subclass_type_name)
         else:
