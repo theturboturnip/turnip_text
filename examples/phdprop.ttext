@@ -3,6 +3,14 @@ section=h1
 subsection=h2
 -]
 
+[-
+title_block(
+    title="Example PhD Proposal",
+    subtitle="Look at what turnip_text can do!",
+    authors=["Samuel W. Stark"]
+)
+-]
+
 [toc()]
 
 [section()]{ Introduction/Extended Abstract }

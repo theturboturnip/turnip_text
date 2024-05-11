@@ -15,6 +15,7 @@ class UserNode(Protocol):
     # If you use @property here, you're allowed to add a field with the same name
     # and the dataclass will try to use it in the constructor
     # but it won't have a setter.
+    # TODO make this return list - or generator? - to be more easily combined with subclassing
     @abc.abstractmethod
     def child_nodes(self) -> Iterable[Block | Inline] | None:
         """The children of this node, used by the DFS pass to iterate into nodes."""

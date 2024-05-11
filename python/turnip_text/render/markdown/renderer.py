@@ -85,6 +85,8 @@ class MarkdownRenderer(Renderer):
         if self.in_html_mode:
             self.emit_raw(html.escape(t.text))
         else:
+            # TODO if at the start of the document, - has a different meaning. Not sure where to address this but if you want to make a list, be aware of that
+
             # note - right now this assumes we're using a unicode-compatible setup and thus don't need to escape unicode characters.
             # note - order is important here because the subsitutions may introduce more special characters.
             # e.g. if the backslash replacement applied later, the backslash from escaping "(" would be escaped as well

@@ -1,17 +1,52 @@
 from dataclasses import dataclass
-from typing import Optional, Sequence, Union
+from typing import Iterable, List, Optional, Sequence, Tuple, Union
 
 from typing_extensions import override
 
-from turnip_text import Block, Header, Inline, InlineScope, InlineScopeBuilder
+from turnip_text import (
+    Block,
+    CoercibleToInline,
+    Header,
+    Inline,
+    InlineScope,
+    InlineScopeBuilder,
+    Text,
+    coerce_to_inline,
+)
 from turnip_text.doc.anchors import Anchor
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
 from turnip_text.helpers import UserInlineScopeBuilder
 
 
+@dataclass
+class BasicMetadata:
+    title: Optional[Text]
+    subtitle: Optional[Text]
+    authors: List[Text]
+    # TODO
+    # date: Optional[Inline]
+
+
 @dataclass(frozen=True)
-class StructureHeader(UserNode, Header):
+class TitleBlock(UserNode, Block):
+    metadata: BasicMetadata
+    anchor = None
+
+    @override
+    def child_nodes(self) -> Iterable[Block | Inline] | None:
+        child_nodes = []
+        if self.metadata.title:
+            child_nodes.append(self.metadata.title)
+        if self.metadata.subtitle:
+            child_nodes.append(self.metadata.subtitle)
+        for author in self.metadata.authors:
+            child_nodes.append(author)
+        return child_nodes
+
+
+@dataclass(frozen=True)
+class BasicHeader(UserNode, Header):
     title: InlineScope  # The title of the segment
     anchor: Anchor | None
     """Set to None if the header as a whole is unnumbered.
@@ -61,13 +96,6 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
         self.num = num
         self.appendix = appendix
 
-    def __call__(
-        self, label: Optional[str] = None, num: bool = True
-    ) -> "StructureHeaderGenerator":
-        return StructureHeaderGenerator(
-            self.doc_env, self.weight, label, num, self.appendix
-        )
-
     def build_from_inlines(self, inlines: InlineScope) -> Header:
         if self.appendix:
             kind = "appendix"
@@ -75,7 +103,7 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
             kind = f"h{self.weight}"
         weight = self.weight
 
-        ty = AppendixHeader if self.appendix else StructureHeader
+        ty = AppendixHeader if self.appendix else BasicHeader
 
         if self.num:
             return ty(
@@ -87,13 +115,72 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
 
 
 class StructureEnvPlugin(EnvPlugin):
+    _metadata: Optional[BasicMetadata] = None
+    """At most one BasicMetadata object exists for each StructureEnvPlugin"""
+
     def _doc_nodes(
         self,
     ) -> Sequence[type[Block] | type[Inline] | type[Header]]:
         return (
-            StructureHeader,
+            BasicHeader,
             TableOfContents,
+            TitleBlock,
         )
+
+    def _set_metadata(
+        self,
+        /,
+        title: Optional[str] = None,
+        subtitle: Optional[str] = None,
+        authors: Optional[Sequence[str]] = None,
+    ) -> BasicMetadata:
+        """If self.metadata hasn't already been set, set it to a new BasicMetadata object with the given arguments.
+        Otherwise raise a ValueError()"""
+        if self._metadata:
+            raise ValueError("Cannot set document metadata twice")
+        self._metadata = BasicMetadata(
+            title=Text(title) if title else None,
+            subtitle=Text(subtitle) if subtitle else None,
+            authors=[Text(author) for author in authors] if authors else [],
+        )
+        return self._metadata
+
+    @in_doc
+    def set_metadata(
+        self,
+        doc_env: DocEnv,
+        /,
+        title: Optional[str] = None,
+        subtitle: Optional[str] = None,
+        authors: Optional[Sequence[str]] = None,
+    ) -> None:
+        if (title is None) and (subtitle is None) and (authors is None):
+            return
+        self._set_metadata(
+            title=title,
+            subtitle=subtitle,
+            authors=authors,
+        )
+
+    @in_doc
+    def title_block(
+        self,
+        doc_env: DocEnv,
+        /,
+        title: Optional[str] = None,
+        subtitle: Optional[str] = None,
+        authors: Optional[Sequence[str]] = None,
+    ) -> TitleBlock:
+        if (title is None) and (subtitle is None) and (authors is None):
+            if not self._metadata:
+                raise RuntimeError(
+                    "Cannot create a title_block() with no metadata without first calling set_metadata()"
+                )
+            return TitleBlock(self._metadata)
+        else:
+            return TitleBlock(
+                self._set_metadata(title=title, subtitle=subtitle, authors=authors)
+            )
 
     @in_doc
     def h(

@@ -1,6 +1,6 @@
 from typing import Iterator, List, Tuple, Union
 
-from turnip_text import BlockScope, DocSegment, Raw, Text
+from turnip_text import BlockScope, DocSegment, InlineScope, Raw, Text, join_inlines
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc.anchors import Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
@@ -8,9 +8,10 @@ from turnip_text.env_plugins import FmtEnv
 from turnip_text.helpers import paragraph_of
 from turnip_text.plugins.doc_structure import (
     AppendixHeader,
+    BasicHeader,
     StructureEnvPlugin,
-    StructureHeader,
     TableOfContents,
+    TitleBlock,
 )
 from turnip_text.render.manual_numbering import SimpleCounterFormat
 from turnip_text.render.markdown.renderer import (
@@ -29,8 +30,9 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
         self._has_chapter = use_chapters
 
     def _register(self, build_sys: BuildSystem, setup: MarkdownSetup) -> None:
+        setup.emitter.register_block_or_inline(TitleBlock, self._emit_title)
         setup.emitter.register_block_or_inline(TableOfContents, self._emit_toc)
-        setup.emitter.register_header(StructureHeader, self._emit_structure)
+        setup.emitter.register_header(BasicHeader, self._emit_structure)
         setup.emitter.register_header(AppendixHeader, self._emit_appendix)
         setup.define_counter_rendering(
             "h1",
@@ -74,15 +76,49 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
         setup.request_counter_parent("h3", parent_counter="h2")
         setup.request_counter_parent("h4", parent_counter="h3")
 
-    known_headers: List[Union[StructureHeader, AppendixHeader]]
+        # TODO emit pandoc yaml preamble for Markdown
+        # TODO emit <html><head> blah for HTML?
+
+    known_headers: List[Union[BasicHeader, AppendixHeader]]
 
     def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
         self.known_headers = []
 
-        def visit_header(s: Union[StructureHeader, AppendixHeader]) -> None:
+        def visit_header(s: Union[BasicHeader, AppendixHeader]) -> None:
             self.known_headers.append(s)
 
-        return [((StructureHeader, AppendixHeader), visit_header)]
+        return [((BasicHeader, AppendixHeader), visit_header)]
+
+    def _emit_title(
+        self,
+        title: TitleBlock,
+        renderer: MarkdownRenderer,
+        fmt: FmtEnv,
+    ) -> None:
+        if title.metadata.title:
+            renderer.emit(
+                DocSegment(
+                    BasicHeader(
+                        title=InlineScope([title.metadata.title]), anchor=None, weight=1
+                    ),
+                    contents=BlockScope([]),
+                    subsegments=[],
+                )
+            )
+        if title.metadata.subtitle:
+            renderer.emit(
+                DocSegment(
+                    BasicHeader(
+                        title=InlineScope([title.metadata.subtitle]),
+                        anchor=None,
+                        weight=2,
+                    ),
+                    contents=BlockScope([]),
+                    subsegments=[],
+                )
+            )
+        if title.metadata.authors:
+            renderer.emit(fmt.emph @ join_inlines(title.metadata.authors, Text(", ")))
 
     def _emit_toc(
         self,
@@ -90,36 +126,50 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
         renderer: MarkdownRenderer,
         fmt: FmtEnv,
     ) -> None:
+        # TODO make lists a standard part of the MarkdownRenderer
+        # TODO make lists able to be of Inline | Block so we don't need to wrap things in paragraph_of?
         renderer.emit(
-            fmt.itemize
-            @ [
-                fmt.item
-                @ BlockScope(
+            DocSegment(
+                BasicHeader(
+                    title=InlineScope([Text("Contents")]), anchor=None, weight=1
+                ),
+                contents=BlockScope(
                     [
-                        paragraph_of(
-                            Backref(
-                                id=header.anchor.id,
-                                kind=header.anchor.kind,
-                                label_contents=(
-                                    fmt.bold
-                                    @ [
-                                        renderer.anchor_to_number_text(header.anchor),
-                                        Text(" - "),
-                                        header.title,
-                                    ]
-                                ),
+                        fmt.itemize
+                        @ [
+                            fmt.item
+                            @ BlockScope(
+                                [
+                                    paragraph_of(
+                                        Backref(
+                                            id=header.anchor.id,
+                                            kind=header.anchor.kind,
+                                            label_contents=(
+                                                fmt.bold
+                                                @ [
+                                                    renderer.anchor_to_number_text(
+                                                        header.anchor
+                                                    ),
+                                                    Text(" \u2014 "),
+                                                    header.title,
+                                                ]
+                                            ),
+                                        )
+                                    )
+                                ]
                             )
-                        )
+                            for header in self.known_headers
+                            if (header.weight <= toc.depth) and (header.anchor)
+                        ]
                     ]
-                )
-                for header in self.known_headers
-                if (header.weight <= toc.depth) and (header.anchor)
-            ]
+                ),
+                subsegments=[],
+            )
         )
 
     def _emit_structure(
         self,
-        head: StructureHeader,
+        head: BasicHeader,
         contents: BlockScope,
         subsegments: Iterator[DocSegment],
         renderer: MarkdownRenderer,
@@ -133,7 +183,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
                     renderer.emit(
                         head.anchor,
                         renderer.anchor_to_number_text(head.anchor),
-                        Raw(" "),
+                        Text(" \u2014 "),
                     )
                 renderer.emit(head.title)
         else:
@@ -142,7 +192,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
                 renderer.emit(
                     head.anchor,
                     renderer.anchor_to_number_text(head.anchor),
-                    Raw(" "),
+                    Raw(" \u2014 "),
                 )
             renderer.emit(head.title)
 
@@ -166,7 +216,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
                 renderer.emit(
                     head.anchor,
                     renderer.anchor_to_ref_text(head.anchor),
-                    Raw(" \u2014 "),
+                    Text(" \u2014 "),
                     head.title,
                 )
         else:
@@ -174,7 +224,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
             renderer.emit(
                 head.anchor,
                 renderer.anchor_to_ref_text(head.anchor),
-                Raw(" \u2014 "),
+                Text(" \u2014 "),
                 head.title,
             )
 
