@@ -373,6 +373,7 @@ class LatexRenderer(Renderer):
     def emit_text(self, t: Text) -> None:
         # TODO make sure whitespace we emit here *isn't* sentence break whitespace?
 
+        # TODO consider using \detokenize?
         # note - right now this assumes we're using a unicode-compatible setup and thus don't need to escape unicode characters.
         # note - order is important here because the subsitutions may introduce more special characters.
         # e.g. if the backslash replacement applied later, the backslash from escaping "%" would be replaced with \textbackslash
