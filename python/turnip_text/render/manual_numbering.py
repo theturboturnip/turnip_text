@@ -104,7 +104,8 @@ class SimpleCounterFormat(Generic[TNumbering]):
         with_name: bool = True,
     ) -> Text:
         if with_name and counters[-1][0].name:
-            c = counters[-1][0].name + " "
+            # TODO - this is a hack to make it so that things are "correctly" capitalized - always capitalize! lol
+            c = counters[-1][0].name.capitalize() + " "
         else:
             c = ""
         prev_fmt = None
