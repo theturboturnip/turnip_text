@@ -1,7 +1,8 @@
 import json
+from typing import Any
 
 import turnip_text.render.pandoc.pandoc_types as pan
-from turnip_text.build_system import BuildSystem, ProjectRelativePath
+from turnip_text.build_system import BuildSystem, JobOutputFile, ProjectRelativePath
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.cites import (
     Bibliography,
@@ -9,6 +10,7 @@ from turnip_text.plugins.cites import (
     CitationEnvPlugin,
     CiteAuthor,
 )
+from turnip_text.plugins.cites.markdown import LATEXLIKE_CSL
 from turnip_text.render.pandoc import (
     PandocPlugin,
     PandocRenderer,
@@ -34,7 +36,23 @@ class PandocCitationPlugin(PandocPlugin, CitationEnvPlugin):
         setup.meta[0]["references"] = map_json_to_pan_metavalue(csl_json)
         # Enable citation processing
         setup.add_pandoc_options("--citeproc")
-        # TODO set a CSL style
+
+        # Set a CSL style.
+        # This requires a real CSL file
+        # TODO need to refactor the build system to make this possible
+        # def write_real_output_csl(inputs: Any, output: JobOutputFile) -> None:
+        #     if not output.external_path:
+        #         print(
+        #             "Pandoc CSL needs an external CSL path, but the build system didn't provide one. pandoc will fail."
+        #         )
+        #     with open(output.external_path, "w") as f:
+        #         f.write(LATEXLIKE_CSL)
+
+        # output_csl_path = build_sys.register_file_generator(
+        #     write_real_output_csl, {}, "/temp/citation.csl"
+        # )
+        # setup.add_pandoc_options(f"--csl={output_csl_path}")
+
         setup.makers.register_inline(Citation, self._make_cite)
         setup.makers.register_inline(CiteAuthor, self._make_citeauthor)
         setup.makers.register_block(

@@ -42,6 +42,12 @@ ByteWriter: TypeAlias = io.BufferedIOBase
 TextReader: TypeAlias = io.TextIOBase
 TextWriter: TypeAlias = io.TextIOBase
 
+# TODO build system should provide a temp output directory where all files have real paths
+# Sometimes e.g. pandoc wants to use resources temporarily to generate an output document, but they don't need to be in the output folder.
+# TODO build system should provide wildcard input restriction to a job
+# e.g. this job must run last
+# good for the above
+
 
 class JobFile(abc.ABC):
     @abc.abstractproperty
