@@ -10,7 +10,8 @@ from turnip_text.env_plugins import EnvPlugin
 from turnip_text.helpers import inline_scope_builder
 
 
-# TODO strikethrough? sub/superscript?
+# TODO strikethrough? sub/superscript? small caps?
+# TODO remove italic and bold
 class InlineFormattingType(Enum):
     Italic = 0
     Bold = 1

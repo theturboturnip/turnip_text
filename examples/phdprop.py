@@ -12,6 +12,7 @@ from turnip_text.render.manual_numbering import SimpleCounterFormat, SimpleCount
 from turnip_text.render.markdown.renderer import HtmlSetup, MarkdownSetup
 from turnip_text.render.markdown.std_plugins import STD_MARKDOWN_RENDER_PLUGINS
 from turnip_text.render.pandoc import PandocSetup
+from turnip_text.render.pandoc.std_plugins import STD_PANDOC_RENDER_PLUGINS
 from turnip_text.system import parse_and_emit
 
 
@@ -100,7 +101,15 @@ if __name__ == "__main__":
     )
 
     # Pandoc (autodetects from output, in this case DOCX)
-    parse_and_emit(real_build_sys, "phdprop.ttext", "document.docx", PandocSetup(), [])
+    parse_and_emit(
+        real_build_sys,
+        "phdprop.ttext",
+        "document.docx",
+        PandocSetup(),
+        STD_PANDOC_RENDER_PLUGINS(
+            bib="phdprop_bib_csl.json",
+        ),
+    )
 
     for (
         output_file_name,

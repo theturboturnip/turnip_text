@@ -115,9 +115,11 @@ def constructor_typedef(
         class_def += (
             f"\tdef __getitem__(self, index: Literal[{i}]) -> {arg_type}:\n\t\t...\n"
         )
-    # if len(arg_type_list) > 1:
-    #     # base case for __getitem__
-    #     class_def += f"\tdef __getitem__(self, index: int) -> Any:\n\t\t...\n"
+
+    for i, arg_type in enumerate(arg_type_list):
+        if len(arg_type_list) > 1:
+            class_def += f"\t@overload\n"
+        class_def += f"\tdef __setitem__(self, index: Literal[{i}], obj: {arg_type}) -> None:\n\t\t...\n"
 
     return subclass_type_name, class_def
 

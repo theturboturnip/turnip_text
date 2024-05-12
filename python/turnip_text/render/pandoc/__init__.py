@@ -12,6 +12,7 @@ from typing import (
     Tuple,
     Type,
     TypeVar,
+    Union,
 )
 
 import pandoc  # type:ignore
@@ -52,8 +53,28 @@ TPandocRenderer_contra = TypeVar(
 )
 
 
+# Helper functions for making pan.Attr
+def pan_attr(id: str, props: List[str], keyval: List[Tuple[str, str]]) -> pan.Attr:
+    return (id, props, keyval)
+
+
 def null_attr() -> pan.Attr:
     return ("", [], [])
+
+
+# Helper functions for making pan.Meta from JSON
+PanJson = Union[int, float, str, List["PanJson"], Dict[str, "PanJson"]]
+
+
+def map_json_to_pan_metavalue(obj: PanJson) -> pan.MetaValue:
+    if isinstance(obj, (int, float, str)):
+        return pan.MetaInlines(PandocRenderer.make_text_inline_list(Text(str(obj))))
+    elif isinstance(obj, list):
+        return pan.MetaList([map_json_to_pan_metavalue(elem) for elem in obj])
+    else:
+        return pan.MetaMap(
+            {key: map_json_to_pan_metavalue(value) for key, value in obj.items()}
+        )
 
 
 def generic_join(ts: Sequence[T], joiner: T) -> List[T]:
@@ -72,6 +93,19 @@ class PandocRenderer(Renderer):
     An implementation of Renderer that builds a `pandoc.Document` which can then be processed into arbitrary output formats.
 
     Pandoc requires an AST, so this renderer is "maker"-based - plugins need to register functions that turn turnip_text Blocks into pandoc Blocks, and turnip_text Inlines into pandoc Inlines.
+
+    Each turnip_text counter is one of:
+    1. turnip_text controlled, Pandoc unaware
+        - turnip_text has to render the counter
+    2. Pandoc controlled, turnip_text mimicked (e.g. section headings)
+        - Legal/required for turnip_text to render the counter, it should always match exactly
+        - In the case of section headings, Pandoc always uses arabic numbering - turnip_text has to match
+    3. Pandoc controlled, turnip_text doesn't render (e.g. footnotes)
+        - Illegal/unadvised for turnip_text to render the counter,
+        it won't necessarily get the numbers right
+
+    1. and 2. counters have non-None entries in self.counter_rendering, and are supported in self.make_anchor(), self.make_backref(), and the anchor-text generators.
+    3. counters have None entries and aren't supported.
     """
 
     meta: pan.Meta
@@ -82,6 +116,8 @@ class PandocRenderer(Renderer):
     A mapping of counters to how they are rendered.
     Some counters are Pandoc-controlled and thus not directly renderable, and these cannot be parents of Pandoc-independent, renderable counters.
     """
+    pandoc_options: List[str]
+    """Options to be passed to pandoc on the command line"""
 
     def __init__(
         self,
@@ -91,12 +127,14 @@ class PandocRenderer(Renderer):
         makers: "PandocDispatch[Self]",
         counters: CounterState,
         counter_rendering: Dict[str, Optional[SimpleCounterFormat[SimpleCounterStyle]]],
+        pandoc_options: List[str],
     ) -> None:
         super().__init__(fmt, anchors)
         self.meta = meta
         self.makers = makers
         self.counters = counters
         self.counter_rendering = counter_rendering
+        self.pandoc_options = pandoc_options
 
     @classmethod
     def default_makers(
@@ -141,8 +179,13 @@ class PandocRenderer(Renderer):
     def make_inline(self: Self, obj: TInline) -> pan.Inline:
         return self.makers.make_pan_inline(obj, self, self.fmt)
 
+    # If we absolutely have to, emit a block scope as a single block
     def make_block_scope(self: Self, bs: Iterable[Block]) -> pan.Div:
-        return pan.Div(null_attr(), [self.make_block(b) for b in bs])
+        return pan.Div(null_attr(), self.make_block_scope_list(bs))
+
+    # In all other cases it's better to make the block scope as a list instead
+    def make_block_scope_list(self: Self, bs: Iterable[Block]) -> List[pan.Block]:
+        return [self.make_block(b) for b in bs]
 
     def make_paragraph(self: Self, p: Paragraph) -> pan.Para:
         inls: List[pan.Inline] = []
@@ -151,8 +194,13 @@ class PandocRenderer(Renderer):
             inls.append(pan.SoftBreak())
         return pan.Para(inls)
 
+    # As for block scopes, Pandoc likes to request List[pan.Inline]
+    # and a direct route from InlineScope is nice
     def make_inline_scope(self, inls: Iterable[Inline]) -> pan.Span:
-        return pan.Span(null_attr(), [self.make_inline(inl) for inl in inls])
+        return pan.Span(null_attr(), self.make_inline_scope_list(inls))
+
+    def make_inline_scope_list(self: Self, inls: Iterable[Inline]) -> List[pan.Inline]:
+        return [self.make_inline(inl) for inl in inls]
 
     def make_text(self, text: Text) -> pan.Inline:
         words = self.make_text_inline_list(text)
@@ -161,7 +209,8 @@ class PandocRenderer(Renderer):
         else:
             return pan.Span(null_attr(), words)
 
-    def make_text_inline_list(self, text: Text) -> List[pan.Inline]:
+    @classmethod
+    def make_text_inline_list(cls, text: Text) -> List[pan.Inline]:
         """
         Unpack turnip_text Text to a list of pandoc Inline.
 
@@ -202,19 +251,36 @@ class PandocRenderer(Renderer):
             with_name=False,
         )
 
-    def make_anchor_attr(self, anchor: Anchor) -> pan.Attr:
-        # TODO
-        return null_attr()
+    def make_anchor_attr(self, anchor: Optional[Anchor]) -> pan.Attr:
+        # TODO raise error if counter is pandoc-controlled and unrenderable
+        if anchor:
+            return (anchor.canonical(), [], [])
+        else:
+            return ("", ["unnumbered"], [])
 
     def make_backref(self, backref: Backref) -> pan.Link:
+        # e.g. Link(
+        #   ("", [], [("reference-type", "ref"), ("reference", anchor.canonical())]),
+        #   [Str("Name ") + (number)],
+        #   ("#" + anchor.canonical(), "")
+        # )
+        # Pandoc AST requires manual numbering!!!
+        # Autoref technically exists ("reference-type", "autoref") but in all my testing it never actually translates to an autoref.
+        # Even if you take a LaTeX "\autoref" and put it through pandoc to LaTeX again it gets translated to \hyperlink{[anchor.canonoical()]}. Useless.
+
+        # Numbering is one of
+
         anchor = self.anchors.lookup_backref(backref)
         return pan.Link(
-            null_attr(),
+            pan_attr(
+                "", [], [("reference-type", "ref"), ("reference", anchor.canonical())]
+            ),
             self.make_text_inline_list(self.anchor_to_ref_text(anchor)),
-            (anchor.canonical(), anchor.canonical()),
+            (f"#{anchor.canonical()}", ""),
         )
 
 
+# TODO makers should return List of items
 class PandocDispatch(Generic[TPandocRenderer_contra]):
     header_makers: DynDispatch[["TPandocRenderer_contra", FmtEnv], pan.Header]
     block_makers: DynDispatch[["TPandocRenderer_contra", FmtEnv], pan.Block]
@@ -298,6 +364,8 @@ class PandocSetup(RenderSetup[PandocRenderer]):
     """Counters can either be renderable or not - unrenderable counters are controlled by Pandoc e.g. footnotes, section headings and must always be backreferenced natively."""
     requested_counter_links: List[CounterLink]
     counters: CounterState
+    pandoc_options: List[str]
+    """Options to be passed to pandoc on the command line"""
 
     def __init__(self) -> None:
         super().__init__()
@@ -305,6 +373,7 @@ class PandocSetup(RenderSetup[PandocRenderer]):
         self.makers = PandocRenderer.default_makers()
         self.counter_rendering = {}
         self.requested_counter_links = []
+        self.pandoc_options = []
 
     def register_plugins(
         self, build_sys: BuildSystem, plugins: Iterable[RenderPlugin["PandocSetup"]]
@@ -316,7 +385,9 @@ class PandocSetup(RenderSetup[PandocRenderer]):
                     self.counter_rendering[counter] is not None
                 ):
                     raise ValueError(
-                        f"Can't have a link between parent counter '{parent}' and child '{counter}'.\n'{parent} is Pandoc-controlled and not renderable.\n'{counter}' is not pandoc-controlled, and must be rendered, but that would require using the parent."
+                        f"Can't have a link between parent counter '{parent}' and child '{counter}'.\n\
+                        '{parent} is Pandoc-controlled and not renderable.\n\
+                        '{counter}' is turnip_text-controlled or pandoc-consistent, and must be rendered, but that would require using the parent."
                     )
 
         # Now we know the full hierarchy we can build the CounterState
@@ -344,23 +415,25 @@ class PandocSetup(RenderSetup[PandocRenderer]):
     def known_countables(self) -> Iterable[str]:
         return self.counters.anchor_kind_to_parent_chain.keys()
 
-    def define_pandoc_independent_counter(
+    def define_renderable_counter(
         self,
         counter: str,
         counter_format: SimpleCounterFormat[SimpleCounterStyle],
     ) -> None:
         """
-        Given a counter, define how it's name is formatted in backreferences
+        Given a counter which pandoc handles in a consistent way to turnip_text,
+        define how turnip_text should number it and render backreferences to it.
         """
         if counter not in self.counter_rendering:
             self.counter_rendering[counter] = counter_format
 
-    def define_pandoc_controlled_counter(
+    def define_unrenderable_counter(
         self,
         counter: str,
     ) -> None:
         """
-        Given a counter, define how it's name is formatted in backreferences
+        Note that a given counter is pandoc-controlled and not consistent with turnip_text,
+        and thus cannot be rendered.
         """
         if counter not in self.counter_rendering:
             self.counter_rendering[counter] = None
@@ -377,6 +450,9 @@ class PandocSetup(RenderSetup[PandocRenderer]):
             ), "Parent counter must be defined before you request parentage"
         # Apply the requested counter links
         self.requested_counter_links.append((parent_counter, counter))
+
+    def add_pandoc_options(self, *args: str) -> None:
+        self.pandoc_options.extend(args)
 
     def register_file_generator_jobs(
         self,
@@ -395,11 +471,15 @@ class PandocSetup(RenderSetup[PandocRenderer]):
                 self.makers,
                 self.counters,
                 self.counter_rendering,
+                self.pandoc_options,
             )
             pan_doc = renderer.make_document(document)
             with out.open_write_bin() as write_to:
                 pandoc.write(
-                    pan_doc, file=write_to, format=pandoc.format_from_filename(out.path)
+                    pan_doc,
+                    file=write_to,
+                    format=pandoc.format_from_filename(out.path),
+                    options=renderer.pandoc_options,
                 )
 
         default_output_file_name = "document.docx"
@@ -409,3 +489,6 @@ class PandocSetup(RenderSetup[PandocRenderer]):
             inputs={},
             output_relative_path=output_file_name or default_output_file_name,
         )
+
+
+PandocPlugin = RenderPlugin[PandocSetup]
