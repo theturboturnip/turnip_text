@@ -6,7 +6,7 @@ from typing import Generator, List, Optional, Set, Tuple
 import citeproc  # type: ignore
 
 from turnip_text import Block, BlockScope, Raw, Text
-from turnip_text.build_system import BuildSystem, ProjectRelativePath
+from turnip_text.build_system import BuildSystem, InputRelPath
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.helpers import paragraph_of
@@ -274,16 +274,16 @@ LATEXLIKE_CSL = """<?xml version="1.0"?>
 
 
 class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
-    _bib_path: ProjectRelativePath
+    _bib_path: InputRelPath
     _bib_is_csl_json: bool
-    _csl_style_path: Optional[ProjectRelativePath]
+    _csl_style_path: Optional[InputRelPath]
     _bib: citeproc.CitationStylesBibliography
 
     def __init__(
         self,
-        bibtex_path: Optional[ProjectRelativePath] = None,
-        citeproc_json_path: Optional[ProjectRelativePath] = None,
-        csl_path: Optional[ProjectRelativePath] = None,
+        bibtex_path: Optional[InputRelPath] = None,
+        citeproc_json_path: Optional[InputRelPath] = None,
+        csl_path: Optional[InputRelPath] = None,
     ) -> None:
         if bibtex_path and not citeproc_json_path:
             self._bib_path = bibtex_path

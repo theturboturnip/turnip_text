@@ -3,11 +3,7 @@ from typing import List, Optional, Tuple, Union
 from typing_extensions import override
 
 from turnip_text import Inline, Raw
-from turnip_text.build_system import (
-    BuildSystem,
-    OutputRelativePath,
-    ProjectRelativePath,
-)
+from turnip_text.build_system import BuildSystem, InputRelPath, OutputRelPath
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import DocEnv, FmtEnv, in_doc
 from turnip_text.plugins.cites import (
@@ -56,14 +52,14 @@ class LatexBiblatexPlugin_Unchecked(LatexPlugin, CitationEnvPlugin):
 
 
 class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
-    _biblatex_path: ProjectRelativePath
+    _biblatex_path: InputRelPath
     _citation_db: BibLatexCitationDB
-    _minimal_bib_name: Optional[OutputRelativePath]
+    _minimal_bib_name: Optional[OutputRelPath]
 
     def __init__(
         self,
-        bibtex_path: Optional[ProjectRelativePath] = None,
-        output_bib_name: Optional[OutputRelativePath] = None,
+        bibtex_path: Optional[InputRelPath] = None,
+        output_bib_name: Optional[OutputRelPath] = None,
     ) -> None:
         if bibtex_path:
             self._biblatex_path = bibtex_path
@@ -76,11 +72,8 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
         self._citation_db = BibLatexCitationDB(build_sys, [self._biblatex_path])
 
         if self._minimal_bib_name:
-            build_sys.register_file_generator(
-                self._citation_db.write_minimal_db_job(),
-                inputs={},
-                output_relative_path=self._minimal_bib_name,
-            )
+            # Write out the bibliography once we know the exact set of items we want in it
+            build_sys.defer_supplementary_file(self._write_minimal_citation_db)
 
         setup.package_resolver.request_latex_package(
             "csquotes", reason="bibliography (for babel and biblatex)"
@@ -105,6 +98,15 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
 
         setup.add_preamble_section(self._emit_preamble)
 
+    def _write_minimal_citation_db(self, build_sys: BuildSystem) -> None:
+        assert (
+            self._minimal_bib_name
+        ), "Shouldn't be calling _write_minimal_citation_db if there isn't a path for the minimal citation db"
+        with build_sys.resolve_output_file(
+            self._minimal_bib_name
+        ).open_write_text() as f:
+            self._citation_db.write_minimal_db(f)
+
     def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
         def visit_cite_or_citeauthor(c: Union[Citation, CiteAuthor]) -> None:
             if isinstance(c, CiteAuthor):
@@ -121,7 +123,7 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
                 f"Setup bibliography for {self.__class__.__name__}"
             )
             renderer.emit_macro("addbibresource")
-            renderer.emit_braced(Raw(self._minimal_bib_name))
+            renderer.emit_braced(Raw(str(self._minimal_bib_name)))
         else:
             renderer.emit_comment_headline(
                 "Not including bibfile for {self.__class__.__name__}, because none was generated."

@@ -29,7 +29,7 @@ from turnip_text import (
     Raw,
     Text,
 )
-from turnip_text.build_system import BuildSystem, JobInputFile, JobOutputFile
+from turnip_text.build_system import BuildSystem, OutputRelPath, RelPath
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import FmtEnv, THeader
@@ -454,40 +454,39 @@ class PandocSetup(RenderSetup[PandocRenderer]):
     def add_pandoc_options(self, *args: str) -> None:
         self.pandoc_options.extend(args)
 
-    def register_file_generator_jobs(
+    def render_document(
         self,
         fmt: FmtEnv,
         anchors: StdAnchorPlugin,
         document: Document,
         build_sys: BuildSystem,
-        output_file_name: Optional[str],
+        output_file_name: Optional[OutputRelPath],
     ) -> None:
-        # Make a render job and register it in the build system.
-        def render_job(_ins: Dict[str, JobInputFile], out: JobOutputFile) -> None:
-            renderer = PandocRenderer(
-                fmt,
-                anchors,
-                self.meta,
-                self.makers,
-                self.counters,
-                self.counter_rendering,
-                self.pandoc_options,
-            )
-            pan_doc = renderer.make_document(document)
-            with out.open_write_bin() as write_to:
-                pandoc.write(
-                    pan_doc,
-                    file=write_to,
-                    format=pandoc.format_from_filename(out.path),
-                    options=renderer.pandoc_options,
-                )
-
         default_output_file_name = "document.docx"
+        output_file = build_sys.resolve_output_file(
+            RelPath(output_file_name or default_output_file_name)
+        )
 
-        build_sys.register_file_generator(
-            render_job,
-            inputs={},
-            output_relative_path=output_file_name or default_output_file_name,
+        renderer = PandocRenderer(
+            fmt,
+            anchors,
+            self.meta,
+            self.makers,
+            self.counters,
+            self.counter_rendering,
+            self.pandoc_options,
+        )
+        pan_doc = renderer.make_document(document)
+
+        # Do this early in case the files are for the final pandoc run
+        build_sys.run_deferred_jobs()
+
+        output_path = str(output_file.external_path)
+        pandoc.write(
+            pan_doc,
+            file=output_path,
+            format=pandoc.format_from_filename(output_path),
+            options=renderer.pandoc_options,
         )
 
 

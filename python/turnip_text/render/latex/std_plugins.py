@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from turnip_text.build_system import OutputRelativePath, ProjectRelativePath
+from turnip_text.build_system import InputRelPath, OutputRelPath
 from turnip_text.plugins.cites.latex import LatexBiblatexCitationPlugin
 from turnip_text.plugins.doc_structure.latex import (
     BasicLatexDocClass,
@@ -19,8 +19,8 @@ def STD_LATEX_ARTICLE_RENDER_PLUGINS(
     h1: StartLatexHeader = "section",
     doc_class: BasicLatexDocClass = "article",
     indent_list_items: bool = True,
-    bib: Optional[ProjectRelativePath] = None,
-    bib_output: Optional[OutputRelativePath] = None,
+    bib: Optional[InputRelPath] = None,
+    bib_output: Optional[OutputRelPath] = None,
 ) -> List[LatexPlugin]:
     plugins = [
         LatexDocumentClassPlugin_Basic(h1, doc_class=doc_class),

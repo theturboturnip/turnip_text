@@ -1,8 +1,7 @@
 import json
-from typing import Any
 
 import turnip_text.render.pandoc.pandoc_types as pan
-from turnip_text.build_system import BuildSystem, JobOutputFile, ProjectRelativePath
+from turnip_text.build_system import BuildSystem, InputRelPath
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.cites import (
     Bibliography,
@@ -20,10 +19,10 @@ from turnip_text.render.pandoc import (
 
 
 class PandocCitationPlugin(PandocPlugin, CitationEnvPlugin):
-    _csl_json_path: ProjectRelativePath
+    _csl_json_path: InputRelPath
     _citationNoteNum: int
 
-    def __init__(self, csl_json_path: ProjectRelativePath):
+    def __init__(self, csl_json_path: InputRelPath):
         self._csl_json_path = csl_json_path
         self._citationNoteNum = 0
 
@@ -38,20 +37,13 @@ class PandocCitationPlugin(PandocPlugin, CitationEnvPlugin):
         setup.add_pandoc_options("--citeproc")
 
         # Set a CSL style.
-        # This requires a real CSL file
-        # TODO need to refactor the build system to make this possible
-        # def write_real_output_csl(inputs: Any, output: JobOutputFile) -> None:
-        #     if not output.external_path:
-        #         print(
-        #             "Pandoc CSL needs an external CSL path, but the build system didn't provide one. pandoc will fail."
-        #         )
-        #     with open(output.external_path, "w") as f:
-        #         f.write(LATEXLIKE_CSL)
-
-        # output_csl_path = build_sys.register_file_generator(
-        #     write_real_output_csl, {}, "/temp/citation.csl"
-        # )
-        # setup.add_pandoc_options(f"--csl={output_csl_path}")
+        # This requires a real CSL file that pandoc can use,
+        # but we only need it for the actual AST -> file pandoc run.
+        # Thus, it is a temp file.
+        output_csl = build_sys.resolve_temp_file("citations.csl")
+        with output_csl.open_write_text() as f:
+            f.write(LATEXLIKE_CSL)
+        setup.add_pandoc_options(f"--csl={output_csl.external_path}")
 
         setup.makers.register_inline(Citation, self._make_cite)
         setup.makers.register_inline(CiteAuthor, self._make_citeauthor)

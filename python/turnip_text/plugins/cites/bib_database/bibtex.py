@@ -2,7 +2,7 @@ from typing import List, Set, TextIO
 
 import bibtexparser  # type: ignore
 
-from turnip_text.build_system import BuildSystem, ProjectRelativePath, TextWriter
+from turnip_text.build_system import BuildSystem, InputRelPath, TextWriter
 from turnip_text.plugins.cites.bib_database import CitationDB
 
 
@@ -16,7 +16,7 @@ class BibLatexCitationDB(CitationDB):
     # List of used entries
     used_entries: Set[str]
 
-    def __init__(self, file_sys: BuildSystem, paths: List[ProjectRelativePath]) -> None:
+    def __init__(self, file_sys: BuildSystem, paths: List[InputRelPath]) -> None:
 
         parser = bibtexparser.bparser.BibTexParser(
             ignore_nonstandard_types=False,

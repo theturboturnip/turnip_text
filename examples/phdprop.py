@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from turnip_text import *
-from turnip_text.build_system import InMemoryBuildSystem, SimpleBuildSystem
+from turnip_text.build_system import BuildSystem, TempBackedFileProvider
 from turnip_text.render.latex.backrefs import LatexBackrefMethod
 from turnip_text.render.latex.renderer import LatexCounterStyle
 from turnip_text.render.latex.setup import LatexSetup
@@ -37,14 +37,14 @@ if __name__ == "__main__":
     parser.add_argument("-odocx", type=str)
     args = parser.parse_args()
 
-    real_build_sys = SimpleBuildSystem(
-        project_dir=Path("./examples"), output_dir=Path("./examples/output/")
+    in_memory_output = TempBackedFileProvider()
+    build_sys = BuildSystem(
+        input_dir=Path("./examples"), output_dir=Path("./examples/output")
     )
-    in_memory_build_sys = InMemoryBuildSystem(input_files={})
 
     # LaTeX
     parse_and_emit(
-        real_build_sys,
+        build_sys,
         "phdprop.ttext",
         args.olatex,
         LatexSetup(
@@ -73,7 +73,7 @@ if __name__ == "__main__":
 
     # Markdown
     parse_and_emit(
-        real_build_sys,
+        build_sys,
         "phdprop.ttext",
         args.omd,
         MarkdownSetup(),
@@ -85,7 +85,7 @@ if __name__ == "__main__":
 
     # HTML
     parse_and_emit(
-        real_build_sys,
+        build_sys,
         "phdprop.ttext",
         args.ohtml,
         HtmlSetup(
@@ -102,7 +102,7 @@ if __name__ == "__main__":
 
     # Pandoc (autodetects from output, in this case DOCX)
     parse_and_emit(
-        real_build_sys,
+        build_sys,
         "phdprop.ttext",
         "document.docx",
         PandocSetup(),
@@ -114,8 +114,10 @@ if __name__ == "__main__":
     for (
         output_file_name,
         output_file_contents,
-    ) in in_memory_build_sys.get_outputs().items():
+    ) in in_memory_output.extract_contents().items():
         print("=====================================")
         print(output_file_name)
         print("=====================================")
         print(output_file_contents.decode("utf-8"))
+
+    build_sys.close()

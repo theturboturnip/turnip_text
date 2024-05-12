@@ -32,7 +32,7 @@ from turnip_text import (
     Sentence,
     Text,
 )
-from turnip_text.build_system import BuildSystem
+from turnip_text.build_system import BuildSystem, OutputRelPath, RelPath
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import EnvPlugin, FmtEnv
@@ -406,15 +406,15 @@ class RenderSetup(abc.ABC, Generic[TRenderer]):
     def known_countables(self) -> Iterable[str]: ...
 
     @abc.abstractmethod
-    def register_file_generator_jobs(
+    def render_document(
         self,
         fmt: FmtEnv,
         anchors: StdAnchorPlugin,
         document: Document,
         build_sys: BuildSystem,
-        output_file_name: Optional[str],
+        output_file_name: Optional[OutputRelPath],
     ) -> None:
-        """Register the actual job to render the necessary files out from toplevel_segment into doc_setup.build_sys."""
+        """Render the document out."""
         ...
 
 

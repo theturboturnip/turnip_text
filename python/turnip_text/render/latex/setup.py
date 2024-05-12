@@ -1,9 +1,9 @@
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, cast
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, cast
 
 from typing_extensions import override
 
 from turnip_text import Block, Document, Header, Inline
-from turnip_text.build_system import BuildSystem, JobInputFile, JobOutputFile
+from turnip_text.build_system import BuildSystem, OutputRelPath, RelPath
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.helpers import UNSET, MaybeUnset
@@ -127,13 +127,13 @@ class LatexSetup(RenderSetup[LatexRenderer]):
 
         return resolved_counters.tt_counters.anchor_kind_to_parent_chain.keys()
 
-    def register_file_generator_jobs(
+    def render_document(
         self,
         fmt: FmtEnv,
         anchors: StdAnchorPlugin,
         document: Document,
         build_sys: BuildSystem,
-        output_file_name: Optional[str],
+        output_file_name: Optional[OutputRelPath],
     ) -> None:
         if self.standalone:
             document_class = None
@@ -173,21 +173,17 @@ class LatexSetup(RenderSetup[LatexRenderer]):
             magic_tt_counter_to_latex_counter=resolved_counters.magic_tt_counter_to_latex_counter,
         )
 
-        # Make a render job and register it in the build system.
-        def render_job(_ins: Dict[str, JobInputFile], out: JobOutputFile) -> None:
-            with out.open_write_text() as write_to:
-                renderer = LatexRenderer(
-                    fmt,
-                    anchors,
-                    requirements,
-                    resolved_counters.tt_counters,
-                    self.emitter,
-                    write_to,
-                )
-                renderer.emit_document(document)
-
-        build_sys.register_file_generator(
-            render_job,
-            inputs={},
-            output_relative_path=output_file_name or "document.tex",
+        output_file = build_sys.resolve_output_file(
+            RelPath(output_file_name or "document.tex")
         )
+
+        with output_file.open_write_text() as write_to:
+            renderer = LatexRenderer(
+                fmt,
+                anchors,
+                requirements,
+                resolved_counters.tt_counters,
+                self.emitter,
+                write_to,
+            )
+            renderer.emit_document(document)

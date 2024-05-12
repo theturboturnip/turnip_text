@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from turnip_text.build_system import ProjectRelativePath
+from turnip_text.build_system import InputRelPath
 from turnip_text.plugins.cites.markdown import MarkdownCiteProcCitationPlugin
 from turnip_text.plugins.doc_structure.markdown import MarkdownStructurePlugin
 from turnip_text.plugins.footnote.markdown import MarkdownFootnotePlugin_AtEnd
@@ -14,7 +14,7 @@ from turnip_text.render.markdown.renderer import MarkdownPlugin
 def STD_MARKDOWN_RENDER_PLUGINS(
     use_chapters: bool,
     indent_list_items: bool = True,
-    bib: Optional[ProjectRelativePath] = None,
+    bib: Optional[InputRelPath] = None,
 ) -> List[MarkdownPlugin]:
     plugins = [
         MarkdownStructurePlugin(use_chapters),

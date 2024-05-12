@@ -1,9 +1,9 @@
 import html
 from contextlib import contextmanager
-from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple
+from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple, Union
 
 from turnip_text import Block, Document, Header, Inline, Paragraph, Text
-from turnip_text.build_system import BuildSystem, JobInputFile, JobOutputFile
+from turnip_text.build_system import BuildSystem, OutputRelPath, RelPath
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import FmtEnv
@@ -274,35 +274,29 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
         # Apply the requested counter links
         self.requested_counter_links.append((parent_counter, counter))
 
-    def register_file_generator_jobs(
+    def render_document(
         self,
         fmt: FmtEnv,
         anchors: StdAnchorPlugin,
         document: Document,
         build_sys: BuildSystem,
-        output_file_name: Optional[str],
+        output_file_name: Optional[OutputRelPath],
     ) -> None:
-        # Make a render job and register it in the build system.
-        def render_job(_ins: Dict[str, JobInputFile], out: JobOutputFile) -> None:
-            with out.open_write_text() as write_to:
-                renderer = MarkdownRenderer(
-                    fmt,
-                    anchors,
-                    self.emitter,
-                    self.counters,
-                    self.counter_rendering,
-                    write_to,
-                    html_mode=self.html_only,
-                )
-                renderer.emit_document(document)
-
         default_output_file_name = "document.html" if self.html_only else "document.md"
-
-        build_sys.register_file_generator(
-            render_job,
-            inputs={},
-            output_relative_path=output_file_name or default_output_file_name,
+        output_file = build_sys.resolve_output_file(
+            RelPath(output_file_name or default_output_file_name)
         )
+        with output_file.open_write_text() as write_to:
+            renderer = MarkdownRenderer(
+                fmt,
+                anchors,
+                self.emitter,
+                self.counters,
+                self.counter_rendering,
+                write_to,
+                html_mode=self.html_only,
+            )
+            renderer.emit_document(document)
 
 
 class HtmlSetup(MarkdownSetup):

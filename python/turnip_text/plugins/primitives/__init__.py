@@ -1,23 +1,18 @@
 import abc
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Sequence, Set, Type, Union
+from typing import Any, Dict, Sequence, Union
 
 import turnip_text
 from turnip_text import (
     Block,
     BlockScope,
-    BlockScopeBuilder,
     Header,
     Inline,
     InlineScope,
-    InlineScopeBuilder,
-    Paragraph,
-    Raw,
-    RawScopeBuilder,
-    Sentence,
     Text,
     TurnipTextSource,
 )
+from turnip_text.build_system import RelPath
 from turnip_text.env_plugins import DocEnv, EnvPlugin, in_doc
 from turnip_text.helpers import (
     NullBuilder,
@@ -42,7 +37,9 @@ class PrimitivesPlugin(abc.ABC, EnvPlugin):
     @in_doc
     def subfile(self, doc_env: DocEnv, project_relative_path: str) -> TurnipTextSource:
         """Emit a subfile into the document, which will immediately be parsed before the rest of the current file."""
-        return doc_env.build_sys.resolve_turnip_text_source(project_relative_path)
+        return doc_env.build_sys.resolve_turnip_text_source(
+            RelPath(project_relative_path)
+        )
 
     # Helpers for inserting common but unwieldy unicode characters
     nbsp = Text("\u00A0")

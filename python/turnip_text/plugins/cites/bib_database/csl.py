@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Set, TextIO
 
-from turnip_text.build_system import BuildSystem, ProjectRelativePath, TextWriter
+from turnip_text.build_system import BuildSystem, InputRelPath, TextWriter
 from turnip_text.plugins.cites.bib_database import CitationDB
 
 
@@ -21,7 +21,7 @@ class CslJsonCitationDB(CitationDB):
     def __init__(
         self,
         file_sys: BuildSystem,
-        paths: List[ProjectRelativePath],
+        paths: List[InputRelPath],
         pretty_print_minimal_db: bool = True,
     ) -> None:
 
