@@ -42,6 +42,7 @@ class InlineFormatEnvPlugin(EnvPlugin):
     @inline_scope_builder
     @staticmethod
     def italic(items: InlineScope) -> Inline:
+        """Format an inline scope in italics."""
         return InlineFormatted(contents=items, format_type=InlineFormattingType.Italic)
 
     @inline_scope_builder

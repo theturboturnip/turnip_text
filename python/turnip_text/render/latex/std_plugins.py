@@ -15,7 +15,7 @@ from turnip_text.plugins.url.latex import LatexUrlPlugin
 from turnip_text.render.latex.setup import LatexPlugin
 
 
-def STD_LATEX_ARTICLE_RENDER_PLUGINS(
+def STD_LATEX_RENDER_PLUGINS(
     h1: StartLatexHeader = "section",
     doc_class: BasicLatexDocClass = "article",
     indent_list_items: bool = True,
@@ -32,6 +32,4 @@ def STD_LATEX_ARTICLE_RENDER_PLUGINS(
     ]
     if bib:
         plugins.append(LatexBiblatexCitationPlugin(bib, bib_output))
-    elif bib_output:
-        raise ValueError("Can't set bib_output when bib is not set")
     return plugins

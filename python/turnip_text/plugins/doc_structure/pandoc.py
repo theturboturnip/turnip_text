@@ -55,6 +55,8 @@ class PandocStructurePlugin(PandocPlugin, StructureEnvPlugin):
 
         for i, fmt in enumerate(self._header_fmts):
             setup.define_renderable_counter(f"h{i+1}", fmt)
+            if i > 0:
+                setup.request_counter_parent(f"h{i+1}", f"h{i}")
         setup.define_renderable_counter(
             "appendix",
             SimpleCounterFormat(

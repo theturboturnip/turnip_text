@@ -44,7 +44,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
 
     def __init__(
         self,
-        standalone: bool = False,
+        standalone: bool = True,
         counter_link_override: Optional[Iterable[CounterLink]] = None,
         # TODO make this be in terms of tt_counter so the whole thing is tt_counters?
         latex_counter_format_override: Optional[Dict[str, LatexCounterFormat]] = None,
@@ -135,11 +135,13 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         build_sys: BuildSystem,
         output_file_name: Optional[OutputRelPath],
     ) -> None:
-        if self.standalone:
+        if not self.standalone:
             document_class = None
         else:
             if self.document_class is UNSET:
-                raise RuntimeError("Document class was not declared by any plugin!")
+                raise RuntimeError(
+                    "Document class was not declared by any plugin in a standalone document!"
+                )
             document_class = cast(str, self.document_class)
 
         resolved_counters = self.resolved_counters

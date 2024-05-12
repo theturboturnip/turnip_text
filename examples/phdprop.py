@@ -7,7 +7,7 @@ from turnip_text.build_system import BuildSystem, TempBackedFileProvider
 from turnip_text.render.latex.backrefs import LatexBackrefMethod
 from turnip_text.render.latex.renderer import LatexCounterStyle
 from turnip_text.render.latex.setup import LatexSetup
-from turnip_text.render.latex.std_plugins import STD_LATEX_ARTICLE_RENDER_PLUGINS
+from turnip_text.render.latex.std_plugins import STD_LATEX_RENDER_PLUGINS
 from turnip_text.render.manual_numbering import SimpleCounterFormat, SimpleCounterStyle
 from turnip_text.render.markdown.renderer import HtmlSetup, MarkdownSetup
 from turnip_text.render.markdown.std_plugins import STD_MARKDOWN_RENDER_PLUGINS
@@ -63,7 +63,7 @@ if __name__ == "__main__":
                 LatexBackrefMethod.ManualRef,
             ],
         ),
-        STD_LATEX_ARTICLE_RENDER_PLUGINS(
+        STD_LATEX_RENDER_PLUGINS(
             h1="section",
             doc_class="article",
             bib="phdprop_bib_biblatex.bib",

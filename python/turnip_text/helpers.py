@@ -207,6 +207,7 @@ class block_scope_builder(UserBlockScopeBuilder):
         self, func: Callable[[BlockScope], Union[Block, Inline, Header, None]]
     ) -> None:
         self.func = func
+        self.__doc__ = func.__doc__
 
     def build_from_blocks(self, b: BlockScope) -> Union[Block, Inline, Header, None]:
         return self.func(b)
@@ -242,6 +243,7 @@ class inline_scope_builder(UserInlineScopeBuilder):
         func: Callable[[InlineScope], Union[Block, Inline, Header, None]],
     ) -> None:
         self.func = func
+        self.__doc__ = func.__doc__
 
     def build_from_inlines(
         self, inls: InlineScope
@@ -276,6 +278,7 @@ class raw_scope_builder(UserRawScopeBuilder):
         self, func: Callable[[Raw], Union[Block, Inline, Header, None]]
     ) -> None:
         self.func = func
+        self.__doc__ = func.__doc__
 
     def build_from_raw(self, raw: Raw) -> Union[Block, Inline, Header, None]:
         return self.func(raw)

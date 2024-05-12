@@ -59,20 +59,20 @@ class BuildSystem:
     def resolve_input_file(self, rel_path: InputRelPath) -> "InputFile":
         try:
             return self._file_system.resolve_input_file(RelPath("input", rel_path))
-        except ValueError:
-            raise RuntimeError(f"Failed to resolve input file {rel_path}")
+        except:
+            raise RuntimeError(f"Failed to resolve input file 'input/{rel_path}'")
 
     def resolve_temp_file(self, rel_path: Union[str, "RelPath"]) -> "OutputFile":
         try:
             return self._file_system.resolve_output_file(RelPath("temp", rel_path))
-        except ValueError:
-            raise RuntimeError(f"Failed to resolve temp file {rel_path}")
+        except:
+            raise RuntimeError(f"Failed to resolve temp file 'temp/{rel_path}'")
 
     def resolve_output_file(self, rel_path: OutputRelPath) -> "OutputFile":
         try:
             return self._file_system.resolve_output_file(RelPath("output", rel_path))
-        except ValueError:
-            raise RuntimeError(f"Failed to resolve output file {rel_path}")
+        except:
+            raise RuntimeError(f"Failed to resolve output file 'output/{rel_path}'")
 
     def defer_supplementary_file(self, job: Callable[["BuildSystem"], None]) -> None:
         self._deferred_supplementary_file_jobs.append(job)
@@ -96,7 +96,7 @@ INVALID_COMP_RE = re.compile(r"(^\.\.\.+$)|([^a-zA-Z0-9\-_\.])")
 def check_component(component: str) -> RelPathComponent:
     if INVALID_COMP_RE.search(component):
         raise ValueError(
-            f"Component {component} is invalid - must only be alphanumeric characters, underscores, dashes, and dots, and cannot be a string of 3+ dots."
+            f"{component} is not a valid relative-path component - must only be alphanumeric characters, underscores, dashes, and dots, and cannot be a string of 3+ dots."
         )
     return component
 
@@ -292,6 +292,8 @@ class RealFileSystemProvider(FileProvider):
         path = self.base_path / str(rel_path)
         if self.mkdirs:
             path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            raise ValueError(f"Cannot resolve nonexistant input file {rel_path}")
         return RealJobInputFile(path.resolve())
 
     @override
