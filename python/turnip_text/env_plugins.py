@@ -1,3 +1,4 @@
+import functools
 import inspect
 from typing import (
     Any,
@@ -180,7 +181,7 @@ def in_doc(
         return f(plugin, plugin._doc_env, *args, **kwargs)
 
     wrapper._in_doc = True  # type: ignore
-    wrapper.__doc__ = f.__doc__
+    functools.update_wrapper(wrapper, f)
     wrapper.__name__ = f"in_doc wrapper of function {f.__name__}()"
 
     return wrapper
@@ -208,7 +209,7 @@ def pure_fmt(
         return f(plugin, plugin._fmt, *args, **kwargs)
 
     wrapper._pure_fmt = True  # type: ignore
-    wrapper.__doc__ = f.__doc__
+    functools.update_wrapper(wrapper, f)
     wrapper.__name__ = f"pure_fmt wrapper of function {f.__name__}()"
 
     return wrapper

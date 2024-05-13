@@ -1,4 +1,5 @@
 import abc
+import functools
 from typing import Any, Callable, Generic, List, Optional, TypeVar, Union
 
 from turnip_text import (
@@ -209,11 +210,13 @@ class block_scope_builder(UserBlockScopeBuilder[TElement]):
         self, func: Callable[[BlockScope], TElement]
     ) -> None:
         self.func = func
-        self.__doc__ = func.__doc__
+        functools.update_wrapper(self, func)
 
     def build_from_blocks(self, b: BlockScope) -> TElement:
         return self.func(b)
-
+    
+    def __str__(self) -> str:
+        return f"<{self.__class__.__name__} wrapping {self.func}>"
 
 class inline_scope_builder(UserInlineScopeBuilder[TElement]):
     """
@@ -245,13 +248,15 @@ class inline_scope_builder(UserInlineScopeBuilder[TElement]):
         func: Callable[[InlineScope], TElement],
     ) -> None:
         self.func = func
-        self.__doc__ = func.__doc__
+        functools.update_wrapper(self, func)
 
     def build_from_inlines(
         self, inls: InlineScope
     ) -> TElement:
         return self.func(inls)
-
+    
+    def __str__(self) -> str:
+        return f"<{self.__class__.__name__} wrapping {self.func}>"
 
 class raw_scope_builder(UserRawScopeBuilder[TElement]):
     """
@@ -280,10 +285,13 @@ class raw_scope_builder(UserRawScopeBuilder[TElement]):
         self, func: Callable[[Raw], TElement]
     ) -> None:
         self.func = func
-        self.__doc__ = func.__doc__
+        functools.update_wrapper(self, func)
 
     def build_from_raw(self, raw: Raw) -> TElement:
         return self.func(raw)
+    
+    def __str__(self) -> str:
+        return f"<{self.__class__.__name__} wrapping {self.func}>"
 
 
 def paragraph_of(i: CoercibleToInline) -> Paragraph:

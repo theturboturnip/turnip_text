@@ -5,6 +5,7 @@ import re
 import textwrap
 from typing import Any, Dict, List, Optional, Type, cast
 
+from turnip_text import Block, BlockScopeBuilder, Header, Inline, InlineScopeBuilder, RawScopeBuilder
 from turnip_text.cli import (
     InputParams,
     TurnipTextSetup,
@@ -125,17 +126,26 @@ def wrap_describe(args: Any) -> None:
     setup = find_setup_class(input_params, args.setup, args.setup_search_module)
     setup_kwargs = parse_setup_kwargs(args.setup_args)
 
-    help(setup)
-
     print(f"This document uses the {setup.__class__.__qualname__} class as its Setup.")
-    print(f"The following keyword arguments are passed in:\n")
-    for key, value in setup_kwargs.items():
-        print("\t", key, ":\t", value)
+    if setup_kwargs:
+        print(f"The following keyword arguments are passed in:\n")
+        for key, value in setup_kwargs.items():
+            print("\t", key, ":\t", value)
+    else:
+        print(f"No kwargs have been passed in.")
+
+    if args.plugins and setup.__doc__:
+        print("-" * 20)
+        print(f"class {setup.__class__.__name__}:")
+        print("\t" + textwrap.dedent(setup.__doc__).replace("\n", "\n\t"))
+    else:
+        help(setup)
+
 
     if args.plugins:
         plugins = setup.generate_setup(**setup.DEFAULT_INPUTS, **setup_kwargs).plugins
         print(
-            f"The setup class generates a list of approximately {len(plugins)} plugins."
+            f"The setup class generates a list of approximately {len(plugins)} plugins, with the following interfaces"
         )
 
         anchors = StdAnchorPlugin()
@@ -151,14 +161,72 @@ def wrap_describe(args: Any) -> None:
         # TODO docstrings could be way better here... especially for builders
         for name, item in doc_env.__dict__.items():
             print("-" * 20)
-            if inspect.isfunction(item) or inspect.ismethod(item):
-                print(f"def {name}{inspect.signature(getattr(doc_env, name))}:")
-            else:
-                print(f"{name} = {item}")
-            if item.__doc__:
-                print("\t" + textwrap.dedent(item.__doc__).replace("\n", "\n\t"))
-            else:
-                print("\tNo documentation found.")
+
+            if not (inspect.isfunction(item) or inspect.ismethod(item)):
+                fits_block = isinstance(item, Block)
+                fits_inline = isinstance(item, Inline)
+                fits_header = isinstance(item, Header)
+                is_doc_element = fits_block or fits_inline or fits_header
+                if inspect.isclass(item):
+                    fits_bsb = issubclass(item, BlockScopeBuilder)
+                    fits_isb = issubclass(item, InlineScopeBuilder)
+                    fits_rsb = issubclass(item, RawScopeBuilder)
+                else:
+                    fits_bsb = isinstance(item, BlockScopeBuilder)
+                    fits_isb = isinstance(item, InlineScopeBuilder)
+                    fits_rsb = isinstance(item, RawScopeBuilder)
+                is_doc_builder = fits_bsb or fits_isb or fits_rsb
+
+
+                if is_doc_element or is_doc_builder: 
+                    if inspect.isclass(item):
+                        print(f"class {name}({', '.join(str(base) for base in item.__bases__ if base is not object)})")
+                    else:
+                        things_it_fits = []
+                        if fits_block:
+                            things_it_fits.append("Block")
+                        if fits_inline:
+                            things_it_fits.append("Inline")
+                        if fits_header:
+                            things_it_fits.append("Header")
+
+                        if fits_bsb:
+                            things_it_fits.append("BlockScopeBuilder")
+                        if fits_isb:
+                            things_it_fits.append("InlineScopeBuilder")
+                        if fits_rsb:
+                            things_it_fits.append("RawScopeBuilder")
+
+                        if is_doc_builder:
+                            print(f"{name} = ({', '.join(things_it_fits)})")
+                        else:
+                            print(f"{name} = {item!r} (fits {', '.join(things_it_fits)})")
+                    if item.__doc__:
+                        print("\t" + textwrap.dedent(item.__doc__).replace("\n", "\n\t"))
+                    else:
+                        print("\tNo documentation found.")
+                else:
+                    print(f"{name} = {item!r}")
+            # The item may also be callable.
+            if callable(item) and not inspect.isclass(item):
+                signature = inspect.signature(getattr(doc_env, name))
+                if not signature.parameters:
+                    print(f"def {name}{signature}:")
+                else:
+                    print(f"def {name}(")
+                    for param in signature.parameters.values():
+                        print(f"\t{param},")
+                    print(f") -> {signature.return_annotation}:")
+                if (inspect.isfunction(item) or inspect.ismethod(item)):
+                    if item.__doc__:
+                        print("\t" + textwrap.dedent(item.__doc__).replace("\n", "\n\t"))
+                    else:
+                        print("\tNo documentation found.")
+                else:
+                    if item.__call__.__doc__:
+                        print("\t" + textwrap.dedent(item.__call__.__doc__).replace("\n", "\n\t"))
+                    else:
+                        print("\tNo documentation found.")
             # TODO if it supports a builder, give a usage example?
 
 
@@ -220,10 +288,10 @@ def run_cli() -> None:
         "show-setup", help="Describe the TurnipTextSetup used for this configuration."
     )
     describe_subcommand.add_argument(
-        "input",
+        "inputs",
         type=str,
-        # nargs="+", # TODO
-        help="The input turnip_text file (usually with a .ttext extension). If `--project-dir` is not set, this is used to infer the 'project' directory where all other input files live.",
+        nargs="+",
+        help="The input turnip_text files (usually with a .ttext extension). If `--project-dir` is not set, this is used to infer the 'project' directory where all other input files live.",
     )
     describe_subcommand.add_argument(
         "--plugins",
