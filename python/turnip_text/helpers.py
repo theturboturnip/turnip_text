@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Callable, List, Optional, TypeVar, Union
+from typing import Any, Callable, Generic, List, Optional, TypeVar, Union
 
 from turnip_text import (
     Block,
@@ -23,8 +23,10 @@ from turnip_text import (
 
 # TODO tests for the helpers
 
+# TODO Python 3.12 use default here
+TElement = TypeVar("TElement", bound=Union[Header, Block, Inline, None])
 
-class UserBlockScopeBuilder(abc.ABC):
+class UserBlockScopeBuilder(abc.ABC, Generic[TElement]):
     """
     Subclassable BlockScopeBuilder which implements the matmul operator '@'.
     Using matmul allows code to use the block scope builder more conveniently.
@@ -38,16 +40,16 @@ class UserBlockScopeBuilder(abc.ABC):
     @abc.abstractmethod
     def build_from_blocks(
         self, blks: BlockScope
-    ) -> Union[Header, Block, Inline, None]: ...
+    ) -> TElement: ...
 
     def __matmul__(
         self, maybe_b: CoercibleToBlockScope
-    ) -> Union[Header, Block, Inline, None]:
+    ) -> TElement:
         bs = coerce_to_block_scope(maybe_b)
         return self.build_from_blocks(bs)
 
 
-class UserInlineScopeBuilder(abc.ABC):
+class UserInlineScopeBuilder(abc.ABC, Generic[TElement]):
     """
     Subclassable InlineScopeBuilder which implements the matmul operator '@'.
     Using matmul allows code to use the block scope builder more conveniently.
@@ -61,16 +63,16 @@ class UserInlineScopeBuilder(abc.ABC):
     @abc.abstractmethod
     def build_from_inlines(
         self, inls: InlineScope
-    ) -> Union[Header, Block, Inline, None]: ...
+    ) -> TElement: ...
 
     def __matmul__(
         self, maybe_inls: CoercibleToInlineScope
-    ) -> Union[Header, Block, Inline, None]:
+    ) -> TElement:
         inls = coerce_to_inline_scope(maybe_inls)
         return self.build_from_inlines(inls)
 
 
-class UserRawScopeBuilder(abc.ABC):
+class UserRawScopeBuilder(abc.ABC, Generic[TElement]):
     """
     Subclassable RawScopeBuilder which implements the matmul operator '@'.
     Using matmul allows code to use the block scope builder more conveniently.
@@ -82,9 +84,9 @@ class UserRawScopeBuilder(abc.ABC):
     """
 
     @abc.abstractmethod
-    def build_from_raw(self, r: Raw) -> Union[Header, Block, Inline, None]: ...
+    def build_from_raw(self, r: Raw) -> TElement: ...
 
-    def __matmul__(self, maybe_raw: Any) -> Union[Header, Block, Inline, None]:
+    def __matmul__(self, maybe_raw: Any) -> TElement:
         if isinstance(maybe_raw, Raw):
             return self.build_from_raw(maybe_raw)
         raise TypeError(
@@ -92,7 +94,7 @@ class UserRawScopeBuilder(abc.ABC):
         )
 
 
-class UserBlockOrInlineScopeBuilder(UserBlockScopeBuilder, UserInlineScopeBuilder):
+class UserBlockOrInlineScopeBuilder(UserBlockScopeBuilder[TElement], UserInlineScopeBuilder[TElement]):
     """
     Subclassable block and inline scope builder which implements the matmul operator.
     If the argument to the matmul operator is coercible to inline, treats it as an inline.
@@ -107,7 +109,7 @@ class UserBlockOrInlineScopeBuilder(UserBlockScopeBuilder, UserInlineScopeBuilde
 
     def __matmul__(
         self, maybe_inls: Union[CoercibleToInlineScope, CoercibleToBlockScope]
-    ) -> Union[Block, Inline, Header, None]:
+    ) -> TElement:
         try:
             inl = coerce_to_inline_scope(maybe_inls)  # type:ignore
         except TypeError:
@@ -118,7 +120,7 @@ class UserBlockOrInlineScopeBuilder(UserBlockScopeBuilder, UserInlineScopeBuilde
             return self.build_from_inlines(inl)
 
 
-class UserAnyScopeBuilder(UserBlockOrInlineScopeBuilder, UserRawScopeBuilder):
+class UserAnyScopeBuilder(UserBlockOrInlineScopeBuilder[TElement], UserRawScopeBuilder[TElement]):
     """
     Subclassable block, inline, and raw scope builder which implements the matmul operator.
     If the argument to the matmul operator is Raw, treats it as Raw.
@@ -136,13 +138,13 @@ class UserAnyScopeBuilder(UserBlockOrInlineScopeBuilder, UserRawScopeBuilder):
 
     def __matmul__(
         self, something: Union[Raw, CoercibleToInlineScope, CoercibleToBlockScope]
-    ) -> Union[Block, Inline, Header, None]:
+    ) -> TElement:
         if isinstance(something, Raw):
             return self.build_from_raw(something)
         return super().__matmul__(something)
 
 
-class PassthroughBuilder(UserBlockOrInlineScopeBuilder):
+class PassthroughBuilder(UserBlockOrInlineScopeBuilder[Union[Block, Inline]]):
     """Block-or-inline scope builder that passes through whatever argument it's given."""
 
     def build_from_blocks(self, bs: BlockScope) -> Block:
@@ -176,7 +178,7 @@ class NullRawBuilder(UserRawScopeBuilder):
         return None
 
 
-class block_scope_builder(UserBlockScopeBuilder):
+class block_scope_builder(UserBlockScopeBuilder[TElement]):
     """
     Decorator which allows a function to fit the BlockScopeBuilder typeclass.
 
@@ -201,19 +203,19 @@ class block_scope_builder(UserBlockScopeBuilder):
     ```
     """
 
-    func: Callable[[BlockScope], Union[Block, Inline, Header, None]]
+    func: Callable[[BlockScope], TElement]
 
     def __init__(
-        self, func: Callable[[BlockScope], Union[Block, Inline, Header, None]]
+        self, func: Callable[[BlockScope], TElement]
     ) -> None:
         self.func = func
         self.__doc__ = func.__doc__
 
-    def build_from_blocks(self, b: BlockScope) -> Union[Block, Inline, Header, None]:
+    def build_from_blocks(self, b: BlockScope) -> TElement:
         return self.func(b)
 
 
-class inline_scope_builder(UserInlineScopeBuilder):
+class inline_scope_builder(UserInlineScopeBuilder[TElement]):
     """
     Decorator which allows a function to fit the InlineScopeBuilder typeclass.
 
@@ -236,22 +238,22 @@ class inline_scope_builder(UserInlineScopeBuilder):
     ```
     """
 
-    func: Callable[[InlineScope], Union[Block, Inline, Header, None]]
+    func: Callable[[InlineScope], TElement]
 
     def __init__(
         self,
-        func: Callable[[InlineScope], Union[Block, Inline, Header, None]],
+        func: Callable[[InlineScope], TElement],
     ) -> None:
         self.func = func
         self.__doc__ = func.__doc__
 
     def build_from_inlines(
         self, inls: InlineScope
-    ) -> Union[Block, Inline, Header, None]:
+    ) -> TElement:
         return self.func(inls)
 
 
-class raw_scope_builder(UserRawScopeBuilder):
+class raw_scope_builder(UserRawScopeBuilder[TElement]):
     """
     Decorator which allows a function to fit the RawScopeBuilder typeclass.
 
@@ -272,15 +274,15 @@ class raw_scope_builder(UserRawScopeBuilder):
     ```
     """
 
-    func: Callable[[Raw], Union[Block, Inline, Header, None]]
+    func: Callable[[Raw], TElement]
 
     def __init__(
-        self, func: Callable[[Raw], Union[Block, Inline, Header, None]]
+        self, func: Callable[[Raw], TElement]
     ) -> None:
         self.func = func
         self.__doc__ = func.__doc__
 
-    def build_from_raw(self, raw: Raw) -> Union[Block, Inline, Header, None]:
+    def build_from_raw(self, raw: Raw) -> TElement:
         return self.func(raw)
 
 
