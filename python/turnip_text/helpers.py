@@ -82,6 +82,9 @@ class UserRawScopeBuilder(abc.ABC, Generic[TElement]):
     Example:
 
     `SomeUserRawScopeBuilder() @ Raw("Some content")` performs the typecheck that the Raw is a Raw.
+
+    For simplicity, 'str' is also supported - but beware that this won't work on combined Inline/Raw builders,
+    which will coerce it to Text
     """
 
     @abc.abstractmethod
@@ -90,6 +93,8 @@ class UserRawScopeBuilder(abc.ABC, Generic[TElement]):
     def __matmul__(self, maybe_raw: Any) -> TElement:
         if isinstance(maybe_raw, Raw):
             return self.build_from_raw(maybe_raw)
+        if isinstance(maybe_raw, str):
+            return self.build_from_raw(Raw(maybe_raw))
         raise TypeError(
             f"Invoked UserRawScopeBuilder on {maybe_raw}, which wasn't a string"
         )
