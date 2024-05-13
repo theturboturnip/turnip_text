@@ -104,28 +104,26 @@ def parse_setup_kwargs(setup_args: Optional[str]) -> Dict[str, str]:
 
 
 def wrap_render(args: Any) -> None:
-    input_params = autodetect_input(args.input, args.project_dir)
-
-    if not args.output:
-        raise ValueError(
-            "Please set the -o, --output argument. Can't render a document without knowing where to send it!"
-        )
-    output_params = autodetect_output(args.output)
-
-    setup = find_setup_class(input_params, args.setup, args.setup_search_module)
-
     setup_kwargs = parse_setup_kwargs(args.setup_args)
+    for input_arg in args.inputs:
+        for format in args.formats:
+            input_params = autodetect_input(input_arg, args.project_dir)
 
-    render(
-        input_params,
-        output_params,
-        setup,
-        setup_kwargs,
-    )
+            output_params = autodetect_output(args.output_dir, input_params)
+
+            setup = find_setup_class(input_params, args.setup, args.setup_search_module)
+
+            render(
+                input_params,
+                output_params,
+                format,
+                setup,
+                setup_kwargs,
+            )
 
 
 def wrap_describe(args: Any) -> None:
-    input_params = autodetect_input(args.input, args.project_dir)
+    input_params = autodetect_input(args.inputs[0], args.project_dir)
     setup = find_setup_class(input_params, args.setup, args.setup_search_module)
     setup_kwargs = parse_setup_kwargs(args.setup_args)
 
@@ -137,7 +135,7 @@ def wrap_describe(args: Any) -> None:
         print("\t", key, ":\t", value)
 
     if args.plugins:
-        _, plugins = setup.generate_setup(setup.DEFAULT_RENDERER, **setup_kwargs)
+        plugins = setup.generate_setup(**setup.DEFAULT_INPUTS, **setup_kwargs).plugins
         print(
             f"The setup class generates a list of approximately {len(plugins)} plugins."
         )
@@ -199,17 +197,23 @@ def run_cli():
         "render", help="Render a turnip_text document out into a document file."
     )
     render_subcommand.add_argument(
-        "input",
+        "inputs",
         type=str,
-        # nargs="+", # TODO
-        help="The input turnip_text file (usually with a .ttext extension). If `--project-dir` is not set, this is used to infer the 'project' directory where all other input files live.",
+        nargs="+",
+        help="The input turnip_text files (usually with a .ttext extension). If `--project-dir` is not set, each is used to separately infer the 'project' directory where all other input files live.",
     )
     render_subcommand.add_argument(
         "-o",
-        "--output",
+        "--output-dir",
         type=str,
         required=True,
-        help="The name of the output document file. Used to infer the output format, and defines the output directory where all generated files are placed.",
+        help="The toplevel folder for document outputs. Generates output folders {output}/{input_basename}/<output files for each input>",
+    )
+    render_subcommand.add_argument(
+        "--formats",
+        type=str,
+        nargs="+",
+        help="The format(s) to export to for each input file. Can be any value accepted by the setup, common accepted values are 'latex', 'html', 'markdown', 'pandoc-{format}'."
     )
     # If the render subcommand is selected, set `args.func = wrap_render`
     render_subcommand.set_defaults(func=wrap_render)

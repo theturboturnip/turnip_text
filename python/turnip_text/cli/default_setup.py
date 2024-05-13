@@ -1,12 +1,11 @@
-from typing import Any, List, Optional, Tuple
+from typing import Optional
 
-from turnip_text.cli import TurnipTextSetup, TurnipTextSuggestedRenderer
-from turnip_text.render import RenderPlugin, RenderSetup
+from turnip_text.cli import GeneratedSetup, TurnipTextSetup
 from turnip_text.render.latex.setup import LatexSetup
 from turnip_text.render.latex.std_plugins import STD_LATEX_RENDER_PLUGINS
 from turnip_text.render.markdown.renderer import HtmlSetup, MarkdownSetup
 from turnip_text.render.markdown.std_plugins import STD_MARKDOWN_RENDER_PLUGINS
-from turnip_text.render.pandoc import PandocSetup
+from turnip_text.render.pandoc import PandocSetup, recommend_pandoc_format_ext
 from turnip_text.render.pandoc.std_plugins import STD_PANDOC_RENDER_PLUGINS
 
 
@@ -14,7 +13,11 @@ class DefaultTurnipTextSetup(TurnipTextSetup):
     """
     Default setup.
 
-    Supports LaTeX, Markdown, HTML, and Pandoc output.
+    Supported formats:
+    - "latex" for LaTeX
+    - "markdown" for Markdown
+    - "html" for HTML
+    - "pandoc-{format}" for Pandoc output to the given format 
 
     Accepts three keyword arguments:
     - `docclass:(article|book|report)`
@@ -29,80 +32,89 @@ class DefaultTurnipTextSetup(TurnipTextSetup):
 
     def generate_setup(
         self,
-        suggestion: TurnipTextSuggestedRenderer,
+        input_stem: str,
+        requested_format: str,
         docclass: str = "",
         csl_bib: Optional[str] = None,
         biblatex_bib: Optional[str] = None,
         **kwargs: str,
-    ) -> Tuple[RenderSetup, List[RenderPlugin[Any]]]:
+    ) -> GeneratedSetup:
+        requested_format = requested_format.casefold()
         docclass = docclass.casefold()
 
-        if suggestion == TurnipTextSuggestedRenderer.Latex:
+        if requested_format == "latex":
             if not biblatex_bib:
                 print(
                     "Warning, no BibLaTeX bibliography was supplied so LaTeX will not have citation commands"
                 )
             if "book" in docclass:
-                return (
+                return GeneratedSetup(
                     LatexSetup(),
                     STD_LATEX_RENDER_PLUGINS(
                         doc_class="book",
                         bib=biblatex_bib,
-                        bib_output="bibliography.bib",
+                        bib_output=f"{input_stem}.bib",
                     ),
+                    f"{input_stem}.tex"
                 )
             elif "report" in docclass:
-                return (
+                return GeneratedSetup(
                     LatexSetup(),
                     STD_LATEX_RENDER_PLUGINS(
                         doc_class="report",
                         bib=biblatex_bib,
-                        bib_output="bibliography.bib",
+                        bib_output=f"{input_stem}.bib",
                     ),
+                    f"{input_stem}.tex"
                 )
             else:
-                return (
+                return GeneratedSetup(
                     LatexSetup(),
                     STD_LATEX_RENDER_PLUGINS(
                         doc_class="article",
                         bib=biblatex_bib,
-                        bib_output="bibliography.bib",
+                        bib_output=f"{input_stem}.bib",
                     ),
+                    f"{input_stem}.tex"
                 )
-        elif suggestion == TurnipTextSuggestedRenderer.Markdown:
+        elif requested_format == "md":
             if not csl_bib:
                 print(
                     "Warning, no CSL bibliography was supplied so Markdown will not have citation commands"
                 )
-            return (
+            return GeneratedSetup(
                 MarkdownSetup(),
                 STD_MARKDOWN_RENDER_PLUGINS(
                     use_chapters=("book" in docclass) or ("report" in docclass),
                     bib=csl_bib,
                 ),
+                    f"{input_stem}.md"
             )
-        elif suggestion == TurnipTextSuggestedRenderer.HTML:
+        elif requested_format == "html":
             if not csl_bib:
                 print(
                     "Warning, no CSL bibliography was supplied so HTML will not have citation commands"
                 )
-            return (
+            return GeneratedSetup(
                 HtmlSetup(),
                 STD_MARKDOWN_RENDER_PLUGINS(
                     use_chapters=("book" in docclass) or ("report" in docclass),
                     bib=csl_bib,
                 ),
+                    f"{input_stem}.html"
             )
-        elif suggestion == TurnipTextSuggestedRenderer.Pandoc:
+        elif requested_format.startswith("pandoc-"):
             if not csl_bib:
                 print(
                     "Warning, no CSL bibliography was supplied so Pandoc will not have citation commands"
                 )
-            return (
-                PandocSetup(),
+            pandoc_format = requested_format.removeprefix("pandoc-")
+            return GeneratedSetup(
+                PandocSetup(pandoc_format),
                 STD_PANDOC_RENDER_PLUGINS(
                     bib=csl_bib,
                 ),
+                f"{input_stem}.{recommend_pandoc_format_ext(pandoc_format)}"
             )
 
-        return super().generate_setup(suggestion, **kwargs)
+        return super().generate_setup(input_stem, requested_format, **kwargs)

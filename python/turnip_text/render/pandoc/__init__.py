@@ -357,7 +357,32 @@ class PandocDispatch(Generic[TPandocRenderer_contra]):
         return f(obj, renderer, fmt)
 
 
+PANDOC_FORMAT_TO_EXT = {
+    "asciidoc": ".adoc",
+    "docbook": ".db",
+    "docbook4": ".db",
+    "docbook5": ".db",
+    "latex": ".tex",
+    "commonmark": "md",
+    "commonmark_x": "md",
+    "markdown": "md",
+    "markdown_mmd": "md",
+    "markdown_phpextra": "md",
+    "markdown_strict": "md",
+    "gfm": "md",
+    "odt": "odt",
+    "docx": "docx",
+    "rst": "rst",
+}
+
+def recommend_pandoc_format_ext(format: str) -> str:
+    if format in PANDOC_FORMAT_TO_EXT:
+        return PANDOC_FORMAT_TO_EXT[format]
+    return format
+
 class PandocSetup(RenderSetup[PandocRenderer]):
+    pandoc_format: str
+
     meta: pan.Meta
     makers: PandocDispatch[PandocRenderer]
     counter_rendering: Dict[str, Optional[SimpleCounterFormat[SimpleCounterStyle]]]
@@ -367,8 +392,10 @@ class PandocSetup(RenderSetup[PandocRenderer]):
     pandoc_options: List[str]
     """Options to be passed to pandoc on the command line"""
 
-    def __init__(self) -> None:
+    def __init__(self, pandoc_format: str) -> None:
         super().__init__()
+        self.pandoc_format = pandoc_format
+
         self.meta = pan.Meta({})
         self.makers = PandocRenderer.default_makers()
         self.counter_rendering = {}
