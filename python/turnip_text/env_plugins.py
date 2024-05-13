@@ -150,6 +150,8 @@ class EnvPlugin:
                     # It can't get access to __doc_env, so expose it.
                     is_pure_fmt = True
 
+                # TODO accumulate type hints for methods here?
+
                 # No matter what, the function gets added to the in_doc context (even if they're pure_fmt!)
                 # If you're in the middle of building the document, you're allowed to call pure_fmt functions too.
                 doc_env.__dict__[key] = value
