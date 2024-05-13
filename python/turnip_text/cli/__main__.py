@@ -85,9 +85,7 @@ def find_setup_class(
                 f"Found multiple candidate setup classes for '{requested_setup_class}' [{setup_classes}]. Picking the first one."
             )
         # If we get an abstract type here we'll pick that up when we construct it.
-        setup_class: Type[TurnipTextSetup] = setup_classes[
-            0
-        ]  # type:ignore[type-abstract]
+        setup_class: Type[TurnipTextSetup] = setup_classes[0]
         print(f"Creating a setup class {setup_class} with zero arguments")
         return setup_class()
     else:
@@ -98,7 +96,7 @@ def parse_setup_kwargs(setup_args: Optional[str]) -> Dict[str, str]:
     setup_kwargs: Dict[str, str] = {}
     if setup_args:
         for setup_arg in setup_args:
-            key, value = cast(str, setup_arg).split(":", maxsplit=1)
+            key, value = setup_arg.split(":", maxsplit=1)
             setup_kwargs[key] = value
     return setup_kwargs
 
@@ -164,7 +162,7 @@ def wrap_describe(args: Any) -> None:
             # TODO if it supports a builder, give a usage example?
 
 
-def run_cli():
+def run_cli() -> None:
     parser = argparse.ArgumentParser("turnip_text.cli")
 
     parser.add_argument(
@@ -213,7 +211,7 @@ def run_cli():
         "--formats",
         type=str,
         nargs="+",
-        help="The format(s) to export to for each input file. Can be any value accepted by the setup, common accepted values are 'latex', 'html', 'markdown', 'pandoc-{format}'."
+        help="The format(s) to export to for each input file. Can be any value accepted by the setup, common accepted values are 'latex', 'html', 'markdown', 'pandoc-{format}'.",
     )
     # If the render subcommand is selected, set `args.func = wrap_render`
     render_subcommand.set_defaults(func=wrap_render)

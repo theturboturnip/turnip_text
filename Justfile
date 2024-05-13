@@ -29,7 +29,8 @@ _test:
 
 	# Run tests
 	cargo testall
-	mypy ./python/turnip_text --strict
+	# It is useful for type-args to be optional, e.g. XScopeBuilder helpers are optionally typed on their return type
+	mypy ./python/turnip_text --strict --disable-error-code=type-arg
 	mypy ./python/tests
 	pytest ./python/tests/
 
