@@ -233,30 +233,6 @@ def wrap_describe(args: Any) -> None:
 def run_cli() -> None:
     parser = argparse.ArgumentParser("turnip_text.cli")
 
-    parser.add_argument(
-        "--project-dir",
-        type=str,
-        default=None,
-        help="The 'project' directory, where all accessible input files are stored.",
-    )
-    parser.add_argument(
-        "--setup",
-        type=str,
-        default=None,
-        help="The name of the TurnipTextSetup class to use, which generates the plugins and execution environment for the renderer.\nMust *directly* inherit from TurnipTextSetup. Can be inferred from a '#tt-cli setup:OtherSetupClassHere' shebang line in the input file.",
-    )
-    parser.add_argument(
-        "--setup-search-module",
-        default="custom_turnip_text",
-        help="The name of the Python module that turnip_text loads to search for a `--setup` it doesn't know about yet.\nSet to the empty string '' to disable this behaviour.",
-    )
-    parser.add_argument(
-        "--setup-args",
-        nargs="*",
-        type=str,
-        help="Colon-separated arguments to the setup, e.g. 'csl_bib:bibliography_csl.json'. Use 'turnip_text.cli describe' to see the setup documentation and what arguments it uses.",
-    )
-
     subparsers = parser.add_subparsers(required=True)
 
     render_subcommand = subparsers.add_parser(
@@ -281,6 +257,29 @@ def run_cli() -> None:
         nargs="+",
         help="The format(s) to export to for each input file. Can be any value accepted by the setup, common accepted values are 'latex', 'html', 'markdown', 'pandoc-{format}'.",
     )
+    render_subcommand.add_argument(
+        "--project-dir",
+        type=str,
+        default=None,
+        help="The 'project' directory, where all accessible input files are stored.",
+    )
+    render_subcommand.add_argument(
+        "--setup",
+        type=str,
+        default=None,
+        help="The name of the TurnipTextSetup class to use, which generates the plugins and execution environment for the renderer.\nMust *directly* inherit from TurnipTextSetup. Can be inferred from a '#tt-cli setup:OtherSetupClassHere' shebang line in the input file.",
+    )
+    render_subcommand.add_argument(
+        "--setup-search-module",
+        default="custom_turnip_text",
+        help="The name of the Python module that turnip_text loads to search for a `--setup` it doesn't know about yet.\nSet to the empty string '' to disable this behaviour.",
+    )
+    render_subcommand.add_argument(
+        "--setup-args",
+        nargs="*",
+        type=str,
+        help="Colon-separated arguments to the setup, e.g. 'csl_bib:bibliography_csl.json'. Use 'turnip_text.cli describe' to see the setup documentation and what arguments it uses.",
+    )
     # If the render subcommand is selected, set `args.func = wrap_render`
     render_subcommand.set_defaults(func=wrap_render)
 
@@ -297,6 +296,29 @@ def run_cli() -> None:
         "--plugins",
         action="store_true",
         help="Describe the plugin interface for this configuration, not just the TurnipTextSetup. This will be large, recommend piping this into `less`.",
+    )
+    describe_subcommand.add_argument(
+        "--project-dir",
+        type=str,
+        default=None,
+        help="The 'project' directory, where all accessible input files are stored.",
+    )
+    describe_subcommand.add_argument(
+        "--setup",
+        type=str,
+        default=None,
+        help="The name of the TurnipTextSetup class to use, which generates the plugins and execution environment for the renderer.\nMust *directly* inherit from TurnipTextSetup. Can be inferred from a '#tt-cli setup:OtherSetupClassHere' shebang line in the input file.",
+    )
+    describe_subcommand.add_argument(
+        "--setup-search-module",
+        default="custom_turnip_text",
+        help="The name of the Python module that turnip_text loads to search for a `--setup` it doesn't know about yet.\nSet to the empty string '' to disable this behaviour.",
+    )
+    describe_subcommand.add_argument(
+        "--setup-args",
+        nargs="*",
+        type=str,
+        help="Colon-separated arguments to the setup, e.g. 'csl_bib:bibliography_csl.json'. Use 'turnip_text.cli describe' to see the setup documentation and what arguments it uses.",
     )
 
     describe_subcommand.set_defaults(func=wrap_describe)
