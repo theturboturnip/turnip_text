@@ -122,7 +122,7 @@ fn test_inline_scope() {
         r#"Outside the scope {inside the scope}"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("Outside the scope "),
-            TestInline::InlineScope(vec![test_text("inside the scope")]),
+            test_text("inside the scope"),
         ]])])),
     )
 }
@@ -507,9 +507,7 @@ block scope
             TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
                 "block scope",
             )])]),
-            TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![test_text(
-                "inline scope",
-            )])]]),
+            TestBlock::Paragraph(vec![vec![test_text("inline scope")]]),
         ])),
     )
 }
@@ -547,9 +545,9 @@ fn test_strip_trailing_whitespace() {
 fn test_strip_leading_scope_whitespace() {
     expect_parse(
         "{ no leading whitespace}",
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::InlineScope(vec![test_text("no leading whitespace")]),
-        ]])])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text(
+            "no leading whitespace",
+        )]])])),
     )
 }
 
@@ -557,9 +555,9 @@ fn test_strip_leading_scope_whitespace() {
 fn test_strip_trailing_scope_whitespace() {
     expect_parse(
         "{no trailing whitespace }",
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::InlineScope(vec![test_text("no trailing whitespace")]),
-        ]])])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text(
+            "no trailing whitespace",
+        )]])])),
     )
 }
 
@@ -568,9 +566,9 @@ fn test_dont_strip_whitespace_between_scopes() {
     expect_parse(
         "{ stuff }     { other stuff }",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::InlineScope(vec![test_text("stuff")]),
+            test_text("stuff"),
             test_text("     "),
-            TestInline::InlineScope(vec![test_text("other stuff")]),
+            test_text("other stuff"),
         ]])])),
     )
 }
@@ -579,9 +577,9 @@ fn test_dont_strip_whitespace_between_scopes() {
 fn test_strip_whitespace_after_scope() {
     expect_parse(
         "{ stuff }     \n",
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::InlineScope(vec![test_text("stuff")]),
-        ]])])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text(
+            "stuff",
+        )]])])),
     )
 }
 
@@ -589,9 +587,9 @@ fn test_strip_whitespace_after_scope() {
 fn test_strip_whitespace_between_scope_end_and_comment() {
     expect_parse(
         "{ stuff }     # stuff in a comment!\n",
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::InlineScope(vec![test_text("stuff")]),
-        ]])])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text(
+            "stuff",
+        )]])])),
     )
 }
 

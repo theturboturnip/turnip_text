@@ -166,10 +166,8 @@ inside 2
         ],
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![test_sentence("outside")]),
-            TestBlock::BlockScope(vec![
-                TestBlock::Paragraph(vec![test_sentence("inside")]),
-                TestBlock::Paragraph(vec![test_sentence("inside 2")]),
-            ]),
+            TestBlock::Paragraph(vec![test_sentence("inside")]),
+            TestBlock::Paragraph(vec![test_sentence("inside 2")]),
         ])),
     )
 }
@@ -210,7 +208,7 @@ fn test_inline_scope() {
         ],
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("outside "),
-            TestInline::InlineScope(vec![test_text("inside")]),
+            test_text("inside"),
         ]])])),
     )
 }
@@ -434,10 +432,8 @@ block
             EOF,
         ],
         Ok(test_doc(vec![
-            TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence("block")])]),
-            TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![test_text(
-                "inline",
-            )])]]),
+            TestBlock::Paragraph(vec![test_sentence("block")]),
+            TestBlock::Paragraph(vec![vec![test_text("inline")]]),
         ])),
     )
 }

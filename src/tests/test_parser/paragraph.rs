@@ -21,9 +21,7 @@ fn escaped_newline_in_first_line() {
         Sentence 2
         Sentence 3"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![
-            vec![TestInline::InlineScope(vec![test_text(
-                "Sentence 1 continued in the next line",
-            )])],
+            vec![test_text("Sentence 1 continued in the next line")],
             test_sentence("Sentence 2"),
             test_sentence("Sentence 3"),
         ])])),
@@ -52,9 +50,7 @@ fn escaped_newline_in_middle_line() {
         Sentence 3"#,
         Ok(test_doc(vec![TestBlock::Paragraph(vec![
             test_sentence("Sentence 1"),
-            vec![TestInline::InlineScope(vec![test_text(
-                "Sentence 2 continued in the next line",
-            )])],
+            vec![test_text("Sentence 2 continued in the next line")],
             test_sentence("Sentence 3"),
         ])])),
     );
@@ -82,9 +78,7 @@ fn escaped_newline_in_final_line() {
         Ok(test_doc(vec![TestBlock::Paragraph(vec![
             test_sentence("Sentence 1"),
             test_sentence("Sentence 2"),
-            vec![TestInline::InlineScope(vec![test_text(
-                "Sentence 3 continued in the next line",
-            )])],
+            vec![test_text("Sentence 3 continued in the next line")],
         ])])),
     );
 }

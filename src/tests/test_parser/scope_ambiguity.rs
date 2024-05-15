@@ -70,9 +70,9 @@ fn code_block_scope_opened_with_comment() {
 fn inline_scope_opened_with_direct_content() {
     expect_parse(
         "{inline}",
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::InlineScope(vec![test_text("inline")]),
-        ]])])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text(
+            "inline",
+        )]])])),
     )
 }
 
@@ -80,9 +80,9 @@ fn inline_scope_opened_with_direct_content() {
 fn inline_scope_opened_with_whitespaces_then_content() {
     expect_parse(
         "{       inline      }",
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::InlineScope(vec![test_text("inline")]),
-        ]])])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![test_text(
+            "inline",
+        )]])])),
     )
 }
 
@@ -110,12 +110,7 @@ fn code_inline_scope_opened_with_whitespaces_then_content() {
 // Empty scopes should count as inline because there are no newlines inside
 #[test]
 fn empty_scopes_are_inline() {
-    expect_parse(
-        "{}",
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::InlineScope(vec![]),
-        ]])])),
-    )
+    expect_parse("{}", Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![]])])))
 }
 
 #[test]
@@ -124,9 +119,7 @@ fn scopes_with_escaped_newlines_are_inline() {
         r#"{\
 \
 }"#,
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
-            TestInline::InlineScope(vec![]),
-        ]])])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![]])])),
     )
 }
 
