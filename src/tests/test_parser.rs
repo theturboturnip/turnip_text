@@ -57,6 +57,7 @@ pub fn expect_parse_any_ok(data: &str) {
 
 pub fn expect_parse(data: &str, expected_parse: Result<TestDocument, TestTTErrorWithContext>) {
     let root = eval_data(data);
+    dbg!(data);
     match (&root, &expected_parse) {
         (Ok(doc), Ok(expected_doc)) => assert_eq!(expected_doc, doc),
         (Err(actual_err), Err(expected_err)) => {

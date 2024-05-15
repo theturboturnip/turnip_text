@@ -73,11 +73,7 @@ impl InlineLevelProcessor<ParagraphInlineMode> {
         inline_ctx: ParseContext,
     ) -> TTResult<Self> {
         let current_sentence = py_internal_alloc(py, Sentence::new_empty(py))?;
-        current_sentence
-            .borrow_mut(py)
-            .append_inline(inline)
-            .expect_pyok("Sentence::append_inline with presumed inline");
-        Ok(Self {
+        let mut para = Self {
             inner: ParagraphInlineMode {
                 ctx: ParseContext::new(inline_ctx.first_tok(), inline_ctx.last_tok()),
                 para: py_internal_alloc(py, Paragraph::new_empty(py))?,
@@ -85,29 +81,9 @@ impl InlineLevelProcessor<ParagraphInlineMode> {
                 current_sentence,
             },
             current_building_text: InlineTextState::new(),
-        })
-    }
-    pub fn new_with_inlines(
-        py: Python,
-        inline_scope: Py<InlineScope>,
-        inline_ctx: ParseContext,
-    ) -> TTResult<Self> {
-        let current_sentence = py_internal_alloc(py, Sentence::new_empty(py))?;
-        for inline in inline_scope.borrow(py).0.list(py) {
-            current_sentence
-                .borrow_mut(py)
-                .append_inline(&inline)
-                .expect_pyok("Sentence::append_inline with presumed inline");
-        }
-        Ok(Self {
-            inner: ParagraphInlineMode {
-                ctx: ParseContext::new(inline_ctx.first_tok(), inline_ctx.last_tok()),
-                para: py_internal_alloc(py, Paragraph::new_empty(py))?,
-                start_of_line: false,
-                current_sentence,
-            },
-            current_building_text: InlineTextState::new(),
-        })
+        };
+        para.on_inline_or_scope(py, inline, inline_ctx)?;
+        Ok(para)
     }
     pub fn new_with_starting_text(py: Python, text: &str, text_span: ParseSpan) -> TTResult<Self> {
         Ok(Self {
@@ -518,6 +494,25 @@ impl InlineTextState {
     }
 }
 
+#[allow(private_bounds)]
+impl<T: InlineMode> InlineLevelProcessor<T> {
+    fn on_inline_or_scope(
+        &mut self,
+        py: Python,
+        inl: &Bound<'_, PyAny>,
+        inl_ctx: ParseContext,
+    ) -> TTResult<()> {
+        if let Ok(inlines) = inl.downcast::<InlineScope>() {
+            for bound_inl in inlines.borrow().0.list(py) {
+                self.on_inline_or_scope(py, &bound_inl, inl_ctx)?;
+            }
+        } else {
+            self.inner.on_inline(py, inl, inl_ctx)?;
+        }
+        Ok(())
+    }
+}
+
 impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
     fn process_token(
         &mut self,
@@ -626,16 +621,9 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
                     unreachable!("InlineLevelProcessor never tries to build an inner Paragraph")
                 }
                 // If we get an inline, shove it in
-                DocElement::Inline(InlineElem::InlineScope(inlines)) => {
-                    self.inner.on_content();
-                    for bound_inl in inlines.borrow(py).0.list(py) {
-                        self.inner.on_inline(py, &bound_inl, elem_ctx)?;
-                    }
-                    Ok(ProcStatus::Continue)
-                }
                 DocElement::Inline(inline) => {
                     self.inner.on_content();
-                    self.inner.on_inline(py, inline.bind(py), elem_ctx)?;
+                    self.on_inline_or_scope(py, inline.bind(py), elem_ctx)?;
                     Ok(ProcStatus::Continue)
                 }
             },

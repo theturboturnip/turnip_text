@@ -80,10 +80,13 @@ fn test_primitives() {
             TestBlock::Paragraph(vec![test_sentence("block_in_block")]),
         ])])),
     );
+    // Note - things inside CustomBlock don't get collapsed! In most other places
     expect_parse(
         CREATED_BLOCK_FROM_INLINE,
         Ok(test_doc(vec![TestBlock::CustomBlock(vec![
-            TestBlock::Paragraph(vec![vec![test_text("inline_in_block")]]),
+            TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![test_text(
+                "inline_in_block",
+            )])]]),
         ])])),
     );
     expect_parse(

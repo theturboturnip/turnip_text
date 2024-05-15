@@ -49,7 +49,7 @@ use super::{
     code::CodeProcessor,
     comment::CommentProcessor,
     inline::{ParagraphProcessor, RawStringProcessor},
-    rc_refcell, BlockElem, DocElement, EmittedElement, InlineElem, ProcStatus, TokenProcessor,
+    rc_refcell, BlockElem, DocElement, EmittedElement, ProcStatus, TokenProcessor,
 };
 
 mod block_scope;
@@ -238,11 +238,6 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
                     Ok(ProcStatus::Continue)
                 }
                 // If we get an inline, start building a paragraph with it
-                DocElement::Inline(InlineElem::InlineScope(inline_scope)) => {
-                    Ok(ProcStatus::PushProcessor(rc_refcell(
-                        ParagraphProcessor::new_with_inlines(py, inline_scope, elem_ctx)?,
-                    )))
-                }
                 DocElement::Inline(inline) => Ok(ProcStatus::PushProcessor(rc_refcell(
                     ParagraphProcessor::new_with_inline(py, inline.bind(py), elem_ctx)?,
                 ))),
