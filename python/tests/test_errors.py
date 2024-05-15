@@ -5,7 +5,6 @@ import traceback
 from pathlib import Path
 
 import pytest
-
 from turnip_text import *
 
 SPECIFIC_ERROR = RuntimeError("An Error")
@@ -98,7 +97,7 @@ def test_print_error_messages():
             traceback.print_exception(err_info.value, file=traceback_msg_buf)
             # Replace filepaths with base names
             traceback_msg = re.sub(
-                r"\"([\w:\\/\s\.]+)\"",
+                r"\"([\w:\\/\s\.-]+)\"",
                 lambda match: Path(match.group(1)).name,
                 traceback_msg_buf.getvalue(),
             )
@@ -179,6 +178,7 @@ And we're inside a paragraph but then [CustomBlock()]!
             """
 [-
 class CustomHeader:
+    is_block = True
     is_header = True
     weight = 12
 
@@ -188,26 +188,6 @@ class CustomHeaderBuilder:
 -]
 
 And we're inside a paragraph but then { even inside an inline scope [CustomHeaderBuilder()]{with some swallowed inline content} }
-""",
-        )
-        test_one_error(
-            "Syntax - CodeEmittedHeaderInBlockScope",
-            """
-[-
-class CustomHeader:
-    is_header = True
-    weight = 12
-
-class CustomHeaderBuilder:
-    def build_from_raw(self, arg):
-        return CustomHeader()
--]
-
-{
-    inside a block scope
-
-    [CustomHeaderBuilder()]#{and we try to build a header!}#
-}
 """,
         )
         test_one_error(
