@@ -1,8 +1,7 @@
 import abc
-from dataclasses import dataclass, field
-from typing import Iterable, Protocol, Sequence, Union, runtime_checkable
+from typing import Iterable, Protocol, Sequence, runtime_checkable
 
-from turnip_text import Block, BlockScope, Header, Inline, InlineScope
+from turnip_text import Block, Inline
 from turnip_text.doc.anchors import Anchor, Backref
 
 

@@ -252,7 +252,7 @@ fn test_raw_scope_builder_building_header() {
 fn test_inline_scope_builder_building_header_in_inline_mode_para() {
     expect_parse_err(
         "And as I was saying [CustomHeaderBuilder()]{ Wowee i wish I had inline content }",
-        TestSyntaxError::CodeEmittedHeaderInInlineMode {
+        TestSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "And",
                 " as I was saying",
@@ -271,7 +271,7 @@ fn test_block_scope_builder_building_header_in_inline() {
         "And as I was saying [CustomHeaderBuilder()]{
             Wowee i wish I had block content
         }",
-        TestSyntaxError::CodeEmittedHeaderInInlineMode {
+        TestSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "And",
                 " as I was saying",
@@ -293,7 +293,7 @@ fn test_raw_scope_builder_building_header_in_inline() {
             I had inline 
             and raw
             content }#",
-        TestSyntaxError::CodeEmittedHeaderInInlineMode {
+        TestSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "And",
                 " as I was saying",

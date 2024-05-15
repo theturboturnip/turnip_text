@@ -48,7 +48,4 @@ example:
 
 _example:
 	maturin develop --extras=typing,test
-	python -m turnip_text.cli render ./examples/phdprop.ttext -o ./examples/output/document.tex --setup-args "biblatex_bib:phdprop_bib_biblatex.bib" "csl_bib:phdprop_bib_csl.json"
-	python -m turnip_text.cli render ./examples/phdprop.ttext -o ./examples/output/document.md --setup-args "biblatex_bib:phdprop_bib_biblatex.bib" "csl_bib:phdprop_bib_csl.json"
-	python -m turnip_text.cli render ./examples/phdprop.ttext -o ./examples/output/document.html --setup-args "biblatex_bib:phdprop_bib_biblatex.bib" "csl_bib:phdprop_bib_csl.json"
-	python -m turnip_text.cli render ./examples/phdprop.ttext -o ./examples/output/document.docx --setup-args "biblatex_bib:phdprop_bib_biblatex.bib" "csl_bib:phdprop_bib_csl.json"
+	python -m turnip_text.cli render ./examples/phdprop.ttext -o ./examples/output/ --setup-args "biblatex_bib:phdprop_bib_biblatex.bib" "csl_bib:phdprop_bib_csl.json" --format latex markdown html pandoc-docx

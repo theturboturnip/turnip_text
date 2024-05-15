@@ -32,7 +32,7 @@ TODO outdated
 
 from typing import List, Optional, Sequence, Set, Type, Union
 
-from turnip_text import Block, Header, Inline, parse_file
+from turnip_text import Block, Inline, parse_file
 from turnip_text.build_system import BuildSystem, InputRelPath, OutputRelPath
 from turnip_text.doc.dfs import DocumentDfsPass
 from turnip_text.env_plugins import EnvPlugin
@@ -60,7 +60,7 @@ def parse_and_emit(
     document = parse_file(src, doc_env.__dict__)
 
     # Phase 2 - Mutation
-    exported_nodes: Set[Type[Union[Block, Inline, Header]]] = set()
+    exported_nodes: Set[Type[Union[Block, Inline]]] = set()
     exported_countables: Set[str] = set()
 
     for plugin in plugins_with_anchors:

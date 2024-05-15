@@ -44,31 +44,20 @@ impl BlockMode for BlockScopeBlockMode {
         .into())
     }
 
-    fn on_header(
-        &mut self,
-        _py: Python,
-        header: PyTcRef<Header>,
-        header_ctx: ParseContext,
-    ) -> TTResult<ProcStatus> {
-        Err(TTSyntaxError::CodeEmittedHeaderInBlockScope {
-            block_scope_start: self.ctx.first_tok(),
-            header,
-            code_span: header_ctx.full_span(),
-        }
-        .into())
-    }
-
-    fn on_block(
-        &mut self,
-        py: Python,
-        block: BlockElem,
-        _block_ctx: ParseContext,
-    ) -> TTResult<ProcStatus> {
+    fn on_header(&mut self, py: Python, header: PyTcRef<Header>) -> TTResult<()> {
         self.block_scope
             .borrow_mut(py)
-            .append_block(block.bind(py))
+            .append_block(header.bind(py))
+            .expect_pyok("BlockScope::append_block with Header");
+        Ok(())
+    }
+
+    fn on_block(&mut self, py: Python, block: &Bound<'_, PyAny>) -> TTResult<()> {
+        self.block_scope
+            .borrow_mut(py)
+            .append_block(block)
             .expect_pyok("BlockScope::append_block with BlockElem");
-        Ok(ProcStatus::Continue)
+        Ok(())
     }
 }
 impl BlockLevelProcessor<BlockScopeBlockMode> {

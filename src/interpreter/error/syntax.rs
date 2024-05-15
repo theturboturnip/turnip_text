@@ -1,10 +1,7 @@
 use thiserror::Error;
 
 use crate::{
-    python::{
-        interop::{Block, Header},
-        typeclass::PyTcRef,
-    },
+    python::{interop::Block, typeclass::PyTcRef},
     util::{ParseContext, ParseSpan},
 };
 
@@ -24,7 +21,6 @@ pub enum InlineModeContext {
 /// they might be big, so we should provide separate snippets for the start and end.
 #[derive(Debug, Clone)]
 pub enum BlockModeElem {
-    HeaderFromCode(ParseSpan),
     Para(ParseContext),
     /// A complete block scope
     BlockScope(ParseContext),
@@ -69,18 +65,6 @@ pub enum TTSyntaxError {
     CodeEmittedBlockInInlineMode {
         inl_mode: InlineModeContext,
         block: PyTcRef<Block>,
-        code_span: ParseSpan,
-    },
-    #[error("Code emitted a Python `Header` in inline mode")]
-    CodeEmittedHeaderInInlineMode {
-        inl_mode: InlineModeContext,
-        header: PyTcRef<Header>,
-        code_span: ParseSpan,
-    },
-    #[error("Code emitted a Header inside a block scope")]
-    CodeEmittedHeaderInBlockScope {
-        block_scope_start: ParseSpan,
-        header: PyTcRef<Header>,
         code_span: ParseSpan,
     },
     #[error("Code emitted a Python `TurnipTextSource` in inline mode")]

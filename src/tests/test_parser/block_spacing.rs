@@ -424,30 +424,28 @@ mod para {
             concatcp!(CREATED_PARA, CREATED_HEADER_BARE),
             TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
-                next_block_start: TestBlockModeElem::HeaderFromCode(CREATED_HEADER_BARE_SPAN),
+                next_block_start: TestBlockModeElem::BlockFromCode(CREATED_HEADER_BARE_SPAN),
             },
         );
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_HEADER_FROM_BLOCK),
             TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
-                next_block_start: TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_BLOCK_SPAN),
+                next_block_start: TestBlockModeElem::BlockFromCode(CREATED_HEADER_FROM_BLOCK_SPAN),
             },
         );
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_HEADER_FROM_INLINE),
             TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
-                next_block_start: TestBlockModeElem::HeaderFromCode(
-                    CREATED_HEADER_FROM_INLINE_SPAN,
-                ),
+                next_block_start: TestBlockModeElem::BlockFromCode(CREATED_HEADER_FROM_INLINE_SPAN),
             },
         );
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_HEADER_FROM_RAW),
             TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
-                next_block_start: TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_RAW_SPAN),
+                next_block_start: TestBlockModeElem::BlockFromCode(CREATED_HEADER_FROM_RAW_SPAN),
             },
         );
     }
@@ -516,28 +514,28 @@ mod code_emitting_header {
         use super::super::*;
         test_needs_newline!(
             CREATED_HEADER_BARE,
-            TestBlockModeElem::HeaderFromCode(CREATED_HEADER_BARE_SPAN)
+            TestBlockModeElem::BlockFromCode(CREATED_HEADER_BARE_SPAN)
         );
     }
     mod from_block {
         use super::super::*;
         test_needs_newline!(
             CREATED_HEADER_FROM_BLOCK,
-            TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_BLOCK_SPAN)
+            TestBlockModeElem::BlockFromCode(CREATED_HEADER_FROM_BLOCK_SPAN)
         );
     }
     mod from_inline {
         use super::super::*;
         test_needs_newline!(
             CREATED_HEADER_FROM_INLINE,
-            TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_INLINE_SPAN)
+            TestBlockModeElem::BlockFromCode(CREATED_HEADER_FROM_INLINE_SPAN)
         );
     }
     mod from_raw {
         use super::super::*;
         test_needs_newline!(
             CREATED_HEADER_FROM_RAW,
-            TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_RAW_SPAN)
+            TestBlockModeElem::BlockFromCode(CREATED_HEADER_FROM_RAW_SPAN)
         );
     }
 }

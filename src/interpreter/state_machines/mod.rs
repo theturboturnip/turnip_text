@@ -44,16 +44,12 @@ use pyo3::{prelude::*, PyClass};
 
 use crate::{
     interpreter::{
-        error::{
-            syntax::{BlockModeElem, TTSyntaxError},
-            TTResult,
-        },
+        error::{syntax::TTSyntaxError, TTResult},
         lexer::TTToken,
     },
     python::{
         interop::{
-            Block, BlockScope, Document, Header, Inline, InlineScope, Paragraph, Raw,
-            TurnipTextSource,
+            Block, BlockScope, Document, Inline, InlineScope, Paragraph, Raw, TurnipTextSource,
         },
         typeclass::PyTcRef,
     },
@@ -64,7 +60,10 @@ mod ambiguous_scope;
 mod block;
 use block::TopLevelProcessor;
 
-use super::{error::HandleInternalPyErr, FileEvent, UserPythonEnv};
+use super::{
+    error::{syntax::BlockModeElem, HandleInternalPyErr},
+    FileEvent, UserPythonEnv,
+};
 
 mod code;
 mod comment;
@@ -77,7 +76,6 @@ mod inline;
 enum DocElement {
     Block(BlockElem),
     Inline(InlineElem),
-    HeaderFromCode(PyTcRef<Header>),
 }
 
 #[derive(Debug)]
@@ -85,15 +83,6 @@ enum BlockElem {
     FromCode(PyTcRef<Block>),
     BlockScope(Py<BlockScope>),
     Para(Py<Paragraph>),
-}
-impl BlockElem {
-    fn bind<'py>(&'py self, py: Python<'py>) -> &Bound<'py, PyAny> {
-        match self {
-            BlockElem::FromCode(b) => b.bind(py),
-            BlockElem::BlockScope(bs) => bs.bind(py),
-            BlockElem::Para(p) => p.bind(py),
-        }
-    }
 }
 impl From<BlockElem> for DocElement {
     fn from(value: BlockElem) -> Self {

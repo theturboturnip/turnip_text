@@ -18,8 +18,7 @@ use crate::{
     },
     python::{
         interop::{
-            coerce_to_inline_pytcref, Block, BlockScopeBuilder, Header, Inline, InlineScopeBuilder,
-            RawScopeBuilder, TurnipTextSource,
+            coerce_to_inline_pytcref, Block, BlockScopeBuilder, Inline, InlineScopeBuilder, RawScopeBuilder, TurnipTextSource
         },
         typeclass::{PyTcRef, PyTypeclass},
     },
@@ -135,10 +134,6 @@ impl TokenProcessor for CodeProcessor {
                     })?;
 
                     match emitted {
-                        EvalDirectOutcome::Header(header) => Ok(ProcStatus::PopAndReprocessToken(Some((
-                            self.ctx,
-                            DocElement::HeaderFromCode(header),
-                        )))),
                         EvalDirectOutcome::Block(block) => Ok(ProcStatus::PopAndReprocessToken(Some((
                             self.ctx,
                             BlockElem::FromCode(block).into(),
@@ -206,7 +201,7 @@ impl TokenProcessor for CodeProcessor {
                         err,
                     })?
             }
-            _ => unreachable!("Invalid combination of requested and actual built element types"),
+            DocElement::Block(_) | DocElement::Inline(_) => unreachable!("Invalid push-up type from child of code"),
         };
         // Check the BuildOutcome was correct, if not raise a consistent TTUserPythonError
         let built = BuildOutcome::of(&built).map_err(|pyerr| {
@@ -231,10 +226,6 @@ impl TokenProcessor for CodeProcessor {
             BuildOutcome::Inline(inline) => Ok(ProcStatus::Pop(Some((
                 self.ctx,
                 InlineElem::FromCode(inline).into(),
-            )))),
-            BuildOutcome::Header(header) => Ok(ProcStatus::Pop(Some((
-                self.ctx,
-                DocElement::HeaderFromCode(header),
             )))),
             BuildOutcome::None => Ok(ProcStatus::Pop(None)),
         }
@@ -324,7 +315,6 @@ pub enum EvalDirectOutcome {
     // TurnipTextSource is handled exactly when the eval-brackets finish,
     // and must be handled that way because we cannot PopAndReprocessToken(TurnipTextSource).
     // Source(Py<TurnipTextSource>),
-    Header(PyTcRef<Header>),
     Block(PyTcRef<Block>),
     /// This result may be due to coercion
     Inline(PyTcRef<Inline>),
@@ -337,21 +327,19 @@ impl EvalDirectOutcome {
         } else {
             let is_block = Block::fits_typeclass(obj)?;
             let is_inline = Inline::fits_typeclass(obj)?;
-            let is_header = Header::fits_typeclass(obj)?;
 
-            match (is_block, is_inline, is_header) {
-                (true, false, false) => Ok(EvalDirectOutcome::Block(PyTcRef::of_unchecked(obj))),
-                (false, true, false) => Ok(EvalDirectOutcome::Inline(PyTcRef::of_unchecked(obj))),
-                (false, false, true) => Ok(EvalDirectOutcome::Header(PyTcRef::of_unchecked(obj))),
+            match (is_block, is_inline) {
+                (true, false) => Ok(EvalDirectOutcome::Block(PyTcRef::of_unchecked(obj))),
+                (false, true) => Ok(EvalDirectOutcome::Inline(PyTcRef::of_unchecked(obj))),
 
-                (false, false, false) => {
+                (false, false) => {
                     // FUTURE this may swallow allocation errors
                     if let Ok(inline) = coerce_to_inline_pytcref(obj.py(), obj) {
                         Ok(EvalDirectOutcome::Inline(inline))
                     } else {
                         let obj_repr = obj.repr()?;
                         Err(PyTypeError::new_err(format!(
-                            "Expected eval-bracket to produce None, a TurnipTextSource, a Header, \
+                            "Expected eval-bracket to produce None, a TurnipTextSource, \
                             a Block, or something coercible to Inline. {} isn't any of those.",
                             obj_repr.to_str()?
                         )))
@@ -360,13 +348,12 @@ impl EvalDirectOutcome {
                 _ => {
                     let obj_repr = obj.repr()?;
                     Err(PyTypeError::new_err(format!(
-                        "Expected eval-bracket to produce None, a TurnipTextSource, a Header, \
+                        "Expected eval-bracket to produce None, a TurnipTextSource, \
                         a Block, or something coercible to Inline. \
-                        {} fits multiple typeclasses: (block? {}) (inline? {}) (header? {}).",
+                        {} fits multiple typeclasses: (block? {}) (inline? {}).",
                         obj_repr.to_str()?,
                         is_block,
                         is_inline,
-                        is_header
                     )))
                 }
             }
@@ -376,7 +363,6 @@ impl EvalDirectOutcome {
 
 /// The possible options that can be returned by build_from_{blocks,inlines,raw}() on a builder
 pub enum BuildOutcome {
-    Header(PyTcRef<Header>),
     Block(PyTcRef<Block>),
     Inline(PyTcRef<Inline>),
     None,
@@ -388,29 +374,26 @@ impl BuildOutcome {
         } else {
             let is_block = Block::fits_typeclass(obj)?;
             let is_inline = Inline::fits_typeclass(obj)?;
-            let is_header = Header::fits_typeclass(obj)?;
 
-            match (is_block, is_inline, is_header) {
-                (true, false, false) => Ok(BuildOutcome::Block(PyTcRef::of_unchecked(obj))),
-                (false, true, false) => Ok(BuildOutcome::Inline(PyTcRef::of_unchecked(obj))),
-                (false, false, true) => Ok(BuildOutcome::Header(PyTcRef::of_unchecked(obj))),
+            match (is_block, is_inline) {
+                (true, false) => Ok(BuildOutcome::Block(PyTcRef::of_unchecked(obj))),
+                (false, true) => Ok(BuildOutcome::Inline(PyTcRef::of_unchecked(obj))),
 
-                (false, false, false) => {
+                (false, false) => {
                     let obj_repr = obj.repr()?;
                     Err(PyTypeError::new_err(format!(
-                        "Expected build result to be None or an object fitting Block, Inline, or Header - got {} which fits none of them.",
+                        "Expected build result to be None, an object fitting Block or Inline - got {} which fits none of them.",
                         obj_repr.to_str()?
                     )))
                 }
                 _ => {
                     let obj_repr = obj.repr()?;
                     Err(PyTypeError::new_err(format!(
-                        "Expected build result to be None or an object fitting Block, Inline, or Header \
-                         - got {} which fits (block? {}) (inline? {}) (header? {}).",
+                        "Expected build result to be None or an object fitting Block, or Inline \
+                        - got {} which fits (block? {}) (inline? {}).",
                         obj_repr.to_str()?,
                         is_block,
                         is_inline,
-                        is_header
                     )))
                 }
             }

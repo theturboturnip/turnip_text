@@ -37,7 +37,10 @@ use crate::{
         lexer::{Escapable, TTToken},
         UserPythonEnv,
     },
-    python::{interop::Header, typeclass::PyTcRef},
+    python::{
+        interop::{BlockScope, Header},
+        typeclass::PyTcRef,
+    },
     util::{ParseContext, ParseSpan},
 };
 
@@ -46,7 +49,7 @@ use super::{
     code::CodeProcessor,
     comment::CommentProcessor,
     inline::{ParagraphProcessor, RawStringProcessor},
-    rc_refcell, BlockElem, DocElement, EmittedElement, ProcStatus, TokenProcessor,
+    rc_refcell, BlockElem, DocElement, EmittedElement, InlineElem, ProcStatus, TokenProcessor,
 };
 
 mod block_scope;
@@ -76,20 +79,33 @@ trait BlockMode {
     fn on_close_scope(&mut self, py: Python, tok: TTToken, data: &str) -> TTResult<ProcStatus>;
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TTResult<ProcStatus>;
 
-    fn on_header(
-        &mut self,
-        py: Python,
-        header: PyTcRef<Header>,
-        header_ctx: ParseContext,
-    ) -> TTResult<ProcStatus>;
-    fn on_block(
-        &mut self,
-        py: Python,
-        block: BlockElem,
-        block_ctx: ParseContext,
-    ) -> TTResult<ProcStatus>;
+    /// On receiving a block that is a header
+    ///
+    /// Must
+    fn on_header(&mut self, py: Python, header: PyTcRef<Header>) -> TTResult<()>;
+    /// On receiving a block that isn't a header
+    fn on_block(&mut self, py: Python, block: &Bound<'_, PyAny>) -> TTResult<()>;
 }
-
+#[allow(private_bounds)]
+impl<T: BlockMode> BlockLevelProcessor<T> {
+    /// Disambiguate between a Header block or a plain old regular block, and pass it to the inner.
+    fn on_block_or_header_or_block_scope(
+        &mut self,
+        py: Python,
+        block: &Bound<'_, PyAny>,
+    ) -> TTResult<()> {
+        if let Ok(block_scope) = block.downcast::<BlockScope>() {
+            for block in block_scope.borrow().0.list(py) {
+                self.on_block_or_header_or_block_scope(py, &block)?
+            }
+            Ok(())
+        } else if let Ok(header) = PyTcRef::of(block) {
+            self.inner.on_header(py, header)
+        } else {
+            self.inner.on_block(py, block)
+        }
+    }
+}
 /// The implementation of block-level token processing for all BlockLevelProcessors.
 impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
     fn process_token(
@@ -193,17 +209,6 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
     ) -> TTResult<ProcStatus> {
         match pushed {
             Some((elem_ctx, elem)) => match elem {
-                DocElement::HeaderFromCode(header) => {
-                    // This must have been received from either
-                    // 1. eval-brackets that directly emitted a header
-                    // 2. eval-brackets that took some argument (a block scope, an inline scope, or a raw scope) and emitted a header
-                    // We don't want any content between now and the end of the line, because that would be emitted into a new block and it would look confusing.
-                    // Thus, set expects_blank_line to *two* blank lines i.e. no content on the current line, and then a full line without content
-                    // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
-                    self.expects_n_blank_lines_after =
-                        Some(BlockModeElem::HeaderFromCode(elem_ctx.full_span()));
-                    self.inner.on_header(py, header, elem_ctx)
-                }
                 // Blocks must have been received from either
                 // 1. a paragraph, which has seen a blank line and ended itself
                 // 2. eval-brackets that directly emitted a block
@@ -216,16 +221,28 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
                     // The paragraph has already received a fully blank line.
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
                     self.expects_n_blank_lines_after = None;
-                    self.inner
-                        .on_block(py, BlockElem::Para(p.clone_ref(py)), elem_ctx)
+                    self.inner.on_block(py, p.into_any().bind(py))?;
+                    Ok(ProcStatus::Continue)
                 }
-                DocElement::Block(block) => {
+                DocElement::Block(BlockElem::BlockScope(block_scope)) => {
+                    self.expects_n_blank_lines_after = Some(BlockModeElem::BlockScope(elem_ctx));
+                    self.on_block_or_header_or_block_scope(py, block_scope.bind(py))?;
+                    Ok(ProcStatus::Continue)
+                }
+                DocElement::Block(BlockElem::FromCode(block)) => {
                     // Set expects_blank_line to one i.e. no content on the current line.
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
-                    self.expects_n_blank_lines_after = Some((elem_ctx, &block).into());
-                    self.inner.on_block(py, block, elem_ctx)
+                    self.expects_n_blank_lines_after =
+                        Some(BlockModeElem::BlockFromCode(elem_ctx.full_span()));
+                    self.on_block_or_header_or_block_scope(py, block.bind(py))?;
+                    Ok(ProcStatus::Continue)
                 }
                 // If we get an inline, start building a paragraph with it
+                DocElement::Inline(InlineElem::InlineScope(inline_scope)) => {
+                    Ok(ProcStatus::PushProcessor(rc_refcell(
+                        ParagraphProcessor::new_with_inlines(py, inline_scope, elem_ctx)?,
+                    )))
+                }
                 DocElement::Inline(inline) => Ok(ProcStatus::PushProcessor(rc_refcell(
                     ParagraphProcessor::new_with_inline(py, inline.bind(py), elem_ctx)?,
                 ))),

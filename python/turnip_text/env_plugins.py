@@ -13,14 +13,15 @@ from typing import (
     Union,
 )
 
-from turnip_text import Block, Document, Header, Inline
+from turnip_text import Block, DocElement, Document, Header, Inline
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc.anchors import Backref
 
 T = TypeVar("T")
 TBlockOrInline = TypeVar("TBlockOrInline", bound=Union[Block, Inline])
 THeader = TypeVar("THeader", bound=Header)
-TVisitable = TypeVar("TVisitable", bound=Union[Block, Inline, Header])
+# TODO this is now the same a TBlockOrInline
+TVisitable = TypeVar("TVisitable", bound=DocElement)
 TVisitorOutcome = TypeVar("TVisitorOutcome")
 
 TEnvPlugin = TypeVar("TEnvPlugin", bound="EnvPlugin")
@@ -71,7 +72,7 @@ class EnvPlugin:
         """
         return []
 
-    def _doc_nodes(self) -> Sequence[Type[Union[Block, Inline, Header]]]:
+    def _doc_nodes(self) -> Sequence[Type[Union[Block, Inline]]]:
         """
         Tell the Document what nodes this plugin exports
         """

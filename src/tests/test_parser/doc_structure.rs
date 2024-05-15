@@ -248,53 +248,6 @@ fn test_negative_weight() {
 }
 
 #[test]
-fn test_cant_create_header_block_scope() {
-    expect_parse_err(
-        "{
-    [CustomHeader()]
-    }",
-        TestSyntaxError::CodeEmittedHeaderInBlockScope {
-            block_scope_start: TestParseSpan("{"),
-            code_span: TestParseSpan("[CustomHeader()]"),
-        },
-    )
-}
-
-#[test]
-fn test_cant_build_header_block_scope() {
-    expect_parse_err(
-        "{
-    [CustomHeaderBuilder()]{
-        Sometimes Headers can be built, too!
-        But if they're in a block scope it shouldn't be allowed :(
-    }
-    }",
-        TestSyntaxError::CodeEmittedHeaderInBlockScope {
-            block_scope_start: TestParseSpan("{"),
-            code_span: TestParseSpan(
-                "[CustomHeaderBuilder()]{
-        Sometimes Headers can be built, too!
-        But if they're in a block scope it shouldn't be allowed :(
-    }",
-            ),
-        },
-    )
-}
-
-#[test]
-fn test_cant_create_header_block_scope_argument() {
-    expect_parse_err(
-        "[BUILD_CUSTOM_BLOCK]{
-    [CustomHeader()]
-    }",
-        TestSyntaxError::CodeEmittedHeaderInBlockScope {
-            block_scope_start: TestParseSpan("{"),
-            code_span: TestParseSpan("[CustomHeader()]"),
-        },
-    )
-}
-
-#[test]
 fn test_can_create_header_toplevel_file() {
     expect_parse(
         "
@@ -319,7 +272,7 @@ fn test_can_create_header_toplevel_file() {
 }
 
 #[test]
-fn test_can_create_header_inner_file() {
+fn test_can_create_header_in_file() {
     expect_parse(
         r#"
 [-
@@ -350,8 +303,8 @@ Content in file!
 }
 
 #[test]
-fn test_cant_create_header_block_scope_in_inner_file() {
-    expect_parse_err(
+fn test_header_in_block_scope_in_file_gets_flattened() {
+    expect_parse(
         r#"
 [-
 header_in_file = test_src("""
@@ -366,16 +319,25 @@ header_in_file = test_src("""
         [header_in_file]
         
         Content outside file!"#,
-        TestSyntaxError::CodeEmittedHeaderInBlockScope {
-            block_scope_start: TestParseSpan("{"),
-            code_span: TestParseSpan("[CustomHeader(weight=123)]"),
-        },
+        Ok(TestDocument {
+            contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+                "Toplevel content!",
+            )])]),
+            segments: vec![TestDocSegment {
+                header: (123, None, None),
+                contents: TestBlock::BlockScope(vec![
+                    TestBlock::Paragraph(vec![test_sentence("Content in file!")]),
+                    TestBlock::Paragraph(vec![test_sentence("Content outside file!")]),
+                ]),
+                subsegments: vec![],
+            }],
+        }),
     )
 }
 
 #[test]
-fn test_cant_create_header_inner_file_in_block_scope() {
-    expect_parse_err(
+fn test_header_in_file_in_block_scope_gets_flattened() {
+    expect_parse(
         r#"
 [-
 header_in_file = test_src("""
@@ -391,10 +353,89 @@ Content in file!
             
             Content outside file!
         }"#,
-        TestSyntaxError::CodeEmittedHeaderInBlockScope {
-            block_scope_start: TestParseSpan("{"),
-            code_span: TestParseSpan("[CustomHeader(weight=123)]"),
-        },
+        Ok(TestDocument {
+            contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+                "Toplevel content!",
+            )])]),
+            segments: vec![TestDocSegment {
+                header: (123, None, None),
+                contents: TestBlock::BlockScope(vec![
+                    TestBlock::Paragraph(vec![test_sentence("Content in file!")]),
+                    TestBlock::Paragraph(vec![test_sentence("Content outside file!")]),
+                ]),
+                subsegments: vec![],
+            }],
+        }),
+    )
+}
+
+#[test]
+fn test_complex_block_scopes_get_flattened() {
+    expect_parse(
+        r#"
+    [-
+    from _native import BlockScope, Paragraph, Sentence, Text
+
+    def paragraph_of(x):
+        return Paragraph([Sentence([Text(x)])])
+    -]
+    [-
+    s = test_src("""
+
+            three
+
+            {
+                [BlockScope([
+                    CustomHeader(weight=100),
+                    paragraph_of("four")
+                ])]
+            }
+            
+            five
+
+    """)
+    -]
+    
+    [CustomHeader(weight=1)]
+
+    one
+
+    {
+        two 
+
+        [CustomHeader(weight=2)]
+
+        [s]
+
+    }
+
+    six
+
+    "#,
+        Ok(TestDocument {
+            contents: TestBlock::BlockScope(vec![]),
+            segments: vec![TestDocSegment {
+                header: (1, None, None),
+                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+                    "two",
+                )])]),
+                subsegments: vec![TestDocSegment {
+                    header: (2, None, None),
+                    contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                        test_sentence("three"),
+                    ])]),
+                    subsegments: vec![TestDocSegment {
+                        header: (100, None, None),
+                        contents: TestBlock::BlockScope(vec![
+                            TestBlock::Paragraph(vec![test_sentence("four")]),
+                            TestBlock::Paragraph(vec![test_sentence("five")]),
+                            TestBlock::Paragraph(vec![test_sentence("six")]),
+                        ]),
+                        subsegments: vec![],
+                    }],
+                }],
+            }],
+        }),
     )
 }
 
@@ -402,7 +443,7 @@ Content in file!
 fn test_cant_create_header_in_paragraph() {
     expect_parse_err(
         "And as I was saying [CustomHeader()]",
-        TestSyntaxError::CodeEmittedHeaderInInlineMode {
+        TestSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
                 "And",
                 " as I was saying",
@@ -417,7 +458,7 @@ fn test_cant_create_header_in_paragraph() {
 fn test_cant_create_header_inline() {
     expect_parse_err(
         "[BUILD_CUSTOM_BLOCK_FROM_INLINE]{ [CustomHeader()] }",
-        TestSyntaxError::CodeEmittedHeaderInInlineMode {
+        TestSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: TestInlineModeContext::InlineScope {
                 scope_start: TestParseSpan("{"),
             },

@@ -11,7 +11,7 @@ use crate::{
         UserPythonEnv,
     },
     python::{
-        interop::{Block, Header, InlineScope, Paragraph, Raw, Sentence, Text},
+        interop::{Block, InlineScope, Paragraph, Raw, Sentence, Text},
         typeclass::PyTcRef,
     },
     util::{ParseContext, ParseSpan},
@@ -48,8 +48,6 @@ trait InlineMode {
     fn on_close_scope(&mut self, py: Python, tok: TTToken, data: &str) -> TTResult<ProcStatus>;
     fn on_eof(&mut self, py: Python, tok: TTToken) -> TTResult<ProcStatus>;
 
-    fn err_on_header_from_code(&self, header: PyTcRef<Header>, header_ctx: ParseContext)
-        -> TTError;
     fn err_on_block_from_code(&self, block: PyTcRef<Block>, block_ctx: ParseContext) -> TTError;
     fn err_on_source(&self, src_ctx: ParseContext) -> TTError;
     fn on_inline(
@@ -79,6 +77,28 @@ impl InlineLevelProcessor<ParagraphInlineMode> {
             .borrow_mut(py)
             .append_inline(inline)
             .expect_pyok("Sentence::append_inline with presumed inline");
+        Ok(Self {
+            inner: ParagraphInlineMode {
+                ctx: ParseContext::new(inline_ctx.first_tok(), inline_ctx.last_tok()),
+                para: py_internal_alloc(py, Paragraph::new_empty(py))?,
+                start_of_line: false,
+                current_sentence,
+            },
+            current_building_text: InlineTextState::new(),
+        })
+    }
+    pub fn new_with_inlines(
+        py: Python,
+        inline_scope: Py<InlineScope>,
+        inline_ctx: ParseContext,
+    ) -> TTResult<Self> {
+        let current_sentence = py_internal_alloc(py, Sentence::new_empty(py))?;
+        for inline in inline_scope.borrow(py).0.list(py) {
+            current_sentence
+                .borrow_mut(py)
+                .append_inline(&inline)
+                .expect_pyok("Sentence::append_inline with presumed inline");
+        }
         Ok(Self {
             inner: ParagraphInlineMode {
                 ctx: ParseContext::new(inline_ctx.first_tok(), inline_ctx.last_tok()),
@@ -198,31 +218,6 @@ impl InlineMode for ParagraphInlineMode {
             ))))
         } else {
             Err(TTSyntaxError::InlineScopeCloseOutsideScope(tok.token_span()).into())
-        }
-    }
-
-    fn err_on_header_from_code(
-        &self,
-        header: PyTcRef<Header>,
-        header_ctx: ParseContext,
-    ) -> TTError {
-        // This must have come from code.
-        if self.start_of_line {
-            // Someone is trying to open a new, separate header and not a header "inside" the paragraph.
-            // Give them a more relevant error message.
-            TTSyntaxError::InsufficientBlockSeparation {
-                last_block: BlockModeElem::Para(self.ctx),
-                next_block_start: BlockModeElem::HeaderFromCode(header_ctx.full_span()),
-            }
-            .into()
-        } else {
-            // We're deep inside a paragraph here.
-            TTSyntaxError::CodeEmittedHeaderInInlineMode {
-                inl_mode: self.inline_mode_ctx(),
-                header,
-                code_span: header_ctx.full_span(),
-            }
-            .into()
         }
     }
 
@@ -391,18 +386,6 @@ impl InlineMode for KnownInlineScopeInlineMode {
         .into())
     }
 
-    fn err_on_header_from_code(
-        &self,
-        header: PyTcRef<Header>,
-        header_ctx: ParseContext,
-    ) -> TTError {
-        TTSyntaxError::CodeEmittedHeaderInInlineMode {
-            inl_mode: self.inline_mode_ctx(),
-            header,
-            code_span: header_ctx.full_span(),
-        }
-        .into()
-    }
     fn err_on_block_from_code(&self, block: PyTcRef<Block>, block_ctx: ParseContext) -> TTError {
         TTSyntaxError::CodeEmittedBlockInInlineMode {
             inl_mode: self.inline_mode_ctx(),
@@ -632,10 +615,7 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
     ) -> TTResult<ProcStatus> {
         match pushed {
             Some((elem_ctx, elem)) => match elem {
-                // Can't get a header or a block in an inline scope
-                DocElement::HeaderFromCode(header) => {
-                    Err(self.inner.err_on_header_from_code(header, elem_ctx))
-                }
+                // Can't get a block in an inline scope
                 DocElement::Block(BlockElem::FromCode(block)) => {
                     Err(self.inner.err_on_block_from_code(block, elem_ctx))
                 }
@@ -646,6 +626,13 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
                     unreachable!("InlineLevelProcessor never tries to build an inner Paragraph")
                 }
                 // If we get an inline, shove it in
+                DocElement::Inline(InlineElem::InlineScope(inlines)) => {
+                    self.inner.on_content();
+                    for bound_inl in inlines.borrow(py).0.list(py) {
+                        self.inner.on_inline(py, &bound_inl, elem_ctx)?;
+                    }
+                    Ok(ProcStatus::Continue)
+                }
                 DocElement::Inline(inline) => {
                     self.inner.on_content();
                     self.inner.on_inline(py, inline.bind(py), elem_ctx)?;

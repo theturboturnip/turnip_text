@@ -4,13 +4,12 @@ use crate::{
     interpreter::{
         error::{syntax::TTSyntaxError, HandleInternalPyErr, TTResult},
         lexer::TTToken,
-        state_machines::{py_internal_alloc, BlockElem, ProcStatus},
+        state_machines::{py_internal_alloc, ProcStatus},
     },
     python::{
         interop::{BlockScope, Document, Header},
         typeclass::PyTcRef,
     },
-    util::ParseContext,
 };
 
 use super::{BlockLevelProcessor, BlockMode};
@@ -54,32 +53,21 @@ impl BlockMode for TopLevelBlockMode {
         Ok(ProcStatus::Continue)
     }
 
-    fn on_header(
-        &mut self,
-        py: Python,
-        header: PyTcRef<Header>,
-        _header_ctx: ParseContext,
-    ) -> TTResult<ProcStatus> {
+    fn on_header(&mut self, py: Python, header: PyTcRef<Header>) -> TTResult<()> {
         let bound_document = self.document.bind(py).borrow();
         let docsegment = bound_document
             .append_header(py, header.bind(py))
             .expect_pyok("DocSegment::append_header with presumed Header");
         self.topmost_block = docsegment.borrow().contents.clone_ref(py);
-
-        Ok(ProcStatus::Continue)
+        Ok(())
     }
 
-    fn on_block(
-        &mut self,
-        py: Python,
-        block: BlockElem,
-        _block_ctx: ParseContext,
-    ) -> TTResult<ProcStatus> {
+    fn on_block(&mut self, py: Python, block: &Bound<'_, PyAny>) -> TTResult<()> {
         self.topmost_block
             .borrow_mut(py)
-            .append_block(block.bind(py))
+            .append_block(block)
             .expect_pyok("BlockScope::append_block with presumed Block");
 
-        Ok(ProcStatus::Continue)
+        Ok(())
     }
 }

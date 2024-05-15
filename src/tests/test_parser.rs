@@ -81,7 +81,8 @@ mod block_spacing;
 /// Tests that comments pass through their ending tokens (newlines, escaped newlines, EOF) properly
 mod comments;
 
-/// Tests that the implicit structure mechanism is working correctly, and that headers can/can't be emitted in various places
+/// Tests that the implicit structure mechanism is working correctly,
+/// and that headers can be emitted inside block scopes and code.
 mod doc_structure;
 
 /// Tests for inserted files: that they function, that they can be created in any kind of block scope, and that errors inside them are handled correctly.
@@ -115,3 +116,6 @@ mod recursion;
 
 /// Tests that the context provided for block-scope-open errors in inline mode is accurate
 mod block_scope_inline_error_context;
+
+/// Tests that block scopes and inline scopes, even those returned from code, are flattened when added to the document
+mod scope_flattening;

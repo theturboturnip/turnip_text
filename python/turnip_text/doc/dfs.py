@@ -5,7 +5,6 @@ from turnip_text import (
     BlockScope,
     DocSegment,
     Document,
-    Header,
     Inline,
     InlineScope,
     Paragraph,
@@ -26,7 +25,7 @@ class DocumentDfsPass:
 
     def dfs_over_document(self, document: Document, anchors: StdAnchorPlugin) -> None:
         # Floats are parsed when their portals are encountered
-        dfs_queue: List[Block | Inline | DocSegment | Header] = []
+        dfs_queue: List[Block | Inline | DocSegment] = []
         dfs_queue.extend(reversed((document.contents, *document.segments)))
         visited_floats: Set[Anchor] = set()
         while dfs_queue:
@@ -39,7 +38,7 @@ class DocumentDfsPass:
 
             # Extract children as a reversed iterator.
             # reversed is important because we pop the last thing in the queue off first.
-            children: Iterable[Block | Inline | DocSegment | Header] | None = None
+            children: Iterable[Block | Inline | DocSegment] | None = None
             if isinstance(node, (BlockScope, InlineScope)):
                 children = reversed(tuple(node))
             elif isinstance(node, DocSegment):

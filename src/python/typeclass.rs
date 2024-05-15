@@ -67,7 +67,7 @@ impl<T: PyTypeclass> PyTcRef<T> {
         self.0.bind(py)
     }
 
-    pub fn unbox(self) -> PyObject {
+    pub fn into_any(self) -> PyObject {
         self.0
     }
 }

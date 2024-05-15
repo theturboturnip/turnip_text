@@ -28,6 +28,7 @@ For example, a book may consist of a `Document` with frontmatter (acknowledgemen
 Each chapter is a `DocSegment` in `document.segments`, and consists of a `header` (i.e. the chapter title with suitable formatting), further `content` (the content in the chapter before the first section), and `subsegments` (the sections within the chapter).
 
 Each `DocSegment` has a `header` - a Python object fulfilling the requirements of `Header`.
+TODO a header is a kind of block
 Python code can create its own kinds of `Header` by declaring a class with a property `is_header: bool = True` and another property `weight: int` which we will discuss later.
 You can also make your custom class a subclass of `Header` to add these properties automatically.
 There are no predefined implementations of this class, you must make your own.
@@ -44,6 +45,7 @@ class DocSegment:
     subsegments: List[DocSegment]
 
 class Header(Protocol):
+    is_block: bool = True
     is_header: bool = True
     weight: int = 0
 ```
@@ -112,6 +114,7 @@ and the content will continue.
 
 In *block mode*, the parser builds a `BlockScope` Python object out of the things you create.
 As such, it is possible to create `Block`s in this mode: `Paragraph`s, `BlockScope`s, and custom Python-defined `Block` instances.
+TODO headers are included here too
 
 `Paragraph`s can be created by simply writing text.
 Each line of text is a single `Sentence`.
@@ -160,6 +163,7 @@ This is a paragraph outside a block scope.
 ```
 
 Closing the block scope creates a Python `BlockScope` object and pushes it into the next level up, *emitting* it into the document.
+TODO note that this is fully flattened before putting it in the document
 After a `BlockScope` (or any `Block`) is emitted, no content is allowed until the next line.
 It is good practice to leave a blank line between the end of a block scope and the next content, but it is not required.
 
@@ -207,6 +211,7 @@ def fib(n):
 [fib(x)] # evaluates to fib(5) = 8
 ```
 
+
 Note that the final eval-bracket emits `fib(5) = 8`.
 TODO tests for this
 turnip_text supports limited coercion: if an eval-bracket is an expression which evaluates to a string, it is automatically wrapped in `Text`.
@@ -220,7 +225,10 @@ Eval-brackets may evaluate to four kinds of object:
 - A string, float, int or instance of `Inline`
     - If the parser was in *block mode*, the coerced `Inline` is placed in a `Paragraph` and parser enters *inline mode*
 - An instance of `Block`, which is only allowed in *block mode* and is emitted into the enclosing `BlockScope`
-- An instance of `Header`, which is only allowed in *top-level block mode* and creates a new `DocSegment`.
+- An instance of `Header`, which is only allowed in *block mode* and creates a new `DocSegment`.
+TODO rewrite the header bit
+
+TODO restructure - introduce code as something that modifies a block scope, then note that the block scope it emits is fully flattened?
 
 TODO emitting header, weight must fit in signed int64
 

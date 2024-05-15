@@ -129,7 +129,6 @@ impl<'a> From<(&'a InlineModeContext, &'a Vec<ParsingFile>)> for TestInlineModeC
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TestBlockModeElem<'a> {
-    HeaderFromCode(TestParseSpan<'a>),
     Para(TestParseContext<'a>),
     BlockScope(TestParseContext<'a>),
     BlockFromCode(TestParseSpan<'a>),
@@ -139,7 +138,6 @@ pub enum TestBlockModeElem<'a> {
 impl<'a> From<(&'a BlockModeElem, &'a Vec<ParsingFile>)> for TestBlockModeElem<'a> {
     fn from(value: (&'a BlockModeElem, &'a Vec<ParsingFile>)) -> Self {
         match value.0 {
-            BlockModeElem::HeaderFromCode(s) => Self::HeaderFromCode((s, value.1).into()),
             BlockModeElem::Para(c) => Self::Para((c, value.1).into()),
             BlockModeElem::BlockScope(c) => Self::BlockScope((c, value.1).into()),
             BlockModeElem::BlockFromCode(s) => Self::BlockFromCode((s, value.1).into()),
@@ -174,14 +172,6 @@ pub enum TestSyntaxError<'a> {
     },
     CodeEmittedBlockInInlineMode {
         inl_mode: TestInlineModeContext<'a>,
-        code_span: TestParseSpan<'a>,
-    },
-    CodeEmittedHeaderInInlineMode {
-        inl_mode: TestInlineModeContext<'a>,
-        code_span: TestParseSpan<'a>,
-    },
-    CodeEmittedHeaderInBlockScope {
-        block_scope_start: TestParseSpan<'a>,
         code_span: TestParseSpan<'a>,
     },
     CodeEmittedSourceInInlineMode {
@@ -249,22 +239,6 @@ impl<'a> From<(&'a Box<TTSyntaxError>, &'a Vec<ParsingFile>)> for TestSyntaxErro
                 code_span,
             } => Self::CodeEmittedBlockInInlineMode {
                 inl_mode: (inl_mode, value.1).into(),
-                code_span: (code_span, value.1).into(),
-            },
-            TTSyntaxError::CodeEmittedHeaderInInlineMode {
-                inl_mode,
-                header: _,
-                code_span,
-            } => Self::CodeEmittedHeaderInInlineMode {
-                inl_mode: (inl_mode, value.1).into(),
-                code_span: (code_span, value.1).into(),
-            },
-            TTSyntaxError::CodeEmittedHeaderInBlockScope {
-                block_scope_start,
-                header: _,
-                code_span,
-            } => Self::CodeEmittedHeaderInBlockScope {
-                block_scope_start: (block_scope_start, value.1).into(),
                 code_span: (code_span, value.1).into(),
             },
             TTSyntaxError::CodeEmittedSourceInInlineMode {

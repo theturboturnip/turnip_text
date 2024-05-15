@@ -1,4 +1,4 @@
-from typing import Protocol, Sequence, Union, runtime_checkable
+from typing import Optional, Protocol, Sequence, TypeAlias, Union, runtime_checkable
 
 __all__ = [
     "Block",
@@ -61,27 +61,27 @@ class Block(Protocol):
 
 @runtime_checkable
 class Header(Protocol):
+    is_block: bool = True
     is_header: bool = True
     weight: int = 0
 
 
+DocElement: TypeAlias = Union[Block, Inline]
+
+
 @runtime_checkable
 class BlockScopeBuilder(Protocol):
-    def build_from_blocks(
-        self, bs: BlockScope
-    ) -> Union[Header, Block, Inline, None]: ...
+    def build_from_blocks(self, bs: BlockScope) -> Optional[DocElement]: ...
 
 
 @runtime_checkable
 class InlineScopeBuilder(Protocol):
-    def build_from_inlines(
-        self, inls: InlineScope
-    ) -> Union[Header, Block, Inline, None]: ...
+    def build_from_inlines(self, inls: InlineScope) -> Optional[DocElement]: ...
 
 
 @runtime_checkable
 class RawScopeBuilder(Protocol):
-    def build_from_raw(self, raw: str) -> Union[Header, Block, Inline, None]: ...
+    def build_from_raw(self, raw: str) -> Optional[DocElement]: ...
 
 
 # The types that can be coerced into an Inline, in the order they are checked and attempted.

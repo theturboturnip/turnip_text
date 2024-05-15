@@ -69,7 +69,7 @@ fn parse_file<'py>(
 
 #[pyfunction]
 pub fn coerce_to_inline<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<PyObject> {
-    Ok(coerce_to_inline_pytcref(py, obj)?.unbox())
+    Ok(coerce_to_inline_pytcref(py, obj)?.into_any())
 }
 
 // FUTURE separate the failure condition of the coercion from other potential failures e.g. allocation failure.
@@ -134,7 +134,7 @@ pub fn coerce_to_inline_scope<'py>(
 
 #[pyfunction]
 pub fn coerce_to_block<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<PyObject> {
-    Ok(coerce_to_block_pytcref(py, obj)?.unbox())
+    Ok(coerce_to_block_pytcref(py, obj)?.into_any())
 }
 
 pub fn coerce_to_block_pytcref<'py>(
@@ -287,6 +287,7 @@ impl PyTypeclass for Inline {
 /// and defines how it interacts with other segments through the weight parameter.
 ///
 /// TODO weight => depth everywhere
+/// TODO change this explanation
 /// This is used for implicit structure.
 /// It's created by Python code by emitting a Header with some Weight, and the Weight is used to implicitly open and close scopes
 ///

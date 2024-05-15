@@ -4,10 +4,8 @@ import inspect
 from typing import (
     Any,
     Callable,
-    Concatenate,
     Dict,
     Generic,
-    List,
     Optional,
     ParamSpec,
     Tuple,
@@ -18,17 +16,14 @@ from typing import (
 from turnip_text import (
     Block,
     BlockScope,
-    BlockScopeBuilder,
     CoercibleToBlockScope,
     CoercibleToInline,
     CoercibleToInlineScope,
-    Header,
+    DocElement,
     Inline,
     InlineScope,
-    InlineScopeBuilder,
     Paragraph,
     Raw,
-    RawScopeBuilder,
     Sentence,
     coerce_to_block_scope,
     coerce_to_inline,
@@ -38,7 +33,7 @@ from turnip_text import (
 # TODO tests for the helpers
 
 # TODO Python 3.12 use default here
-TElement = TypeVar("TElement", bound=Union[Header, Block, Inline, None])
+TElement = TypeVar("TElement", bound=Optional[DocElement])
 
 
 class UserBlockScopeBuilder(abc.ABC, Generic[TElement]):
