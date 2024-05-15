@@ -28,10 +28,8 @@ fn test_inserted_file_in_block_scope() {
             "#,
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![test_sentence("paragraph 1")]),
-            TestBlock::BlockScope(vec![
-                TestBlock::Paragraph(vec![test_sentence("paragraph 2")]),
-                TestBlock::Paragraph(vec![test_sentence("paragraph 3")]),
-            ]),
+            TestBlock::Paragraph(vec![test_sentence("paragraph 2")]),
+            TestBlock::Paragraph(vec![test_sentence("paragraph 3")]),
         ])),
     )
 }
@@ -106,13 +104,9 @@ f4 = test_src("""
             "#,
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![test_sentence("paragraph 1")]),
-            TestBlock::BlockScope(vec![
-                TestBlock::Paragraph(vec![test_sentence("paragraph 2")]),
-                TestBlock::Paragraph(vec![test_sentence("paragraph 3")]),
-                TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
-                    "paragraph 4",
-                )])]),
-            ]),
+            TestBlock::Paragraph(vec![test_sentence("paragraph 2")]),
+            TestBlock::Paragraph(vec![test_sentence("paragraph 3")]),
+            TestBlock::Paragraph(vec![test_sentence("paragraph 4")]),
         ])),
     )
 }

@@ -66,9 +66,9 @@ fn test_primitives() {
     );
     expect_parse(
         CREATED_BSCOPE,
-        Ok(test_doc(vec![TestBlock::BlockScope(vec![
-            TestBlock::Paragraph(vec![test_sentence("block_scope_content")]),
-        ])])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![test_sentence(
+            "block_scope_content",
+        )])])),
     );
     expect_parse(
         CREATED_BLOCK_BARE,

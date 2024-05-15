@@ -379,22 +379,22 @@ fn test_complex_block_scopes_get_flattened() {
     def paragraph_of(x):
         return Paragraph([Sentence([Text(x)])])
     -]
-    [-
+    [--
     s = test_src("""
 
             three
 
             {
-                [BlockScope([
+                [-BlockScope([
                     CustomHeader(weight=100),
                     paragraph_of("four")
-                ])]
+                ])-]
             }
             
             five
 
     """)
-    -]
+    --]
     
     [CustomHeader(weight=1)]
 
@@ -416,9 +416,10 @@ fn test_complex_block_scopes_get_flattened() {
             contents: TestBlock::BlockScope(vec![]),
             segments: vec![TestDocSegment {
                 header: (1, None, None),
-                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
-                    "two",
-                )])]),
+                contents: TestBlock::BlockScope(vec![
+                    TestBlock::Paragraph(vec![test_sentence("one")]),
+                    TestBlock::Paragraph(vec![test_sentence("two")]),
+                ]),
                 subsegments: vec![TestDocSegment {
                     header: (2, None, None),
                     contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![

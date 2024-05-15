@@ -98,10 +98,8 @@ Second paragraph inside the scope
 }"#,
         Ok(test_doc(vec![
             TestBlock::Paragraph(vec![test_sentence("Outside the scope")]),
-            TestBlock::BlockScope(vec![
-                TestBlock::Paragraph(vec![test_sentence("Inside the scope")]),
-                TestBlock::Paragraph(vec![test_sentence("Second paragraph inside the scope")]),
-            ]),
+            TestBlock::Paragraph(vec![test_sentence("Inside the scope")]),
+            TestBlock::Paragraph(vec![test_sentence("Second paragraph inside the scope")]),
         ])),
     )
 }
@@ -504,10 +502,8 @@ block scope
 
 {inline scope}"#,
         Ok(test_doc(vec![
-            TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
-                "block scope",
-            )])]),
-            TestBlock::Paragraph(vec![vec![test_text("inline scope")]]),
+            TestBlock::Paragraph(vec![test_sentence("block scope")]),
+            TestBlock::Paragraph(vec![test_sentence("inline scope")]),
         ])),
     )
 }

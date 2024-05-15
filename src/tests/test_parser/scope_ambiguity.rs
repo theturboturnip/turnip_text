@@ -4,31 +4,22 @@ use super::*;
 
 #[test]
 fn block_scope_opened_with_direct_newline() {
-    expect_parse("{\n}", Ok(test_doc(vec![TestBlock::BlockScope(vec![])])))
+    expect_parse("{\n}", Ok(test_doc(vec![])))
 }
 
 #[test]
 fn block_scope_opened_with_whitespaces_then_newline() {
-    expect_parse(
-        "{       \n}",
-        Ok(test_doc(vec![TestBlock::BlockScope(vec![])])),
-    )
+    expect_parse("{       \n}", Ok(test_doc(vec![])))
 }
 
 #[test]
 fn block_scope_opened_with_whitespaces_then_comment_then_newline() {
-    expect_parse(
-        "{       # wowie a comment!\n}",
-        Ok(test_doc(vec![TestBlock::BlockScope(vec![])])),
-    )
+    expect_parse("{       # wowie a comment!\n}", Ok(test_doc(vec![])))
 }
 
 #[test]
 fn block_scope_opened_with_comment() {
-    expect_parse(
-        "{# wowie a comment\n}",
-        Ok(test_doc(vec![TestBlock::BlockScope(vec![])])),
-    )
+    expect_parse("{# wowie a comment\n}", Ok(test_doc(vec![])))
 }
 
 // Test the same thing but with code owners on the front
@@ -110,7 +101,7 @@ fn code_inline_scope_opened_with_whitespaces_then_content() {
 // Empty scopes should count as inline because there are no newlines inside
 #[test]
 fn empty_scopes_are_inline() {
-    expect_parse("{}", Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![]])])))
+    expect_parse("{}", Ok(test_doc(vec![TestBlock::Paragraph(vec![])])))
 }
 
 #[test]
@@ -119,7 +110,7 @@ fn scopes_with_escaped_newlines_are_inline() {
         r#"{\
 \
 }"#,
-        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![]])])),
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![])])),
     )
 }
 
