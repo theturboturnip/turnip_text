@@ -5,7 +5,14 @@ import re
 import textwrap
 from typing import Any, Dict, List, Optional, Type, cast
 
-from turnip_text import Block, BlockScopeBuilder, Header, Inline, InlineScopeBuilder, RawScopeBuilder
+from turnip_text import (
+    Block,
+    BlockScopeBuilder,
+    Header,
+    Inline,
+    InlineScopeBuilder,
+    RawScopeBuilder,
+)
 from turnip_text.cli import (
     InputParams,
     TurnipTextSetup,
@@ -141,7 +148,6 @@ def wrap_describe(args: Any) -> None:
     else:
         help(setup)
 
-
     if args.plugins:
         plugins = setup.generate_setup(**setup.DEFAULT_INPUTS, **setup_kwargs).plugins
         print(
@@ -177,10 +183,11 @@ def wrap_describe(args: Any) -> None:
                     fits_rsb = isinstance(item, RawScopeBuilder)
                 is_doc_builder = fits_bsb or fits_isb or fits_rsb
 
-
-                if is_doc_element or is_doc_builder: 
+                if is_doc_element or is_doc_builder:
                     if inspect.isclass(item):
-                        print(f"class {name}({', '.join(str(base) for base in item.__bases__ if base is not object)})")
+                        print(
+                            f"class {name}({', '.join(str(base) for base in item.__bases__ if base is not object)})"
+                        )
                     else:
                         things_it_fits = []
                         if fits_block:
@@ -200,9 +207,13 @@ def wrap_describe(args: Any) -> None:
                         if is_doc_builder:
                             print(f"{name} = ({', '.join(things_it_fits)})")
                         else:
-                            print(f"{name} = {item!r} (fits {', '.join(things_it_fits)})")
+                            print(
+                                f"{name} = {item!r} (fits {', '.join(things_it_fits)})"
+                            )
                     if item.__doc__:
-                        print("\t" + textwrap.dedent(item.__doc__).replace("\n", "\n\t"))
+                        print(
+                            "\t" + textwrap.dedent(item.__doc__).replace("\n", "\n\t")
+                        )
                     else:
                         print("\tNo documentation found.")
                 else:
@@ -217,14 +228,21 @@ def wrap_describe(args: Any) -> None:
                     for param in signature.parameters.values():
                         print(f"\t{param},")
                     print(f") -> {signature.return_annotation}:")
-                if (inspect.isfunction(item) or inspect.ismethod(item)):
+                if inspect.isfunction(item) or inspect.ismethod(item):
                     if item.__doc__:
-                        print("\t" + textwrap.dedent(item.__doc__).replace("\n", "\n\t"))
+                        print(
+                            "\t" + textwrap.dedent(item.__doc__).replace("\n", "\n\t")
+                        )
                     else:
                         print("\tNo documentation found.")
                 else:
                     if item.__call__.__doc__:
-                        print("\t" + textwrap.dedent(item.__call__.__doc__).replace("\n", "\n\t"))
+                        print(
+                            "\t"
+                            + textwrap.dedent(item.__call__.__doc__).replace(
+                                "\n", "\n\t"
+                            )
+                        )
                     else:
                         print("\tNo documentation found.")
             # TODO if it supports a builder, give a usage example?
@@ -254,6 +272,7 @@ def run_cli() -> None:
     render_subcommand.add_argument(
         "--formats",
         type=str,
+        required=True,
         nargs="+",
         help="The format(s) to export to for each input file. Can be any value accepted by the setup, common accepted values are 'latex', 'html', 'markdown', 'pandoc-{format}'.",
     )

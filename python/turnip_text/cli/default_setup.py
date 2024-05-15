@@ -17,7 +17,7 @@ class DefaultTurnipTextSetup(TurnipTextSetup):
     - "latex" for LaTeX
     - "markdown" for Markdown
     - "html" for HTML
-    - "pandoc-{format}" for Pandoc output to the given format 
+    - "pandoc-{format}" for Pandoc output to the given format
 
     Accepts three keyword arguments:
     - `docclass:(article|book|report)`
@@ -55,7 +55,7 @@ class DefaultTurnipTextSetup(TurnipTextSetup):
                         bib=biblatex_bib,
                         bib_output=f"{input_stem}.bib",
                     ),
-                    f"{input_stem}.tex"
+                    f"{input_stem}.tex",
                 )
             elif "report" in docclass:
                 return GeneratedSetup(
@@ -65,7 +65,7 @@ class DefaultTurnipTextSetup(TurnipTextSetup):
                         bib=biblatex_bib,
                         bib_output=f"{input_stem}.bib",
                     ),
-                    f"{input_stem}.tex"
+                    f"{input_stem}.tex",
                 )
             else:
                 return GeneratedSetup(
@@ -75,9 +75,9 @@ class DefaultTurnipTextSetup(TurnipTextSetup):
                         bib=biblatex_bib,
                         bib_output=f"{input_stem}.bib",
                     ),
-                    f"{input_stem}.tex"
+                    f"{input_stem}.tex",
                 )
-        elif requested_format == "md":
+        elif requested_format == "markdown":
             if not csl_bib:
                 print(
                     "Warning, no CSL bibliography was supplied so Markdown will not have citation commands"
@@ -88,7 +88,7 @@ class DefaultTurnipTextSetup(TurnipTextSetup):
                     use_chapters=("book" in docclass) or ("report" in docclass),
                     bib=csl_bib,
                 ),
-                    f"{input_stem}.md"
+                f"{input_stem}.md",
             )
         elif requested_format == "html":
             if not csl_bib:
@@ -101,7 +101,7 @@ class DefaultTurnipTextSetup(TurnipTextSetup):
                     use_chapters=("book" in docclass) or ("report" in docclass),
                     bib=csl_bib,
                 ),
-                    f"{input_stem}.html"
+                f"{input_stem}.html",
             )
         elif requested_format.startswith("pandoc-"):
             if not csl_bib:
@@ -114,7 +114,7 @@ class DefaultTurnipTextSetup(TurnipTextSetup):
                 STD_PANDOC_RENDER_PLUGINS(
                     bib=csl_bib,
                 ),
-                f"{input_stem}.{recommend_pandoc_format_ext(pandoc_format)}"
+                f"{input_stem}.{recommend_pandoc_format_ext(pandoc_format)}",
             )
 
         return super().generate_setup(input_stem, requested_format, **kwargs)
