@@ -452,7 +452,7 @@ fn test_cant_create_header_inline() {
     expect_parse_err(
         "[BUILD_CUSTOM_BLOCK_FROM_INLINE]{ [CustomHeader()] }",
         TestSyntaxError::CodeEmittedBlockInInlineMode {
-            inl_mode: TestInlineModeContext::InlineScope {
+            inl_mode: TestInlineModeContext::Inlines {
                 scope_start: TestParseSpan("{"),
             },
             code_span: TestParseSpan("[CustomHeader()]"),

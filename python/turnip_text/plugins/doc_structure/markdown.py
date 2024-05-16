@@ -1,6 +1,6 @@
 from typing import Iterator, List, Tuple, Union
 
-from turnip_text import Blocks, DocSegment, InlineScope, Raw, Text, join_inlines
+from turnip_text import Blocks, DocSegment, Inlines, Raw, Text, join_inlines
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc.anchors import Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
@@ -99,7 +99,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
             renderer.emit(
                 DocSegment(
                     BasicHeader(
-                        title=InlineScope([title.metadata.title]), anchor=None, weight=1
+                        title=Inlines([title.metadata.title]), anchor=None, weight=1
                     ),
                     contents=Blocks([]),
                     subsegments=[],
@@ -109,7 +109,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
             renderer.emit(
                 DocSegment(
                     BasicHeader(
-                        title=InlineScope([title.metadata.subtitle]),
+                        title=Inlines([title.metadata.subtitle]),
                         anchor=None,
                         weight=2,
                     ),
@@ -130,9 +130,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
         # TODO make lists able to be of Inline | Block so we don't need to wrap things in paragraph_of?
         renderer.emit(
             DocSegment(
-                BasicHeader(
-                    title=InlineScope([Text("Contents")]), anchor=None, weight=1
-                ),
+                BasicHeader(title=Inlines([Text("Contents")]), anchor=None, weight=1),
                 contents=Blocks(
                     [
                         fmt.itemize

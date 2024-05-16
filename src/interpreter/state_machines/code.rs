@@ -18,7 +18,7 @@ use crate::{
     },
     python::{
         interop::{
-            coerce_to_inline_pytcref, Block, BlocksBuilder, Inline, InlineScopeBuilder, RawScopeBuilder, TurnipTextSource
+            coerce_to_inline_pytcref, Block, BlocksBuilder, Inline, InlinesBuilder, RawScopeBuilder, TurnipTextSource
         },
         typeclass::{PyTcRef, PyTypeclass},
     },
@@ -175,10 +175,10 @@ impl TokenProcessor for CodeProcessor {
                     }
                 })?
             }
-            DocElement::Inline(InlineElem::InlineScope(inlines)) => {
-                let builder = PyTcRef::<InlineScopeBuilder>::of(&evaled_result_ref).expect("The AmbiguousScopeProcessor callbacks must have checked this was a InlineScopeBuilder.");
+            DocElement::Inline(InlineElem::Inlines(inlines)) => {
+                let builder = PyTcRef::<InlinesBuilder>::of(&evaled_result_ref).expect("The AmbiguousScopeProcessor callbacks must have checked this was a InlinesBuilder.");
 
-                InlineScopeBuilder::call_build_from_inlines(py, builder, inlines).map_err(
+                InlinesBuilder::call_build_from_inlines(py, builder, inlines).map_err(
                     |err| TTUserPythonError::Building {
                         code_ctx: self.ctx,
                         arg_ctx: elem_ctx,
@@ -268,8 +268,8 @@ impl OnResolveAmbiguousScope for ScopeKindChecker {
     }
 
     fn got_inline_scope(self, py: Python, scope_open: ParseSpan) -> TTResult<()> {
-        // Try coercing the builder to InlineScopeBuilder. If it doesn't work, raise an error.
-        PyTcRef::<InlineScopeBuilder>::of_friendly(
+        // Try coercing the builder to InlinesBuilder. If it doesn't work, raise an error.
+        PyTcRef::<InlinesBuilder>::of_friendly(
             self.builder.bind(py),
             "value returned by eval-bracket",
         )
@@ -299,7 +299,7 @@ impl OnResolveAmbiguousScope for ScopeKindChecker {
 /// Well, what can be coerced?
 /// Coercible to inline:
 /// - `Inline`        -> `x`
-/// - `List[Inline]`  -> `InlineScope(x)`
+/// - `List[Inline]`  -> `Inlines(x)`
 /// - `str/float/int` -> `Text(str(x))`
 /// Coercible to block:
 /// - `Block`             -> `x`

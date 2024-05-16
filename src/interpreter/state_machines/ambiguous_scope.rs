@@ -236,7 +236,7 @@ impl TokenProcessor for InlineLevelAmbiguousScopeProcessor {
                             })?
                         }
                     }
-                    InlineModeContext::InlineScope { .. } => {
+                    InlineModeContext::Inlines { .. } => {
                         // This only happens if we *started* from an inline scope, i.e. this is an inline scope attached to code, not a bare inline scope inside a paragraph.
                         Err(TTSyntaxError::BlockScopeOpenedInInlineMode {
                             inl_mode: preceding_inline.clone(),

@@ -8,8 +8,8 @@ from turnip_text import (
     Document,
     Header,
     Inline,
-    InlineScope,
-    InlineScopeBuilder,
+    Inlines,
+    InlinesBuilder,
 )
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
@@ -22,16 +22,16 @@ from typing_extensions import override
 # and replace these with Backrefs if they so choose.
 @dataclass
 class Citation(UserNode, Inline, UserInlineScopeBuilder):
-    citenote: InlineScope | None
+    citenote: Inlines | None
     citekeys: Set[str]
     anchor = None
 
     @override
-    def child_nodes(self) -> InlineScope | None:
+    def child_nodes(self) -> Inlines | None:
         return self.citenote
 
-    def build_from_inlines(self, inls: InlineScope) -> Inline:
-        return Citation(citekeys=self.citekeys, citenote=inls)
+    def build_from_inlines(self, inlines: Inlines) -> Inline:
+        return Citation(citekeys=self.citekeys, citenote=inlines)
 
 
 @dataclass(frozen=True)

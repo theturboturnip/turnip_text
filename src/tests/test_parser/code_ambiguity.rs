@@ -33,7 +33,7 @@ fn test_code_followed_by_content_doesnt_build() {
 [-
 class Super:
     is_inline = True
-    test_inline = InlineScope([])
+    test_inline = Inlines([])
 
     def build_from_blocks(self, blocks):
         raise RuntimeError("argh shouldn't run this")
@@ -129,7 +129,7 @@ class Super:
             
             code_ctx: TestParseContext("[", "CUSTOM_INLINE", "]"),
             err: Regex::new(
-                r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*build_from_inlines.*Got <CustomInline.*",
+                r"TypeError\s*:\s*Expected.*InlinesBuilder.*build_from_inlines.*Got <CustomInline.*",
             )
             .unwrap(),
             scope_open: TestParseSpan("{"),

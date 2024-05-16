@@ -232,22 +232,22 @@ fn test_start_para_inline_scopes_are_flattened() {
 #[test]
 fn test_start_para_code_produced_inline_scopes_are_flattened() {
     expect_parse(
-        r#"[- from _native import InlineScope, Text -] [---  InlineScope([
-            InlineScope([
-                InlineScope([
-                    InlineScope([
+        r#"[- from _native import Inlines, Text -] [---  Inlines([
+            Inlines([
+                Inlines([
+                    Inlines([
                         Text("one"),
                     ])
                 ]),
-                InlineScope([
+                Inlines([
                     Text("two"),
                 ]),
-                InlineScope([]),
-                InlineScope([
+                Inlines([]),
+                Inlines([
                     Text("three"),
-                    InlineScope([
+                    Inlines([
                         Text("four"),
-                        InlineScope([
+                        Inlines([
                             Text("five"),
                         ]),
                     ]),
@@ -288,26 +288,26 @@ fn test_mid_para_inline_scopes_are_flattened() {
 #[test]
 fn test_mid_para_code_produced_inline_scopes_are_flattened() {
     expect_parse(
-        r#"[- from _native import InlineScope, Text -]
+        r#"[- from _native import Inlines, Text -]
         
         
         wow some stuff
-        some more stuff and then [---  InlineScope([
-            InlineScope([
-                InlineScope([
-                    InlineScope([
+        some more stuff and then [---  Inlines([
+            Inlines([
+                Inlines([
+                    Inlines([
                         Text("one"),
                     ])
                 ]),
-                InlineScope([
+                Inlines([
                     Text("two"),
                 ]),
-                InlineScope([]),
-                InlineScope([
+                Inlines([]),
+                Inlines([
                     Text("three"),
-                    InlineScope([
+                    Inlines([
                         Text("four"),
-                        InlineScope([
+                        Inlines([
                             Text("five"),
                         ]),
                     ]),
@@ -331,39 +331,39 @@ fn test_mid_para_code_produced_inline_scopes_are_flattened() {
 #[test]
 fn test_code_nodes_surrounding_inline_scopes_are_not_flattened() {
     expect_parse(
-        r#"[- from _native import InlineScope, Text -] [---  CustomInline(
-            InlineScope([
-                InlineScope([
-                    InlineScope([
+        r#"[- from _native import Inlines, Text -] [---  CustomInline(
+            Inlines([
+                Inlines([
+                    Inlines([
                         Text("one"),
                     ])
                 ]),
-                InlineScope([
+                Inlines([
                     Text("two"),
                 ]),
-                InlineScope([]),
-                InlineScope([
+                Inlines([]),
+                Inlines([
                     Text("three"),
-                    InlineScope([
+                    Inlines([
                         Text("four"),
-                        InlineScope([
+                        Inlines([
                             Text("five"),
                         ]),
                     ]),
                 ]),
             ])
         )  ---]"#,
-        // The first vec![] of CustomInline is the first InlineScope
+        // The first vec![] of CustomInline is the first Inlines
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             TestInline::CustomInline(vec![
-                TestInline::InlineScope(vec![TestInline::InlineScope(vec![test_text("one")])]),
-                TestInline::InlineScope(vec![test_text("two")]),
-                TestInline::InlineScope(vec![]),
-                TestInline::InlineScope(vec![
+                TestInline::Inlines(vec![TestInline::Inlines(vec![test_text("one")])]),
+                TestInline::Inlines(vec![test_text("two")]),
+                TestInline::Inlines(vec![]),
+                TestInline::Inlines(vec![
                     test_text("three"),
-                    TestInline::InlineScope(vec![
+                    TestInline::Inlines(vec![
                         test_text("four"),
-                        TestInline::InlineScope(vec![test_text("five")]),
+                        TestInline::Inlines(vec![test_text("five")]),
                     ]),
                 ]),
             ]),

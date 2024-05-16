@@ -145,7 +145,7 @@ fn test_no_inserted_file_in_inline_scope() {
     expect_parse_err(
         r#"{ wow i'm inside an inline scope! [test_src("some more data O.O")] }"#,
         TestSyntaxError::CodeEmittedSourceInInlineMode {
-            inl_mode: TestInlineModeContext::InlineScope {
+            inl_mode: TestInlineModeContext::Inlines {
                 scope_start: TestParseSpan("{"),
             },
             code_span: TestParseSpan(r#"[test_src("some more data O.O")]"#),
@@ -158,7 +158,7 @@ fn test_no_inserted_file_in_inline_builder() {
     expect_parse_err(
         r#"[BUILD_CUSTOM_INLINE]{wow i'm inside an inline scope builder! [test_src("some more data O.O")] }"#,
         TestSyntaxError::CodeEmittedSourceInInlineMode {
-            inl_mode: TestInlineModeContext::InlineScope {
+            inl_mode: TestInlineModeContext::Inlines {
                 scope_start: TestParseSpan("{"),
             },
             code_span: TestParseSpan(r#"[test_src("some more data O.O")]"#),

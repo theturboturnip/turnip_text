@@ -4,7 +4,7 @@ __all__ = [
     "Block",
     "Blocks",
     "Inline",
-    "InlineScope",
+    "Inlines",
     "DocSegment",
     "Document",
     "Paragraph",
@@ -14,9 +14,9 @@ __all__ = [
     "coerce_to_block",
     "coerce_to_blocks",
     "coerce_to_inline",
-    "coerce_to_inline_scope",
+    "coerce_to_inlines",
     "BlocksBuilder",
-    "InlineScopeBuilder",
+    "InlinesBuilder",
     "RawScopeBuilder",
     "CoercibleToInline",
     "CoercibleToInlineScope",
@@ -32,7 +32,7 @@ from ._native import (  # type: ignore
     Blocks,
     DocSegment,
     Document,
-    InlineScope,
+    Inlines,
     Paragraph,
     Raw,
     Sentence,
@@ -42,7 +42,7 @@ from ._native import (  # type: ignore
     coerce_to_block,
     coerce_to_blocks,
     coerce_to_inline,
-    coerce_to_inline_scope,
+    coerce_to_inlines,
     parse_file,
 )
 
@@ -75,8 +75,8 @@ class BlocksBuilder(Protocol):
 
 
 @runtime_checkable
-class InlineScopeBuilder(Protocol):
-    def build_from_inlines(self, inlines: InlineScope) -> Optional[DocElement]: ...
+class InlinesBuilder(Protocol):
+    def build_from_inlines(self, inlines: Inlines) -> Optional[DocElement]: ...
 
 
 @runtime_checkable
@@ -85,16 +85,16 @@ class RawScopeBuilder(Protocol):
 
 
 # The types that can be coerced into an Inline, in the order they are checked and attempted.
-# Sequence[Inline] is coerced by wrapping it in a list and wrapping that in an InlineScope
+# Sequence[Inline] is coerced by wrapping it in a list and wrapping that in an Inlines
 CoercibleToInline = Union[Inline, str, Sequence[Inline], int, float]
 
-# The types that can be coerced into an InlineScope, in the order they are checked and attempted.
+# The types that can be coerced into an Inlines, in the order they are checked and attempted.
 # 1. InlineScopes are passed through.
 # 2. Coercion to Inline is attempted, and must succeed.
-# 3. If it coerced to InlineScope by the inline process (i.e. it was originally Sequence[Inline]),
-# that InlineScope is passed through.
-# 4. Otherwise the plain Inline is wrapped in InlineScope([plain_inline])
-CoercibleToInlineScope = Union[InlineScope, CoercibleToInline]
+# 3. If it coerced to Inlines by the inline process (i.e. it was originally Sequence[Inline]),
+# that Inlines is passed through.
+# 4. Otherwise the plain Inline is wrapped in Inlines([plain_inline])
+CoercibleToInlineScope = Union[Inlines, CoercibleToInline]
 
 # The types that can be coerced into a Block, in the order they are checked and attempted
 CoercibleToBlock = Union[Block, Sentence, Sequence[Block], CoercibleToInline]
@@ -103,12 +103,12 @@ CoercibleToBlock = Union[Block, Sentence, Sequence[Block], CoercibleToInline]
 CoercibleToBlocks = Union[Blocks, CoercibleToBlock]
 
 
-def join_inlines(inlines: Sequence[Inline], joiner: Inline) -> InlineScope:
+def join_inlines(inlines: Sequence[Inline], joiner: Inline) -> Inlines:
     """Equivalent of string.join, but for joining any set of Inlines with a joiner Inline"""
     new_inlines = [val for i in inlines for val in (i, joiner)]
     if new_inlines:
         new_inlines.pop()
-    return InlineScope(new_inlines)
+    return Inlines(new_inlines)
 
 
 def open_turnip_text_source(path: str, encoding: str = "utf-8") -> TurnipTextSource:

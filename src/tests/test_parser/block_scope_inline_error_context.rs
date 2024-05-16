@@ -20,7 +20,7 @@ fn mid_paragraph() {
     )
 }
 
-// If the block-scope-open is inside an inlinescope inside a paragraph, the context is the whole paragraph
+// If the block-scope-open is inside an inlines inside a paragraph, the context is the whole paragraph
 #[test]
 fn mid_paragraph_in_inline_scope() {
     expect_parse_err(
@@ -70,7 +70,7 @@ fn mid_paragraph_started_with_inline_scope() {
     }
     ",
         TestSyntaxError::BlockScopeOpenedInInlineMode {
-            inl_mode: TestInlineModeContext::InlineScope {
+            inl_mode: TestInlineModeContext::Inlines {
                 scope_start: TestParseSpan("{"),
             },
             block_scope_open: TestParseSpan("{"),
@@ -89,7 +89,7 @@ fn code_inline_scope_inside_para() {
     }
     ",
         TestSyntaxError::BlockScopeOpenedInInlineMode {
-            inl_mode: TestInlineModeContext::InlineScope {
+            inl_mode: TestInlineModeContext::Inlines {
                 scope_start: TestParseSpan("{"),
             },
             block_scope_open: TestParseSpan("{"),
@@ -104,7 +104,7 @@ fn bare_nested_inline_scopes() {
         "{    inline    {  another inline {
         block! ",
         TestSyntaxError::BlockScopeOpenedInInlineMode {
-            inl_mode: TestInlineModeContext::InlineScope {
+            inl_mode: TestInlineModeContext::Inlines {
                 scope_start: TestParseSpan("{"),
             },
             block_scope_open: TestParseSpan("{"),

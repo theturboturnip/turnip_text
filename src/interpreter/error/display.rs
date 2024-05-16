@@ -11,8 +11,7 @@ use crate::{
     },
     python::{
         interop::{
-            Block, BlocksBuilder, Header, Inline, InlineScopeBuilder, RawScopeBuilder,
-            TurnipTextSource,
+            Block, BlocksBuilder, Header, Inline, InlinesBuilder, RawScopeBuilder, TurnipTextSource,
         },
         typeclass::PyTypeclass,
         util::{get_docstring, get_name, stringify_py},
@@ -141,7 +140,7 @@ fn push_inline_mode_ctx_labels(labels: &mut Vec<Label<usize>>, inl_mode: &Inline
             labels.push(sec_label_of(&c.first_tok(), "Paragraph started here..."));
             labels.push(sec_label_of(&c.last_tok(), "...still in inline mode here"));
         }
-        InlineModeContext::InlineScope { scope_start } => {
+        InlineModeContext::Inlines { scope_start } => {
             labels.push(sec_label_of(scope_start, "Inline scope started here"))
         }
     }
@@ -250,7 +249,7 @@ fn detailed_syntax_message(py: Python, err: &TTSyntaxError) -> Diagnostic<usize>
                             .into(),
                     );
                 }
-                InlineModeContext::InlineScope { .. } => {
+                InlineModeContext::Inlines { .. } => {
                     notes.push("Block scopes can't be opened inside inline scopes.".into());
                 }
             }
@@ -276,7 +275,7 @@ fn detailed_syntax_message(py: Python, err: &TTSyntaxError) -> Diagnostic<usize>
                 InlineModeContext::Paragraph(_) => {
                     notes.push("Blocks can't be emitted inside paragraphs.".into());
                 }
-                InlineModeContext::InlineScope { .. } => {
+                InlineModeContext::Inlines { .. } => {
                     notes.push("Blocks can't be emitted inside inline scopes.".into());
                 }
             }
@@ -301,7 +300,7 @@ fn detailed_syntax_message(py: Python, err: &TTSyntaxError) -> Diagnostic<usize>
                 InlineModeContext::Paragraph(_) => {
                     notes.push("New source files can't be emitted inside paragraphs.".into());
                 }
-                InlineModeContext::InlineScope { .. } => {
+                InlineModeContext::Inlines { .. } => {
                     notes.push("New source files can't be emitted inside inline scopes.".into());
                 }
             }
@@ -551,9 +550,9 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                     "This object fits BlocksBuilder - try attaching a block scope?".into(),
                 );
             }
-            if matches!(InlineScopeBuilder::fits_typeclass(obj), Ok(true)) {
+            if matches!(InlinesBuilder::fits_typeclass(obj), Ok(true)) {
                 notes.push(
-                    "This object fits InlineScopeBuilder - try attaching an inline scope?".into(),
+                    "This object fits InlinesBuilder - try attaching an inline scope?".into(),
                 );
             }
             if matches!(RawScopeBuilder::fits_typeclass(obj), Ok(true)) {
@@ -579,7 +578,7 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
             let stringified_obj = stringify_py(obj);
             let (argument_name, builder_type) = match build_mode {
                 UserPythonBuildMode::FromBlock => ("a block scope", "a BlocksBuilder"),
-                UserPythonBuildMode::FromInline => ("an inline scope", "an InlineScopeBuilder"),
+                UserPythonBuildMode::FromInline => ("an inline scope", "an InlinesBuilder"),
                 UserPythonBuildMode::FromRaw => ("a raw scope", "a RawScopeBuilder"),
             };
             let mut notes = into_vec![format!(
@@ -633,8 +632,8 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                         .into(),
                 );
             }
-            if matches!(InlineScopeBuilder::fits_typeclass(obj), Ok(true)) {
-                notes.push("The builder does fit InlineScopeBuilder, try attaching an inline scope instead".into());
+            if matches!(InlinesBuilder::fits_typeclass(obj), Ok(true)) {
+                notes.push("The builder does fit InlinesBuilder, try attaching an inline scope instead".into());
             }
             if matches!(RawScopeBuilder::fits_typeclass(obj), Ok(true)) {
                 notes.push(
@@ -664,7 +663,7 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
         } => {
             let (builder_type, builder_function) = match build_mode {
                 UserPythonBuildMode::FromBlock => ("BlocksBuilder", ".build_from_blocks()"),
-                UserPythonBuildMode::FromInline => ("InlineScopeBuilder", ".build_from_inlines()"),
+                UserPythonBuildMode::FromInline => ("InlinesBuilder", ".build_from_inlines()"),
                 UserPythonBuildMode::FromRaw => ("RawScopeBuilder", ".build_from_raw()"),
             };
             let stringified_builder = stringify_py(builder.bind(py));

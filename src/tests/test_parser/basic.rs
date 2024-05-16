@@ -220,7 +220,7 @@ fn test_owned_inline_scope_with_non_inline_builder() {
         TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(
-                r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*build_from_inlines.*Got None.*",
+                r"TypeError\s*:\s*Expected.*InlinesBuilder.*build_from_inlines.*Got None.*",
             )
             .unwrap(),
             scope_open: TestParseSpan("{"),
@@ -464,7 +464,7 @@ fn test_block_scope_open_inline() {
     expect_parse_err(
         "{text {\n",
         TestSyntaxError::BlockScopeOpenedInInlineMode {
-            inl_mode: TestInlineModeContext::InlineScope {
+            inl_mode: TestInlineModeContext::Inlines {
                 scope_start: TestParseSpan("{"),
             },
             block_scope_open: TestParseSpan("{"),
@@ -789,7 +789,7 @@ fn test_cant_assign_for_inline_builder() {
         TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[", "x = 5", "]"),
             err: Regex::new(
-                r"TypeError\s*:\s*Expected.*InlineScopeBuilder.*build_from_inlines.*Got None",
+                r"TypeError\s*:\s*Expected.*InlinesBuilder.*build_from_inlines.*Got None",
             )
             .unwrap(),
             scope_open: TestParseSpan("{"),

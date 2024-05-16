@@ -2,8 +2,8 @@
 //! There are five block-level elements:
 //! - Paragraph
 //! - Block scope
-//! - Block emitted from code (which could have used a BlocksBuilder, InlineScopeBuilder, or RawBuilder)
-//! - Header emitted from code (which could have used a BlocksBuilder, InlineScopeBuilder, or RawBuilder)
+//! - Block emitted from code (which could have used a BlocksBuilder, InlinesBuilder, or RawBuilder)
+//! - Header emitted from code (which could have used a BlocksBuilder, InlinesBuilder, or RawBuilder)
 //! - TurnipTextSource emitted from code
 //!
 //! When one is emitted we know exactly what kind it is, but we may not get all the way through parsing the next one.
@@ -84,7 +84,7 @@ fn test_primitives() {
     expect_parse(
         CREATED_BLOCK_FROM_INLINE,
         Ok(test_doc(vec![TestBlock::CustomBlock(vec![
-            TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![test_text(
+            TestBlock::Paragraph(vec![vec![TestInline::Inlines(vec![test_text(
                 "inline_in_block",
             )])]]),
         ])])),
@@ -132,7 +132,7 @@ fn test_primitives() {
                 header: (
                     1,
                     None,
-                    Some(TestInline::InlineScope(vec![test_text("inline_in_header")])),
+                    Some(TestInline::Inlines(vec![test_text("inline_in_header")])),
                 ),
                 contents: TestBlock::Blocks(vec![]),
                 subsegments: vec![],
@@ -147,9 +147,7 @@ fn test_primitives() {
                 header: (
                     1,
                     None,
-                    Some(TestInline::InlineScope(vec![test_raw_text(
-                        "raw_in_header",
-                    )])),
+                    Some(TestInline::Inlines(vec![test_raw_text("raw_in_header")])),
                 ),
                 contents: TestBlock::Blocks(vec![]),
                 subsegments: vec![],

@@ -7,11 +7,11 @@ use crate::{
 
 /// Context for errors that take place because the parser was in inline-mode.
 /// Used to indicate why the parser was in inline-mode at that time - either it was inside a Paragraph,
-/// or it was inside an InlineScope
+/// or it was inside an Inlines
 #[derive(Debug, Clone)]
 pub enum InlineModeContext {
     Paragraph(ParseContext),
-    InlineScope { scope_start: ParseSpan },
+    Inlines { scope_start: ParseSpan },
 }
 
 /// Sufficient context or scope for error messages.

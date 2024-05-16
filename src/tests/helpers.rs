@@ -114,13 +114,13 @@ impl<'a> TestTTErrorWithContext<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TestInlineModeContext<'a> {
     Paragraph(TestParseContext<'a>),
-    InlineScope { scope_start: TestParseSpan<'a> },
+    Inlines { scope_start: TestParseSpan<'a> },
 }
 impl<'a> From<(&'a InlineModeContext, &'a Vec<ParsingFile>)> for TestInlineModeContext<'a> {
     fn from(value: (&'a InlineModeContext, &'a Vec<ParsingFile>)) -> Self {
         match value.0 {
             InlineModeContext::Paragraph(c) => Self::Paragraph((c, value.1).into()),
-            InlineModeContext::InlineScope { scope_start } => Self::InlineScope {
+            InlineModeContext::Inlines { scope_start } => Self::Inlines {
                 scope_start: (scope_start, value.1).into(),
             },
         }

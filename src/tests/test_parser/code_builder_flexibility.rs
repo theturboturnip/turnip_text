@@ -3,7 +3,7 @@
 use super::*;
 
 #[test]
-fn test_inline_scope_builder_building_inline() {
+fn test_inlines_builder_building_inline() {
     expect_parse(
         "building [BUILD_CUSTOM_INLINE]{something built} inline",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
@@ -52,7 +52,7 @@ fn test_raw_scope_builder_building_inline() {
 // Make sure all the kinds of builder that emit inlines start an inline, and don't just create and close a paragraph
 
 #[test]
-fn test_inline_scope_builder_building_inline_creates_paragraph() {
+fn test_inlines_builder_building_inline_creates_paragraph() {
     expect_parse(
         "[BUILD_CUSTOM_INLINE]{something built} inline",
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
@@ -99,11 +99,11 @@ fn test_raw_scope_builder_building_inline_creates_paragraph() {
 // All kinds of builder should be able to build blocks, even if their arguments aren't blocks
 
 #[test]
-fn test_inline_scope_builder_building_block() {
+fn test_inlines_builder_building_block() {
     expect_parse(
         "[BUILD_CUSTOM_BLOCK_FROM_INLINE]{only inlines :)}",
         Ok(test_doc(vec![TestBlock::CustomBlock(vec![
-            TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![TestInline::Text(
+            TestBlock::Paragraph(vec![vec![TestInline::Inlines(vec![TestInline::Text(
                 "only inlines :)".to_string(),
             )])]]),
         ])])),
@@ -137,11 +137,11 @@ fn test_raw_scope_builder_building_block() {
 // Even if each builder can build blocks, they shouldn't be able to emit a block in an inline context
 
 #[test]
-fn test_inline_scope_builder_building_block_in_inline() {
+fn test_inlines_builder_building_block_in_inline() {
     expect_parse_err(
         "{wow i'm in an inline context [BUILD_CUSTOM_BLOCK_FROM_INLINE]{only inlines :)}}",
         TestSyntaxError::CodeEmittedBlockInInlineMode {
-            inl_mode: TestInlineModeContext::InlineScope {
+            inl_mode: TestInlineModeContext::Inlines {
                 scope_start: TestParseSpan("{"),
             },
             code_span: TestParseSpan("[BUILD_CUSTOM_BLOCK_FROM_INLINE]{only inlines :)}"),
@@ -158,7 +158,7 @@ fn test_block_scope_builder_building_block_in_inline() {
         } continuing the inline context}
     "#,
         TestSyntaxError::CodeEmittedBlockInInlineMode {
-            inl_mode: TestInlineModeContext::InlineScope {
+            inl_mode: TestInlineModeContext::Inlines {
                 scope_start: TestParseSpan("{"),
             },
             code_span: TestParseSpan("[BUILD_CUSTOM_BLOCK]{\n            Stuff\n        }"),
@@ -172,7 +172,7 @@ fn test_raw_scope_builder_building_block_in_inline() {
         "{wow i'm in an inline context [BUILD_CUSTOM_BLOCK_FROM_RAW]#{ block! }# continuing the \
          inline context}",
         TestSyntaxError::CodeEmittedBlockInInlineMode {
-            inl_mode: TestInlineModeContext::InlineScope {
+            inl_mode: TestInlineModeContext::Inlines {
                 scope_start: TestParseSpan("{"),
             },
             code_span: TestParseSpan("[BUILD_CUSTOM_BLOCK_FROM_RAW]#{ block! }#"),
@@ -182,7 +182,7 @@ fn test_raw_scope_builder_building_block_in_inline() {
 
 // All kinds of builder should be able to build headers, even if their arguments aren't blocks
 #[test]
-fn test_inline_scope_builder_building_header() {
+fn test_inlines_builder_building_header() {
     expect_parse(
         "[CustomHeaderBuilder()]{ Wowee i wish I had inline content }",
         Ok(TestDocument {
@@ -191,7 +191,7 @@ fn test_inline_scope_builder_building_header() {
                 header: (
                     0,
                     None,
-                    Some(TestInline::InlineScope(vec![test_text(
+                    Some(TestInline::Inlines(vec![test_text(
                         "Wowee i wish I had inline content",
                     )])),
                 ),
@@ -235,7 +235,7 @@ fn test_raw_scope_builder_building_header() {
                 header: (
                     0,
                     None,
-                    Some(TestInline::InlineScope(vec![test_raw_text(
+                    Some(TestInline::Inlines(vec![test_raw_text(
                         " Wowee i wish I had inline content ",
                     )])),
                 ),
@@ -249,7 +249,7 @@ fn test_raw_scope_builder_building_header() {
 // Even if each builder can build blocks, they shouldn't be able to emit a header in an inline context
 
 #[test]
-fn test_inline_scope_builder_building_header_in_inline_mode_para() {
+fn test_inlines_builder_building_header_in_inline_mode_para() {
     expect_parse_err(
         "And as I was saying [CustomHeaderBuilder()]{ Wowee i wish I had inline content }",
         TestSyntaxError::CodeEmittedBlockInInlineMode {
@@ -313,7 +313,7 @@ fn test_raw_scope_builder_building_header_in_inline() {
 
 // if an inline emits None inside a sentence with other content
 #[test]
-fn test_inline_scope_builder_building_none_inside_sentence() {
+fn test_inlines_builder_building_none_inside_sentence() {
     expect_parse(
         "stuff at the start of a sentence [CUSTOM_INLINE_SWALLOWER]{ this is gonna be swallowed \
          }
@@ -327,7 +327,7 @@ fn test_inline_scope_builder_building_none_inside_sentence() {
 
 // if an inline emits None and that's the whole sentence, it isn't added as a sentence inside the paragraph
 #[test]
-fn test_inline_scope_builder_building_none_sentence_inside_para() {
+fn test_inlines_builder_building_none_sentence_inside_para() {
     expect_parse(
         "
         Wow what a lovely paragraph.
@@ -343,7 +343,7 @@ fn test_inline_scope_builder_building_none_sentence_inside_para() {
 // if all a paragraph has is None sentences i.e. nothing, it isn't emitted at all.
 // Actually, at this level emitting None emits it at the block level - you'd need at least enough content for a sentence to start a paragraph - so this happens even if the paragraph code doesn't handle it
 #[test]
-fn test_inline_scope_builder_building_none_para() {
+fn test_inlines_builder_building_none_para() {
     expect_parse(
         "[CUSTOM_INLINE_SWALLOWER]{ this is gonna be swallowed }
         [CUSTOM_INLINE_SWALLOWER]{ so is this }",

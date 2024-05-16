@@ -2,12 +2,11 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Iterable, Sequence
 
-from typing_extensions import override
-
-from turnip_text import Block, Inline, InlineScope, Text
+from turnip_text import Block, Inline, Inlines, Text
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import EnvPlugin
-from turnip_text.helpers import inline_scope_builder
+from turnip_text.helpers import inlines_builder
+from typing_extensions import override
 
 
 # TODO strikethrough? sub/superscript? small caps?
@@ -26,7 +25,7 @@ class InlineFormattingType(Enum):
 @dataclass(frozen=True)
 class InlineFormatted(UserNode, Inline):
     format_type: InlineFormattingType
-    contents: InlineScope
+    contents: Inlines
     anchor = None
 
     @override
@@ -39,50 +38,54 @@ class InlineFormatEnvPlugin(EnvPlugin):
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
         return (InlineFormatted,)
 
-    @inline_scope_builder
+    @inlines_builder
     @staticmethod
-    def italic(items: InlineScope) -> Inline:
+    def italic(inlines: Inlines) -> Inline:
         """Format an inline scope in italics."""
-        return InlineFormatted(contents=items, format_type=InlineFormattingType.Italic)
-
-    @inline_scope_builder
-    @staticmethod
-    def bold(items: InlineScope) -> Inline:
-        return InlineFormatted(contents=items, format_type=InlineFormattingType.Bold)
-
-    @inline_scope_builder
-    @staticmethod
-    def underline(items: InlineScope) -> Inline:
         return InlineFormatted(
-            contents=items, format_type=InlineFormattingType.Underline
+            contents=inlines, format_type=InlineFormattingType.Italic
         )
 
-    @inline_scope_builder
+    @inlines_builder
     @staticmethod
-    def emph(items: InlineScope) -> Inline:
-        return InlineFormatted(contents=items, format_type=InlineFormattingType.Emph)
+    def bold(inlines: Inlines) -> Inline:
+        return InlineFormatted(contents=inlines, format_type=InlineFormattingType.Bold)
 
-    @inline_scope_builder
+    @inlines_builder
     @staticmethod
-    def strong(items: InlineScope) -> Inline:
-        return InlineFormatted(contents=items, format_type=InlineFormattingType.Strong)
+    def underline(inlines: Inlines) -> Inline:
+        return InlineFormatted(
+            contents=inlines, format_type=InlineFormattingType.Underline
+        )
 
-    @inline_scope_builder
+    @inlines_builder
     @staticmethod
-    def mono(items: InlineScope) -> Inline:
+    def emph(inlines: Inlines) -> Inline:
+        return InlineFormatted(contents=inlines, format_type=InlineFormattingType.Emph)
+
+    @inlines_builder
+    @staticmethod
+    def strong(inlines: Inlines) -> Inline:
+        return InlineFormatted(
+            contents=inlines, format_type=InlineFormattingType.Strong
+        )
+
+    @inlines_builder
+    @staticmethod
+    def mono(inlines: Inlines) -> Inline:
         """Intended for monospaced text, such as code, but never provides syntax highlighting."""
-        return InlineFormatted(contents=items, format_type=InlineFormattingType.Mono)
+        return InlineFormatted(contents=inlines, format_type=InlineFormattingType.Mono)
 
-    @inline_scope_builder
+    @inlines_builder
     @staticmethod
-    def squote(items: InlineScope) -> Inline:
+    def squote(inlines: Inlines) -> Inline:
         return InlineFormatted(
-            contents=items, format_type=InlineFormattingType.SingleQuote
+            contents=inlines, format_type=InlineFormattingType.SingleQuote
         )
 
-    @inline_scope_builder
+    @inlines_builder
     @staticmethod
-    def enquote(items: InlineScope) -> Inline:
+    def enquote(inlines: Inlines) -> Inline:
         return InlineFormatted(
-            contents=items, format_type=InlineFormattingType.DoubleQuote
+            contents=inlines, format_type=InlineFormattingType.DoubleQuote
         )

@@ -19,7 +19,7 @@ create_exception!(_native, TurnipTextError, pyo3::exceptions::PyException);
 pub fn turnip_text(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_file, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_to_inline, m)?)?;
-    m.add_function(wrap_pyfunction!(coerce_to_inline_scope, m)?)?;
+    m.add_function(wrap_pyfunction!(coerce_to_inlines, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_to_block, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_to_blocks, m)?)?;
 
@@ -29,7 +29,7 @@ pub fn turnip_text(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Sentence>()?;
     m.add_class::<Paragraph>()?;
     m.add_class::<Blocks>()?;
-    m.add_class::<InlineScope>()?;
+    m.add_class::<Inlines>()?;
     m.add_class::<Document>()?;
     m.add_class::<DocSegment>()?;
     m.add_class::<TurnipTextSource>()?;
@@ -88,10 +88,10 @@ pub fn coerce_to_inline_pytcref<'py>(
         let unescaped_text = Py::new(py, Text::new(py_str))?;
         return Ok(PyTcRef::of_unchecked(unescaped_text.bind(py)));
     }
-    // 3. if it's an Sequence of Inline, return InlineScope(it)
-    // Here we first check if it's sequence, then if so try to create an InlineScope - this will verify if it's a list of Inlines.
+    // 3. if it's an Sequence of Inline, return Inlines(it)
+    // Here we first check if it's sequence, then if so try to create an Inlines - this will verify if it's a list of Inlines.
     if let Ok(seq) = obj.downcast::<PySequence>() {
-        if let Ok(inline_scope) = InlineScope::new(py, Some(&seq)) {
+        if let Ok(inline_scope) = Inlines::new(py, Some(&seq)) {
             let inline_scope = Py::new(py, inline_scope)?;
             return Ok(PyTcRef::of_unchecked(inline_scope.bind(py)));
         }
@@ -106,29 +106,26 @@ pub fn coerce_to_inline_pytcref<'py>(
     // 6. otherwise fail with TypeError
     Err(PyTypeError::new_err(
         "Failed to coerce object to Inline: was not an Inline, list of Inline (coercible to \
-         InlineScope), str, float, or int.",
+         Inlines), str, float, or int.",
     ))
 }
 
 #[pyfunction]
-pub fn coerce_to_inline_scope<'py>(
-    py: Python<'py>,
-    obj: &Bound<'py, PyAny>,
-) -> PyResult<Py<InlineScope>> {
-    // 1. if it's already InlineScope, return it
+pub fn coerce_to_inlines<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Py<Inlines>> {
+    // 1. if it's already Inlines, return it
     if let Ok(inline_scope) = obj.extract() {
         return Ok(inline_scope);
     }
     // 2. attempt coercion to inline, if it fails return typeerror
     let obj = coerce_to_inline(py, obj)?;
-    // 3. if the coercion produced InlineScope, return that
+    // 3. if the coercion produced Inlines, return that
     if let Ok(inline_scope) = obj.extract(py) {
         return Ok(inline_scope);
     }
-    // 4. otherwise return InlineScope([that])
+    // 4. otherwise return Inlines([that])
     return Ok(Py::new(
         py,
-        InlineScope::new(py, Some(&PyList::new_bound(py, [obj]).as_sequence()))?,
+        Inlines::new(py, Some(&PyList::new_bound(py, [obj]).as_sequence()))?,
     )?);
 }
 
@@ -146,7 +143,7 @@ pub fn coerce_to_block_pytcref<'py>(
         return Ok(block);
     }
     // 2. if it's a Sentence, wrap it in a list -> Paragraph
-    // Do this before checking if it's a sequence, because Sentence is a sequence of InlineScope
+    // Do this before checking if it's a sequence, because Sentence is a sequence of Inlines
     if let Ok(sentence) = obj.extract::<Py<Sentence>>() {
         let paragraph = Py::new(
             py,
@@ -467,23 +464,23 @@ impl PyTypeclass for BlocksBuilder {
     }
 }
 
-/// Typeclass representing a "builder" which takes an InlineScope and produces a new DocElement.
+/// Typeclass representing a "builder" which takes an Inlines and produces a new DocElement.
 ////// Doesn't typecheck the output of the build method, that's done in [`crate::interpreter::state_machines::code`]
 
 /// Requires a method
 /// ```python
-/// def build_from_inlines(self, inlines: InlineScope) -> Block | Inline | Header | None: ...
+/// def build_from_inlines(self, inlines: Inlines) -> Block | Inline | Header | None: ...
 /// ```
 #[derive(Debug, Clone)]
-pub struct InlineScopeBuilder {}
-impl InlineScopeBuilder {
+pub struct InlinesBuilder {}
+impl InlinesBuilder {
     fn marker_func_name(py: Python<'_>) -> &Bound<'_, PyString> {
         intern!(py, "build_from_inlines")
     }
     pub fn call_build_from_inlines<'py>(
         py: Python<'py>,
         builder: PyTcRef<Self>,
-        inlines: Py<InlineScope>,
+        inlines: Py<Inlines>,
     ) -> PyResult<Bound<'py, PyAny>> {
         builder
             .bind(py)
@@ -491,8 +488,8 @@ impl InlineScopeBuilder {
             .call1((inlines.bind(py),))
     }
 }
-impl PyTypeclass for InlineScopeBuilder {
-    const NAME: &'static str = "InlineScopeBuilder";
+impl PyTypeclass for InlinesBuilder {
+    const NAME: &'static str = "InlinesBuilder";
 
     fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
         obj.hasattr(Self::marker_func_name(obj.py()))
@@ -803,14 +800,14 @@ impl Blocks {
 /// Typically created by Rust while parsing input files.
 #[pyclass(sequence)]
 #[derive(Debug, Clone)]
-pub struct InlineScope(pub PyTypeclassList<Inline>);
-impl InlineScope {
+pub struct Inlines(pub PyTypeclassList<Inline>);
+impl Inlines {
     pub fn new_empty(py: Python) -> Self {
         Self(PyTypeclassList::new(py))
     }
 }
 #[pymethods]
-impl InlineScope {
+impl Inlines {
     #[new]
     #[pyo3(signature = (seq=None))]
     pub fn new(py: Python, seq: Option<&Bound<'_, PySequence>>) -> PyResult<Self> {
@@ -843,10 +840,10 @@ impl InlineScope {
         self.0.__eq__(py, &other.0)
     }
     pub fn __str__(&self, py: Python) -> PyResult<String> {
-        Ok(format!("InlineScope(<{} inlines>)", self.0.list(py).len()))
+        Ok(format!("Inlines(<{} inlines>)", self.0.list(py).len()))
     }
     pub fn __repr__(&self, py: Python) -> PyResult<String> {
-        Ok(format!(r#"InlineScope({})"#, self.0.__repr__(py)?))
+        Ok(format!(r#"Inlines({})"#, self.0.__repr__(py)?))
     }
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;

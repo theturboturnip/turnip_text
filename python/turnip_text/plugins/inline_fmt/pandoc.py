@@ -1,7 +1,7 @@
 from typing import List
 
 import turnip_text.render.pandoc.pandoc_types as pan
-from turnip_text import InlineScope, Text
+from turnip_text import Inlines, Text
 from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.inline_fmt import (
@@ -59,7 +59,7 @@ class PandocInlineFormatPlugin(PandocPlugin, InlineFormatEnvPlugin):
                             self._build_inline_formatted(
                                 InlineFormatted(
                                     format_type=i.format_type,
-                                    contents=InlineScope(
+                                    contents=Inlines(
                                         [
                                             InlineFormatted(
                                                 format_type=InlineFormattingType.Mono,

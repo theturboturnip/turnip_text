@@ -1,6 +1,6 @@
 use crate::interpreter::error::HandleInternalPyErr;
 use crate::python::interop::{
-    Blocks, DocSegment, Document, Header, InlineScope, Paragraph, Raw, Sentence, Text,
+    Blocks, DocSegment, Document, Header, Inlines, Paragraph, Raw, Sentence, Text,
 };
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -8,7 +8,7 @@ use pyo3::types::PyDict;
 pub const GLOBALS_CODE: &'static str = r#"
 # The Rust module name is _native, which is included under turnip_text, so Python IDEs don't try to import directly from it.
 # This means we use _native instead of turnip_text as the module name here.
-from _native import InlineScope, Text, Blocks, TurnipTextSource, Paragraph, Sentence, Raw
+from _native import Inlines, Text, Blocks, TurnipTextSource, Paragraph, Sentence, Raw
 
 class CustomHeader:
     is_block = True
@@ -35,14 +35,14 @@ class CustomRaw:
         self.test_raw_str = str(raw_str)
 
 CUSTOM_BLOCK = CustomBlock(Blocks([]))
-CUSTOM_INLINE = CustomInline(InlineScope([]))
+CUSTOM_INLINE = CustomInline(Inlines([]))
 CUSTOM_RAW = CustomRaw("")
 
 class CustomBlockBuilder:
     def build_from_blocks(self, contents):
         return CustomBlock(contents)
 class CustomBlockBuilderFromInline:
-    def build_from_inlines(self, contents: InlineScope):
+    def build_from_inlines(self, contents: Inlines):
         return CustomBlock(Blocks([Paragraph([Sentence([contents])])]))
 class CustomBlockBuilderFromRaw:
     def build_from_raw(self, raw):
@@ -84,7 +84,7 @@ class CustomHeaderBuilder:
     def build_from_inlines(self, contents):
         return CustomHeader(weight=self.weight, test_inline=contents)
     def build_from_raw(self, raw):
-        return CustomHeader(weight=self.weight, test_inline=InlineScope([raw]))
+        return CustomHeader(weight=self.weight, test_inline=Inlines([raw]))
 
 def test_src(contents):
     return TurnipTextSource.from_string(contents)
@@ -121,11 +121,11 @@ pub enum TestBlock {
 }
 #[derive(Debug, PartialEq, Eq)]
 pub enum TestInline {
-    InlineScope(Vec<TestInline>),
+    Inlines(Vec<TestInline>),
     Text(String),
     Raw(String),
 
-    /// Test-only - a Python object built from an inline scope with test_inline: InlineScope = the contents of that scope
+    /// Test-only - a Python object built from an inline scope with test_inline: Inlines = the contents of that scope
     CustomInline(Vec<TestInline>),
     /// Test-only - a Python object built from raw text with test_raw_str: str = the raw text
     CustomRaw(String),
@@ -274,8 +274,8 @@ impl PyToTest<Vec<TestInline>> for Bound<'_, PyAny> {
 }
 impl PyToTest<TestInline> for Bound<'_, PyAny> {
     fn as_test(&self, py: Python) -> TestInline {
-        if let Ok(inl) = self.extract::<InlineScope>() {
-            TestInline::InlineScope(
+        if let Ok(inl) = self.extract::<Inlines>() {
+            TestInline::Inlines(
                 inl.0
                     .list(py)
                     .iter()
@@ -288,7 +288,7 @@ impl PyToTest<TestInline> for Bound<'_, PyAny> {
             TestInline::Raw(text.0.bind(py).to_string())
         } else if let Ok(obj) = self.getattr("test_inline") {
             TestInline::CustomInline(
-                obj.extract::<InlineScope>()
+                obj.extract::<Inlines>()
                     .unwrap()
                     .0
                     .list(py)

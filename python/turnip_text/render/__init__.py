@@ -24,7 +24,7 @@ from turnip_text import (
     Document,
     Header,
     Inline,
-    InlineScope,
+    Inlines,
     Paragraph,
     Raw,
     Sentence,
@@ -240,7 +240,7 @@ class TextRenderer(Renderer):
             Paragraph, lambda p, r, fmt: r.emit_paragraph(p)
         )
         handlers.register_block_or_inline(
-            InlineScope, lambda inls, r, fmt: r.emit_inlinescope(inls)
+            Inlines, lambda inls, r, fmt: r.emit_inlinescope(inls)
         )
         handlers.register_block_or_inline(Text, lambda t, r, fmt: r.emit_text(t))
         handlers.register_block_or_inline(Raw, lambda t, r, fmt: r.emit_raw(t.data))
@@ -338,9 +338,9 @@ class TextRenderer(Renderer):
         # Default: join sentences with self.SENTENCE_SEP
         self.emit_join(self.emit_sentence, p, self.emit_break_sentence)
 
-    def emit_inlinescope(self, inls: InlineScope) -> None:
+    def emit_inlinescope(self, inlines: Inlines) -> None:
         # Default: join internal inline elements directly
-        for i in inls:
+        for i in inlines:
             self.emit_inline(i)
 
     def emit_sentence(self, s: Sentence) -> None:

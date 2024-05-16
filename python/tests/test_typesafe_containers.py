@@ -352,35 +352,35 @@ def test_block_scope_must_only_append_blocks():
         bs.append_block(CustomInline())
 
 
-# InlineScope
+# Inlines
 def test_inline_scope_can_hold_inlines():
-    InlineScope([CustomInline(), CustomInline(), CustomInline()])
+    Inlines([CustomInline(), CustomInline(), CustomInline()])
 
 
 def test_inline_scope_can_append_inlines():
-    scope = InlineScope([])
+    scope = Inlines([])
     scope.append_inline(CustomInline())
     scope.append_inline(Text(""))
     scope.append_inline(Raw(""))
-    scope.append_inline(InlineScope([]))
+    scope.append_inline(Inlines([]))
 
 
 def test_inline_scope_must_only_have_inlines():
     filter = r"instance of Inline, but it didn't have property is_inline=True"
 
     with pytest.raises(TypeError, match=filter):
-        InlineScope([CustomInline(), None, CustomInline()])
+        Inlines([CustomInline(), None, CustomInline()])
     with pytest.raises(TypeError, match=filter):
-        InlineScope([CustomInline(), 1, CustomInline()])
+        Inlines([CustomInline(), 1, CustomInline()])
     with pytest.raises(TypeError, match=filter):
-        InlineScope([CustomInline(), "blah", CustomInline()])
+        Inlines([CustomInline(), "blah", CustomInline()])
     with pytest.raises(TypeError, match=filter):
-        InlineScope([CustomInline(), CustomBlock(), CustomInline()])
+        Inlines([CustomInline(), CustomBlock(), CustomInline()])
 
 
 def test_inline_scope_must_only_append_inlines():
     filter = r"instance of Inline, but it didn't have property is_inline=True"
-    scope = InlineScope([])
+    scope = Inlines([])
     with pytest.raises(TypeError, match=filter):
         scope.append_inline(None)
     with pytest.raises(TypeError, match=filter):
@@ -401,7 +401,7 @@ def test_sentence_can_append_inlines():
     scope.append_inline(CustomInline())
     scope.append_inline(Text(""))
     scope.append_inline(Raw(""))
-    scope.append_inline(InlineScope([]))
+    scope.append_inline(Inlines([]))
 
 
 def test_sentence_must_only_have_inlines():

@@ -1,13 +1,12 @@
 from dataclasses import dataclass
 from typing import Iterable, Optional, Sequence, Set
 
-from typing_extensions import override
-
-from turnip_text import Block, Header, Inline, InlineScope, InlineScopeBuilder
+from turnip_text import Block, Header, Inline, Inlines, InlinesBuilder
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.user_nodes import NodePortal, UserNode
 from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
-from turnip_text.helpers import inline_scope_builder
+from turnip_text.helpers import inlines_builder
+from typing_extensions import override
 
 
 @dataclass(frozen=True)
@@ -48,11 +47,11 @@ class FootnoteEnvPlugin(EnvPlugin):
         return ("footnote",)
 
     @in_doc
-    def footnote(self, doc_env: DocEnv) -> InlineScopeBuilder:
-        @inline_scope_builder
-        def footnote_builder(contents: InlineScope) -> Inline:
+    def footnote(self, doc_env: DocEnv) -> InlinesBuilder:
+        @inlines_builder
+        def footnote_builder(inlines: Inlines) -> Inline:
             anchor = doc_env.register_new_anchor_with_float(
-                "footnote", None, lambda anchor: FootnoteContents(anchor, contents)
+                "footnote", None, lambda anchor: FootnoteContents(anchor, inlines)
             )
             self.footnotes_with_refs.add(anchor.id)
             return FootnoteRef(portal_to=anchor.to_backref())
@@ -69,10 +68,10 @@ class FootnoteEnvPlugin(EnvPlugin):
         )
 
     @in_doc
-    def footnote_text(self, doc_env: DocEnv, footnote_id: str) -> InlineScopeBuilder:
+    def footnote_text(self, doc_env: DocEnv, footnote_id: str) -> InlinesBuilder:
         # Store the contents of a block scope and associate them with a specific footnote label
-        @inline_scope_builder
-        def handle_block_contents(contents: InlineScope) -> Optional[Block]:
+        @inlines_builder
+        def handle_block_contents(contents: Inlines) -> Optional[Block]:
             doc_env.register_new_anchor_with_float(
                 "footnote",
                 footnote_id,

@@ -3,15 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Sequence, Union
 
 import turnip_text
-from turnip_text import (
-    Block,
-    Blocks,
-    Header,
-    Inline,
-    InlineScope,
-    Text,
-    TurnipTextSource,
-)
+from turnip_text import Block, Blocks, Header, Inline, Inlines, Text, TurnipTextSource
 from turnip_text.build_system import RelPath
 from turnip_text.env_plugins import DocEnv, EnvPlugin, in_doc
 from turnip_text.helpers import (
@@ -75,8 +67,8 @@ class PrimitivesPlugin(abc.ABC, EnvPlugin):
                 plugin.captured[name] = blocks
                 return None
 
-            def build_from_inlines(self, inls: InlineScope) -> None:
-                plugin.captured[name] = inls
+            def build_from_inlines(self, inlines: Inlines) -> None:
+                plugin.captured[name] = inlines
                 return None
 
         return Capturer()

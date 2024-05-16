@@ -1,6 +1,6 @@
 //! These modules handle block-mode parsing - both at the top level with [TopLevelProcessor] and inside a block scope with [BlockScopeProcessor].
 //! In both cases, all types of Block can be generated.
-//! Opening a scope opens an [AmbiguousScopeProcessor], which either emits [BlockElem::Blocks] or [InlineElem::InlineScope].
+//! Opening a scope opens an [AmbiguousScopeProcessor], which either emits [BlockElem::Blocks] or [InlineElem::Inlines].
 //! Opening a raw scope opens a [RawStringProcessor].
 //! Comments are allowed.
 //! Escaped newlines are not allowed.

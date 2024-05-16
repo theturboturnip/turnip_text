@@ -1,12 +1,11 @@
 from dataclasses import dataclass
 from typing import Iterable, Optional, Sequence
 
-from typing_extensions import override
-
-from turnip_text import Block, Inline, InlineScope, InlineScopeBuilder, Text
+from turnip_text import Block, Inline, Inlines, InlinesBuilder, Text
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import EnvPlugin, FmtEnv, pure_fmt
 from turnip_text.helpers import UserInlineScopeBuilder
+from typing_extensions import override
 
 
 @dataclass(frozen=True)
@@ -19,8 +18,8 @@ class NamedUrl(UserNode, Inline, UserInlineScopeBuilder):
     def child_nodes(self) -> Iterable[Inline] | None:
         return self.name
 
-    def build_from_inlines(self, inls: InlineScope) -> Inline:
-        return NamedUrl(url=self.url, name=inls)
+    def build_from_inlines(self, inlines: Inlines) -> Inline:
+        return NamedUrl(url=self.url, name=inlines)
 
 
 class UrlEnvPlugin(EnvPlugin):

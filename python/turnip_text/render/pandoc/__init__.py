@@ -23,7 +23,7 @@ from turnip_text import (
     Document,
     Header,
     Inline,
-    InlineScope,
+    Inlines,
     Paragraph,
     Raw,
     Text,
@@ -148,7 +148,7 @@ class PandocRenderer(Renderer):
         dispatch.register_block(Blocks, lambda bs, r, fmt: r.make_block_scope(bs))
         dispatch.register_block(Paragraph, lambda p, r, fmt: r.make_paragraph(p))
         dispatch.register_inline(
-            InlineScope, lambda inls, r, fmt: r.make_inline_scope(inls)
+            Inlines, lambda inls, r, fmt: r.make_inline_scope(inls)
         )
         dispatch.register_inline(Backref, lambda b, r, fmt: r.make_backref(b))
         dispatch.register_inline(Text, lambda t, r, fmt: r.make_text(t))
@@ -194,7 +194,7 @@ class PandocRenderer(Renderer):
         return pan.Para(inls)
 
     # As for block scopes, Pandoc likes to request List[pan.Inline]
-    # and a direct route from InlineScope is nice
+    # and a direct route from Inlines is nice
     def make_inline_scope(self, inls: Iterable[Inline]) -> pan.Span:
         return pan.Span(null_attr(), self.make_inline_scope_list(inls))
 

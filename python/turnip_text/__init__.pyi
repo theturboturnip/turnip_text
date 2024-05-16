@@ -32,24 +32,24 @@ class BlocksBuilder(Protocol):
     def build_from_blocks(self, blocks: Blocks) -> Optional[DocElement]: ...
 
 @runtime_checkable
-class InlineScopeBuilder(Protocol):
-    def build_from_inlines(self, inlines: InlineScope) -> Optional[DocElement]: ...
+class InlinesBuilder(Protocol):
+    def build_from_inlines(self, inlines: Inlines) -> Optional[DocElement]: ...
 
 @runtime_checkable
 class RawScopeBuilder(Protocol):
     def build_from_raw(self, raw: Raw) -> Optional[DocElement]: ...
 
 # The types that can be coerced into an Inline, in the order they are checked and attempted.
-# Sequence[Inline] is coerced by wrapping it in an InlineScope
+# Sequence[Inline] is coerced by wrapping it in an Inlines
 CoercibleToInline = Union[Inline, str, Sequence[Inline], int, float]
 
-# The types that can be coerced into an InlineScope, in the order they are checked and attempted.
+# The types that can be coerced into an Inlines, in the order they are checked and attempted.
 # 1. InlineScopes are passed through.
 # 2. Coercion to Inline is attempted, and must succeed.
-# 3. If it coerced to InlineScope by the inline process (i.e. it was originally Sequence[Inline]),
-# that InlineScope is passed through.
-# 4. Otherwise the plain Inline is wrapped in InlineScope([plain_inline])
-CoercibleToInlineScope = Union[InlineScope, CoercibleToInline]
+# 3. If it coerced to Inlines by the inline process (i.e. it was originally Sequence[Inline]),
+# that Inlines is passed through.
+# 4. Otherwise the plain Inline is wrapped in Inlines([plain_inline])
+CoercibleToInlineScope = Union[Inlines, CoercibleToInline]
 
 # The types that can be coerced into a Block, in the order they are checked and attempted
 CoercibleToBlock = Union[Block, Sentence, Sequence[Block], CoercibleToInline]
@@ -57,7 +57,7 @@ CoercibleToBlock = Union[Block, Sentence, Sequence[Block], CoercibleToInline]
 # The types that can be coerced into a Blocks, in the order they are checked and attempted
 CoercibleToBlocks = Union[Blocks, CoercibleToBlock]
 
-def join_inlines(inlines: Sequence[Inline], joiner: Inline) -> InlineScope:
+def join_inlines(inlines: Sequence[Inline], joiner: Inline) -> Inlines:
     """Equivalent of string.join, but for joining any set of Inlines with a joiner Inline"""
     ...
 
@@ -73,7 +73,7 @@ def parse_file(
     max_file_depth: int = 128,
 ) -> Document: ...
 def coerce_to_inline(obj: CoercibleToInline) -> Inline: ...
-def coerce_to_inline_scope(obj: CoercibleToInlineScope) -> InlineScope: ...
+def coerce_to_inlines(obj: CoercibleToInlineScope) -> Inlines: ...
 def coerce_to_block(obj: CoercibleToBlock) -> Block: ...
 def coerce_to_blocks(obj: CoercibleToBlocks) -> Blocks: ...
 
@@ -119,14 +119,14 @@ class Blocks(Block):
     # Insert a block before `index` in the Blocks
     def insert_block(self, index: int, b: Block) -> None: ...
 
-class InlineScope(Inline):
+class Inlines(Inline):
     def __init__(self, seq: Optional[Sequence[Inline]] = None): ...
     def __len__(self) -> int: ...
-    # Iterate over the inline items in the InlineScope
+    # Iterate over the inline items in the Inlines
     def __iter__(self) -> Iterator[Inline]: ...
-    # Push an inline item into the InlineScope
+    # Push an inline item into the Inlines
     def append_inline(self, i: Inline) -> None: ...
-    # Insert an inline before `index` in the InlineScope
+    # Insert an inline before `index` in the Inlines
     def insert_inline(self, index: int, i: Inline) -> None: ...
 
 class Document:

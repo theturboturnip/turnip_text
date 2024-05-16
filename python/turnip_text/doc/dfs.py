@@ -7,7 +7,7 @@ from turnip_text import (
     Document,
     Header,
     Inline,
-    InlineScope,
+    Inlines,
     Paragraph,
 )
 from turnip_text.doc.anchors import Anchor, Backref
@@ -61,7 +61,7 @@ class DocumentDfsPass:
             # Extract children as a reversed iterator.
             # reversed is important because we pop the last thing in the queue off first.
             children: Iterable[Block | Inline | DocSegment] | None = None
-            if isinstance(node, (Blocks, InlineScope)):
+            if isinstance(node, (Blocks, Inlines)):
                 children = reversed(tuple(node))
             elif isinstance(node, DocSegment):
                 children = reversed((node.header, node.contents, *node.subsegments))

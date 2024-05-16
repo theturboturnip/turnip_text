@@ -28,7 +28,7 @@ This requires me to make Blocks and Inlines implement "here are my children" so 
 import dataclasses
 from typing import Optional
 
-from turnip_text import Inline, InlineScope, InlineScopeBuilder
+from turnip_text import Inline, Inlines, InlinesBuilder
 
 
 @dataclasses.dataclass(frozen=True)
@@ -51,7 +51,7 @@ class Anchor(Inline):
 
 
 @dataclasses.dataclass(frozen=True)
-class Backref(Inline, InlineScopeBuilder):
+class Backref(Inline, InlinesBuilder):
     """A reference to an Anchor in the file, which can optionally have a custom label.
 
     Must include the ID of the Anchor, but does not need to include the kind.
@@ -64,6 +64,6 @@ class Backref(Inline, InlineScopeBuilder):
     )
     label_contents: Optional[Inline] = None  # Override for label
 
-    def build_from_inlines(self, inls: InlineScope) -> Inline:
+    def build_from_inlines(self, inlines: Inlines) -> Inline:
         assert self.label_contents is None
-        return dataclasses.replace(self, label_contents=inls)
+        return dataclasses.replace(self, label_contents=inlines)

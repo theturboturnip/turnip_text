@@ -18,7 +18,7 @@ from turnip_text.system import parse_and_emit
 
 class CustomEncoder(json.JSONEncoder):
     def default(self, o):
-        if isinstance(o, (Blocks, InlineScope, Paragraph, Sentence)):
+        if isinstance(o, (Blocks, Inlines, Paragraph, Sentence)):
             return list(o)
         if isinstance(o, Text):
             return o.text

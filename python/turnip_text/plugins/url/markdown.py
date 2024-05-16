@@ -1,4 +1,4 @@
-from turnip_text import InlineScope
+from turnip_text import Inlines
 from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.url import NamedUrl, UrlEnvPlugin
@@ -20,4 +20,4 @@ class MarkdownUrlPlugin(MarkdownPlugin, UrlEnvPlugin):
         fmt: FmtEnv,
     ) -> None:
         # FUTURE could use reference-style links?
-        renderer.emit_url(url.url, InlineScope(list(url.name)) if url.name else None)
+        renderer.emit_url(url.url, Inlines(list(url.name)) if url.name else None)

@@ -66,7 +66,7 @@ class DocCounter:
 #         self.prefix = prefix
 
 #     def render_counter(self, parent_chain: Iterable[Tuple[Counter, int]]) -> Inline:
-#         return InlineScope(
+#         return Inlines(
 #             [
 #                 Text(f"{self.prefix} "),
 #                 join_inlines(

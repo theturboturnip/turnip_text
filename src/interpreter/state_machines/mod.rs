@@ -32,7 +32,7 @@
 //! ## Context
 //! Previously there was a hardcoded two-level state machine: one for block mode, and one for inline mode,
 //! which only allowed block scopes in block mode (even if they were attached to arbitrary builders!) and inline scopes in inline mode.
-//! This was problematic as e.g. you couldn't build a [Header] from an [InlineScope] -
+//! This was problematic as e.g. you couldn't build a [Header] from an [Inlines] -
 //! going into inline mode at any point would put the whole parser into inline mode,
 //! and the [Header] would be rejected (not allowed in inline mode!) once emitted.
 //! This system is more flexible, and elegantly handles the special-case behaviours for raw scopes, eval brackets,
@@ -49,7 +49,7 @@ use crate::{
     },
     python::{
         interop::{
-            Block, Blocks, Document, Inline, InlineScope, Paragraph, Raw, TurnipTextSource,
+            Block, Blocks, Document, Inline, Inlines, Paragraph, Raw, TurnipTextSource,
         },
         typeclass::PyTcRef,
     },
@@ -102,14 +102,14 @@ impl From<(ParseContext, &BlockElem)> for BlockModeElem {
 #[derive(Debug)]
 enum InlineElem {
     FromCode(PyTcRef<Inline>),
-    InlineScope(Py<InlineScope>),
+    Inlines(Py<Inlines>),
     Raw(Py<Raw>),
 }
 impl InlineElem {
     fn bind<'py>(&'py self, py: Python<'py>) -> &Bound<'py, PyAny> {
         match self {
             InlineElem::FromCode(i) => i.bind(py),
-            InlineElem::InlineScope(is) => is.bind(py),
+            InlineElem::Inlines(is) => is.bind(py),
             InlineElem::Raw(r) => r.bind(py),
         }
     }

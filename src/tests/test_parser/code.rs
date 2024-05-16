@@ -76,8 +76,7 @@ def x():
         "[-----b'not a scope owner'-----]{ stuff in a inline scope }",
         TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[-----", "b'not a scope owner'", "-----]"),
-            err: Regex::new("TypeError.*instance of InlineScopeBuilder.*build_from_inlines")
-                .unwrap(),
+            err: Regex::new("TypeError.*instance of InlinesBuilder.*build_from_inlines").unwrap(),
             scope_open: TestParseSpan("{"),
             build_mode: UserPythonBuildMode::FromInline,
         },

@@ -21,13 +21,13 @@ from turnip_text import (
     CoercibleToInlineScope,
     DocElement,
     Inline,
-    InlineScope,
+    Inlines,
     Paragraph,
     Raw,
     Sentence,
     coerce_to_blocks,
     coerce_to_inline,
-    coerce_to_inline_scope,
+    coerce_to_inlines,
 )
 
 # TODO tests for the helpers
@@ -57,9 +57,9 @@ class UserBlockScopeBuilder(abc.ABC, Generic[TElement]):
 
 class UserInlineScopeBuilder(abc.ABC, Generic[TElement]):
     """
-    Subclassable InlineScopeBuilder which implements the matmul operator '@'.
+    Subclassable InlinesBuilder which implements the matmul operator '@'.
     Using matmul allows code to use the block scope builder more conveniently.
-    It tries to coerce the right-hand-side into an InlineScope before passing it to build_from_blocks.
+    It tries to coerce the right-hand-side into an Inlines before passing it to build_from_blocks.
 
     Example:
 
@@ -67,10 +67,10 @@ class UserInlineScopeBuilder(abc.ABC, Generic[TElement]):
     """
 
     @abc.abstractmethod
-    def build_from_inlines(self, inls: InlineScope) -> TElement: ...
+    def build_from_inlines(self, inlines: Inlines) -> TElement: ...
 
     def __matmul__(self, maybe_inls: CoercibleToInlineScope) -> TElement:
-        inls = coerce_to_inline_scope(maybe_inls)
+        inls = coerce_to_inlines(maybe_inls)
         return self.build_from_inlines(inls)
 
 
@@ -120,7 +120,7 @@ class UserBlockOrInlineScopeBuilder(
         self, maybe_inls: Union[CoercibleToInlineScope, CoercibleToBlocks]
     ) -> TElement:
         try:
-            inl = coerce_to_inline_scope(maybe_inls)  # type:ignore
+            inl = coerce_to_inlines(maybe_inls)  # type:ignore
         except TypeError:
             # Wasn't an inline, may be a block
             blk = coerce_to_blocks(maybe_inls)
@@ -161,8 +161,8 @@ class PassthroughBuilder(UserBlockOrInlineScopeBuilder[Union[Block, Inline]]):
     def build_from_blocks(self, blocks: Blocks) -> Block:
         return blocks
 
-    def build_from_inlines(self, inls: InlineScope) -> Inline:
-        return inls
+    def build_from_inlines(self, inlines: Inlines) -> Inline:
+        return inlines
 
 
 class PassthroughRawBuilder(UserRawScopeBuilder):
@@ -178,7 +178,7 @@ class NullBuilder(UserBlockOrInlineScopeBuilder):
     def build_from_blocks(self, _: Blocks) -> None:
         return None
 
-    def build_from_inlines(self, _: InlineScope) -> None:
+    def build_from_inlines(self, _: Inlines) -> None:
         return None
 
 
@@ -227,16 +227,16 @@ class block_scope_builder(UserBlockScopeBuilder[TElement]):
         return f"<{self.__class__.__name__} wrapping {self.func}>"
 
 
-class inline_scope_builder(UserInlineScopeBuilder[TElement]):
+class inlines_builder(UserInlineScopeBuilder[TElement]):
     """
-    Decorator which allows a function to fit the InlineScopeBuilder typeclass.
+    Decorator which allows a function to fit the InlinesBuilder typeclass.
 
     e.g. one could define a function
     ```python
     def inline(postfix = ""):
-        @inline_scope_builder
-        def inner(items: InlineScope) -> Inline:
-            return InlineScope(list(items) + [postfix])
+        @inlines_builder
+        def inner(inlines: Inlines) -> Inline:
+            return Inlines(list(inlines) + [postfix])
         return inner
     ```
     which allows turnip_text as so:
@@ -244,23 +244,23 @@ class inline_scope_builder(UserInlineScopeBuilder[TElement]):
     [inline("!")]{surprise}
     ```
 
-    It also supports the matmul operator, which tries to coerce the right-hand-side into an InlineScope before calling the function:
+    It also supports the matmul operator, which tries to coerce the right-hand-side into an Inlines before calling the function:
     ```python
     inline("!") @ "surprise"
     ```
     """
 
-    func: Callable[[InlineScope], TElement]
+    func: Callable[[Inlines], TElement]
 
     def __init__(
         self,
-        func: Callable[[InlineScope], TElement],
+        func: Callable[[Inlines], TElement],
     ) -> None:
         self.func = func
         functools.update_wrapper(self, func)
 
-    def build_from_inlines(self, inls: InlineScope) -> TElement:
-        return self.func(inls)
+    def build_from_inlines(self, inlines: Inlines) -> TElement:
+        return self.func(inlines)
 
     def __str__(self) -> str:
         return f"<{self.__class__.__name__} wrapping {self.func}>"

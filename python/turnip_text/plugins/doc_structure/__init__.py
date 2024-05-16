@@ -1,16 +1,14 @@
 from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence, Tuple, Union
 
-from typing_extensions import override
-
 from turnip_text import (
     Block,
     CoercibleToInline,
     Document,
     Header,
     Inline,
-    InlineScope,
-    InlineScopeBuilder,
+    Inlines,
+    InlinesBuilder,
     Text,
     coerce_to_inline,
 )
@@ -18,6 +16,7 @@ from turnip_text.doc.anchors import Anchor
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
 from turnip_text.helpers import UserInlineScopeBuilder
+from typing_extensions import override
 
 
 @dataclass
@@ -48,25 +47,25 @@ class TitleBlock(UserNode, Block):
 
 @dataclass(frozen=True)
 class BasicHeader(UserNode, Header):
-    title: InlineScope  # The title of the segment
+    title: Inlines  # The title of the segment
     anchor: Anchor | None
     """Set to None if the header as a whole is unnumbered.
     Has a non-None Anchor with `id == None` if the header is numbered, but didn't have a label."""
     weight: int
 
     @override
-    def child_nodes(self) -> InlineScope:
+    def child_nodes(self) -> Inlines:
         return self.title
 
 
 @dataclass(frozen=True)
 class AppendixHeader(UserNode, Header):
-    title: InlineScope  # The title of the segment
+    title: Inlines  # The title of the segment
     anchor: Anchor
     weight: int
 
     @override
-    def child_nodes(self) -> InlineScope:
+    def child_nodes(self) -> Inlines:
         return self.title
 
 
@@ -97,7 +96,7 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
         self.num = num
         self.appendix = appendix
 
-    def build_from_inlines(self, inlines: InlineScope) -> Header:
+    def build_from_inlines(self, inlines: Inlines) -> Header:
         if self.appendix:
             kind = "appendix"
         else:
@@ -199,37 +198,35 @@ class StructureEnvPlugin(EnvPlugin):
         weight: int,
         label: Optional[str] = None,
         num: bool = True,
-    ) -> InlineScopeBuilder:
+    ) -> InlinesBuilder:
         return StructureHeaderGenerator(doc_env, weight, label, num)
 
     @in_doc
     def h1(
         self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
-    ) -> InlineScopeBuilder:
+    ) -> InlinesBuilder:
         return self.h(1, label, num)
 
     @in_doc
     def h2(
         self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
-    ) -> InlineScopeBuilder:
+    ) -> InlinesBuilder:
         return self.h(2, label, num)
 
     @in_doc
     def h3(
         self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
-    ) -> InlineScopeBuilder:
+    ) -> InlinesBuilder:
         return self.h(3, label, num)
 
     @in_doc
     def h4(
         self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
-    ) -> InlineScopeBuilder:
+    ) -> InlinesBuilder:
         return self.h(4, label, num)
 
     @in_doc
-    def appendix(
-        self, doc_env: DocEnv, label: Optional[str] = None
-    ) -> InlineScopeBuilder:
+    def appendix(self, doc_env: DocEnv, label: Optional[str] = None) -> InlinesBuilder:
         """Builds an inline scope to create a header that starts an appendix at weight=1."""
         return StructureHeaderGenerator(
             doc_env, weight=1, label=label, num=True, appendix=True

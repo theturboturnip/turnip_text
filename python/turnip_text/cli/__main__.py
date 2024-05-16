@@ -10,7 +10,7 @@ from turnip_text import (
     BlocksBuilder,
     Header,
     Inline,
-    InlineScopeBuilder,
+    InlinesBuilder,
     RawScopeBuilder,
 )
 from turnip_text.cli import (
@@ -175,11 +175,11 @@ def wrap_describe(args: Any) -> None:
                 is_doc_element = fits_block or fits_inline or fits_header
                 if inspect.isclass(item):
                     fits_bsb = issubclass(item, BlocksBuilder)
-                    fits_isb = issubclass(item, InlineScopeBuilder)
+                    fits_isb = issubclass(item, InlinesBuilder)
                     fits_rsb = issubclass(item, RawScopeBuilder)
                 else:
                     fits_bsb = isinstance(item, BlocksBuilder)
-                    fits_isb = isinstance(item, InlineScopeBuilder)
+                    fits_isb = isinstance(item, InlinesBuilder)
                     fits_rsb = isinstance(item, RawScopeBuilder)
                 is_doc_builder = fits_bsb or fits_isb or fits_rsb
 
@@ -200,7 +200,7 @@ def wrap_describe(args: Any) -> None:
                         if fits_bsb:
                             things_it_fits.append("BlocksBuilder")
                         if fits_isb:
-                            things_it_fits.append("InlineScopeBuilder")
+                            things_it_fits.append("InlinesBuilder")
                         if fits_rsb:
                             things_it_fits.append("RawScopeBuilder")
 

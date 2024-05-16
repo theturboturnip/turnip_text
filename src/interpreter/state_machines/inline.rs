@@ -11,7 +11,7 @@ use crate::{
         UserPythonEnv,
     },
     python::{
-        interop::{Block, InlineScope, Paragraph, Raw, Sentence, Text},
+        interop::{Block, Inlines, Paragraph, Raw, Sentence, Text},
         typeclass::PyTcRef,
     },
     util::{ParseContext, ParseSpan},
@@ -262,7 +262,7 @@ impl InlineMode for ParagraphInlineMode {
 pub struct KnownInlineScopeInlineMode {
     preceding_inline: Option<InlineModeContext>,
     ctx: ParseContext,
-    inline_scope: Py<InlineScope>,
+    inline_scope: Py<Inlines>,
     start_of_scope: bool,
 }
 // Implement constructor for InlineLevelProcessor<KnownInlineScope>
@@ -277,7 +277,7 @@ impl InlineLevelProcessor<KnownInlineScopeInlineMode> {
                 preceding_inline,
                 ctx,
                 start_of_scope: true,
-                inline_scope: py_internal_alloc(py, InlineScope::new_empty(py))?,
+                inline_scope: py_internal_alloc(py, Inlines::new_empty(py))?,
             },
             current_building_text: InlineTextState::new(),
         })
@@ -285,7 +285,7 @@ impl InlineLevelProcessor<KnownInlineScopeInlineMode> {
 }
 impl InlineMode for KnownInlineScopeInlineMode {
     fn inline_mode_ctx(&self) -> InlineModeContext {
-        InlineModeContext::InlineScope {
+        InlineModeContext::Inlines {
             scope_start: self.ctx.first_tok(),
         }
     }
@@ -330,7 +330,7 @@ impl InlineMode for KnownInlineScopeInlineMode {
                 InlineModeContext::Paragraph(new)
             }
             // If we aren't part of a paragraph, say the inner builder is in inline mode because of us
-            None | Some(InlineModeContext::InlineScope { .. }) => InlineModeContext::InlineScope {
+            None | Some(InlineModeContext::Inlines { .. }) => InlineModeContext::Inlines {
                 scope_start: self.ctx.first_tok(),
             },
         };
@@ -350,7 +350,7 @@ impl InlineMode for KnownInlineScopeInlineMode {
         );
         Ok(ProcStatus::Pop(Some((
             self.ctx,
-            InlineElem::InlineScope(self.inline_scope.clone_ref(py)).into(),
+            InlineElem::Inlines(self.inline_scope.clone_ref(py)).into(),
         ))))
     }
 
@@ -396,7 +396,7 @@ impl InlineMode for KnownInlineScopeInlineMode {
         self.inline_scope
             .borrow_mut(py)
             .append_inline(inl)
-            .expect_pyok("InlineScope::append_inline with presumed Inline");
+            .expect_pyok("Inlines::append_inline with presumed Inline");
         Ok(())
     }
 }
@@ -502,7 +502,7 @@ impl<T: InlineMode> InlineLevelProcessor<T> {
         inl: &Bound<'_, PyAny>,
         inl_ctx: ParseContext,
     ) -> TTResult<()> {
-        if let Ok(inlines) = inl.downcast::<InlineScope>() {
+        if let Ok(inlines) = inl.downcast::<Inlines>() {
             for bound_inl in inlines.borrow().0.list(py) {
                 self.on_inline_or_scope(py, &bound_inl, inl_ctx)?;
             }
