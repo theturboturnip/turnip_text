@@ -5,6 +5,7 @@ from turnip_text import (
     BlockScope,
     DocSegment,
     Document,
+    Header,
     Inline,
     InlineScope,
     Paragraph,
@@ -17,6 +18,12 @@ VisitorFilter = Tuple[Type[Any], ...] | Type[Any] | None
 VisitorFunc = Callable[[Any], None]
 
 
+class ExitUserNode:
+    """A sentinel used to represent the DFS leaving a UserNode."""
+
+    pass
+
+
 class DocumentDfsPass:
     visitors: List[Tuple[VisitorFilter, VisitorFunc]]
 
@@ -25,11 +32,26 @@ class DocumentDfsPass:
 
     def dfs_over_document(self, document: Document, anchors: StdAnchorPlugin) -> None:
         # Floats are parsed when their portals are encountered
-        dfs_queue: List[Block | Inline | DocSegment] = []
+        usernode_depth = 0
+        dfs_queue: List[Block | Inline | DocSegment | ExitUserNode] = []
         dfs_queue.extend(reversed((document.contents, *document.segments)))
         visited_floats: Set[Anchor] = set()
         while dfs_queue:
             node = dfs_queue.pop()
+
+            # Sanity check - are there headers inside UserNodes?
+            # Use a UserNode depth to check this - every time we go into one, increase the depth
+            if isinstance(node, UserNode):
+                usernode_depth += 1
+                # Once we process the contents, subtract the depth
+                dfs_queue.append(ExitUserNode())
+            elif isinstance(node, ExitUserNode):
+                usernode_depth -= 1
+            elif (usernode_depth > 0) and isinstance(node, Header):
+                # We're inside a UserNode and the new node is a Header
+                raise ValueError(
+                    f"Warning: a Header Block {node} was found inside a custom UserNode. This is not going to be processed correctly."
+                )
 
             # Visit the node
             for v_type, v_f in self.visitors:
