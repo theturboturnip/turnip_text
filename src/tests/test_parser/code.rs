@@ -67,7 +67,7 @@ def x():
         }",
         TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[-----", "b'not a scope owner'", "-----]"),
-            err: Regex::new("TypeError.*instance of BlockScopeBuilder.*build_from_blocks").unwrap(),
+            err: Regex::new("TypeError.*instance of BlocksBuilder.*build_from_blocks").unwrap(),
             scope_open: TestParseSpan("{"),
             build_mode: UserPythonBuildMode::FromBlock,
         },

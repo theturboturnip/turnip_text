@@ -26,33 +26,31 @@ fn test_many_inner_levels() {
 
         ",
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
-                "outside",
-            )])]),
+            contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence("outside")])]),
             segments: vec![TestDocSegment {
                 header: (1, None, None),
-                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+                contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence(
                     "light!",
                 )])]),
                 subsegments: vec![TestDocSegment {
                     header: (2, None, None),
-                    contents: TestBlock::BlockScope(vec![]),
+                    contents: TestBlock::Blocks(vec![]),
                     subsegments: vec![TestDocSegment {
                         header: (30, None, None),
-                        contents: TestBlock::BlockScope(vec![]),
+                        contents: TestBlock::Blocks(vec![]),
                         subsegments: vec![TestDocSegment {
                             header: (54, None, None),
-                            contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                            contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![
                                 test_sentence("middling"),
                             ])]),
                             subsegments: vec![TestDocSegment {
                                 header: (67, None, None),
-                                contents: TestBlock::BlockScope(vec![]),
+                                contents: TestBlock::Blocks(vec![]),
                                 subsegments: vec![TestDocSegment {
                                     header: (100, None, None),
-                                    contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(
-                                        vec![test_sentence("heAVEY")],
-                                    )]),
+                                    contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![
+                                        test_sentence("heAVEY"),
+                                    ])]),
                                     subsegments: vec![],
                                 }],
                             }],
@@ -90,24 +88,22 @@ fn test_bouncing_in_and_out() {
 
         ",
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
-                "outside",
-            )])]),
+            contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence("outside")])]),
             segments: vec![TestDocSegment {
                 header: (1, None, None),
-                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+                contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence(
                     "light!",
                 )])]),
                 subsegments: vec![
                     TestDocSegment {
                         header: (2, None, None),
-                        contents: TestBlock::BlockScope(vec![]),
+                        contents: TestBlock::Blocks(vec![]),
                         subsegments: vec![TestDocSegment {
                             header: (30, None, None),
-                            contents: TestBlock::BlockScope(vec![]),
+                            contents: TestBlock::Blocks(vec![]),
                             subsegments: vec![TestDocSegment {
                                 header: (54, None, None),
-                                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                                contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![
                                     test_sentence("middling"),
                                 ])]),
                                 subsegments: vec![],
@@ -116,10 +112,10 @@ fn test_bouncing_in_and_out() {
                     },
                     TestDocSegment {
                         header: (2, None, None),
-                        contents: TestBlock::BlockScope(vec![]),
+                        contents: TestBlock::Blocks(vec![]),
                         subsegments: vec![TestDocSegment {
                             header: (20, None, None),
-                            contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                            contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![
                                 test_sentence("middling again!"),
                             ])]),
                             subsegments: vec![],
@@ -151,25 +147,23 @@ fn test_bouncing_out_from_under() {
 
         ",
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
-                "outside",
-            )])]),
+            contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence("outside")])]),
             segments: vec![
                 TestDocSegment {
                     header: (10, None, None),
-                    contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
-                        test_sentence("1st level"),
-                    ])]),
+                    contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence(
+                        "1st level",
+                    )])]),
                     subsegments: vec![],
                 },
                 TestDocSegment {
                     header: (0, None, None),
-                    contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
-                        test_sentence("1st level"),
-                    ])]),
+                    contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence(
+                        "1st level",
+                    )])]),
                     subsegments: vec![TestDocSegment {
                         header: (10, None, None),
-                        contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                        contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![
                             test_sentence("2nd level"),
                         ])]),
                         subsegments: vec![],
@@ -206,35 +200,33 @@ fn test_negative_weight() {
 
         ",
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
-                "outside",
-            )])]),
+            contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence("outside")])]),
             segments: vec![
                 TestDocSegment {
                     header: (1, None, None),
-                    contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
-                        test_sentence("light!"),
-                    ])]),
+                    contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence(
+                        "light!",
+                    )])]),
                     subsegments: vec![TestDocSegment {
                         header: (2, None, None),
-                        contents: TestBlock::BlockScope(vec![]),
+                        contents: TestBlock::Blocks(vec![]),
                         subsegments: vec![],
                     }],
                 },
                 TestDocSegment {
                     header: (-10, None, None),
-                    contents: TestBlock::BlockScope(vec![]),
+                    contents: TestBlock::Blocks(vec![]),
                     subsegments: vec![TestDocSegment {
                         header: (54, None, None),
-                        contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                        contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![
                             test_sentence("middling"),
                         ])]),
                         subsegments: vec![TestDocSegment {
                             header: (67, None, None),
-                            contents: TestBlock::BlockScope(vec![]),
+                            contents: TestBlock::Blocks(vec![]),
                             subsegments: vec![TestDocSegment {
                                 header: (100, None, None),
-                                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                                contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![
                                     test_sentence("heAVEY"),
                                 ])]),
                                 subsegments: vec![],
@@ -257,12 +249,12 @@ fn test_can_create_header_toplevel_file() {
         
         More content!",
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+            contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence(
                 "Toplevel content!",
             )])]),
             segments: vec![TestDocSegment {
                 header: (123, None, None),
-                contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+                contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence(
                     "More content!",
                 )])]),
                 subsegments: vec![],
@@ -287,12 +279,12 @@ Content in file!
         
         Content outside file!"#,
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+            contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence(
                 "Toplevel content!",
             )])]),
             segments: vec![TestDocSegment {
                 header: (123, None, None),
-                contents: TestBlock::BlockScope(vec![
+                contents: TestBlock::Blocks(vec![
                     TestBlock::Paragraph(vec![test_sentence("Content in file!")]),
                     TestBlock::Paragraph(vec![test_sentence("Content outside file!")]),
                 ]),
@@ -320,12 +312,12 @@ header_in_file = test_src("""
         
         Content outside file!"#,
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+            contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence(
                 "Toplevel content!",
             )])]),
             segments: vec![TestDocSegment {
                 header: (123, None, None),
-                contents: TestBlock::BlockScope(vec![
+                contents: TestBlock::Blocks(vec![
                     TestBlock::Paragraph(vec![test_sentence("Content in file!")]),
                     TestBlock::Paragraph(vec![test_sentence("Content outside file!")]),
                 ]),
@@ -354,12 +346,12 @@ Content in file!
             Content outside file!
         }"#,
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence(
+            contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence(
                 "Toplevel content!",
             )])]),
             segments: vec![TestDocSegment {
                 header: (123, None, None),
-                contents: TestBlock::BlockScope(vec![
+                contents: TestBlock::Blocks(vec![
                     TestBlock::Paragraph(vec![test_sentence("Content in file!")]),
                     TestBlock::Paragraph(vec![test_sentence("Content outside file!")]),
                 ]),
@@ -374,7 +366,7 @@ fn test_complex_block_scopes_get_flattened() {
     expect_parse(
         r#"
     [-
-    from _native import BlockScope, Paragraph, Sentence, Text
+    from _native import Blocks, Paragraph, Sentence, Text
 
     def paragraph_of(x):
         return Paragraph([Sentence([Text(x)])])
@@ -385,7 +377,7 @@ fn test_complex_block_scopes_get_flattened() {
             three
 
             {
-                [-BlockScope([
+                [-Blocks([
                     CustomHeader(weight=100),
                     paragraph_of("four")
                 ])-]
@@ -413,21 +405,21 @@ fn test_complex_block_scopes_get_flattened() {
 
     "#,
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![]),
+            contents: TestBlock::Blocks(vec![]),
             segments: vec![TestDocSegment {
                 header: (1, None, None),
-                contents: TestBlock::BlockScope(vec![
+                contents: TestBlock::Blocks(vec![
                     TestBlock::Paragraph(vec![test_sentence("one")]),
                     TestBlock::Paragraph(vec![test_sentence("two")]),
                 ]),
                 subsegments: vec![TestDocSegment {
                     header: (2, None, None),
-                    contents: TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
-                        test_sentence("three"),
-                    ])]),
+                    contents: TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence(
+                        "three",
+                    )])]),
                     subsegments: vec![TestDocSegment {
                         header: (100, None, None),
-                        contents: TestBlock::BlockScope(vec![
+                        contents: TestBlock::Blocks(vec![
                             TestBlock::Paragraph(vec![test_sentence("four")]),
                             TestBlock::Paragraph(vec![test_sentence("five")]),
                             TestBlock::Paragraph(vec![test_sentence("six")]),

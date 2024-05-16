@@ -130,7 +130,7 @@ impl<'a> From<(&'a InlineModeContext, &'a Vec<ParsingFile>)> for TestInlineModeC
 #[derive(Debug, Clone, PartialEq)]
 pub enum TestBlockModeElem<'a> {
     Para(TestParseContext<'a>),
-    BlockScope(TestParseContext<'a>),
+    Blocks(TestParseContext<'a>),
     BlockFromCode(TestParseSpan<'a>),
     SourceFromCode(TestParseSpan<'a>),
     AnyToken(TestParseSpan<'a>),
@@ -139,7 +139,7 @@ impl<'a> From<(&'a BlockModeElem, &'a Vec<ParsingFile>)> for TestBlockModeElem<'
     fn from(value: (&'a BlockModeElem, &'a Vec<ParsingFile>)) -> Self {
         match value.0 {
             BlockModeElem::Para(c) => Self::Para((c, value.1).into()),
-            BlockModeElem::BlockScope(c) => Self::BlockScope((c, value.1).into()),
+            BlockModeElem::Blocks(c) => Self::Blocks((c, value.1).into()),
             BlockModeElem::BlockFromCode(s) => Self::BlockFromCode((s, value.1).into()),
             BlockModeElem::SourceFromCode(s) => Self::SourceFromCode((s, value.1).into()),
             BlockModeElem::AnyToken(s) => Self::AnyToken((s, value.1).into()),

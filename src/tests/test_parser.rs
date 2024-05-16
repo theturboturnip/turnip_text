@@ -76,7 +76,7 @@ pub fn expect_parse(data: &str, expected_parse: Result<TestDocument, TestTTError
 /// Unorganized tests of basic functionality
 mod basic;
 
-/// Tests that block-level elements (Paragraphs, BlockScope, code-emitted-Blocks, code-emitted-Headers, code-emitted-TurnipTextSources) must be separated by a blank line
+/// Tests that block-level elements (Paragraphs, Blocks, code-emitted-Blocks, code-emitted-Headers, code-emitted-TurnipTextSources) must be separated by a blank line
 mod block_spacing;
 
 /// Tests that comments pass through their ending tokens (newlines, escaped newlines, EOF) properly

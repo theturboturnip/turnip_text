@@ -15,8 +15,8 @@ from typing import (
 
 from turnip_text import (
     Block,
-    BlockScope,
-    CoercibleToBlockScope,
+    Blocks,
+    CoercibleToBlocks,
     CoercibleToInline,
     CoercibleToInlineScope,
     DocElement,
@@ -25,7 +25,7 @@ from turnip_text import (
     Paragraph,
     Raw,
     Sentence,
-    coerce_to_block_scope,
+    coerce_to_blocks,
     coerce_to_inline,
     coerce_to_inline_scope,
 )
@@ -38,20 +38,20 @@ TElement = TypeVar("TElement", bound=Optional[DocElement])
 
 class UserBlockScopeBuilder(abc.ABC, Generic[TElement]):
     """
-    Subclassable BlockScopeBuilder which implements the matmul operator '@'.
+    Subclassable BlocksBuilder which implements the matmul operator '@'.
     Using matmul allows code to use the block scope builder more conveniently.
-    It tries to coerce the right-hand-side into a BlockScope before passing it to build_from_blocks.
+    It tries to coerce the right-hand-side into a Blocks before passing it to build_from_blocks.
 
     Example:
 
-    `SomeUserBlockScopeBuilder() @ "Some content"` coerces "some content" into a BlockScope surrounding a Paragraph before using it.
+    `SomeUserBlockScopeBuilder() @ "Some content"` coerces "some content" into a Blocks surrounding a Paragraph before using it.
     """
 
     @abc.abstractmethod
-    def build_from_blocks(self, blocks: BlockScope) -> TElement: ...
+    def build_from_blocks(self, blocks: Blocks) -> TElement: ...
 
-    def __matmul__(self, maybe_b: CoercibleToBlockScope) -> TElement:
-        bs = coerce_to_block_scope(maybe_b)
+    def __matmul__(self, maybe_b: CoercibleToBlocks) -> TElement:
+        bs = coerce_to_blocks(maybe_b)
         return self.build_from_blocks(bs)
 
 
@@ -113,17 +113,17 @@ class UserBlockOrInlineScopeBuilder(
 
     `SomeUserBlockOrInlineBuilder() @ "some content"` calls build_from_inlines with "some content" coerced to Text.
 
-    `SomeUserBlockOrInlineBuilder() @ CustomBlock()` calls build_from_blocks with BlockScope([CustomBlock()])
+    `SomeUserBlockOrInlineBuilder() @ CustomBlock()` calls build_from_blocks with Blocks([CustomBlock()])
     """
 
     def __matmul__(
-        self, maybe_inls: Union[CoercibleToInlineScope, CoercibleToBlockScope]
+        self, maybe_inls: Union[CoercibleToInlineScope, CoercibleToBlocks]
     ) -> TElement:
         try:
             inl = coerce_to_inline_scope(maybe_inls)  # type:ignore
         except TypeError:
             # Wasn't an inline, may be a block
-            blk = coerce_to_block_scope(maybe_inls)
+            blk = coerce_to_blocks(maybe_inls)
             return self.build_from_blocks(blk)
         else:
             return self.build_from_inlines(inl)
@@ -144,11 +144,11 @@ class UserAnyScopeBuilder(
 
     `SomeUserAnyScopeBuilder() @ "some content"` calls build_from_inlines with "some content" coerced to Text.
 
-    `SomeUserAnyScopeBuilder() @ CustomBlock()` calls build_from_blocks with BlockScope([CustomBlock()]).
+    `SomeUserAnyScopeBuilder() @ CustomBlock()` calls build_from_blocks with Blocks([CustomBlock()]).
     """
 
     def __matmul__(
-        self, something: Union[Raw, CoercibleToInlineScope, CoercibleToBlockScope]
+        self, something: Union[Raw, CoercibleToInlineScope, CoercibleToBlocks]
     ) -> TElement:
         if isinstance(something, Raw):
             return self.build_from_raw(something)
@@ -158,8 +158,8 @@ class UserAnyScopeBuilder(
 class PassthroughBuilder(UserBlockOrInlineScopeBuilder[Union[Block, Inline]]):
     """Block-or-inline scope builder that passes through whatever argument it's given."""
 
-    def build_from_blocks(self, bs: BlockScope) -> Block:
-        return bs
+    def build_from_blocks(self, blocks: Blocks) -> Block:
+        return blocks
 
     def build_from_inlines(self, inls: InlineScope) -> Inline:
         return inls
@@ -175,7 +175,7 @@ class PassthroughRawBuilder(UserRawScopeBuilder):
 class NullBuilder(UserBlockOrInlineScopeBuilder):
     """Block-or-inline scope builder that always returns None"""
 
-    def build_from_blocks(self, _: BlockScope) -> None:
+    def build_from_blocks(self, _: Blocks) -> None:
         return None
 
     def build_from_inlines(self, _: InlineScope) -> None:
@@ -191,13 +191,13 @@ class NullRawBuilder(UserRawScopeBuilder):
 
 class block_scope_builder(UserBlockScopeBuilder[TElement]):
     """
-    Decorator which allows a function to fit the BlockScopeBuilder typeclass.
+    Decorator which allows a function to fit the BlocksBuilder typeclass.
 
     e.g. one could define a function
     ```python
     def block(name=""):
         @block_scope_builder
-        def inner(items: BlockScope) -> Block:
+        def inner(blocks: Blocks) -> Block:
             return items
         return inner
     ```
@@ -208,20 +208,20 @@ class block_scope_builder(UserBlockScopeBuilder[TElement]):
     }
     ```
 
-    It also supports the matmul operator, which tries to coerce the right-hand-side into a BlockScope before calling the function:
+    It also supports the matmul operator, which tries to coerce the right-hand-side into a Blocks before calling the function:
     ```python
     block(name="greg") @ "The contents of greg"
     ```
     """
 
-    func: Callable[[BlockScope], TElement]
+    func: Callable[[Blocks], TElement]
 
-    def __init__(self, func: Callable[[BlockScope], TElement]) -> None:
+    def __init__(self, func: Callable[[Blocks], TElement]) -> None:
         self.func = func
         functools.update_wrapper(self, func)
 
-    def build_from_blocks(self, b: BlockScope) -> TElement:
-        return self.func(b)
+    def build_from_blocks(self, blocks: Blocks) -> TElement:
+        return self.func(blocks)
 
     def __str__(self) -> str:
         return f"<{self.__class__.__name__} wrapping {self.func}>"
@@ -307,10 +307,10 @@ P = ParamSpec("P")
 # Sadly there isn't a way to make how this works obvious in the type system
 class blocks_builder(Generic[P, TElement], UserBlockScopeBuilder[TElement]):
     """
-    Annotates a function that takes at least one parameter `blocks: BlockScope`
-    to become a BlockScopeBuilder.
+    Annotates a function that takes at least one parameter `blocks: Blocks`
+    to become a BlocksBuilder.
 
-    Using directly as a BlockScopeBuilder will call the function with just `blocks`
+    Using directly as a BlocksBuilder will call the function with just `blocks`
 
     ```ttext
     [-
@@ -322,15 +322,15 @@ class blocks_builder(Generic[P, TElement], UserBlockScopeBuilder[TElement]):
     [fred]{
         Stuff
     }
-    # equivalent to calling fred(blocks=BlockScope([stuff]))
+    # equivalent to calling fred(blocks=Blocks([stuff]))
     ```
 
-    Calling before using as a BlockScopeBuilder will call the function with those arguments and `blocks`
+    Calling before using as a BlocksBuilder will call the function with those arguments and `blocks`
     ```ttext
     [-
     @blocks_builder
     def titled(title: str, blocks):
-        return BlockScope([
+        return Blocks([
             header(title),
             blocks
         ])
@@ -339,7 +339,7 @@ class blocks_builder(Generic[P, TElement], UserBlockScopeBuilder[TElement]):
     [titled("Titular Block")]{
         Stuff
     }
-    # equivalent to calling [titled("Titular Block", blocks=BlockScope([stuff]))]
+    # equivalent to calling [titled("Titular Block", blocks=Blocks([stuff]))]
     """
 
     func: Callable[P, TElement]
@@ -362,7 +362,7 @@ class blocks_builder(Generic[P, TElement], UserBlockScopeBuilder[TElement]):
         self.kwds = kwds
         return self
 
-    def build_from_blocks(self, blocks: BlockScope) -> TElement:
+    def build_from_blocks(self, blocks: Blocks) -> TElement:
         self.kwds["blocks"] = blocks
         return self.func(*self.args, **self.kwds)
 

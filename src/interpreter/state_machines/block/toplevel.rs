@@ -7,7 +7,7 @@ use crate::{
         state_machines::{py_internal_alloc, ProcStatus},
     },
     python::{
-        interop::{BlockScope, Document, Header},
+        interop::{Blocks, Document, Header},
         typeclass::PyTcRef,
     },
 };
@@ -17,9 +17,9 @@ use super::{BlockLevelProcessor, BlockMode};
 /// At the top level of the document, headers are allowed and manipulate the document.
 pub struct TopLevelBlockMode {
     document: Py<Document>,
-    /// The BlockScope associated with the most recently created DocSegment.
+    /// The Blocks associated with the most recently created DocSegment.
     /// This will always be the bottommost DocSegment of the document.
-    topmost_block: Py<BlockScope>,
+    topmost_block: Py<Blocks>,
 }
 impl BlockLevelProcessor<TopLevelBlockMode> {
     pub fn new(py: Python) -> TTResult<Self> {
@@ -66,7 +66,7 @@ impl BlockMode for TopLevelBlockMode {
         self.topmost_block
             .borrow_mut(py)
             .append_block(block)
-            .expect_pyok("BlockScope::append_block with presumed Block");
+            .expect_pyok("Blocks::append_block with presumed Block");
 
         Ok(())
     }

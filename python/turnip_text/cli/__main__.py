@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Type, cast
 
 from turnip_text import (
     Block,
-    BlockScopeBuilder,
+    BlocksBuilder,
     Header,
     Inline,
     InlineScopeBuilder,
@@ -174,11 +174,11 @@ def wrap_describe(args: Any) -> None:
                 fits_header = isinstance(item, Header)
                 is_doc_element = fits_block or fits_inline or fits_header
                 if inspect.isclass(item):
-                    fits_bsb = issubclass(item, BlockScopeBuilder)
+                    fits_bsb = issubclass(item, BlocksBuilder)
                     fits_isb = issubclass(item, InlineScopeBuilder)
                     fits_rsb = issubclass(item, RawScopeBuilder)
                 else:
-                    fits_bsb = isinstance(item, BlockScopeBuilder)
+                    fits_bsb = isinstance(item, BlocksBuilder)
                     fits_isb = isinstance(item, InlineScopeBuilder)
                     fits_rsb = isinstance(item, RawScopeBuilder)
                 is_doc_builder = fits_bsb or fits_isb or fits_rsb
@@ -198,7 +198,7 @@ def wrap_describe(args: Any) -> None:
                             things_it_fits.append("Header")
 
                         if fits_bsb:
-                            things_it_fits.append("BlockScopeBuilder")
+                            things_it_fits.append("BlocksBuilder")
                         if fits_isb:
                             things_it_fits.append("InlineScopeBuilder")
                         if fits_rsb:

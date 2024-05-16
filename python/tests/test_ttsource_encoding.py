@@ -14,7 +14,7 @@ Y \[ˈʏpsilɔn\], Yen \[jɛn\], Yoga \[ˈjoːgɑ\]
     src = TurnipTextSource.from_file("<test>", utf8)
     doc = parse_file(src, {})
     expected_doc = Document(
-        contents=BlockScope(
+        contents=Blocks(
             [
                 Paragraph(
                     [
@@ -41,7 +41,7 @@ Y \[ˈʏpsilɔn\], Yen \[jɛn\], Yoga \[ˈjoːgɑ\]
     src = TurnipTextSource.from_file("<test>", utf8)
     doc = parse_file(src, {})
     expected_doc = Document(
-        contents=BlockScope(
+        contents=Blocks(
             [
                 Paragraph(
                     [
@@ -73,7 +73,7 @@ Dﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝﾞﾟ
     doc = parse_file(src, {})
     # Even comparing the doc to one generated from UTF-8 should work
     expected_doc = Document(
-        contents=BlockScope(
+        contents=Blocks(
             [
                 Paragraph(
                     [

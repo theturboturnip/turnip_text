@@ -49,7 +49,7 @@ use crate::{
     },
     python::{
         interop::{
-            Block, BlockScope, Document, Inline, InlineScope, Paragraph, Raw, TurnipTextSource,
+            Block, Blocks, Document, Inline, InlineScope, Paragraph, Raw, TurnipTextSource,
         },
         typeclass::PyTcRef,
     },
@@ -81,7 +81,7 @@ enum DocElement {
 #[derive(Debug)]
 enum BlockElem {
     FromCode(PyTcRef<Block>),
-    BlockScope(Py<BlockScope>),
+    Blocks(Py<Blocks>),
     Para(Py<Paragraph>),
 }
 impl From<BlockElem> for DocElement {
@@ -93,7 +93,7 @@ impl From<(ParseContext, &BlockElem)> for BlockModeElem {
     fn from(value: (ParseContext, &BlockElem)) -> Self {
         match value.1 {
             BlockElem::FromCode(_) => BlockModeElem::BlockFromCode(value.0.full_span()),
-            BlockElem::BlockScope(_) => BlockModeElem::BlockScope(value.0),
+            BlockElem::Blocks(_) => BlockModeElem::Blocks(value.0),
             BlockElem::Para(_) => BlockModeElem::Para(value.0),
         }
     }

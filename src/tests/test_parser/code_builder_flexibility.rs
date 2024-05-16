@@ -186,7 +186,7 @@ fn test_inline_scope_builder_building_header() {
     expect_parse(
         "[CustomHeaderBuilder()]{ Wowee i wish I had inline content }",
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![]),
+            contents: TestBlock::Blocks(vec![]),
             segments: vec![TestDocSegment {
                 header: (
                     0,
@@ -195,7 +195,7 @@ fn test_inline_scope_builder_building_header() {
                         "Wowee i wish I had inline content",
                     )])),
                 ),
-                contents: TestBlock::BlockScope(vec![]),
+                contents: TestBlock::Blocks(vec![]),
                 subsegments: vec![],
             }],
         }),
@@ -209,16 +209,16 @@ fn test_block_scope_builder_building_header() {
         Wowee i wish I had block content
     }",
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![]),
+            contents: TestBlock::Blocks(vec![]),
             segments: vec![TestDocSegment {
                 header: (
                     0,
-                    Some(TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                    Some(TestBlock::Blocks(vec![TestBlock::Paragraph(vec![
                         test_sentence("Wowee i wish I had block content"),
                     ])])),
                     None,
                 ),
-                contents: TestBlock::BlockScope(vec![]),
+                contents: TestBlock::Blocks(vec![]),
                 subsegments: vec![],
             }],
         }),
@@ -230,7 +230,7 @@ fn test_raw_scope_builder_building_header() {
     expect_parse(
         "[CustomHeaderBuilder()]#{ Wowee i wish I had inline content }#",
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![]),
+            contents: TestBlock::Blocks(vec![]),
             segments: vec![TestDocSegment {
                 header: (
                     0,
@@ -239,7 +239,7 @@ fn test_raw_scope_builder_building_header() {
                         " Wowee i wish I had inline content ",
                     )])),
                 ),
-                contents: TestBlock::BlockScope(vec![]),
+                contents: TestBlock::Blocks(vec![]),
                 subsegments: vec![],
             }],
         }),

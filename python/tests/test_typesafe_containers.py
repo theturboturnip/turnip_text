@@ -1,5 +1,4 @@
 import pytest
-
 from turnip_text import *
 
 
@@ -58,24 +57,24 @@ def test_paragraph_must_only_append_sentences():
 # Document
 def test_document_can_hold_docsegments():
     Document(
-        contents=BlockScope([]),
+        contents=Blocks([]),
         segments=[
-            DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[]),
-            DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[]),
-            DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[]),
+            DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
+            DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
+            DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
         ],
     )
 
 
 def test_document_can_append_headers():
-    d = Document(contents=BlockScope([]), segments=[])
+    d = Document(contents=Blocks([]), segments=[])
     d.append_header(CustomHeader())
 
 
 def test_document_can_insert_headers():
     d = Document(
-        contents=BlockScope([]),
-        segments=[DocSegment(CustomHeader(), BlockScope([]), [])],
+        contents=Blocks([]),
+        segments=[DocSegment(CustomHeader(), Blocks([]), [])],
     )
     d.insert_header(0, CustomHeader())
 
@@ -84,61 +83,45 @@ def test_document_must_only_have_docsegments():
     filter = r"cannot be converted to 'DocSegment'"
     with pytest.raises(TypeError, match=filter):
         Document(
-            contents=BlockScope([]),
+            contents=Blocks([]),
             segments=[
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
                 None,
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
             ],
         )
     with pytest.raises(TypeError, match=filter):
         Document(
-            contents=BlockScope([]),
+            contents=Blocks([]),
             segments=[
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
                 1,
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
             ],
         )
     with pytest.raises(TypeError, match=filter):
         Document(
-            contents=BlockScope([]),
+            contents=Blocks([]),
             segments=[
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
                 "blah",
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
             ],
         )
     with pytest.raises(TypeError, match=filter):
         Document(
-            contents=BlockScope([]),
+            contents=Blocks([]),
             segments=[
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
                 object(),
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
             ],
         )
 
 
 def test_document_must_only_append_headers():
     filter = r"instance of Header, but it didn't have the properties.*is_header.*weight"
-    p = Document(contents=BlockScope([]), segments=[])
+    p = Document(contents=Blocks([]), segments=[])
     with pytest.raises(TypeError, match=filter):
         p.append_header(None)
     with pytest.raises(TypeError, match=filter):
@@ -152,8 +135,8 @@ def test_document_must_only_append_headers():
 def test_document_must_only_insert_headers():
     filter = r"instance of Header, but it didn't have the properties.*is_header.*weight"
     p = Document(
-        contents=BlockScope([]),
-        segments=[DocSegment(CustomHeader(), BlockScope([]), [])],
+        contents=Blocks([]),
+        segments=[DocSegment(CustomHeader(), Blocks([]), [])],
     )
     with pytest.raises(TypeError, match=filter):
         p.insert_header(0, None)
@@ -172,7 +155,7 @@ def test_docsegment_must_hold_header():
         TypeError,
         match=f"instance of Header, but it didn't have the properties.*is_header.*weight",
     ):
-        DocSegment(header=object(), contents=BlockScope([]), subsegments=[])
+        DocSegment(header=object(), contents=Blocks([]), subsegments=[])
 
     # Test objects with (is_header) but without a (weight) Rust can handle (i.e. that fits in 64bits)
     class IsHeaderWithNoWeight:
@@ -182,9 +165,7 @@ def test_docsegment_must_hold_header():
         TypeError,
         match=f"instance of Header, and it had.*is_header.*but it didn't have.*weight",
     ):
-        DocSegment(
-            header=IsHeaderWithNoWeight(), contents=BlockScope([]), subsegments=[]
-        )
+        DocSegment(header=IsHeaderWithNoWeight(), contents=Blocks([]), subsegments=[])
 
     class IsHeaderWithTooPositiveWeight:
         is_header = True
@@ -204,7 +185,7 @@ def test_docsegment_must_hold_header():
     ):
         DocSegment(
             header=IsHeaderWithTooPositiveWeight(),
-            contents=BlockScope([]),
+            contents=Blocks([]),
             subsegments=[],
         )
 
@@ -214,7 +195,7 @@ def test_docsegment_must_hold_header():
     ):
         DocSegment(
             header=IsHeaderWithTooNegativeWeight(),
-            contents=BlockScope([]),
+            contents=Blocks([]),
             subsegments=[],
         )
 
@@ -226,19 +207,17 @@ def test_docsegment_must_hold_header():
         TypeError,
         match=f"instance of Header, and it had.*weight.*but it didn't have.*is_header",
     ):
-        DocSegment(
-            header=WeightButNoIsHeader(), contents=BlockScope([]), subsegments=[]
-        )
+        DocSegment(header=WeightButNoIsHeader(), contents=Blocks([]), subsegments=[])
 
 
 def test_docsegment_can_hold_docsegments():
     DocSegment(
         header=CustomHeader(weight=-1),
-        contents=BlockScope([]),
+        contents=Blocks([]),
         subsegments=[
-            DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[]),
-            DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[]),
-            DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[]),
+            DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
+            DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
+            DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
         ],
     )
 
@@ -246,7 +225,7 @@ def test_docsegment_can_hold_docsegments():
 def test_docsegment_can_append_headers():
     d = DocSegment(
         header=CustomHeader(weight=-1),
-        contents=BlockScope([]),
+        contents=Blocks([]),
         subsegments=[],
     )
     d.append_header(CustomHeader())
@@ -255,11 +234,11 @@ def test_docsegment_can_append_headers():
 def test_docsegment_can_insert_headers():
     d = DocSegment(
         header=CustomHeader(weight=-1),
-        contents=BlockScope([]),
+        contents=Blocks([]),
         subsegments=[
-            DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[]),
-            DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[]),
-            DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[]),
+            DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
+            DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
+            DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
         ],
     )
     d.insert_header(2, CustomHeader())
@@ -270,64 +249,48 @@ def test_docsegment_must_only_have_docsegments():
     with pytest.raises(TypeError, match=filter):
         DocSegment(
             header=CustomHeader(weight=-1),
-            contents=BlockScope([]),
+            contents=Blocks([]),
             subsegments=[
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
                 None,
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
             ],
         )
     with pytest.raises(TypeError, match=filter):
         DocSegment(
             header=CustomHeader(weight=-1),
-            contents=BlockScope([]),
+            contents=Blocks([]),
             subsegments=[
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
                 1,
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
             ],
         )
     with pytest.raises(TypeError, match=filter):
         DocSegment(
             header=CustomHeader(weight=-1),
-            contents=BlockScope([]),
+            contents=Blocks([]),
             subsegments=[
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
                 "blah",
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
             ],
         )
     with pytest.raises(TypeError, match=filter):
         DocSegment(
             header=CustomHeader(weight=-1),
-            contents=BlockScope([]),
+            contents=Blocks([]),
             subsegments=[
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
                 object(),
-                DocSegment(
-                    header=CustomHeader(), contents=BlockScope([]), subsegments=[]
-                ),
+                DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[]),
             ],
         )
 
 
 def test_docsegment_must_only_append_headers():
     filter = r"instance of Header, but it didn't have the properties.*is_header.*weight"
-    p = DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[])
+    p = DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[])
     with pytest.raises(TypeError, match=filter):
         p.append_header(None)
     with pytest.raises(TypeError, match=filter):
@@ -340,7 +303,7 @@ def test_docsegment_must_only_append_headers():
 
 def test_docsegment_must_only_insert_headers():
     filter = r"instance of Header, but it didn't have the properties.*is_header.*weight"
-    p = DocSegment(header=CustomHeader(), contents=BlockScope([]), subsegments=[])
+    p = DocSegment(header=CustomHeader(), contents=Blocks([]), subsegments=[])
     with pytest.raises(TypeError, match=filter):
         p.insert_header(1, None)
     with pytest.raises(TypeError, match=filter):
@@ -351,34 +314,34 @@ def test_docsegment_must_only_insert_headers():
         p.insert_header(1, object())
 
 
-# BlockScope
+# Blocks
 def test_block_scope_can_hold_blocks():
-    BlockScope([CustomBlock(), CustomBlock(), CustomBlock()])
+    Blocks([CustomBlock(), CustomBlock(), CustomBlock()])
 
 
 def test_block_scope_can_append_blocks():
-    scope = BlockScope([])
+    scope = Blocks([])
     scope.append_block(CustomBlock())
     scope.append_block(Paragraph([]))
-    scope.append_block(BlockScope([]))
+    scope.append_block(Blocks([]))
 
 
 def test_block_scope_must_only_have_blocks():
     filter = r"instance of Block, but it didn't have property is_block=True"
 
     with pytest.raises(TypeError, match=filter):
-        BlockScope([CustomBlock(), None, CustomBlock()])
+        Blocks([CustomBlock(), None, CustomBlock()])
     with pytest.raises(TypeError, match=filter):
-        BlockScope([CustomBlock(), 1, CustomBlock()])
+        Blocks([CustomBlock(), 1, CustomBlock()])
     with pytest.raises(TypeError, match=filter):
-        BlockScope([CustomBlock(), "blah", CustomBlock()])
+        Blocks([CustomBlock(), "blah", CustomBlock()])
     with pytest.raises(TypeError, match=filter):
-        BlockScope([CustomBlock(), CustomInline(), CustomBlock()])
+        Blocks([CustomBlock(), CustomInline(), CustomBlock()])
 
 
 def test_block_scope_must_only_append_blocks():
     filter = r"instance of Block, but it didn't have property is_block=True"
-    bs = BlockScope([])
+    bs = Blocks([])
     with pytest.raises(TypeError, match=filter):
         bs.append_block(None)
     with pytest.raises(TypeError, match=filter):

@@ -11,7 +11,7 @@ use crate::{
     },
     python::{
         interop::{
-            Block, BlockScopeBuilder, Header, Inline, InlineScopeBuilder, RawScopeBuilder,
+            Block, BlocksBuilder, Header, Inline, InlineScopeBuilder, RawScopeBuilder,
             TurnipTextSource,
         },
         typeclass::PyTypeclass,
@@ -351,7 +351,7 @@ fn detailed_syntax_message(py: Python, err: &TTSyntaxError) -> Diagnostic<usize>
                         "...and was still in progress here...",
                     ))
                 }
-                BlockScope(c) => {
+                Blocks(c) => {
                     labels.push(sec_label_of(
                         &c.first_tok(),
                         "A block scope started here...",
@@ -372,7 +372,7 @@ fn detailed_syntax_message(py: Python, err: &TTSyntaxError) -> Diagnostic<usize>
                     ))
                     // Don't care about the end of the paragraph
                 }
-                BlockScope(c) => {
+                Blocks(c) => {
                     labels.push(prim_label_of(
                         &c.first_tok(),
                         "...need a new line before starting a block scope here.",
@@ -546,9 +546,9 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                 notes.push("This object is callable - try calling it?".into());
             }
             // If it's a different builder, suggest building with the correct argument
-            if matches!(BlockScopeBuilder::fits_typeclass(obj), Ok(true)) {
+            if matches!(BlocksBuilder::fits_typeclass(obj), Ok(true)) {
                 notes.push(
-                    "This object fits BlockScopeBuilder - try attaching a block scope?".into(),
+                    "This object fits BlocksBuilder - try attaching a block scope?".into(),
                 );
             }
             if matches!(InlineScopeBuilder::fits_typeclass(obj), Ok(true)) {
@@ -578,7 +578,7 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
             let obj = obj.bind(py);
             let stringified_obj = stringify_py(obj);
             let (argument_name, builder_type) = match build_mode {
-                UserPythonBuildMode::FromBlock => ("a block scope", "a BlockScopeBuilder"),
+                UserPythonBuildMode::FromBlock => ("a block scope", "a BlocksBuilder"),
                 UserPythonBuildMode::FromInline => ("an inline scope", "an InlineScopeBuilder"),
                 UserPythonBuildMode::FromRaw => ("a raw scope", "a RawScopeBuilder"),
             };
@@ -627,9 +627,9 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                 notes.push("The builder is a TurnipTextSource, try removing the argument".into());
             }
             // If it's a different builder, suggest building with the correct argument
-            if matches!(BlockScopeBuilder::fits_typeclass(obj), Ok(true)) {
+            if matches!(BlocksBuilder::fits_typeclass(obj), Ok(true)) {
                 notes.push(
-                    "The builder does fit BlockScopeBuilder, try attaching a block scope instead"
+                    "The builder does fit BlocksBuilder, try attaching a block scope instead"
                         .into(),
                 );
             }
@@ -663,7 +663,7 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
             err,
         } => {
             let (builder_type, builder_function) = match build_mode {
-                UserPythonBuildMode::FromBlock => ("BlockScopeBuilder", ".build_from_blocks()"),
+                UserPythonBuildMode::FromBlock => ("BlocksBuilder", ".build_from_blocks()"),
                 UserPythonBuildMode::FromInline => ("InlineScopeBuilder", ".build_from_inlines()"),
                 UserPythonBuildMode::FromRaw => ("RawScopeBuilder", ".build_from_raw()"),
             };

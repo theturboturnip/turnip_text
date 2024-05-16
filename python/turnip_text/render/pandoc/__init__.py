@@ -16,10 +16,9 @@ from typing import (
 )
 
 import pandoc  # type:ignore
-
 from turnip_text import (
     Block,
-    BlockScope,
+    Blocks,
     DocSegment,
     Document,
     Header,
@@ -146,7 +145,7 @@ class PandocRenderer(Renderer):
         It can be overridden in renderers that provide more than the basic emitters.
         """
         dispatch: PandocDispatch[TPandocRenderer_contra] = PandocDispatch()
-        dispatch.register_block(BlockScope, lambda bs, r, fmt: r.make_block_scope(bs))
+        dispatch.register_block(Blocks, lambda bs, r, fmt: r.make_block_scope(bs))
         dispatch.register_block(Paragraph, lambda p, r, fmt: r.make_paragraph(p))
         dispatch.register_inline(
             InlineScope, lambda inls, r, fmt: r.make_inline_scope(inls)
@@ -375,10 +374,12 @@ PANDOC_FORMAT_TO_EXT = {
     "rst": "rst",
 }
 
+
 def recommend_pandoc_format_ext(format: str) -> str:
     if format in PANDOC_FORMAT_TO_EXT:
         return PANDOC_FORMAT_TO_EXT[format]
     return format
+
 
 class PandocSetup(RenderSetup[PandocRenderer]):
     pandoc_format: str

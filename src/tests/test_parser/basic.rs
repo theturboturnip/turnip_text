@@ -194,7 +194,7 @@ It was the best of the times, it was the blurst of times
         TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(
-                r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got None.*",
+                r"TypeError\s*:\s*Expected.*BlocksBuilder.*build_from_blocks.*Got None.*",
             )
             .unwrap(),
             scope_open: TestParseSpan("{"),
@@ -739,7 +739,7 @@ fn test_cant_eval_none_for_block_builder() {
         TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[", "None", "]"),
             err: Regex::new(
-                r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got None",
+                r"TypeError\s*:\s*Expected.*BlocksBuilder.*build_from_blocks.*Got None",
             )
             .unwrap(),
             scope_open: TestParseSpan("{"),
@@ -757,7 +757,7 @@ fn test_cant_assign_for_block_builder() {
         TestUserPythonError::CoercingEvalBracketToBuilder {
             code_ctx: TestParseContext("[", "x = 5", "]"),
             err: Regex::new(
-                r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got None",
+                r"TypeError\s*:\s*Expected.*BlocksBuilder.*build_from_blocks.*Got None",
             )
             .unwrap(),
             scope_open: TestParseSpan("{"),

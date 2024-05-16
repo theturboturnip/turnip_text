@@ -47,21 +47,21 @@ fn test_code_produced_block_scopes_are_flattened() {
     expect_parse(
         r#"
     [-
-    from _native import BlockScope, Paragraph, Sentence, Text
+    from _native import Blocks, Paragraph, Sentence, Text
 
     def paragraph_of(x):
         return Paragraph([Sentence([Text(x)])])
     -]
 
     [-
-        BlockScope([
+        Blocks([
             paragraph_of("one"),
-            BlockScope([]),
-            BlockScope([
+            Blocks([]),
+            Blocks([
                 paragraph_of("two"),
-                BlockScope([
+                Blocks([
                     paragraph_of("three"),
-                    BlockScope([
+                    Blocks([
                         paragraph_of("four"),
                     ]),
                     paragraph_of("five"),
@@ -81,7 +81,7 @@ fn test_code_nodes_surrounding_block_scopes_are_not_flattened() {
     expect_parse(
         r#"
     [-
-    from _native import BlockScope, Paragraph, Sentence, Text
+    from _native import Blocks, Paragraph, Sentence, Text
 
     def paragraph_of(x):
         return Paragraph([Sentence([Text(x)])])
@@ -89,14 +89,14 @@ fn test_code_nodes_surrounding_block_scopes_are_not_flattened() {
 
     [-
         CustomBlock(
-            BlockScope([
+            Blocks([
                 paragraph_of("one"),
-                BlockScope([]),
-                BlockScope([
+                Blocks([]),
+                Blocks([
                     paragraph_of("two"),
-                    BlockScope([
+                    Blocks([
                         paragraph_of("three"),
-                        BlockScope([
+                        Blocks([
                             paragraph_of("four"),
                         ]),
                         paragraph_of("five"),
@@ -111,12 +111,12 @@ fn test_code_nodes_surrounding_block_scopes_are_not_flattened() {
         // The toplevel vec![] inside TestBlock::CustomBlock is the first block scope
         Ok(test_doc(vec![TestBlock::CustomBlock(vec![
             TestBlock::Paragraph(vec![test_sentence("one")]),
-            TestBlock::BlockScope(vec![]),
-            TestBlock::BlockScope(vec![
+            TestBlock::Blocks(vec![]),
+            TestBlock::Blocks(vec![
                 TestBlock::Paragraph(vec![test_sentence("two")]),
-                TestBlock::BlockScope(vec![
+                TestBlock::Blocks(vec![
                     TestBlock::Paragraph(vec![test_sentence("three")]),
-                    TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![test_sentence("four")])]),
+                    TestBlock::Blocks(vec![TestBlock::Paragraph(vec![test_sentence("four")])]),
                     TestBlock::Paragraph(vec![test_sentence("five")]),
                 ]),
             ]),

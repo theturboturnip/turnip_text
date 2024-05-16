@@ -18,7 +18,7 @@ use crate::{
     },
     python::{
         interop::{
-            coerce_to_inline_pytcref, Block, BlockScopeBuilder, Inline, InlineScopeBuilder, RawScopeBuilder, TurnipTextSource
+            coerce_to_inline_pytcref, Block, BlocksBuilder, Inline, InlineScopeBuilder, RawScopeBuilder, TurnipTextSource
         },
         typeclass::{PyTcRef, PyTypeclass},
     },
@@ -162,10 +162,10 @@ impl TokenProcessor for CodeProcessor {
              and RawScopeProcessor none of which return None.",
         );
         let built = match elem {
-            DocElement::Block(BlockElem::BlockScope(blocks)) => {
-                let builder = PyTcRef::<BlockScopeBuilder>::of(&evaled_result_ref).expect("The AmbiguousScopeProcessor callbacks must have checked this was a BlockScopeBuilder.");
+            DocElement::Block(BlockElem::Blocks(blocks)) => {
+                let builder = PyTcRef::<BlocksBuilder>::of(&evaled_result_ref).expect("The AmbiguousScopeProcessor callbacks must have checked this was a BlocksBuilder.");
 
-                BlockScopeBuilder::call_build_from_blocks(py, builder, blocks).map_err(|err| {
+                BlocksBuilder::call_build_from_blocks(py, builder, blocks).map_err(|err| {
                     TTUserPythonError::Building {
                         code_ctx: self.ctx,
                         arg_ctx: elem_ctx,
@@ -252,8 +252,8 @@ struct ScopeKindChecker {
 }
 impl OnResolveAmbiguousScope for ScopeKindChecker {
     fn got_block_scope(self, py: Python, scope_open: ParseSpan) -> TTResult<()> {
-        // Try coercing the builder to BlockScopeBuilder. If it doesn't work, raise an error.
-        PyTcRef::<BlockScopeBuilder>::of_friendly(
+        // Try coercing the builder to BlocksBuilder. If it doesn't work, raise an error.
+        PyTcRef::<BlocksBuilder>::of_friendly(
             self.builder.bind(py),
             "value returned by eval-bracket",
         )
@@ -303,11 +303,11 @@ impl OnResolveAmbiguousScope for ScopeKindChecker {
 /// - `str/float/int` -> `Text(str(x))`
 /// Coercible to block:
 /// - `Block`             -> `x`
-/// - `List[Block]`       -> `BlockScope(x)`
+/// - `List[Block]`       -> `Blocks(x)`
 /// - `Sentence`          -> `Paragraph([x])
 /// - `CoercibleToInline` -> `Paragraph([Sentence([coerce_to_inline(x)])])`
 /// I do not see the need to allow eval-brackets to directly return `List[Block]` or `Sentence` at all.
-/// Similar outcomes can be acheived by wrapping in `BlockScope` or `Paragraph` manually in the evaluated code, which better demonstrates intent.
+/// Similar outcomes can be acheived by wrapping in `Blocks` or `Paragraph` manually in the evaluated code, which better demonstrates intent.
 /// If we always coerce to inline, then the wrapping in `Paragraph` and `Sentence` happens naturally in the interpreter.
 /// => We check if it's a block, and if it isn't we try to coerce to inline.
 pub enum EvalDirectOutcome {

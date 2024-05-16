@@ -5,7 +5,7 @@ from typing import Any, Dict, Sequence, Union
 import turnip_text
 from turnip_text import (
     Block,
-    BlockScope,
+    Blocks,
     Header,
     Inline,
     InlineScope,
@@ -71,8 +71,8 @@ class PrimitivesPlugin(abc.ABC, EnvPlugin):
         plugin = self
 
         class Capturer(UserBlockOrInlineScopeBuilder):
-            def build_from_blocks(self, blks: BlockScope) -> None:
-                plugin.captured[name] = blks
+            def build_from_blocks(self, blocks: Blocks) -> None:
+                plugin.captured[name] = blocks
                 return None
 
             def build_from_inlines(self, inls: InlineScope) -> None:

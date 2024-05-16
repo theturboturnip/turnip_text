@@ -614,8 +614,8 @@ impl<T: InlineMode> TokenProcessor for InlineLevelProcessor<T> {
                 DocElement::Block(BlockElem::FromCode(block)) => {
                     Err(self.inner.err_on_block_from_code(block, elem_ctx))
                 }
-                DocElement::Block(BlockElem::BlockScope(_)) => {
-                    unreachable!("InlineLevelProcessor never tries to build a BlockScope")
+                DocElement::Block(BlockElem::Blocks(_)) => {
+                    unreachable!("InlineLevelProcessor never tries to build a Blocks")
                 }
                 DocElement::Block(BlockElem::Para(_)) => {
                     unreachable!("InlineLevelProcessor never tries to build an inner Paragraph")

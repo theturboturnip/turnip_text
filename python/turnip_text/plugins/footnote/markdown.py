@@ -24,7 +24,7 @@ class FootnoteList(Block):
 
 
 # TODO FootnoteBeforeNextParagraphRenderPlugin
-# - FootnoteAfterBlock may try to emit something in the middle of a custom block, Paragraphs are (I think?) guaranteed to be inside a BlockScope and we can kind emit them there
+# - FootnoteAfterBlock may try to emit something in the middle of a custom block, Paragraphs are (I think?) guaranteed to be inside a Blocks and we can kind emit them there
 # TODO this is effectively an alternate/nonstandard implementation - move it out, we haven't agreed on a standard footntoe plugin
 class MarkdownFootnotePlugin_AtEnd(MarkdownPlugin, FootnoteEnvPlugin):
     footnote_anchors: List[Backref]

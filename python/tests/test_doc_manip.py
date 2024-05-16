@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 
 import pytest
-
 from turnip_text import *
 
 
@@ -16,56 +15,54 @@ class CustomHeader:
 
 def test_doc_appends_headers_correctly():
     # When appending headers, if each subsequent weight is <= the previous weight, you get multiple segments at the top level
-    doc = Document(contents=BlockScope(), segments=[])
+    doc = Document(contents=Blocks(), segments=[])
     doc.append_header(CustomHeader(weight=10))
     doc.append_header(CustomHeader(weight=10))
     doc.append_header(CustomHeader(weight=10))
     doc.append_header(CustomHeader(weight=10))
     print(doc)
     assert doc == Document(
-        contents=BlockScope(),
-        segments=[DocSegment(CustomHeader(weight=10), BlockScope(), [])] * 4,
+        contents=Blocks(),
+        segments=[DocSegment(CustomHeader(weight=10), Blocks(), [])] * 4,
     )
 
-    doc = Document(contents=BlockScope(), segments=[])
+    doc = Document(contents=Blocks(), segments=[])
     doc.append_header(CustomHeader(weight=10))
     doc.append_header(CustomHeader(weight=9))
     doc.append_header(CustomHeader(weight=8))
     doc.append_header(CustomHeader(weight=7))
     assert doc == Document(
-        contents=BlockScope(),
+        contents=Blocks(),
         segments=[
-            DocSegment(CustomHeader(weight=10), BlockScope(), []),
-            DocSegment(CustomHeader(weight=9), BlockScope(), []),
-            DocSegment(CustomHeader(weight=8), BlockScope(), []),
-            DocSegment(CustomHeader(weight=7), BlockScope(), []),
+            DocSegment(CustomHeader(weight=10), Blocks(), []),
+            DocSegment(CustomHeader(weight=9), Blocks(), []),
+            DocSegment(CustomHeader(weight=8), Blocks(), []),
+            DocSegment(CustomHeader(weight=7), Blocks(), []),
         ],
     )
 
     # When appending headers when weight > previous, it nests
-    doc = Document(contents=BlockScope(), segments=[])
+    doc = Document(contents=Blocks(), segments=[])
     doc.append_header(CustomHeader(weight=1))
     doc.append_header(CustomHeader(weight=2))
     doc.append_header(CustomHeader(weight=3))
     doc.append_header(CustomHeader(weight=4))
     assert doc == Document(
-        contents=BlockScope(),
+        contents=Blocks(),
         segments=[
             DocSegment(
                 CustomHeader(weight=1),
-                BlockScope(),
+                Blocks(),
                 [
                     DocSegment(
                         CustomHeader(weight=2),
-                        BlockScope(),
+                        Blocks(),
                         [
                             DocSegment(
                                 CustomHeader(weight=3),
-                                BlockScope(),
+                                Blocks(),
                                 [
-                                    DocSegment(
-                                        CustomHeader(weight=4), BlockScope(), []
-                                    ),
+                                    DocSegment(CustomHeader(weight=4), Blocks(), []),
                                 ],
                             ),
                         ],
@@ -75,32 +72,32 @@ def test_doc_appends_headers_correctly():
         ],
     )
 
-    doc = Document(contents=BlockScope(), segments=[])
+    doc = Document(contents=Blocks(), segments=[])
     doc.append_header(CustomHeader(weight=1))
     doc.append_header(CustomHeader(weight=4))
     doc.append_header(CustomHeader(weight=1))
     doc.append_header(CustomHeader(weight=2))
     assert doc == Document(
-        contents=BlockScope(),
+        contents=Blocks(),
         segments=[
             DocSegment(
                 CustomHeader(weight=1),
-                BlockScope(),
+                Blocks(),
                 [
                     DocSegment(
                         CustomHeader(weight=4),
-                        BlockScope(),
+                        Blocks(),
                         [],
                     ),
                 ],
             ),
             DocSegment(
                 CustomHeader(weight=1),
-                BlockScope(),
+                Blocks(),
                 [
                     DocSegment(
                         CustomHeader(weight=2),
-                        BlockScope(),
+                        Blocks(),
                         [],
                     ),
                 ],
@@ -123,7 +120,7 @@ def test_doc_inserts_headers_correctly():
     ##     - e.g. A = 100, X = 10, B = 75, C = 50
 
     def starting_doc():
-        doc = Document(BlockScope(), [])
+        doc = Document(Blocks(), [])
         doc.append_header(CustomHeader(100))
         doc.append_header(CustomHeader(75))
         doc.append_header(CustomHeader(50))
@@ -134,23 +131,23 @@ def test_doc_inserts_headers_correctly():
     doc = starting_doc()
     inserted = doc.insert_header(1, CustomHeader(110))
     # X should have no children
-    assert inserted == DocSegment(CustomHeader(110), BlockScope(), [])
+    assert inserted == DocSegment(CustomHeader(110), Blocks(), [])
     assert doc == Document(
-        BlockScope(),
+        Blocks(),
         [
             # A
             DocSegment(
                 CustomHeader(100),
-                BlockScope(),
+                Blocks(),
                 [
                     # X
-                    DocSegment(CustomHeader(110), BlockScope(), []),
+                    DocSegment(CustomHeader(110), Blocks(), []),
                 ],
             ),
             # B
-            DocSegment(CustomHeader(75), BlockScope(), []),
+            DocSegment(CustomHeader(75), Blocks(), []),
             # C
-            DocSegment(CustomHeader(50), BlockScope(), []),
+            DocSegment(CustomHeader(50), Blocks(), []),
         ],
     )
 
@@ -159,18 +156,18 @@ def test_doc_inserts_headers_correctly():
     doc = starting_doc()
     inserted = doc.insert_header(1, CustomHeader(90))
     # X should have no children
-    assert inserted == DocSegment(CustomHeader(90), BlockScope(), [])
+    assert inserted == DocSegment(CustomHeader(90), Blocks(), [])
     assert doc == Document(
-        BlockScope(),
+        Blocks(),
         [
             # A
-            DocSegment(CustomHeader(100), BlockScope(), []),
+            DocSegment(CustomHeader(100), Blocks(), []),
             # X
-            DocSegment(CustomHeader(90), BlockScope(), []),
+            DocSegment(CustomHeader(90), Blocks(), []),
             # B
-            DocSegment(CustomHeader(75), BlockScope(), []),
+            DocSegment(CustomHeader(75), Blocks(), []),
             # C
-            DocSegment(CustomHeader(50), BlockScope(), []),
+            DocSegment(CustomHeader(50), Blocks(), []),
         ],
     )
 
@@ -181,28 +178,28 @@ def test_doc_inserts_headers_correctly():
     # X should have one child
     assert inserted == DocSegment(
         CustomHeader(60),
-        BlockScope(),
+        Blocks(),
         [
             # B
-            DocSegment(CustomHeader(75), BlockScope(), []),
+            DocSegment(CustomHeader(75), Blocks(), []),
         ],
     )
     assert doc == Document(
-        BlockScope(),
+        Blocks(),
         [
             # A
-            DocSegment(CustomHeader(100), BlockScope(), []),
+            DocSegment(CustomHeader(100), Blocks(), []),
             # X
             DocSegment(
                 CustomHeader(60),
-                BlockScope(),
+                Blocks(),
                 [
                     # B
-                    DocSegment(CustomHeader(75), BlockScope(), []),
+                    DocSegment(CustomHeader(75), Blocks(), []),
                 ],
             ),
             # C
-            DocSegment(CustomHeader(50), BlockScope(), []),
+            DocSegment(CustomHeader(50), Blocks(), []),
         ],
     )
 
@@ -213,28 +210,28 @@ def test_doc_inserts_headers_correctly():
     # X should have two children
     assert inserted == DocSegment(
         CustomHeader(10),
-        BlockScope(),
+        Blocks(),
         [
             # B
-            DocSegment(CustomHeader(75), BlockScope(), []),
+            DocSegment(CustomHeader(75), Blocks(), []),
             # C
-            DocSegment(CustomHeader(50), BlockScope(), []),
+            DocSegment(CustomHeader(50), Blocks(), []),
         ],
     )
     assert doc == Document(
-        BlockScope(),
+        Blocks(),
         [
             # A
-            DocSegment(CustomHeader(100), BlockScope(), []),
+            DocSegment(CustomHeader(100), Blocks(), []),
             # X
             DocSegment(
                 CustomHeader(10),
-                BlockScope(),
+                Blocks(),
                 [
                     # B
-                    DocSegment(CustomHeader(75), BlockScope(), []),
+                    DocSegment(CustomHeader(75), Blocks(), []),
                     # C
-                    DocSegment(CustomHeader(50), BlockScope(), []),
+                    DocSegment(CustomHeader(50), Blocks(), []),
                 ],
             ),
         ],
@@ -243,7 +240,7 @@ def test_doc_inserts_headers_correctly():
 
 def test_doc_segment_prevents_smaller_weights():
     # DocSegment doesn't allow insertion of subsegments with lower or equal weight to the docsegment itself
-    doc_seg = DocSegment(CustomHeader(weight=10), BlockScope(), [])
+    doc_seg = DocSegment(CustomHeader(weight=10), Blocks(), [])
 
     with pytest.raises(ValueError):
         doc_seg.append_header(CustomHeader(weight=5))
@@ -257,7 +254,7 @@ def test_doc_segment_prevents_smaller_weights():
 
 def test_doc_segment_appends_headers_correctly():
     # When appending headers, if each subsequent weight is <= the previous weight, you get multiple segments at the top level
-    doc = DocSegment(CustomHeader(weight=0), contents=BlockScope(), subsegments=[])
+    doc = DocSegment(CustomHeader(weight=0), contents=Blocks(), subsegments=[])
     doc.append_header(CustomHeader(weight=10))
     doc.append_header(CustomHeader(weight=10))
     doc.append_header(CustomHeader(weight=10))
@@ -265,51 +262,49 @@ def test_doc_segment_appends_headers_correctly():
     print(doc)
     assert doc == DocSegment(
         CustomHeader(weight=0),
-        contents=BlockScope(),
-        subsegments=[DocSegment(CustomHeader(weight=10), BlockScope(), [])] * 4,
+        contents=Blocks(),
+        subsegments=[DocSegment(CustomHeader(weight=10), Blocks(), [])] * 4,
     )
 
-    doc = DocSegment(CustomHeader(weight=0), contents=BlockScope(), subsegments=[])
+    doc = DocSegment(CustomHeader(weight=0), contents=Blocks(), subsegments=[])
     doc.append_header(CustomHeader(weight=10))
     doc.append_header(CustomHeader(weight=9))
     doc.append_header(CustomHeader(weight=8))
     doc.append_header(CustomHeader(weight=7))
     assert doc == DocSegment(
         CustomHeader(weight=0),
-        contents=BlockScope(),
+        contents=Blocks(),
         subsegments=[
-            DocSegment(CustomHeader(weight=10), BlockScope(), []),
-            DocSegment(CustomHeader(weight=9), BlockScope(), []),
-            DocSegment(CustomHeader(weight=8), BlockScope(), []),
-            DocSegment(CustomHeader(weight=7), BlockScope(), []),
+            DocSegment(CustomHeader(weight=10), Blocks(), []),
+            DocSegment(CustomHeader(weight=9), Blocks(), []),
+            DocSegment(CustomHeader(weight=8), Blocks(), []),
+            DocSegment(CustomHeader(weight=7), Blocks(), []),
         ],
     )
 
     # When appending headers when weight > previous, it nests
-    doc = DocSegment(CustomHeader(weight=0), contents=BlockScope(), subsegments=[])
+    doc = DocSegment(CustomHeader(weight=0), contents=Blocks(), subsegments=[])
     doc.append_header(CustomHeader(weight=1))
     doc.append_header(CustomHeader(weight=2))
     doc.append_header(CustomHeader(weight=3))
     doc.append_header(CustomHeader(weight=4))
     assert doc == DocSegment(
         CustomHeader(weight=0),
-        contents=BlockScope(),
+        contents=Blocks(),
         subsegments=[
             DocSegment(
                 CustomHeader(weight=1),
-                BlockScope(),
+                Blocks(),
                 [
                     DocSegment(
                         CustomHeader(weight=2),
-                        BlockScope(),
+                        Blocks(),
                         [
                             DocSegment(
                                 CustomHeader(weight=3),
-                                BlockScope(),
+                                Blocks(),
                                 [
-                                    DocSegment(
-                                        CustomHeader(weight=4), BlockScope(), []
-                                    ),
+                                    DocSegment(CustomHeader(weight=4), Blocks(), []),
                                 ],
                             ),
                         ],
@@ -319,33 +314,33 @@ def test_doc_segment_appends_headers_correctly():
         ],
     )
 
-    doc = DocSegment(CustomHeader(weight=0), contents=BlockScope(), subsegments=[])
+    doc = DocSegment(CustomHeader(weight=0), contents=Blocks(), subsegments=[])
     doc.append_header(CustomHeader(weight=1))
     doc.append_header(CustomHeader(weight=4))
     doc.append_header(CustomHeader(weight=1))
     doc.append_header(CustomHeader(weight=2))
     assert doc == DocSegment(
         CustomHeader(weight=0),
-        contents=BlockScope(),
+        contents=Blocks(),
         subsegments=[
             DocSegment(
                 CustomHeader(weight=1),
-                BlockScope(),
+                Blocks(),
                 [
                     DocSegment(
                         CustomHeader(weight=4),
-                        BlockScope(),
+                        Blocks(),
                         [],
                     ),
                 ],
             ),
             DocSegment(
                 CustomHeader(weight=1),
-                BlockScope(),
+                Blocks(),
                 [
                     DocSegment(
                         CustomHeader(weight=2),
-                        BlockScope(),
+                        Blocks(),
                         [],
                     ),
                 ],
@@ -368,7 +363,7 @@ def test_doc_segment_inserts_headers_correctly():
     ##     - e.g. A = 100, X = 10, B = 75, C = 50
 
     def starting_doc():
-        doc = DocSegment(CustomHeader(0), BlockScope(), [])
+        doc = DocSegment(CustomHeader(0), Blocks(), [])
         doc.append_header(CustomHeader(100))
         doc.append_header(CustomHeader(75))
         doc.append_header(CustomHeader(50))
@@ -379,24 +374,24 @@ def test_doc_segment_inserts_headers_correctly():
     doc = starting_doc()
     inserted = doc.insert_header(1, CustomHeader(110))
     # X should have no children
-    assert inserted == DocSegment(CustomHeader(110), BlockScope(), [])
+    assert inserted == DocSegment(CustomHeader(110), Blocks(), [])
     assert doc == DocSegment(
         CustomHeader(0),
-        BlockScope(),
+        Blocks(),
         [
             # A
             DocSegment(
                 CustomHeader(100),
-                BlockScope(),
+                Blocks(),
                 [
                     # X
-                    DocSegment(CustomHeader(110), BlockScope(), []),
+                    DocSegment(CustomHeader(110), Blocks(), []),
                 ],
             ),
             # B
-            DocSegment(CustomHeader(75), BlockScope(), []),
+            DocSegment(CustomHeader(75), Blocks(), []),
             # C
-            DocSegment(CustomHeader(50), BlockScope(), []),
+            DocSegment(CustomHeader(50), Blocks(), []),
         ],
     )
 
@@ -405,19 +400,19 @@ def test_doc_segment_inserts_headers_correctly():
     doc = starting_doc()
     inserted = doc.insert_header(1, CustomHeader(90))
     # X should have no children
-    assert inserted == DocSegment(CustomHeader(90), BlockScope(), [])
+    assert inserted == DocSegment(CustomHeader(90), Blocks(), [])
     assert doc == DocSegment(
         CustomHeader(0),
-        BlockScope(),
+        Blocks(),
         [
             # A
-            DocSegment(CustomHeader(100), BlockScope(), []),
+            DocSegment(CustomHeader(100), Blocks(), []),
             # X
-            DocSegment(CustomHeader(90), BlockScope(), []),
+            DocSegment(CustomHeader(90), Blocks(), []),
             # B
-            DocSegment(CustomHeader(75), BlockScope(), []),
+            DocSegment(CustomHeader(75), Blocks(), []),
             # C
-            DocSegment(CustomHeader(50), BlockScope(), []),
+            DocSegment(CustomHeader(50), Blocks(), []),
         ],
     )
 
@@ -428,29 +423,29 @@ def test_doc_segment_inserts_headers_correctly():
     # X should have one child
     assert inserted == DocSegment(
         CustomHeader(60),
-        BlockScope(),
+        Blocks(),
         [
             # B
-            DocSegment(CustomHeader(75), BlockScope(), []),
+            DocSegment(CustomHeader(75), Blocks(), []),
         ],
     )
     assert doc == DocSegment(
         CustomHeader(0),
-        BlockScope(),
+        Blocks(),
         [
             # A
-            DocSegment(CustomHeader(100), BlockScope(), []),
+            DocSegment(CustomHeader(100), Blocks(), []),
             # X
             DocSegment(
                 CustomHeader(60),
-                BlockScope(),
+                Blocks(),
                 [
                     # B
-                    DocSegment(CustomHeader(75), BlockScope(), []),
+                    DocSegment(CustomHeader(75), Blocks(), []),
                 ],
             ),
             # C
-            DocSegment(CustomHeader(50), BlockScope(), []),
+            DocSegment(CustomHeader(50), Blocks(), []),
         ],
     )
 
@@ -461,29 +456,29 @@ def test_doc_segment_inserts_headers_correctly():
     # X should have two children
     assert inserted == DocSegment(
         CustomHeader(10),
-        BlockScope(),
+        Blocks(),
         [
             # B
-            DocSegment(CustomHeader(75), BlockScope(), []),
+            DocSegment(CustomHeader(75), Blocks(), []),
             # C
-            DocSegment(CustomHeader(50), BlockScope(), []),
+            DocSegment(CustomHeader(50), Blocks(), []),
         ],
     )
     assert doc == DocSegment(
         CustomHeader(0),
-        BlockScope(),
+        Blocks(),
         [
             # A
-            DocSegment(CustomHeader(100), BlockScope(), []),
+            DocSegment(CustomHeader(100), Blocks(), []),
             # X
             DocSegment(
                 CustomHeader(10),
-                BlockScope(),
+                Blocks(),
                 [
                     # B
-                    DocSegment(CustomHeader(75), BlockScope(), []),
+                    DocSegment(CustomHeader(75), Blocks(), []),
                     # C
-                    DocSegment(CustomHeader(50), BlockScope(), []),
+                    DocSegment(CustomHeader(50), Blocks(), []),
                 ],
             ),
         ],

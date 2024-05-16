@@ -7,7 +7,7 @@ use crate::{
         state_machines::{py_internal_alloc, BlockElem, ProcStatus},
     },
     python::{
-        interop::{BlockScope, Header},
+        interop::{Blocks, Header},
         typeclass::PyTcRef,
     },
     util::{ParseContext, ParseSpan},
@@ -17,7 +17,7 @@ use super::{BlockLevelProcessor, BlockMode};
 
 pub struct BlockScopeBlockMode {
     ctx: ParseContext,
-    block_scope: Py<BlockScope>,
+    blocks: Py<Blocks>,
 }
 impl BlockMode for BlockScopeBlockMode {
     fn on_close_scope(&mut self, py: Python, tok: TTToken, _data: &str) -> TTResult<ProcStatus> {
@@ -31,7 +31,7 @@ impl BlockMode for BlockScopeBlockMode {
         } else {
             Ok(ProcStatus::Pop(Some((
                 self.ctx,
-                BlockElem::BlockScope(self.block_scope.clone_ref(py)).into(),
+                BlockElem::Blocks(self.blocks.clone_ref(py)).into(),
             ))))
         }
     }
@@ -45,18 +45,18 @@ impl BlockMode for BlockScopeBlockMode {
     }
 
     fn on_header(&mut self, py: Python, header: PyTcRef<Header>) -> TTResult<()> {
-        self.block_scope
+        self.blocks
             .borrow_mut(py)
             .append_block(header.bind(py))
-            .expect_pyok("BlockScope::append_block with Header");
+            .expect_pyok("Blocks::append_block with Header");
         Ok(())
     }
 
     fn on_block(&mut self, py: Python, block: &Bound<'_, PyAny>) -> TTResult<()> {
-        self.block_scope
+        self.blocks
             .borrow_mut(py)
             .append_block(block)
-            .expect_pyok("BlockScope::append_block with BlockElem");
+            .expect_pyok("Blocks::append_block with BlockElem");
         Ok(())
     }
 }
@@ -65,7 +65,7 @@ impl BlockLevelProcessor<BlockScopeBlockMode> {
         Ok(Self {
             inner: BlockScopeBlockMode {
                 ctx: ParseContext::new(first_tok, last_tok),
-                block_scope: py_internal_alloc(py, BlockScope::new_empty(py))?,
+                blocks: py_internal_alloc(py, Blocks::new_empty(py))?,
             },
             expects_n_blank_lines_after: None,
         })

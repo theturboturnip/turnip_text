@@ -1,6 +1,6 @@
 use crate::interpreter::error::HandleInternalPyErr;
 use crate::python::interop::{
-    BlockScope, DocSegment, Document, Header, InlineScope, Paragraph, Raw, Sentence, Text,
+    Blocks, DocSegment, Document, Header, InlineScope, Paragraph, Raw, Sentence, Text,
 };
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -8,7 +8,7 @@ use pyo3::types::PyDict;
 pub const GLOBALS_CODE: &'static str = r#"
 # The Rust module name is _native, which is included under turnip_text, so Python IDEs don't try to import directly from it.
 # This means we use _native instead of turnip_text as the module name here.
-from _native import InlineScope, Text, BlockScope, TurnipTextSource, Paragraph, Sentence, Raw
+from _native import InlineScope, Text, Blocks, TurnipTextSource, Paragraph, Sentence, Raw
 
 class CustomHeader:
     is_block = True
@@ -34,7 +34,7 @@ class CustomRaw:
     def __init__(self, raw_str):
         self.test_raw_str = str(raw_str)
 
-CUSTOM_BLOCK = CustomBlock(BlockScope([]))
+CUSTOM_BLOCK = CustomBlock(Blocks([]))
 CUSTOM_INLINE = CustomInline(InlineScope([]))
 CUSTOM_RAW = CustomRaw("")
 
@@ -43,10 +43,10 @@ class CustomBlockBuilder:
         return CustomBlock(contents)
 class CustomBlockBuilderFromInline:
     def build_from_inlines(self, contents: InlineScope):
-        return CustomBlock(BlockScope([Paragraph([Sentence([contents])])]))
+        return CustomBlock(Blocks([Paragraph([Sentence([contents])])]))
 class CustomBlockBuilderFromRaw:
     def build_from_raw(self, raw):
-        return CustomBlock(BlockScope([Paragraph([Sentence([raw])])]))
+        return CustomBlock(Blocks([Paragraph([Sentence([raw])])]))
     
 class CustomInlineBuilder:
     def build_from_inlines(self, contents):
@@ -113,10 +113,10 @@ pub struct TestDocSegment {
 }
 #[derive(Debug, PartialEq, Eq)]
 pub enum TestBlock {
-    BlockScope(Vec<TestBlock>),
+    Blocks(Vec<TestBlock>),
     Paragraph(Vec<Vec<TestInline>>),
 
-    /// Test-only - a Python object build from a block scope with test_block: BlockScope = the contents of that scope
+    /// Test-only - a Python object build from a block scope with test_block: Blocks = the contents of that scope
     CustomBlock(Vec<TestBlock>),
 }
 #[derive(Debug, PartialEq, Eq)]
@@ -132,7 +132,7 @@ pub enum TestInline {
 }
 pub fn test_doc(contents: Vec<TestBlock>) -> TestDocument {
     TestDocument {
-        contents: TestBlock::BlockScope(contents),
+        contents: TestBlock::Blocks(contents),
         segments: vec![],
     }
 }
@@ -218,8 +218,8 @@ impl PyToTest<TestDocSegment> for Bound<'_, PyAny> {
 }
 impl PyToTest<TestBlock> for Bound<'_, PyAny> {
     fn as_test(&self, py: Python) -> TestBlock {
-        if let Ok(block) = self.extract::<BlockScope>() {
-            TestBlock::BlockScope(
+        if let Ok(block) = self.extract::<Blocks>() {
+            TestBlock::Blocks(
                 block
                     .0
                     .list(py)
@@ -237,7 +237,7 @@ impl PyToTest<TestBlock> for Bound<'_, PyAny> {
             )
         } else if let Ok(obj) = self.getattr("test_block") {
             TestBlock::CustomBlock(
-                obj.extract::<BlockScope>()
+                obj.extract::<Blocks>()
                     .unwrap()
                     .0
                     .list(py)

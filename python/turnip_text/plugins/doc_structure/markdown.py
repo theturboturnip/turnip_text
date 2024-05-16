@@ -1,6 +1,6 @@
 from typing import Iterator, List, Tuple, Union
 
-from turnip_text import BlockScope, DocSegment, InlineScope, Raw, Text, join_inlines
+from turnip_text import Blocks, DocSegment, InlineScope, Raw, Text, join_inlines
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc.anchors import Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
@@ -101,7 +101,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
                     BasicHeader(
                         title=InlineScope([title.metadata.title]), anchor=None, weight=1
                     ),
-                    contents=BlockScope([]),
+                    contents=Blocks([]),
                     subsegments=[],
                 )
             )
@@ -113,7 +113,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
                         anchor=None,
                         weight=2,
                     ),
-                    contents=BlockScope([]),
+                    contents=Blocks([]),
                     subsegments=[],
                 )
             )
@@ -133,12 +133,12 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
                 BasicHeader(
                     title=InlineScope([Text("Contents")]), anchor=None, weight=1
                 ),
-                contents=BlockScope(
+                contents=Blocks(
                     [
                         fmt.itemize
                         @ [
                             fmt.item
-                            @ BlockScope(
+                            @ Blocks(
                                 [
                                     paragraph_of(
                                         Backref(
@@ -170,7 +170,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
     def _emit_structure(
         self,
         head: BasicHeader,
-        contents: BlockScope,
+        contents: Blocks,
         subsegments: Iterator[DocSegment],
         renderer: MarkdownRenderer,
         fmt: FmtEnv,
@@ -204,7 +204,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
     def _emit_appendix(
         self,
         head: AppendixHeader,
-        contents: BlockScope,
+        contents: Blocks,
         subsegments: Iterator[DocSegment],
         renderer: MarkdownRenderer,
         fmt: FmtEnv,

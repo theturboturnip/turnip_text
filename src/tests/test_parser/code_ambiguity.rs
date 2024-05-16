@@ -8,7 +8,7 @@ fn test_code_followed_by_newline_doesnt_build() {
 [-
 class Super:
     is_block = True
-    test_block = BlockScope([])
+    test_block = Blocks([])
 
     def build_from_blocks(self, blocks):
         raise RuntimeError("argh shouldn't run this")
@@ -63,7 +63,7 @@ fn test_code_followed_by_block_scope_must_build() {
 [-
 class Super:
     is_block = True
-    test_block = BlockScope([Paragraph([Sentence([Text("shouldnt see this")])])])
+    test_block = Blocks([Paragraph([Sentence([Text("shouldnt see this")])])])
 
     def build_from_blocks(self, blocks):
         return None
@@ -87,7 +87,7 @@ class Super:
         TestUserPythonError::CoercingEvalBracketToBuilder {
             
             code_ctx: TestParseContext("[", "CUSTOM_BLOCK", "]"),
-            err: Regex::new(r"TypeError\s*:\s*Expected.*BlockScopeBuilder.*build_from_blocks.*Got <CustomBlock.*")
+            err: Regex::new(r"TypeError\s*:\s*Expected.*BlocksBuilder.*build_from_blocks.*Got <CustomBlock.*")
                 .unwrap(),
             scope_open: TestParseSpan("{"),
             build_mode: UserPythonBuildMode::FromBlock,
@@ -105,7 +105,7 @@ fn test_code_followed_by_inline_scope_must_build() {
 [-
 class Super:
     is_block = True
-    test_block = BlockScope([Paragraph([Sentence([Text("shouldnt see this")])])])
+    test_block = Blocks([Paragraph([Sentence([Text("shouldnt see this")])])])
 
     def build_from_blocks(self, blocks):
         raise RuntimeError("argh shouldn't run this")
@@ -148,7 +148,7 @@ fn test_code_followed_by_raw_scope_must_build() {
 [-
 class Super:
     is_block = True
-    test_block = BlockScope([Paragraph([Sentence([Text("shouldnt see this")])])])
+    test_block = Blocks([Paragraph([Sentence([Text("shouldnt see this")])])])
 
     def build_from_blocks(self, blocks):
         raise RuntimeError("argh shouldn't run this")

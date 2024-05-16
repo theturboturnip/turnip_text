@@ -1,11 +1,9 @@
 from dataclasses import dataclass
 from typing import Sequence, Set
 
-from typing_extensions import override
-
 from turnip_text import (
     Block,
-    BlockScope,
+    Blocks,
     DocSegment,
     Document,
     Header,
@@ -16,6 +14,7 @@ from turnip_text import (
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
 from turnip_text.helpers import UserInlineScopeBuilder
+from typing_extensions import override
 
 
 # Moons ago I considered replacing this with Backref. This should not be replaced with Backref,

@@ -2,7 +2,7 @@ from typing import Any, Callable, Iterable, List, Set, Tuple, Type
 
 from turnip_text import (
     Block,
-    BlockScope,
+    Blocks,
     DocSegment,
     Document,
     Header,
@@ -61,7 +61,7 @@ class DocumentDfsPass:
             # Extract children as a reversed iterator.
             # reversed is important because we pop the last thing in the queue off first.
             children: Iterable[Block | Inline | DocSegment] | None = None
-            if isinstance(node, (BlockScope, InlineScope)):
+            if isinstance(node, (Blocks, InlineScope)):
                 children = reversed(tuple(node))
             elif isinstance(node, DocSegment):
                 children = reversed((node.header, node.contents, *node.subsegments))

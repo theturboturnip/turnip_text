@@ -2,7 +2,7 @@ from typing import Optional, Protocol, Sequence, TypeAlias, Union, runtime_check
 
 __all__ = [
     "Block",
-    "BlockScope",
+    "Blocks",
     "Inline",
     "InlineScope",
     "DocSegment",
@@ -12,16 +12,16 @@ __all__ = [
     "Sentence",
     "Text",
     "coerce_to_block",
-    "coerce_to_block_scope",
+    "coerce_to_blocks",
     "coerce_to_inline",
     "coerce_to_inline_scope",
-    "BlockScopeBuilder",
+    "BlocksBuilder",
     "InlineScopeBuilder",
     "RawScopeBuilder",
     "CoercibleToInline",
     "CoercibleToInlineScope",
     "CoercibleToBlock",
-    "CoercibleToBlockScope",
+    "CoercibleToBlocks",
     "parse_file",
     "TurnipTextError",
     "TurnipTextSource",
@@ -29,7 +29,7 @@ __all__ = [
 ]
 
 from ._native import (  # type: ignore
-    BlockScope,
+    Blocks,
     DocSegment,
     Document,
     InlineScope,
@@ -40,7 +40,7 @@ from ._native import (  # type: ignore
     TurnipTextError,
     TurnipTextSource,
     coerce_to_block,
-    coerce_to_block_scope,
+    coerce_to_blocks,
     coerce_to_inline,
     coerce_to_inline_scope,
     parse_file,
@@ -70,18 +70,18 @@ DocElement: TypeAlias = Union[Block, Inline]
 
 
 @runtime_checkable
-class BlockScopeBuilder(Protocol):
-    def build_from_blocks(self, bs: BlockScope) -> Optional[DocElement]: ...
+class BlocksBuilder(Protocol):
+    def build_from_blocks(self, blocks: Blocks) -> Optional[DocElement]: ...
 
 
 @runtime_checkable
 class InlineScopeBuilder(Protocol):
-    def build_from_inlines(self, inls: InlineScope) -> Optional[DocElement]: ...
+    def build_from_inlines(self, inlines: InlineScope) -> Optional[DocElement]: ...
 
 
 @runtime_checkable
 class RawScopeBuilder(Protocol):
-    def build_from_raw(self, raw: str) -> Optional[DocElement]: ...
+    def build_from_raw(self, raw: Raw) -> Optional[DocElement]: ...
 
 
 # The types that can be coerced into an Inline, in the order they are checked and attempted.
@@ -99,8 +99,8 @@ CoercibleToInlineScope = Union[InlineScope, CoercibleToInline]
 # The types that can be coerced into a Block, in the order they are checked and attempted
 CoercibleToBlock = Union[Block, Sentence, Sequence[Block], CoercibleToInline]
 
-# The types that can be coerced into a BlockScope, in the order they are checked and attempted
-CoercibleToBlockScope = Union[BlockScope, CoercibleToBlock]
+# The types that can be coerced into a Blocks, in the order they are checked and attempted
+CoercibleToBlocks = Union[Blocks, CoercibleToBlock]
 
 
 def join_inlines(inlines: Sequence[Inline], joiner: Inline) -> InlineScope:

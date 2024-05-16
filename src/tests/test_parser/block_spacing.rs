@@ -2,8 +2,8 @@
 //! There are five block-level elements:
 //! - Paragraph
 //! - Block scope
-//! - Block emitted from code (which could have used a BlockScopeBuilder, InlineScopeBuilder, or RawBuilder)
-//! - Header emitted from code (which could have used a BlockScopeBuilder, InlineScopeBuilder, or RawBuilder)
+//! - Block emitted from code (which could have used a BlocksBuilder, InlineScopeBuilder, or RawBuilder)
+//! - Header emitted from code (which could have used a BlocksBuilder, InlineScopeBuilder, or RawBuilder)
 //! - TurnipTextSource emitted from code
 //!
 //! When one is emitted we know exactly what kind it is, but we may not get all the way through parsing the next one.
@@ -99,10 +99,10 @@ fn test_primitives() {
     expect_parse(
         CREATED_HEADER_BARE,
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![]),
+            contents: TestBlock::Blocks(vec![]),
             segments: vec![TestDocSegment {
                 header: (1, None, None),
-                contents: TestBlock::BlockScope(vec![]),
+                contents: TestBlock::Blocks(vec![]),
                 subsegments: vec![],
             }],
         }),
@@ -110,16 +110,16 @@ fn test_primitives() {
     expect_parse(
         CREATED_HEADER_FROM_BLOCK,
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![]),
+            contents: TestBlock::Blocks(vec![]),
             segments: vec![TestDocSegment {
                 header: (
                     1,
-                    Some(TestBlock::BlockScope(vec![TestBlock::Paragraph(vec![
+                    Some(TestBlock::Blocks(vec![TestBlock::Paragraph(vec![
                         test_sentence("block_in_header"),
                     ])])),
                     None,
                 ),
-                contents: TestBlock::BlockScope(vec![]),
+                contents: TestBlock::Blocks(vec![]),
                 subsegments: vec![],
             }],
         }),
@@ -127,14 +127,14 @@ fn test_primitives() {
     expect_parse(
         CREATED_HEADER_FROM_INLINE,
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![]),
+            contents: TestBlock::Blocks(vec![]),
             segments: vec![TestDocSegment {
                 header: (
                     1,
                     None,
                     Some(TestInline::InlineScope(vec![test_text("inline_in_header")])),
                 ),
-                contents: TestBlock::BlockScope(vec![]),
+                contents: TestBlock::Blocks(vec![]),
                 subsegments: vec![],
             }],
         }),
@@ -142,7 +142,7 @@ fn test_primitives() {
     expect_parse(
         CREATED_HEADER_FROM_RAW,
         Ok(TestDocument {
-            contents: TestBlock::BlockScope(vec![]),
+            contents: TestBlock::Blocks(vec![]),
             segments: vec![TestDocSegment {
                 header: (
                     1,
@@ -151,7 +151,7 @@ fn test_primitives() {
                         "raw_in_header",
                     )])),
                 ),
-                contents: TestBlock::BlockScope(vec![]),
+                contents: TestBlock::Blocks(vec![]),
                 subsegments: vec![],
             }],
         }),
@@ -475,7 +475,7 @@ mod block_scope {
 
     test_needs_newline!(
         CREATED_BSCOPE,
-        TestBlockModeElem::BlockScope(CREATED_BSCOPE_CTX)
+        TestBlockModeElem::Blocks(CREATED_BSCOPE_CTX)
     );
 }
 

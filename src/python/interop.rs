@@ -21,14 +21,14 @@ pub fn turnip_text(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(coerce_to_inline, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_to_inline_scope, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_to_block, m)?)?;
-    m.add_function(wrap_pyfunction!(coerce_to_block_scope, m)?)?;
+    m.add_function(wrap_pyfunction!(coerce_to_blocks, m)?)?;
 
     // Primitives
     m.add_class::<Text>()?;
     m.add_class::<Raw>()?;
     m.add_class::<Sentence>()?;
     m.add_class::<Paragraph>()?;
-    m.add_class::<BlockScope>()?;
+    m.add_class::<Blocks>()?;
     m.add_class::<InlineScope>()?;
     m.add_class::<Document>()?;
     m.add_class::<DocSegment>()?;
@@ -154,12 +154,12 @@ pub fn coerce_to_block_pytcref<'py>(
         )?;
         return Ok(PyTcRef::of_unchecked(paragraph.bind(py)));
     }
-    // 3. if it's an sequence of Block, wrap it in a BlockScope and return it
-    // Here we first check if it's sequence, then if so try to create a BlockScope - this will verify if it's a list of Blocks.
+    // 3. if it's an sequence of Block, wrap it in a Blocks and return it
+    // Here we first check if it's sequence, then if so try to create a Blocks - this will verify if it's a list of Blocks.
     if let Ok(seq) = obj.downcast::<PySequence>() {
-        if let Ok(block_scope) = BlockScope::new(py, Some(&seq)) {
-            let block_scope = Py::new(py, block_scope)?;
-            return Ok(PyTcRef::of_unchecked(block_scope.bind(py)));
+        if let Ok(blocks) = Blocks::new(py, Some(&seq)) {
+            let blocks = Py::new(py, blocks)?;
+            return Ok(PyTcRef::of_unchecked(blocks.bind(py)));
         }
     }
     // 4. if it can be coerced to an Inline, wrap that in list -> Sentence -> list -> Paragraph and return it
@@ -185,29 +185,26 @@ pub fn coerce_to_block_pytcref<'py>(
     // 5. otherwise fail with TypeError
     Err(PyTypeError::new_err(
         "Failed to coerce object to Block: was not a Block, list of Blocks (coercible to \
-         BlockScope), Paragraph, Sentence, or coercible to Inline.",
+         Blocks), Paragraph, Sentence, or coercible to Inline.",
     ))
 }
 
 #[pyfunction]
-pub fn coerce_to_block_scope<'py>(
-    py: Python<'py>,
-    obj: &Bound<'py, PyAny>,
-) -> PyResult<Py<BlockScope>> {
-    // 1. if it's already a BlockScope, return it
-    if let Ok(block_scope) = obj.extract() {
-        return Ok(block_scope);
+pub fn coerce_to_blocks<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Py<Blocks>> {
+    // 1. if it's already a Blocks, return it
+    if let Ok(blocks) = obj.extract() {
+        return Ok(blocks);
     }
     // 2. attempt coercion to block, if it fails return typeerror
     let obj = coerce_to_block(py, obj)?;
-    // 3. if the coercion produced BlockScope, return that
-    if let Ok(block_scope) = obj.extract(py) {
-        return Ok(block_scope);
+    // 3. if the coercion produced Blocks, return that
+    if let Ok(blocks) = obj.extract(py) {
+        return Ok(blocks);
     }
-    // 4. otherwise return BlockScope([that])
+    // 4. otherwise return Blocks([that])
     return Ok(Py::new(
         py,
-        BlockScope::new(py, Some(&PyList::new_bound(py, [obj]).as_sequence()))?,
+        Blocks::new(py, Some(&PyList::new_bound(py, [obj]).as_sequence()))?,
     )?);
 }
 
@@ -423,24 +420,24 @@ impl PyTypeclass for Header {
     }
 }
 
-// FUTURE BlockScopeBuilder => BuilderFromBlockScope?
-/// Typeclass representing a "builder" which takes a BlockScope and produces a new DocElement.
+// FUTURE BlocksBuilder => BuilderFromBlockScope?
+/// Typeclass representing a "builder" which takes a Blocks and produces a new DocElement.
 /// Doesn't typecheck the output of the build method, that's done in [`crate::interpreter::state_machines::code`]
 ///
 /// Requires a method
 /// ```python
-/// def build_from_blocks(self, blocks: BlockScope) -> Block | Inline | Header | None: ...
+/// def build_from_blocks(self, blocks: Blocks) -> Block | Inline | Header | None: ...
 /// ```
 #[derive(Debug, Clone)]
-pub struct BlockScopeBuilder {}
-impl BlockScopeBuilder {
+pub struct BlocksBuilder {}
+impl BlocksBuilder {
     fn marker_func_name(py: Python<'_>) -> &Bound<'_, PyString> {
         intern!(py, "build_from_blocks")
     }
     pub fn call_build_from_blocks<'py>(
         py: Python<'py>,
         builder: PyTcRef<Self>,
-        blocks: Py<BlockScope>,
+        blocks: Py<Blocks>,
     ) -> PyResult<Bound<'py, PyAny>> {
         builder
             .bind(py)
@@ -448,8 +445,8 @@ impl BlockScopeBuilder {
             .call1((blocks.bind(py),))
     }
 }
-impl PyTypeclass for BlockScopeBuilder {
-    const NAME: &'static str = "BlockScopeBuilder";
+impl PyTypeclass for BlocksBuilder {
+    const NAME: &'static str = "BlocksBuilder";
 
     fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
         obj.hasattr(Self::marker_func_name(obj.py()))
@@ -752,14 +749,14 @@ impl Paragraph {
 /// Typically created by Rust while parsing input files.
 #[pyclass(sequence)]
 #[derive(Debug, Clone)]
-pub struct BlockScope(pub PyTypeclassList<Block>);
-impl BlockScope {
+pub struct Blocks(pub PyTypeclassList<Block>);
+impl Blocks {
     pub fn new_empty(py: Python) -> Self {
         Self(PyTypeclassList::new(py))
     }
 }
 #[pymethods]
-impl BlockScope {
+impl Blocks {
     #[new]
     #[pyo3(signature = (seq=None))]
     pub fn new(py: Python, seq: Option<&Bound<'_, PySequence>>) -> PyResult<Self> {
@@ -792,10 +789,10 @@ impl BlockScope {
         self.0.__eq__(py, &other.0)
     }
     pub fn __str__(&self, py: Python) -> PyResult<String> {
-        Ok(format!("BlockScope(<{} blocks>)", self.0.list(py).len()))
+        Ok(format!("Blocks(<{} blocks>)", self.0.list(py).len()))
     }
     pub fn __repr__(&self, py: Python) -> PyResult<String> {
-        Ok(format!(r#"BlockScope({})"#, self.0.__repr__(py)?))
+        Ok(format!(r#"Blocks({})"#, self.0.__repr__(py)?))
     }
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
@@ -925,13 +922,13 @@ impl TurnipTextSource {
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Document {
-    pub contents: Py<BlockScope>,
+    pub contents: Py<Blocks>,
     pub segments: DocSegmentList,
 }
 impl Document {
     pub fn empty(py: Python) -> PyResult<Self> {
         Ok(Self {
-            contents: Py::new(py, BlockScope::new_empty(py))?,
+            contents: Py::new(py, Blocks::new_empty(py))?,
             segments: DocSegmentList::empty(py),
         })
     }
@@ -939,14 +936,14 @@ impl Document {
 #[pymethods]
 impl Document {
     #[new]
-    pub fn new(contents: Py<BlockScope>, segments: &Bound<'_, PySequence>) -> PyResult<Self> {
+    pub fn new(contents: Py<Blocks>, segments: &Bound<'_, PySequence>) -> PyResult<Self> {
         Ok(Self {
             contents,
             segments: DocSegmentList::new(segments)?,
         })
     }
     #[getter]
-    pub fn contents<'py>(&'py self, py: Python<'py>) -> &'py Bound<'py, BlockScope> {
+    pub fn contents<'py>(&'py self, py: Python<'py>) -> &'py Bound<'py, Blocks> {
         self.contents.bind(py)
     }
     #[getter]
@@ -1006,7 +1003,7 @@ impl Document {
 #[derive(Debug, Clone)]
 pub struct DocSegment {
     pub header: PyTcRef<Header>,
-    pub contents: Py<BlockScope>,
+    pub contents: Py<Blocks>,
     pub subsegments: DocSegmentList,
 }
 #[pymethods]
@@ -1014,7 +1011,7 @@ impl DocSegment {
     #[new]
     pub fn new(
         header: &Bound<'_, PyAny>,
-        contents: Py<BlockScope>,
+        contents: Py<Blocks>,
         subsegments: &Bound<'_, PySequence>,
     ) -> PyResult<Self> {
         // First, make sure the header is a header - this means we provide a good error message to user Python
@@ -1048,7 +1045,7 @@ impl DocSegment {
         self.header.bind(py)
     }
     #[getter]
-    pub fn contents<'py>(&'py self, py: Python<'py>) -> &'py Bound<'py, BlockScope> {
+    pub fn contents<'py>(&'py self, py: Python<'py>) -> &'py Bound<'py, Blocks> {
         self.contents.bind(py)
     }
     #[getter]
@@ -1269,7 +1266,7 @@ impl DocSegmentList {
             py,
             DocSegment {
                 header,
-                contents: Py::new(py, BlockScope::new_empty(py))?,
+                contents: Py::new(py, Blocks::new_empty(py))?,
                 subsegments: Self(PyList::empty_bound(py).into()),
             },
         )?
@@ -1310,7 +1307,7 @@ impl DocSegmentList {
             py,
             DocSegment {
                 header,
-                contents: Py::new(py, BlockScope::new_empty(py))?,
+                contents: Py::new(py, Blocks::new_empty(py))?,
                 // Enforces the invariant for elements after the insertion point
                 subsegments: Self(self.extract_heavier_items(py, new_weight, index)?.into()),
             },

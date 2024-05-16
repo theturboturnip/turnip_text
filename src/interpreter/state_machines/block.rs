@@ -1,6 +1,6 @@
 //! These modules handle block-mode parsing - both at the top level with [TopLevelProcessor] and inside a block scope with [BlockScopeProcessor].
 //! In both cases, all types of Block can be generated.
-//! Opening a scope opens an [AmbiguousScopeProcessor], which either emits [BlockElem::BlockScope] or [InlineElem::InlineScope].
+//! Opening a scope opens an [AmbiguousScopeProcessor], which either emits [BlockElem::Blocks] or [InlineElem::InlineScope].
 //! Opening a raw scope opens a [RawStringProcessor].
 //! Comments are allowed.
 //! Escaped newlines are not allowed.
@@ -23,7 +23,7 @@
 //! - Encountered [Header]s are only allowed in top-level mode, and are pushed to the document to close old segments/create a new one based on its weight.
 //!   They also put the parser into a state where there must be no content until the next newline.
 //! - Encountered [TurnipTextSource]s are allowed, which means the parser must tolerate receiving tokens from inner files.
-//!   In block-scopes, close-block-scope tokens are only accepted if they come from the same file as the BlockScope started. If they are received from inner files, those inner files must be unbalanced.
+//!   In block-scopes, close-block-scope tokens are only accepted if they come from the same file as the Blocks started. If they are received from inner files, those inner files must be unbalanced.
 //!   They also put the parser into a state where there must be no content until the next newline.
 
 use pyo3::prelude::*;
@@ -38,7 +38,7 @@ use crate::{
         UserPythonEnv,
     },
     python::{
-        interop::{BlockScope, Header},
+        interop::{Blocks, Header},
         typeclass::PyTcRef,
     },
     util::{ParseContext, ParseSpan},
@@ -89,14 +89,14 @@ trait BlockMode {
 #[allow(private_bounds)]
 impl<T: BlockMode> BlockLevelProcessor<T> {
     /// Disambiguate between a Header block or a plain old regular block, and pass it to the inner.
-    fn on_block_or_header_or_block_scope(
+    fn on_block_or_header_or_blocks(
         &mut self,
         py: Python,
         block: &Bound<'_, PyAny>,
     ) -> TTResult<()> {
-        if let Ok(block_scope) = block.downcast::<BlockScope>() {
-            for block in block_scope.borrow().0.list(py) {
-                self.on_block_or_header_or_block_scope(py, &block)?
+        if let Ok(blocks) = block.downcast::<Blocks>() {
+            for block in blocks.borrow().0.list(py) {
+                self.on_block_or_header_or_blocks(py, &block)?
             }
             Ok(())
         } else if let Ok(header) = PyTcRef::of(block) {
@@ -224,9 +224,9 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
                     self.inner.on_block(py, p.into_any().bind(py))?;
                     Ok(ProcStatus::Continue)
                 }
-                DocElement::Block(BlockElem::BlockScope(block_scope)) => {
-                    self.expects_n_blank_lines_after = Some(BlockModeElem::BlockScope(elem_ctx));
-                    self.on_block_or_header_or_block_scope(py, block_scope.bind(py))?;
+                DocElement::Block(BlockElem::Blocks(blocks)) => {
+                    self.expects_n_blank_lines_after = Some(BlockModeElem::Blocks(elem_ctx));
+                    self.on_block_or_header_or_blocks(py, blocks.bind(py))?;
                     Ok(ProcStatus::Continue)
                 }
                 DocElement::Block(BlockElem::FromCode(block)) => {
@@ -234,7 +234,7 @@ impl<T: BlockMode> TokenProcessor for BlockLevelProcessor<T> {
                     // It's ok to set this flag high based on pushes from inner subfiles - it goes high when the subfile finishes anyway.
                     self.expects_n_blank_lines_after =
                         Some(BlockModeElem::BlockFromCode(elem_ctx.full_span()));
-                    self.on_block_or_header_or_block_scope(py, block.bind(py))?;
+                    self.on_block_or_header_or_blocks(py, block.bind(py))?;
                     Ok(ProcStatus::Continue)
                 }
                 // If we get an inline, start building a paragraph with it

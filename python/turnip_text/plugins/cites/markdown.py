@@ -4,8 +4,7 @@ from dataclasses import dataclass
 from typing import Generator, List, Optional, Set, Tuple
 
 import citeproc  # type: ignore
-
-from turnip_text import Block, BlockScope, Raw, Text
+from turnip_text import Block, Blocks, Raw, Text
 from turnip_text.build_system import BuildSystem, InputRelPath
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import FmtEnv
@@ -388,7 +387,7 @@ class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
         # The citeproc formatter producess HTML
         with renderer.html_mode():
             renderer.emit(
-                BlockScope(
+                Blocks(
                     [
                         paragraph_of(
                             Raw(f'<a id="cite-{citekey}"></a>{str(bibitem_html)}')

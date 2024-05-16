@@ -23,7 +23,7 @@ pub enum InlineModeContext {
 pub enum BlockModeElem {
     Para(ParseContext),
     /// A complete block scope
-    BlockScope(ParseContext),
+    Blocks(ParseContext),
     BlockFromCode(ParseSpan),
     SourceFromCode(ParseSpan),
     AnyToken(ParseSpan),

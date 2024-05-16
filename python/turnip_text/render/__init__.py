@@ -17,11 +17,9 @@ from typing import (
     Union,
 )
 
-from typing_extensions import override
-
 from turnip_text import (
     Block,
-    BlockScope,
+    Blocks,
     DocSegment,
     Document,
     Header,
@@ -38,6 +36,7 @@ from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import EnvPlugin, FmtEnv
 from turnip_text.plugins.anchors import StdAnchorPlugin
 from turnip_text.render.dyn_dispatch import DynDispatch
+from typing_extensions import override
 
 T = TypeVar("T")
 TBlockOrInline = TypeVar("TBlockOrInline", bound=Union[Block, Inline])
@@ -125,7 +124,7 @@ class EmitterDispatch(Generic[TRenderer_contra]):
 
     block_inline_emitters: DynDispatch[[TRenderer_contra, "FmtEnv"], None]
     header_emitters: DynDispatch[
-        [BlockScope, Iterator[DocSegment], TRenderer_contra, "FmtEnv"],
+        [Blocks, Iterator[DocSegment], TRenderer_contra, "FmtEnv"],
         None,
     ]
 
@@ -147,7 +146,7 @@ class EmitterDispatch(Generic[TRenderer_contra]):
         renderer: Callable[
             [
                 THeader,
-                BlockScope,
+                Blocks,
                 Iterator[DocSegment],
                 TRenderer_contra,
                 FmtEnv,
@@ -235,7 +234,7 @@ class TextRenderer(Renderer):
         """This is a convenience method that generates the most basic EmitterDispatch for a TextRenderer. It is meant to be called by RenderSetup classes. It can be overridden in renderers that provide more than the basic emitters."""
         handlers: EmitterDispatch[TTextRenderer] = EmitterDispatch()
         handlers.register_block_or_inline(
-            BlockScope, lambda bs, r, fmt: r.emit_blockscope(bs)
+            Blocks, lambda bs, r, fmt: r.emit_blockscope(bs)
         )
         handlers.register_block_or_inline(
             Paragraph, lambda p, r, fmt: r.emit_paragraph(p)
@@ -330,10 +329,10 @@ class TextRenderer(Renderer):
                 self.fmt,
             )
 
-    def emit_blockscope(self, bs: BlockScope) -> None:
+    def emit_blockscope(self, blocks: Blocks) -> None:
         # Default: join paragraphs with self.PARAGRAPH_SEP
         # If you get nested blockscopes, this will still be fine - you won't get double separators
-        self.emit_join(self.emit_block, bs, self.emit_break_paragraph)
+        self.emit_join(self.emit_block, blocks, self.emit_break_paragraph)
 
     def emit_paragraph(self, p: Paragraph) -> None:
         # Default: join sentences with self.SENTENCE_SEP

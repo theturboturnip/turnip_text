@@ -28,16 +28,16 @@ class Header(Protocol):
 DocElement: TypeAlias = Union[Block, Inline]
 
 @runtime_checkable
-class BlockScopeBuilder(Protocol):
-    def build_from_blocks(self, bs: BlockScope) -> Optional[DocElement]: ...
+class BlocksBuilder(Protocol):
+    def build_from_blocks(self, blocks: Blocks) -> Optional[DocElement]: ...
 
 @runtime_checkable
 class InlineScopeBuilder(Protocol):
-    def build_from_inlines(self, inls: InlineScope) -> Optional[DocElement]: ...
+    def build_from_inlines(self, inlines: InlineScope) -> Optional[DocElement]: ...
 
 @runtime_checkable
 class RawScopeBuilder(Protocol):
-    def build_from_raw(self, raw: str) -> Optional[DocElement]: ...
+    def build_from_raw(self, raw: Raw) -> Optional[DocElement]: ...
 
 # The types that can be coerced into an Inline, in the order they are checked and attempted.
 # Sequence[Inline] is coerced by wrapping it in an InlineScope
@@ -54,8 +54,8 @@ CoercibleToInlineScope = Union[InlineScope, CoercibleToInline]
 # The types that can be coerced into a Block, in the order they are checked and attempted
 CoercibleToBlock = Union[Block, Sentence, Sequence[Block], CoercibleToInline]
 
-# The types that can be coerced into a BlockScope, in the order they are checked and attempted
-CoercibleToBlockScope = Union[BlockScope, CoercibleToBlock]
+# The types that can be coerced into a Blocks, in the order they are checked and attempted
+CoercibleToBlocks = Union[Blocks, CoercibleToBlock]
 
 def join_inlines(inlines: Sequence[Inline], joiner: Inline) -> InlineScope:
     """Equivalent of string.join, but for joining any set of Inlines with a joiner Inline"""
@@ -65,7 +65,7 @@ def open_turnip_text_source(path: str, encoding: str = "utf-8") -> TurnipTextSou
     """A shortcut for opening a file from a real filesystem as a TurnipTextSource"""
     ...
 
-# Parsers return a BlockScope of the top-level content, then a Document
+# Parsers return a Blocks of the top-level content, then a Document
 def parse_file(
     file: TurnipTextSource,
     py_env: Dict[str, Any],
@@ -75,7 +75,7 @@ def parse_file(
 def coerce_to_inline(obj: CoercibleToInline) -> Inline: ...
 def coerce_to_inline_scope(obj: CoercibleToInlineScope) -> InlineScope: ...
 def coerce_to_block(obj: CoercibleToBlock) -> Block: ...
-def coerce_to_block_scope(obj: CoercibleToBlockScope) -> BlockScope: ...
+def coerce_to_blocks(obj: CoercibleToBlocks) -> Blocks: ...
 
 class Text(Inline):
     def __init__(self, text: str) -> None: ...
@@ -109,14 +109,14 @@ class Paragraph(Block):
     # Insert a sentence before `index` in the Paragraph
     def insert_sentence(self, index: int, s: Sentence) -> None: ...
 
-class BlockScope(Block):
+class Blocks(Block):
     def __init__(self, seq: Optional[Sequence[Block]] = None): ...
     def __len__(self) -> int: ...
-    # Iterate over the blocks in the BlockScope
+    # Iterate over the blocks in the Blocks
     def __iter__(self) -> Iterator[Block]: ...
-    # Push a block into the BlockScope
+    # Push a block into the Blocks
     def append_block(self, b: Block) -> None: ...
-    # Insert a block before `index` in the BlockScope
+    # Insert a block before `index` in the Blocks
     def insert_block(self, index: int, b: Block) -> None: ...
 
 class InlineScope(Inline):
@@ -132,11 +132,11 @@ class InlineScope(Inline):
 class Document:
     def __init__(
         self,
-        contents: BlockScope,
+        contents: Blocks,
         segments: Sequence[DocSegment],
     ): ...
     @property
-    def contents(self) -> BlockScope: ...
+    def contents(self) -> Blocks: ...
     @property
     def segments(self) -> Iterator["DocSegment"]: ...
     # In order to create new DocSegments correctly, use append_header() and insert_header()
@@ -150,13 +150,13 @@ class DocSegment:
     def __init__(
         self,
         header: Header,
-        contents: BlockScope,
+        contents: Blocks,
         subsegments: Sequence[DocSegment],
     ): ...
     @property
     def header(self) -> Header: ...
     @property
-    def contents(self) -> BlockScope: ...
+    def contents(self) -> Blocks: ...
     @property
     def subsegments(self) -> Iterator["DocSegment"]: ...
     # In order to create new DocSegments correctly, use append_header() and insert_header()

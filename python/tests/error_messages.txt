@@ -653,22 +653,22 @@ UserPython - CoercingEvalBracketToBuilder
                 But it's expected to receive a block scope
             }
 #########################################
-TypeError: Expected value returned by eval-bracket to be an instance of BlockScopeBuilder, but it didn't have a build_from_blocks() method. Got <function returns_builder at 0xMEMADDR>
+TypeError: Expected value returned by eval-bracket to be an instance of BlocksBuilder, but it didn't have a build_from_blocks() method. Got <function returns_builder at 0xMEMADDR>
 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
   File test_errors.py, line 90, in test_one_error
     parse_file(
-_native.TurnipTextError: error: Python code attached to a block scope didn't produce a BlockScopeBuilder
+_native.TurnipTextError: error: Python code attached to a block scope didn't produce a BlocksBuilder
   ┌─ <string>:9:13
   │
 9 │             [returns_builder]{ # a function that isn't called
   │             ^^^^^^^^^^^^^^^^^- Scope attached here
   │             │                 
-  │             Object produced here wasn't a BlockScopeBuilder
+  │             Object produced here wasn't a BlocksBuilder
   │
-  = If eval-brackets are attached to a block scope, the produced object must be a a BlockScopeBuilder
+  = If eval-brackets are attached to a block scope, the produced object must be a a BlocksBuilder
   = Instead, Python emitted 'returns_builder'
   = which is '<function returns_builder at 0xMEMADDR>'
   = This object is callable - try calling it to get a builder?
@@ -691,22 +691,22 @@ class Builder:
     block content
 }
 #########################################################
-TypeError: Expected value returned by eval-bracket to be an instance of BlockScopeBuilder, but it didn't have a build_from_blocks() method. Got <Builder object at 0xMEMADDR>
+TypeError: Expected value returned by eval-bracket to be an instance of BlocksBuilder, but it didn't have a build_from_blocks() method. Got <Builder object at 0xMEMADDR>
 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
   File test_errors.py, line 90, in test_one_error
     parse_file(
-_native.TurnipTextError: error: Python code attached to a block scope didn't produce a BlockScopeBuilder
+_native.TurnipTextError: error: Python code attached to a block scope didn't produce a BlocksBuilder
   ┌─ <string>:8:1
   │
 8 │ [Builder()]{
   │ ^^^^^^^^^^^- Scope attached here
   │ │           
-  │ Object produced here wasn't a BlockScopeBuilder
+  │ Object produced here wasn't a BlocksBuilder
   │
-  = If eval-brackets are attached to a block scope, the produced object must be a a BlockScopeBuilder
+  = If eval-brackets are attached to a block scope, the produced object must be a a BlocksBuilder
   = Instead, Python emitted '<Builder object at 0xMEMADDR>'
   = The builder does fit RawScopeBuilder, try attaching a raw scope instead
 

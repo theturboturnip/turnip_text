@@ -1,6 +1,6 @@
 from typing import Iterator, List, Literal, Optional, Tuple, cast
 
-from turnip_text import BlockScope, DocSegment, Raw, Text, join_inlines
+from turnip_text import Blocks, DocSegment, Raw, Text, join_inlines
 from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.doc_structure import (
@@ -216,7 +216,7 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
     def _emit_structure_header(
         self,
         head: BasicHeader,
-        contents: BlockScope,
+        contents: Blocks,
         subsegments: Iterator[DocSegment],
         renderer: LatexRenderer,
         fmt: FmtEnv,
@@ -245,7 +245,7 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
     def _emit_appendix_header(
         self,
         head: AppendixHeader,
-        contents: BlockScope,
+        contents: Blocks,
         subsegments: Iterator[DocSegment],
         renderer: LatexRenderer,
         fmt: FmtEnv,
