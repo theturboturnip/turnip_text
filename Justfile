@@ -20,7 +20,7 @@ test:
 
 _test:
 	# Make sure pip and maturin are installed/up-to-date in the venv
-	python -m pip install --upgrade pip
+	python -m pip install --upgrade pip pandoc
 	python -m pip install maturin
 
 	# This is equivalent to maturin develop for our purposes - maturin is faster
@@ -49,3 +49,29 @@ example:
 _example:
 	maturin develop --extras=typing,test
 	python -m turnip_text.cli render ./examples/phdprop.ttext -o ./examples/output/ --setup-args "biblatex_bib:phdprop_bib_biblatex.bib" "csl_bib:phdprop_bib_csl.json" --format latex markdown html pandoc-docx
+
+[windows]
+upgrade_deps:
+	#!powershell.exe
+	{{VENV_LOCATION}}/Scripts/Activate.ps1
+	python -m pip install --upgrade pip pandoc
+	python -m pip install maturin
+
+[unix]
+upgrade_deps:
+	#!/usr/bin/env bash
+	source {{VENV_LOCATION}}/bin/activate
+	python -m pip install --upgrade pip pandoc
+	python -m pip install maturin
+
+[windows]
+regen_typestubs:
+	#!powershell.exe
+	{{VENV_LOCATION}}/Scripts/Activate.ps1
+	python ./python/dev/generate_pandoc_typestub.py ./python/turnip_text/render/pandoc/pandoc_types.pyi
+
+[unix]
+regen_typestubs:
+	#!/usr/bin/env bash
+	source {{VENV_LOCATION}}/bin/activate
+	python ./python/dev/generate_pandoc_typestub.py ./python/turnip_text/render/pandoc/pandoc_types.pyi
