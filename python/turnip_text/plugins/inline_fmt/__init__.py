@@ -5,7 +5,7 @@ from typing import Iterable, Sequence
 from turnip_text import Block, Inline, Inlines, Text
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import EnvPlugin
-from turnip_text.helpers import inlines_builder
+from turnip_text.helpers import inline_scope_builder
 from typing_extensions import override
 
 
@@ -38,7 +38,7 @@ class InlineFormatEnvPlugin(EnvPlugin):
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline]]:
         return (InlineFormatted,)
 
-    @inlines_builder
+    @inline_scope_builder
     @staticmethod
     def italic(inlines: Inlines) -> Inline:
         """Format an inline scope in italics."""
@@ -46,44 +46,44 @@ class InlineFormatEnvPlugin(EnvPlugin):
             contents=inlines, format_type=InlineFormattingType.Italic
         )
 
-    @inlines_builder
+    @inline_scope_builder
     @staticmethod
     def bold(inlines: Inlines) -> Inline:
         return InlineFormatted(contents=inlines, format_type=InlineFormattingType.Bold)
 
-    @inlines_builder
+    @inline_scope_builder
     @staticmethod
     def underline(inlines: Inlines) -> Inline:
         return InlineFormatted(
             contents=inlines, format_type=InlineFormattingType.Underline
         )
 
-    @inlines_builder
+    @inline_scope_builder
     @staticmethod
     def emph(inlines: Inlines) -> Inline:
         return InlineFormatted(contents=inlines, format_type=InlineFormattingType.Emph)
 
-    @inlines_builder
+    @inline_scope_builder
     @staticmethod
     def strong(inlines: Inlines) -> Inline:
         return InlineFormatted(
             contents=inlines, format_type=InlineFormattingType.Strong
         )
 
-    @inlines_builder
+    @inline_scope_builder
     @staticmethod
     def mono(inlines: Inlines) -> Inline:
         """Intended for monospaced text, such as code, but never provides syntax highlighting."""
         return InlineFormatted(contents=inlines, format_type=InlineFormattingType.Mono)
 
-    @inlines_builder
+    @inline_scope_builder
     @staticmethod
     def squote(inlines: Inlines) -> Inline:
         return InlineFormatted(
             contents=inlines, format_type=InlineFormattingType.SingleQuote
         )
 
-    @inlines_builder
+    @inline_scope_builder
     @staticmethod
     def enquote(inlines: Inlines) -> Inline:
         return InlineFormatted(

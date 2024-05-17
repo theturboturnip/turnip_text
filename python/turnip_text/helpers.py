@@ -227,7 +227,7 @@ class block_scope_builder(UserBlockScopeBuilder[TElement]):
         return f"<{self.__class__.__name__} wrapping {self.func}>"
 
 
-class inlines_builder(UserInlineScopeBuilder[TElement]):
+class inline_scope_builder(UserInlineScopeBuilder[TElement]):
     """
     Decorator which allows a function to fit the InlinesBuilder typeclass.
 

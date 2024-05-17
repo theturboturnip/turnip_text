@@ -5,7 +5,7 @@ from turnip_text import Block, Header, Inline, Inlines, InlinesBuilder
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.user_nodes import NodePortal, UserNode
 from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
-from turnip_text.helpers import inlines_builder
+from turnip_text.helpers import inline_scope_builder
 from typing_extensions import override
 
 
@@ -48,7 +48,7 @@ class FootnoteEnvPlugin(EnvPlugin):
 
     @in_doc
     def footnote(self, doc_env: DocEnv) -> InlinesBuilder:
-        @inlines_builder
+        @inline_scope_builder
         def footnote_builder(inlines: Inlines) -> Inline:
             anchor = doc_env.register_new_anchor_with_float(
                 "footnote", None, lambda anchor: FootnoteContents(anchor, inlines)
@@ -70,7 +70,7 @@ class FootnoteEnvPlugin(EnvPlugin):
     @in_doc
     def footnote_text(self, doc_env: DocEnv, footnote_id: str) -> InlinesBuilder:
         # Store the contents of a block scope and associate them with a specific footnote label
-        @inlines_builder
+        @inline_scope_builder
         def handle_block_contents(contents: Inlines) -> Optional[Block]:
             doc_env.register_new_anchor_with_float(
                 "footnote",
