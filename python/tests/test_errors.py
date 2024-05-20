@@ -5,7 +5,6 @@ import traceback
 from pathlib import Path
 
 import pytest
-
 from turnip_text import *
 
 SPECIFIC_ERROR = RuntimeError("An Error")
@@ -98,7 +97,7 @@ def test_print_error_messages():
             traceback.print_exception(err_info.value, file=traceback_msg_buf)
             # Replace filepaths with base names
             traceback_msg = re.sub(
-                r"\"([\w:\\/\s\.]+)\"",
+                r"\"([\w:\\/\s\.\-_]+)\"",
                 lambda match: Path(match.group(1)).name,
                 traceback_msg_buf.getvalue(),
             )
