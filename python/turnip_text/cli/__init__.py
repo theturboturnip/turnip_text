@@ -89,11 +89,11 @@ def autodetect_input(input_arg: str, project_folder_arg: Optional[str]) -> Input
                 f"Making sure input path {input_path} is inside the supplied project directory {project_dir}"
             )
             return InputParams(
-                project_dir, RelPath(str(input_path.relative_to(project_dir)))
+                project_dir, RelPath(str(input_path.absolute().relative_to(project_dir.absolute()).as_posix()))
             )
         else:
             print(f"Assuming input path {input_arg} is relative to {project_dir}")
-            return InputParams(project_dir, RelPath(input_arg))
+            return InputParams(project_dir, RelPath(input_path.as_posix()))
     else:
         overall_input_path = pathlib.Path(input_arg)
         if overall_input_path.is_absolute():
@@ -113,7 +113,7 @@ def autodetect_input(input_arg: str, project_folder_arg: Optional[str]) -> Input
             print(f"Taking project directory as current working directory '.'")
             return InputParams(
                 project_dir=pathlib.Path("."),
-                input_rel_path=RelPath(str(overall_input_path)),
+                input_rel_path=RelPath(str(overall_input_path.as_posix())),
             )
 
 
