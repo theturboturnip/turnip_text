@@ -157,7 +157,7 @@ class UserAnyScopeBuilder(
     ) -> TElement:
         if isinstance(something, Raw):
             return self.build_from_raw(something)
-        return super().__matmul__(something)
+        return super(UserBlockOrInlineScopeBuilder, self).__matmul__(something)
 
 
 class PassthroughBuilder(UserBlockOrInlineScopeBuilder[Union[Block, Inline]]):
@@ -298,8 +298,14 @@ class raw_scope_builder(UserRawScopeBuilder[TElement]):
         self.func = func
         functools.update_wrapper(self, func)
 
-    def build_from_raw(self, raw: Raw) -> TElement:
-        return self.func(raw)
+    def build_from_raw(self, maybe_raw: Union[Raw, str]) -> TElement:
+        if isinstance(maybe_raw, Raw):
+            return self.func(maybe_raw)
+        if isinstance(maybe_raw, str):
+            return self.func(Raw(maybe_raw))
+        raise TypeError(
+            f"Invoked raw_scope_builder on {maybe_raw}, which wasn't a string"
+        )
 
     def __str__(self) -> str:
         return f"<{self.__class__.__name__} wrapping {self.func}>"

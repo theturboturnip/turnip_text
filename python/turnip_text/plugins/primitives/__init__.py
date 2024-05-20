@@ -105,6 +105,7 @@ class PrimitivesPlugin(abc.ABC, EnvPlugin):
         """
         return PassthroughBuilder() if cond else NullBuilder()
 
+    # TODO provide an "alternative" kwarg?
     @abc.abstractmethod
     def raw(self, lang: str, **kwargs: Any) -> UserRawScopeBuilder:
         """
