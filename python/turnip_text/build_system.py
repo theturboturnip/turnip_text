@@ -90,13 +90,13 @@ RelPathComponent = str
 
 # Invalid component = [~, more than two ., any string that isn't [a-zA-Z0-9\-_\.]+]
 # i.e. strings of more than two dots, or any string with a character that isn't a-zA-Z...
-INVALID_COMP_RE = re.compile(r"(^\.\.\.+$)|([^a-zA-Z0-9\-_\.])")
+INVALID_COMP_RE = re.compile(r"(^\.\.\.+$)|([^a-zA-Z0-9\-_\. ])")
 
 
 def check_component(component: str) -> RelPathComponent:
     if INVALID_COMP_RE.search(component):
         raise ValueError(
-            f"{component} is not a valid relative-path component - must only be alphanumeric characters, underscores, dashes, and dots, and cannot be a string of 3+ dots."
+            f"{component} is not a valid relative-path component - must only be alphanumeric characters, underscores, spaces, dashes, and dots, and cannot be a string of 3+ dots."
         )
     return component
 
@@ -122,7 +122,7 @@ class RelPath:
         Components of `..` are equivalent to "the previous directory" and negate the previous component - unless there is no previous component, at which point an error is thrown.
         Components like `~` and `...`, `....` etc raise ValueError.
 
-        Right now only alphanumeric characters, underscores, dots, and dashes are accepted in components.
+        Right now only alphanumeric characters, spaces, underscores, dots, and dashes are accepted in components.
         Whitespace is not allowed.
         These restrictions may be loosened later.
         """
