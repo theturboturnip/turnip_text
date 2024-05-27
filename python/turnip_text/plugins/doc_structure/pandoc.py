@@ -33,7 +33,8 @@ class PandocStructurePlugin(PandocPlugin, StructureEnvPlugin):
     # 0-indexed list of formats e.g. h1 uses self.header_fmts[0]
     _header_fmts: List[SimpleCounterFormat[SimpleCounterStyle]]
 
-    def __init__(self, h1: Literal["chapter"] | Literal["section"] = "section") -> None:
+    def __init__(self, h1: Literal["chapter"] | Literal["section"] = "section", add_title: bool=True, add_toc: bool=True) -> None:
+        super().__init__(add_title, add_toc)
         self._header_fmts = [
             SimpleCounterFormat(
                 header_name,
@@ -45,7 +46,7 @@ class PandocStructurePlugin(PandocPlugin, StructureEnvPlugin):
     def _register(self, build_sys: BuildSystem, setup: PandocSetup) -> None:
         super()._register(build_sys, setup)
 
-        # TitleBlock and TableOfContents are automatically created by PAndoc when requested
+        # TitleBlock and TableOfContents are automatically created by Pandoc when requested
         # These callbacks only set up the metadata and command line args necessary to do so
         setup.makers.register_block(TitleBlock, self._handle_title_block)
         setup.makers.register_block(TableOfContents, self._handle_toc)

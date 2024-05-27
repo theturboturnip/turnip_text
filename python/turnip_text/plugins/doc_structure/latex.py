@@ -61,8 +61,10 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
         self,
         h1: StartLatexHeader,
         doc_class: BasicLatexDocClass = "article",
+        add_title: bool = True,
+        add_toc: bool = True,
     ) -> None:
-        super().__init__()
+        super().__init__(add_title, add_toc)
         if doc_class == "article" and h1 == "chapter":
             raise ValueError("'chapter's are not available in document class 'article'")
         # Generate a list like level_to_latex but where index [1] is the value specified in h1.

@@ -116,8 +116,14 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
 
 
 class StructureEnvPlugin(EnvPlugin):
+    _add_title: bool
+    _add_toc: bool
     _metadata: Optional[BasicMetadata] = None
     """At most one BasicMetadata object exists for each StructureEnvPlugin"""
+
+    def __init__(self, add_title: bool=True, add_toc: bool=True):
+        self._add_title = add_title
+        self._add_toc = add_toc
 
     def _doc_nodes(
         self,
@@ -132,10 +138,12 @@ class StructureEnvPlugin(EnvPlugin):
     def _mutate_document(self, doc_env: DocEnv, fmt: FmtEnv, doc: Document) -> None:
         super()._mutate_document(doc_env, fmt, doc)
         # TODO better DFS walking
-        if not any(isinstance(b, TableOfContents) for b in doc.contents):
-            doc.contents.insert_block(0, self.toc())
-        if self._metadata and not any(isinstance(b, TitleBlock) for b in doc.contents):
-            doc.contents.insert_block(0, self.title_block())
+        if self._add_toc:
+            if not any(isinstance(b, TableOfContents) for b in doc.contents):
+                doc.contents.insert_block(0, self.toc())
+        if self._add_title:
+            if self._metadata and not any(isinstance(b, TitleBlock) for b in doc.contents):
+                doc.contents.insert_block(0, self.title_block())
 
     def _set_metadata(
         self,

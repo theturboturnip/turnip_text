@@ -24,8 +24,8 @@ from turnip_text.render.markdown.renderer import (
 class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
     _has_chapter: bool
 
-    def __init__(self, use_chapters: bool) -> None:
-        super().__init__()
+    def __init__(self, use_chapters: bool, add_title: bool = True, add_toc: bool = True) -> None:
+        super().__init__(add_title, add_toc)
         self._has_chapter = use_chapters
 
     def _register(self, build_sys: BuildSystem, setup: MarkdownSetup) -> None:
