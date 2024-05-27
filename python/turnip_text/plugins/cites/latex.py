@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Type, Union
 
 from typing_extensions import override
 
@@ -53,6 +53,7 @@ class LatexBiblatexPlugin_Unchecked(LatexPlugin, CitationEnvPlugin):
 
 class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
     _biblatex_path: InputRelPath
+    _db_type: Type[BibLatexCitationDB]
     _citation_db: BibLatexCitationDB
     _minimal_bib_name: Optional[OutputRelPath]
 
@@ -60,6 +61,8 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
         self,
         bibtex_path: Optional[InputRelPath] = None,
         output_bib_name: Optional[OutputRelPath] = None,
+        # Parameterizable db_type if you want to override functions in citation DB
+        db_type: Type[BibLatexCitationDB]=BibLatexCitationDB,
     ) -> None:
         if bibtex_path:
             self._biblatex_path = bibtex_path
@@ -67,9 +70,10 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
             raise ValueError(f"Specify bibtex_path")
 
         self._minimal_bib_name = output_bib_name
+        self._db_type = db_type
 
     def _register(self, build_sys: BuildSystem, setup: LatexSetup) -> None:
-        self._citation_db = BibLatexCitationDB(build_sys, [self._biblatex_path])
+        self._citation_db = self._db_type(build_sys, [self._biblatex_path])
 
         if self._minimal_bib_name:
             # Write out the bibliography once we know the exact set of items we want in it

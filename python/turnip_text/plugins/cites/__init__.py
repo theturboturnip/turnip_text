@@ -60,6 +60,7 @@ class CitationEnvPlugin(EnvPlugin):
     def _mutate_document(self, doc_env: DocEnv, fmt: FmtEnv, doc: Document) -> None:
         super()._mutate_document(doc_env, fmt, doc)
         # TODO better doc DFS walking to find Bibliography
+        # TODO only add the bibliography if walking the doc finds Citation
         if not self._has_bib:
             doc.append_header(
                 doc_env.h1(num=False) @ "Bibliography"
