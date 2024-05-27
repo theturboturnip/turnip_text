@@ -3,7 +3,7 @@ import importlib
 import inspect
 import re
 import textwrap
-from typing import Any, Dict, List, Optional, Type, cast
+from typing import Any, Dict, List, Optional, Tuple, Type, cast
 
 from turnip_text import (
     Block,
@@ -26,31 +26,68 @@ from turnip_text.plugins.anchors import StdAnchorPlugin
 
 # TODO enable indirect inheritance of TurnipTextSetup?
 
-SETUP_CLASS_SHEBANG = re.compile(r"#tt-cli\s+setup:(\w+)")
-
+# turnip_text files can override command-line arguments with shebang-esque comment lines at the start of the root file.
+# The lines of the root file are parsed until they stop being comments, and of those file all that fit the `#tt-cli .*` pattern are checked.
+#tt-cli setup=BLAH overrides the setup class the tool searches for.
+#tt-cli setup-search-module=BLAH overrides the Python module turnip_text tries to import to *find* the setup class.
+#tt-cli setup-arg=x:y sets the keyword argument x=y passed to the setup class when generating the plugins.
+# All of these override the command-line arguments passed in.
+TT_CLI_SHEBANG = re.compile(r"^#tt-cli\s+(.*)$")
+SETUP_CLASS_SHEBANG = re.compile(r"setup=(\w+)")
+SETUP_SEARCH_SHEBANG = re.compile(r"setup-search-module=(\w+)")
+SETUP_KWARG_SHEBANG = re.compile(r"setup-arg=([^:]+:.*)")
 
 def find_setup_class(
-    input_params: InputParams, setup_arg: Optional[str], setup_search_module_arg: str
-) -> TurnipTextSetup:
-    requested_setup_class: Optional[str] = None
-    # Peek at the file to see if there's a shebang
-    # TODO file encoding
+    input_params: InputParams, requested_setup_class: Optional[str], setup_args: List[str], setup_search_module_arg: str
+) -> Tuple[TurnipTextSetup, Dict[str, str]]:
+    setup_kwargs = parse_setup_kwargs(setup_args)
+
+    # Peek at the first lines of the file to override the requested_setup_class and setup_kwargs
+    shebang_lines = []
     with open(
         input_params.project_dir / str(input_params.input_rel_path),
         "r",
         encoding="utf-8",
     ) as f:
-        match = SETUP_CLASS_SHEBANG.match(f.readline())
-    if match:
-        requested_setup_class = match.group(1)
+        while True:
+            line = f.readline()
+            if not line.startswith("#"):
+                break
+            match = TT_CLI_SHEBANG.match(line)
+            if match:
+                shebang_lines.append(match.group(1))
+
+    # Get list of all shebang lines that match the SETUP_CLASS regex
+    setup_class_shebang_lines: List[re.Match] = list(filter(None, (SETUP_CLASS_SHEBANG.match(line) for line in shebang_lines)))
+    # Get list of all shebang lines that match the SETUP_SEARCH regex
+    setup_class_search_shebang_lines: List[re.Match] = list(filter(None, (SETUP_SEARCH_SHEBANG.match(line) for line in shebang_lines)))
+    # Get list of all shebang lines that match the SETUP_ARG regex
+    setup_kwarg_shebang_lines: List[re.Match] = list(filter(None, (SETUP_KWARG_SHEBANG.match(line) for line in shebang_lines)))
+
+    # Update the setup_class based on the shebang
+    if setup_class_shebang_lines:
+        if len(setup_class_shebang_lines) > 1:
+            raise RuntimeError(f"Can't use the `#tt-cli setup=` shebang multiple times: found {setup_class_shebang_lines} in file {input_params.input_rel_path}")
+        requested_setup_class = setup_class_shebang_lines[0].group(1)
         print(
             f"Taking requested setup class from input file shebang: '{requested_setup_class}'"
         )
-    elif setup_arg:
-        requested_setup_class = setup_arg
+    elif requested_setup_class:
         print(
             f"Taking requested setup class from command line: '{requested_setup_class}'"
         )
+
+    # Update the setup class search module
+    if setup_class_search_shebang_lines:
+        if len(setup_class_search_shebang_lines) > 1:
+            raise RuntimeError(f"Can't use the `#tt-cli setup-class-search=` shebang multiple times: found {setup_class_search_shebang_lines} in file {input_params.input_rel_path}")
+        setup_search_module_arg = setup_class_search_shebang_lines[0].group(1)
+        print(
+            f"Taking requested setup class search module from input file shebang: '{setup_search_module_arg}'"
+        )
+
+    # Update the setup_kwargs
+    setup_kwargs.update(parse_setup_kwargs([setup_kwarg.group(1) for setup_kwarg in setup_kwarg_shebang_lines]))
 
     if requested_setup_class:
         # Look for subclasses of TurnipTextSetup that match the requested name
@@ -95,12 +132,12 @@ def find_setup_class(
         # If we get an abstract type here we'll pick that up when we construct it.
         setup_class: Type[TurnipTextSetup] = setup_classes[0]
         print(f"Creating a setup class {setup_class} with zero arguments")
-        return setup_class()
+        return setup_class(), setup_kwargs
     else:
-        return DefaultTurnipTextSetup()
+        return DefaultTurnipTextSetup(), setup_kwargs
 
 
-def parse_setup_kwargs(setup_args: Optional[str]) -> Dict[str, str]:
+def parse_setup_kwargs(setup_args: List[str]) -> Dict[str, str]:
     setup_kwargs: Dict[str, str] = {}
     if setup_args:
         for setup_arg in setup_args:
@@ -117,7 +154,7 @@ def wrap_render(args: Any) -> None:
 
             output_params = autodetect_output(args.output_dir, input_params)
 
-            setup = find_setup_class(input_params, args.setup, args.setup_search_module)
+            setup, setup_kwargs = find_setup_class(input_params, args.setup, args.setup_args, args.setup_search_module)
 
             render(
                 input_params,
@@ -130,8 +167,7 @@ def wrap_render(args: Any) -> None:
 
 def wrap_describe(args: Any) -> None:
     input_params = autodetect_input(args.inputs[0], args.project_dir)
-    setup = find_setup_class(input_params, args.setup, args.setup_search_module)
-    setup_kwargs = parse_setup_kwargs(args.setup_args)
+    setup, setup_kwargs = find_setup_class(input_params, args.setup, args.setup_args, args.setup_search_module)
 
     print(f"This document uses the {setup.__class__.__qualname__} class as its Setup.")
     if setup_kwargs:
