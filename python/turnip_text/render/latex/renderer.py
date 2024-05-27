@@ -374,8 +374,6 @@ class LatexRenderer(TextRenderer):
 
         # TODO consider using \detokenize?
         # note - right now this assumes we're using a unicode-compatible setup and thus don't need to escape unicode characters.
-        # note - order is important here because the subsitutions may introduce more special characters.
-        # e.g. if the backslash replacement applied later, the backslash from escaping "%" would be replaced with \textbackslash
         ascii_map = {
             "\\": "\\textbackslash{}",
             "%": "\%",
@@ -392,10 +390,11 @@ class LatexRenderer(TextRenderer):
             "\u2013": "--",
             "\u2014": "---",
         }
-        data = t.text
-        for c, replace_with in ascii_map.items():
-            data = data.replace(c, replace_with)
-        self.emit_raw(data)
+        for char in t.text:
+            if char in ascii_map:
+                self.emit_raw(ascii_map[char])
+            else:
+                self.emit_raw(char)
 
     def emit_macro(self, name: str) -> None:
         self.emit_raw(f"\\{name}")
