@@ -1,9 +1,45 @@
-from typing import List, Set, TextIO
+import pathlib
+from typing import Dict, List, Set, TextIO, Tuple
 
 import bibtexparser  # type: ignore
 
-from turnip_text.build_system import BuildSystem, InputRelPath, TextWriter
+from turnip_text.build_system import BuildSystem, InputFile, InputRelPath, TextWriter
 from turnip_text.plugins.cites.bib_database import CitationDB
+
+# This library uses a pure Python BibLaTeX parser, which can be slow.
+# If creating a lot of documents in one turnip_text run, it can be a huge time waste to parse the same bib over and over.
+# Thus cache the results.
+
+# TODO parser.expect_multiple_parse
+BIBTEX_PARSER = bibtexparser.bparser.BibTexParser(
+    ignore_nonstandard_types=False,
+    interpolate_strings=False,
+    common_strings=False,
+    add_missing_from_crossref=False,
+)
+BIBTEX_CACHE: Dict[pathlib.Path, Tuple[str, bibtexparser.bibdatabase.BibDatabase]] = {}
+
+def get_cached_db(rel_path: InputRelPath, file: InputFile) -> bibtexparser.bibdatabase.BibDatabase:
+    with file.open_read_text() as f:
+        file_contents = f.read()
+    
+    # if not None, it's (cached_contents: str, cached_db: BibDatabase)
+    cached = BIBTEX_CACHE.get(file.external_path)
+    # Just test if the strings are equal - CPython should do a length check first which would trivialize it in most cases,
+    # and in the same-length-different-content case a hash would still need to read every character.
+    if cached is not None and (cached[0] == file_contents):
+        return cached[1]
+    
+    # Didn't have a cached version
+    db = bibtexparser.loads(file_contents, BIBTEX_PARSER)
+
+    if not db.entries:
+        raise RuntimeError(
+            f"Citation file '{rel_path}' has no BibLaTeX entries"
+        )
+    
+    BIBTEX_CACHE[file.external_path] = (file_contents, db)
+    return db
 
 
 class BibLatexCitationDB(CitationDB):
@@ -17,37 +53,22 @@ class BibLatexCitationDB(CitationDB):
     used_entries: Set[str]
 
     def __init__(self, file_sys: BuildSystem, paths: List[InputRelPath]) -> None:
-
-        parser = bibtexparser.bparser.BibTexParser(
-            ignore_nonstandard_types=False,
-            interpolate_strings=False,
-            common_strings=False,
-            add_missing_from_crossref=False,
-        )
-
-        # TODO parser.expect_multiple_parse
-
         self.known_citekeys = set()
         self.dbs = []
         for path in paths:
-            with file_sys.resolve_input_file(path).open_read_text() as f:
-                db = bibtexparser.load(f, parser)
+            file = file_sys.resolve_input_file(path)
+            db = get_cached_db(path, file)
 
-                if not db.entries:
-                    raise RuntimeError(
-                        f"Citation file '{path}' has no BibLaTeX entries"
-                    )
-
-                mulitply_defined = self.known_citekeys.intersection(
-                    db.entries_dict.keys()
+            mulitply_defined = self.known_citekeys.intersection(
+                db.entries_dict.keys()
+            )
+            if mulitply_defined:
+                raise RuntimeError(
+                    f"Multiple-definition of citation IDs {mulitply_defined}"
                 )
-                if mulitply_defined:
-                    raise RuntimeError(
-                        f"Multiple-definition of citation IDs {mulitply_defined}"
-                    )
 
-                self.known_citekeys.update(db.entries_dict.keys())
-                self.dbs.append(db)
+            self.known_citekeys.update(db.entries_dict.keys())
+            self.dbs.append(db)
 
         self.used_entries = set()
 
