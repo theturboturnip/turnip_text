@@ -184,21 +184,12 @@ class StructureEnvPlugin(EnvPlugin):
     def title_block(
         self,
         doc_env: DocEnv,
-        /,
-        title: Optional[CoercibleToInline] = None,
-        subtitle: Optional[CoercibleToInline] = None,
-        authors: Optional[Sequence[CoercibleToInline]] = None,
     ) -> TitleBlock:
-        if (title is None) and (subtitle is None) and (authors is None):
-            if not self._metadata:
-                raise RuntimeError(
-                    "Cannot create a title_block() with no metadata without first calling set_metadata()"
-                )
-            return TitleBlock(self._metadata)
-        else:
-            return TitleBlock(
-                self._set_metadata(title=title, subtitle=subtitle, authors=authors)
+        if not self._metadata:
+            raise RuntimeError(
+                "Cannot create a title_block() without first calling set_metadata()"
             )
+        return TitleBlock(self._metadata)
 
     @in_doc
     def h(
