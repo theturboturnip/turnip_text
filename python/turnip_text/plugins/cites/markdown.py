@@ -130,7 +130,7 @@ LATEXLIKE_CSL = """<?xml version="1.0"?>
       </if>
       <else>
         <names variable="author">
-          <name name-as-sort-order="all" and="text" sort-separator=", " initialize-with="." delimiter-precedes-last="never" delimiter=", "/>
+          <name name-as-sort-order="all" and="text" sort-separator=", " initialize-with="." delimiter-precedes-last="always" delimiter=", "/>
           <label form="short" prefix=" "/>
           <substitute>
             <names variable="editor"/>
@@ -272,12 +272,48 @@ LATEXLIKE_CSL = """<?xml version="1.0"?>
 </style>
 """
 
+AUTHOR_CSL = """<?xml version="1.0"?>
+<style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0" demote-non-dropping-particle="sort-only" default-locale="en-US">
+  <info>
+    <title>Author ("et al." for 3+ authors)</title>
+  </info>
+  <macro name="author">
+    <names variable="author">
+      <name name-as-sort-order="all" and="text" sort-separator=", " initialize-with="." delimiter-precedes-last="always" delimiter=", " form="short"/>
+      <label form="short" prefix=" "/>
+      <substitute>
+        <names variable="editor"/>
+        <names variable="translator"/>
+      </substitute>
+    </names>
+  </macro>
+  <citation collapse="citation-number" et-al-min="3" et-al-use-first="1">
+    <sort>
+      <key variable="citation-number"/>
+    </sort>
+    <layout delimiter=", ">
+      <text macro="author" suffix=" "/>
+    </layout>
+  </citation>
+  <bibliography entry-spacing="0" second-field-align="flush" et-al-min="3" et-al-use-first="1">
+    <sort>
+      <key macro="author"/>
+      <key variable="title"/>
+    </sort>
+    <layout suffix=".">
+      <text macro="author" suffix=" "/>
+    </layout>
+  </bibliography>
+</style>
+"""
+
 
 class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
     _bib_path: InputRelPath
     _bib_is_csl_json: bool
     _csl_style_path: Optional[InputRelPath]
     _bib: citeproc.CitationStylesBibliography
+    _author_bib: citeproc.CitationStylesBibliography
 
     def __init__(
         self,
@@ -330,6 +366,14 @@ class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
             bib_style, bib_source, citeproc.formatter.html
         )
 
+        self._author_bib = citeproc.CitationStylesBibliography(
+            citeproc.CitationStylesStyle(
+                io.StringIO(AUTHOR_CSL), validate=False
+            ),
+            bib_source,
+            citeproc.formatter.html
+        )
+
         # TODO need to manually sort once the document parse has finished?
 
         setup.emitter.register_block_or_inline(Citation, self._emit_citation)
@@ -377,7 +421,16 @@ class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
         # citeauthor equivalent doesn't exist in CSL
         # See https://stackoverflow.com/a/65412491/4248422
         # TODO improve this
-        renderer.emit(fmt.bold @ Text(f"<Author Of {citeauthor.citekey}>"))
+        citation = citeproc.Citation([citeproc.CitationItem(citeauthor.citekey)])
+        self._author_bib.register(citation)
+        renderer.emit_text(
+            Text(
+              str(self._author_bib.cite(
+                  citation,
+                  self._warn_invalid_citationitem
+              ))
+            )
+        )
 
     def _emit_bibliography(
         self,
