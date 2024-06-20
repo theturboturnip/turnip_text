@@ -31,6 +31,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
 
     document_class: MaybeUnset[str]
     """What is the \\documentclass (must be set by a plugin through require_document_class() if standalone"""
+    document_class_args: List[str]
 
     package_resolver: LatexPackageResolver
 
@@ -56,6 +57,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         self.standalone = standalone
 
         self.document_class = UNSET
+        self.document_class_args = []
 
         self.package_resolver = LatexPackageResolver()
         # Default packages
@@ -87,12 +89,16 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         # Don't try to use the counter_resolve anymore.
         self.counter_resolver = None  # type:ignore
 
-    def require_document_class(self, document_class: str) -> None:
+    def require_document_class(self, document_class: str, args: List[str]=[]) -> None:
         if self.document_class is not UNSET and self.document_class != document_class:
             raise RuntimeError(
                 f"Conflicting document_class requirements: '{self.document_class}' and '{document_class}'"
             )
         self.document_class = document_class
+        self.document_class_args.extend(args)
+
+    def extend_document_class_args(self, args: List[str]) -> None:
+        self.document_class_args.extend(args)
 
     def add_preamble_section(self, callback: Callable[[LatexRenderer], None]) -> None:
         self.preamble_callbacks.append(callback)
@@ -167,6 +173,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
 
         requirements = LatexRequirements(
             document_class,
+            document_class_args=self.document_class_args,
             shell_escape=resolved_packages.shell_escape_reasons,
             packages=resolved_packages.packages,
             preamble_callbacks=self.preamble_callbacks,

@@ -141,6 +141,8 @@ class LatexRequirements:
     document_class: Optional[
         str
     ]  # If None, the document is not standalone and shouldn't have a preamble
+    document_class_args: List[str]
+    # Not applied if not standalone
 
     shell_escape: List[str]
     packages: List[LatexPackageRequirements]
@@ -186,7 +188,10 @@ class LatexRenderer(TextRenderer):
                 f"Requires `--shell-escape` command-line option for {', '.join(self.requirements.shell_escape)}"
             )
         if self.requirements.document_class:
-            self.emit_raw(f"\\documentclass{{{self.requirements.document_class}}}")
+            self.emit_raw("\\documentclass")
+            if self.requirements.document_class_args:
+                self.emit_sqr_bracketed(Raw(",".join(self.requirements.document_class_args)))
+            self.emit_braced(Raw(self.requirements.document_class))
             self.emit_break_paragraph()
             for package in self.requirements.packages:
                 self.emit_comment_line(f"{package.package} required for")
