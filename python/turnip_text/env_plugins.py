@@ -61,16 +61,19 @@ class EnvPlugin:
         """Retrieve the fmt 'format' environment with only @pure_fmt annotated functions."""
         return self.__fmt
 
+    # TODO remove, it's unnecessary
     @property
     def _plugin_name(self) -> str:
         return type(self).__name__
 
+    # TODO remove, it's unnecessary - this can be done by just looking at all anchor types...
     def _countables(self) -> Sequence[str]:
         """
         Tell the Document what counters this plugin uses
         """
         return []
 
+    # TODO remove, it's unnecessary
     def _doc_nodes(self) -> Sequence[Type[Union[Block, Inline, Header]]]:
         """
         Tell the Document what nodes this plugin exports

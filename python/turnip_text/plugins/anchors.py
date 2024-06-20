@@ -83,6 +83,8 @@ class StdAnchorPlugin(EnvPlugin):
         The renderer can then retrieve the counters for the anchor.
         """
 
+        # TODO this would be perfect for raising an error with where the backref was emitted
+
         if backref.id not in self._anchor_id_to_possible_kinds:
             raise ValueError(
                 f"Backref {backref} refers to an ID '{backref.id}' with no anchor!"
