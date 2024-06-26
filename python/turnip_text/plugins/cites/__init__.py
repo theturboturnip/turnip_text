@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Sequence, Set
+from typing import List, Sequence, Set
 
 from typing_extensions import override
 
@@ -24,7 +24,7 @@ from turnip_text.helpers import UserInlineScopeBuilder
 @dataclass
 class Citation(UserNode, Inline, UserInlineScopeBuilder):
     citenote: InlineScope | None
-    citekeys: Set[str]
+    citekeys: List[str]
     anchor = None
 
     @override
@@ -69,11 +69,10 @@ class CitationEnvPlugin(EnvPlugin):
     def cite(self, *citekeys: str) -> Inline:
         if not citekeys:
             raise ValueError("Must provide at least one citekey to cite()")
-        citekey_set: set[str] = set(citekeys)
-        for c in citekey_set:
+        for c in citekeys:
             if not isinstance(c, str):
                 raise ValueError(f"Inappropriate citation key: {c}. Must be a string")
-        return Citation(citekeys=citekey_set, citenote=None)
+        return Citation(citenote=None, citekeys=list(citekeys))
 
     def citeauthor(self, citekey: str) -> Inline:
         return CiteAuthor(citekey)
