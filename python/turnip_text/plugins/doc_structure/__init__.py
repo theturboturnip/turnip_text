@@ -82,6 +82,8 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
     num: bool
     appendix: bool
 
+    # TODO "not numbered" != "not included in ToC"
+
     def __init__(
         self,
         doc_env: DocEnv,
