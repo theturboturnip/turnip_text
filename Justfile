@@ -1,5 +1,11 @@
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
+# We require a Python3.11 venv to be created at this location to run tests.
+# The Rust tests (run via `cargo testall`) need to link against libpython to get an interpreter inside Rust.
+# On Unix this requires the venv to have libpython3.11.so available for linking.
+# This is kinda-sorta not what venvs should do[0], but it appears to work... so... not sure how to do this in the future.
+#
+# [0] - https://bugs.python.org/issue43334#msg388720
 VENV_LOCATION := "./venv_3_11"
 
 default:
