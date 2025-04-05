@@ -27,12 +27,15 @@ class Super:
 
 #[test]
 fn test_code_followed_by_content_doesnt_build() {
-    // Create a class which is a block scope + inline scope + raw scope builder all in one, and also a block in its own right! See what happens when we create it with no owning responsibilities
+    // Create a class which is a block scope + inline scope + raw scope builder all in one, and also an inline in its own right! See what happens when we create it with no owning responsibilities
     expect_parse(
         r#"
 [-
 class Super:
     is_inline = True
+    def as_plain_text(self):
+        raise RuntimeError("argh shouldn't run this")
+
     test_inline = InlineScope([])
 
     def build_from_blocks(self, blocks):

@@ -18,6 +18,9 @@ class FootnoteRef(UserNode, Inline, NodePortal):
     @override
     def child_nodes(self) -> Iterable[Block | Inline] | None:
         return None
+    @override
+    def as_plain_text(self) -> str:
+        return ""
 
 
 @dataclass(frozen=True)

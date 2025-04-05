@@ -27,11 +27,15 @@ class CustomInline:
     is_inline = True
     def __init__(self, contents):
         self.test_inline = contents
+    def as_plain_text(self) -> str:
+        return ""
 
 class CustomRaw:
     is_inline = True
     def __init__(self, raw_str):
         self.test_raw_str = str(raw_str)
+    def as_plain_text(self) -> str:
+        return ""
 
 CUSTOM_BLOCK = CustomBlock(BlockScope([]))
 CUSTOM_INLINE = CustomInline(InlineScope([]))

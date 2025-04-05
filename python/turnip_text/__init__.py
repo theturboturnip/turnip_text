@@ -1,3 +1,4 @@
+import abc
 from typing import Protocol, Sequence, Union, runtime_checkable
 
 __all__ = [
@@ -53,6 +54,8 @@ from ._native import (  # type: ignore
 class Inline(Protocol):
     is_inline: bool = True
 
+    @abc.abstractmethod
+    def as_plain_text(self) -> str: ...
 
 @runtime_checkable
 class Block(Protocol):

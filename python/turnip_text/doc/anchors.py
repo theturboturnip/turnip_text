@@ -27,6 +27,7 @@ This requires me to make Blocks and Inlines implement "here are my children" so 
 
 import dataclasses
 from typing import Optional
+from typing_extensions import override
 
 from turnip_text import Inline, InlineScope, InlineScopeBuilder
 
@@ -39,6 +40,10 @@ class Anchor(Inline):
 
     kind: str
     id: str
+
+    @override
+    def as_plain_text(self):
+        return ""
 
     def canonical(self) -> str:
         return f"{self.kind}:{self.id}"
@@ -67,3 +72,10 @@ class Backref(Inline, InlineScopeBuilder):
     def build_from_inlines(self, inls: InlineScope) -> Inline:
         assert self.label_contents is None
         return dataclasses.replace(self, label_contents=inls)
+    
+    @override
+    def as_plain_text(self):
+        if self.label_contents is None:
+            return "<LABEL>"
+        else:
+            return self.label_contents.as_plain_text()

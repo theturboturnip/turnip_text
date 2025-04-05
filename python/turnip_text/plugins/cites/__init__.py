@@ -30,6 +30,10 @@ class Citation(UserNode, Inline, UserInlineScopeBuilder):
     @override
     def child_nodes(self) -> InlineScope | None:
         return self.citenote
+    
+    @override
+    def as_plain_text(self):
+        return ""
 
     def build_from_inlines(self, inls: InlineScope) -> Inline:
         return Citation(citekeys=self.citekeys, citenote=inls)

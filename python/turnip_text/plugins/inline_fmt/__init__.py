@@ -32,6 +32,9 @@ class InlineFormatted(UserNode, Inline):
     @override
     def child_nodes(self) -> Iterable[Block | Inline] | None:
         return self.contents
+    @override
+    def as_plain_text(self) -> str:
+        return self.contents.as_plain_text()
 
 
 # TODO merge UrlEnv, SubfileEnv, Inline(?)Env into PrimitivesEnvPlugin?

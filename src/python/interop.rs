@@ -252,24 +252,44 @@ impl PyTypeclass for Block {
 #[derive(Debug, Clone)]
 pub struct Inline {}
 impl Inline {
-    fn marker_bool_name(py: Python<'_>) -> &Bound<'_, PyString> {
-        intern!(py, "is_inline")
-    }
-}
-impl PyTypeclass for Inline {
-    const NAME: &'static str = "Inline";
-
-    fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
-        let attr_name = Self::marker_bool_name(obj.py());
+    fn has_marker_bool(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let attr_name = intern!(obj.py(), "is_inline");
         if matches!(obj.hasattr(attr_name), Ok(true)) {
             obj.getattr(attr_name)?.is_truthy()
         } else {
             Ok(false)
         }
     }
+
+    fn has_as_plain_text_func(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let attr_name = intern!(obj.py(), "as_plain_text");
+        if matches!(obj.hasattr(attr_name), Ok(true)) {
+            Ok(obj.getattr(attr_name)?.is_callable())
+        } else {
+            Ok(false)
+        }
+    }
+}
+impl PyTypeclass for Inline {
+    const NAME: &'static str = "Inline";
+
+    fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
+        Ok(Self::has_marker_bool(obj)? && Self::has_as_plain_text_func(obj)?)
+    }
     fn get_typeclass_err(obj: &Bound<'_, PyAny>, context: &str) -> PyResult<Option<PyErr>> {
-        if Self::fits_typeclass(obj)? {
-            Ok(None)
+        if Self::has_marker_bool(obj)? {
+            if Self::has_as_plain_text_func(obj)? {
+                Ok(None)
+            } else {
+                let obj_repr = obj.repr()?;
+                let err = PyTypeError::new_err(format!(
+                    "Expected {} to be an instance of {}, but it didn't have a member function as_plain_text(). Got {}",
+                    context,
+                    Self::NAME,
+                    obj_repr.to_str()?
+                ));
+                Ok(Some(err))
+            }
         } else {
             let obj_repr = obj.repr()?;
             let err = PyTypeError::new_err(format!(
@@ -587,6 +607,9 @@ impl Text {
     pub fn is_inline(&self) -> bool {
         true
     }
+    pub fn as_plain_text(&self) -> PyResult<Py<PyString>> {
+        Ok(self.0.clone())
+    }
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         self.0
             .getattr(py, intern!(py, "__eq__"))?
@@ -624,6 +647,9 @@ impl Raw {
     #[getter]
     pub fn is_inline(&self) -> bool {
         true
+    }
+    pub fn as_plain_text<'py>(&self, py: Python<'py>) -> &'py Bound<'py, PyString> {
+        intern!(py, "")
     }
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         self.0
@@ -839,6 +865,20 @@ impl InlineScope {
     }
     pub fn insert_inline(&self, index: usize, obj: &Bound<'_, PyAny>) -> PyResult<()> {
         self.0.insert_checked(index, obj)
+    }
+
+    pub fn as_plain_text<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyString>> {
+        let mut str = PyString::new_bound(py, "");
+        for obj in self.0.list(py) {
+            str = str
+                .call_method(
+                    "__add__",
+                    (obj.getattr(intern!(py, "as_plain_text"))?.call0()?.str()?,),
+                    None,
+                )?
+                .downcast_into()?;
+        }
+        Ok(str)
     }
 
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
