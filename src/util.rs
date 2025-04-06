@@ -77,6 +77,7 @@ impl ParseSpan {
     }
 }
 
+/// Variant of ParseSpan that includes the individual spans of the start and end tokens for easier error messages
 #[derive(Debug, Clone, Copy)]
 pub struct ParseContext {
     first_tok: ParseSpan,
