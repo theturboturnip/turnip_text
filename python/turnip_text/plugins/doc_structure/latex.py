@@ -13,7 +13,7 @@ from turnip_text.plugins.doc_structure import (
 from turnip_text.render.latex.backrefs import LatexBackrefMethod
 from turnip_text.render.latex.counter_resolver import LatexCounterDecl
 from turnip_text.render.latex.renderer import LatexCounterStyle, LatexRenderer
-from turnip_text.render.latex.setup import LatexPlugin, LatexSetup
+from turnip_text.render.latex.setup import LatexPlugin, LatexPreamblePoint, LatexSetup
 from turnip_text.render.manual_numbering import SimpleCounterFormat
 
 StartLatexHeader = (
@@ -80,7 +80,7 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
     def _register(self, build_sys: BuildSystem, setup: LatexSetup) -> None:
         setup.require_document_class(self.doc_class)
 
-        setup.add_preamble_section(self._emit_metadata_preamble)
+        setup.add_preamble_section(self._emit_metadata_preamble, point=LatexPreamblePoint.CONTENT)
 
         # TODO enable more backref methods
         backref_methods = (

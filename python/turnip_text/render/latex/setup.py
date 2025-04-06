@@ -15,13 +15,13 @@ from turnip_text.render.latex.counter_resolver import (
 from turnip_text.render.latex.package_resolver import LatexPackageResolver
 from turnip_text.render.latex.renderer import (
     LatexCounterFormat,
+    LatexPreamblePoint,
     LatexRenderer,
     LatexRequirements,
 )
 from typing_extensions import override
 
 LatexPlugin = RenderPlugin["LatexSetup"]
-
 
 class LatexSetup(RenderSetup[LatexRenderer]):
     standalone: bool
@@ -36,7 +36,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
     counter_resolver: LatexCounterResolver
     resolved_counters: Optional[ResolvedTTAndLatexCounters]
 
-    preamble_callbacks: List[Callable[[LatexRenderer], None]]
+    preamble_callbacks: List[Tuple[LatexPreamblePoint, Callable[[LatexRenderer], None]]]
     """Callbacks registered by plugins to emit things in the preamble."""
 
     emitter: EmitterDispatch[LatexRenderer]
@@ -98,8 +98,8 @@ class LatexSetup(RenderSetup[LatexRenderer]):
     def extend_document_class_args(self, args: List[str]) -> None:
         self.document_class_args.extend(args)
 
-    def add_preamble_section(self, callback: Callable[[LatexRenderer], None]) -> None:
-        self.preamble_callbacks.append(callback)
+    def add_preamble_section(self, callback: Callable[[LatexRenderer], None], point: LatexPreamblePoint = LatexPreamblePoint.CODE) -> None:
+        self.preamble_callbacks.append((point, callback))
 
     def gen_dfs_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
         resolved_counters = self.resolved_counters

@@ -1,8 +1,8 @@
 import abc
 from contextlib import contextmanager
 from dataclasses import dataclass
-from enum import Enum
-from typing import Callable, Dict, Iterator, List, Optional, Union
+from enum import Enum, IntEnum
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 from turnip_text import Block, DocSegment, Document, Inline, Raw, Text
 from turnip_text.doc.anchors import Anchor, Backref
@@ -134,6 +134,12 @@ class LatexCounterSpec:
             return self.override_fmt
         return self.default_fmt
 
+# Overall sections in which to place code in the preamble.
+# In particular, if the preamble contains content it may depend on code (e.g. custom macros) defined in other preamble sections,
+# and should therefore be placed after those macros are defined
+class LatexPreamblePoint(IntEnum):
+    CODE = 0
+    CONTENT = 1
 
 @dataclass
 class LatexRequirements:
@@ -146,7 +152,7 @@ class LatexRequirements:
     shell_escape: List[str]
     packages: List[LatexPackageRequirements]
 
-    preamble_callbacks: List[Callable[["LatexRenderer"], None]]
+    preamble_callbacks: List[Tuple[LatexPreamblePoint, Callable[["LatexRenderer"], None]]]
     """A set of unordered callbacks to emit various components of preamble.
     
     If documentclass is None, these are called at the start of the document (technically not in the preamble.)
@@ -355,7 +361,7 @@ class LatexRenderer(TextRenderer):
             self.emit_break_paragraph()
 
             # Emit custom preamble contents in the preamble
-            for callback in self.requirements.preamble_callbacks:
+            for (_point, callback) in sorted(self.requirements.preamble_callbacks, key=lambda cb: cb[0]):
                 callback(self)
                 self.emit_break_paragraph()
 
@@ -367,7 +373,7 @@ class LatexRenderer(TextRenderer):
                 self.emit_comment_line(package.as_latex_preamble_line(with_reason=True))
 
             # Emit custom preamble contents in the preamble
-            for callback in self.requirements.preamble_callbacks:
+            for (_point, callback) in sorted(self.requirements.preamble_callbacks, key=lambda cb: cb[0]):
                 callback(self)
                 self.emit_break_paragraph()
 
