@@ -1,13 +1,10 @@
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, cast
 
-from typing_extensions import override
-
 from turnip_text import Block, Document, Header, Inline
 from turnip_text.build_system import BuildSystem, OutputRelPath, RelPath
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
-from turnip_text.env_plugins import FmtEnv
+from turnip_text.env_plugins import AnchorEnv, FmtEnv
 from turnip_text.helpers import UNSET, MaybeUnset
-from turnip_text.plugins.anchors import StdAnchorPlugin
 from turnip_text.render import EmitterDispatch, RenderPlugin, RenderSetup
 from turnip_text.render.counters import CounterLink
 from turnip_text.render.latex.backrefs import LatexBackrefMethod
@@ -21,6 +18,7 @@ from turnip_text.render.latex.renderer import (
     LatexRenderer,
     LatexRequirements,
 )
+from typing_extensions import override
 
 LatexPlugin = RenderPlugin["LatexSetup"]
 
@@ -89,7 +87,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         # Don't try to use the counter_resolve anymore.
         self.counter_resolver = None  # type:ignore
 
-    def require_document_class(self, document_class: str, args: List[str]=[]) -> None:
+    def require_document_class(self, document_class: str, args: List[str] = []) -> None:
         if self.document_class is not UNSET and self.document_class != document_class:
             raise RuntimeError(
                 f"Conflicting document_class requirements: '{self.document_class}' and '{document_class}'"
@@ -136,7 +134,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
     def render_document(
         self,
         fmt: FmtEnv,
-        anchors: StdAnchorPlugin,
+        anchors: AnchorEnv,
         document: Document,
         build_sys: BuildSystem,
         output_file_name: Optional[OutputRelPath],

@@ -16,7 +16,6 @@ from typing import (
 )
 
 import pandoc  # type:ignore
-
 from turnip_text import (
     Block,
     BlockScope,
@@ -32,8 +31,7 @@ from turnip_text import (
 from turnip_text.build_system import BuildSystem, OutputRelPath, RelPath
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
-from turnip_text.env_plugins import FmtEnv, THeader
-from turnip_text.plugins.anchors import StdAnchorPlugin
+from turnip_text.env_plugins import AnchorEnv, FmtEnv, THeader
 from turnip_text.render import Renderer, RenderPlugin, RenderSetup
 from turnip_text.render.counters import (
     CounterLink,
@@ -122,7 +120,7 @@ class PandocRenderer(Renderer):
     def __init__(
         self,
         fmt: FmtEnv,
-        anchors: StdAnchorPlugin,
+        anchors: AnchorEnv,
         meta: pan.Meta,
         makers: "PandocDispatch[Self]",
         counters: CounterState,
@@ -375,10 +373,12 @@ PANDOC_FORMAT_TO_EXT = {
     "rst": "rst",
 }
 
+
 def recommend_pandoc_format_ext(format: str) -> str:
     if format in PANDOC_FORMAT_TO_EXT:
         return PANDOC_FORMAT_TO_EXT[format]
     return format
+
 
 class PandocSetup(RenderSetup[PandocRenderer]):
     pandoc_format: str
@@ -484,7 +484,7 @@ class PandocSetup(RenderSetup[PandocRenderer]):
     def render_document(
         self,
         fmt: FmtEnv,
-        anchors: StdAnchorPlugin,
+        anchors: AnchorEnv,
         document: Document,
         build_sys: BuildSystem,
         output_file_name: Optional[OutputRelPath],

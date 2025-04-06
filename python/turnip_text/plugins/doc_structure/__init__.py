@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence, Tuple, Union
 
-from typing_extensions import override
-
 from turnip_text import (
     Block,
     CoercibleToInline,
@@ -18,6 +16,7 @@ from turnip_text.doc.anchors import Anchor
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
 from turnip_text.helpers import UserInlineScopeBuilder
+from typing_extensions import override
 
 
 @dataclass
@@ -111,7 +110,7 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
         if self.num:
             return ty(
                 title=inlines,
-                anchor=self.doc_env.register_new_anchor(kind, self.label),
+                anchor=self.doc_env.anchors.register_new_anchor(kind, self.label),
                 weight=weight,
             )  # type: ignore
         return ty(title=inlines, anchor=None, weight=weight)  # type: ignore
@@ -123,7 +122,7 @@ class StructureEnvPlugin(EnvPlugin):
     _metadata: Optional[BasicMetadata] = None
     """At most one BasicMetadata object exists for each StructureEnvPlugin"""
 
-    def __init__(self, add_title: bool=True, add_toc: bool=True):
+    def __init__(self, add_title: bool = True, add_toc: bool = True):
         self._add_title = add_title
         self._add_toc = add_toc
 
@@ -144,7 +143,9 @@ class StructureEnvPlugin(EnvPlugin):
             if not any(isinstance(b, TableOfContents) for b in doc.contents):
                 doc.contents.insert_block(0, self.toc())
         if self._add_title:
-            if self._metadata and not any(isinstance(b, TitleBlock) for b in doc.contents):
+            if self._metadata and not any(
+                isinstance(b, TitleBlock) for b in doc.contents
+            ):
                 doc.contents.insert_block(0, self.title_block())
 
     def _set_metadata(

@@ -22,23 +22,26 @@ from turnip_text.cli import (
 )
 from turnip_text.cli.default_setup import DefaultTurnipTextSetup
 from turnip_text.env_plugins import EnvPlugin
-from turnip_text.plugins.anchors import StdAnchorPlugin
 
 # TODO enable indirect inheritance of TurnipTextSetup?
 
 # turnip_text files can override command-line arguments with shebang-esque comment lines at the start of the root file.
 # The lines of the root file are parsed until they stop being comments, and of those file all that fit the `#tt-cli .*` pattern are checked.
-#tt-cli setup=BLAH overrides the setup class the tool searches for.
-#tt-cli setup-search-module=BLAH overrides the Python module turnip_text tries to import to *find* the setup class.
-#tt-cli setup-arg=x:y sets the keyword argument x=y passed to the setup class when generating the plugins.
+# tt-cli setup=BLAH overrides the setup class the tool searches for.
+# tt-cli setup-search-module=BLAH overrides the Python module turnip_text tries to import to *find* the setup class.
+# tt-cli setup-arg=x:y sets the keyword argument x=y passed to the setup class when generating the plugins.
 # All of these override the command-line arguments passed in.
 TT_CLI_SHEBANG = re.compile(r"^#tt-cli\s+(.*)$")
 SETUP_CLASS_SHEBANG = re.compile(r"setup=(\w+)")
 SETUP_SEARCH_SHEBANG = re.compile(r"setup-search-module=(\w+)")
 SETUP_KWARG_SHEBANG = re.compile(r"setup-arg=([^:]+:.*)")
 
+
 def find_setup_class(
-    input_params: InputParams, requested_setup_class: Optional[str], setup_args: List[str], setup_search_module_arg: str
+    input_params: InputParams,
+    requested_setup_class: Optional[str],
+    setup_args: List[str],
+    setup_search_module_arg: str,
 ) -> Tuple[TurnipTextSetup, Dict[str, str]]:
     setup_kwargs = parse_setup_kwargs(setup_args)
 
@@ -58,16 +61,24 @@ def find_setup_class(
                 shebang_lines.append(match.group(1))
 
     # Get list of all shebang lines that match the SETUP_CLASS regex
-    setup_class_shebang_lines: List[re.Match] = list(filter(None, (SETUP_CLASS_SHEBANG.match(line) for line in shebang_lines)))
+    setup_class_shebang_lines: List[re.Match] = list(
+        filter(None, (SETUP_CLASS_SHEBANG.match(line) for line in shebang_lines))
+    )
     # Get list of all shebang lines that match the SETUP_SEARCH regex
-    setup_class_search_shebang_lines: List[re.Match] = list(filter(None, (SETUP_SEARCH_SHEBANG.match(line) for line in shebang_lines)))
+    setup_class_search_shebang_lines: List[re.Match] = list(
+        filter(None, (SETUP_SEARCH_SHEBANG.match(line) for line in shebang_lines))
+    )
     # Get list of all shebang lines that match the SETUP_ARG regex
-    setup_kwarg_shebang_lines: List[re.Match] = list(filter(None, (SETUP_KWARG_SHEBANG.match(line) for line in shebang_lines)))
+    setup_kwarg_shebang_lines: List[re.Match] = list(
+        filter(None, (SETUP_KWARG_SHEBANG.match(line) for line in shebang_lines))
+    )
 
     # Update the setup_class based on the shebang
     if setup_class_shebang_lines:
         if len(setup_class_shebang_lines) > 1:
-            raise RuntimeError(f"Can't use the `#tt-cli setup=` shebang multiple times: found {setup_class_shebang_lines} in file {input_params.input_rel_path}")
+            raise RuntimeError(
+                f"Can't use the `#tt-cli setup=` shebang multiple times: found {setup_class_shebang_lines} in file {input_params.input_rel_path}"
+            )
         requested_setup_class = setup_class_shebang_lines[0].group(1)
         print(
             f"Taking requested setup class from input file shebang: '{requested_setup_class}'"
@@ -80,14 +91,20 @@ def find_setup_class(
     # Update the setup class search module
     if setup_class_search_shebang_lines:
         if len(setup_class_search_shebang_lines) > 1:
-            raise RuntimeError(f"Can't use the `#tt-cli setup-class-search=` shebang multiple times: found {setup_class_search_shebang_lines} in file {input_params.input_rel_path}")
+            raise RuntimeError(
+                f"Can't use the `#tt-cli setup-class-search=` shebang multiple times: found {setup_class_search_shebang_lines} in file {input_params.input_rel_path}"
+            )
         setup_search_module_arg = setup_class_search_shebang_lines[0].group(1)
         print(
             f"Taking requested setup class search module from input file shebang: '{setup_search_module_arg}'"
         )
 
     # Update the setup_kwargs
-    setup_kwargs.update(parse_setup_kwargs([setup_kwarg.group(1) for setup_kwarg in setup_kwarg_shebang_lines]))
+    setup_kwargs.update(
+        parse_setup_kwargs(
+            [setup_kwarg.group(1) for setup_kwarg in setup_kwarg_shebang_lines]
+        )
+    )
 
     if requested_setup_class:
         # Look for subclasses of TurnipTextSetup that match the requested name
@@ -154,7 +171,9 @@ def wrap_render(args: Any) -> None:
 
             output_params = autodetect_output(args.output_dir, input_params)
 
-            setup, setup_kwargs = find_setup_class(input_params, args.setup, args.setup_args, args.setup_search_module)
+            setup, setup_kwargs = find_setup_class(
+                input_params, args.setup, args.setup_args, args.setup_search_module
+            )
 
             render(
                 input_params,
@@ -167,7 +186,9 @@ def wrap_render(args: Any) -> None:
 
 def wrap_describe(args: Any) -> None:
     input_params = autodetect_input(args.inputs[0], args.project_dir)
-    setup, setup_kwargs = find_setup_class(input_params, args.setup, args.setup_args, args.setup_search_module)
+    setup, setup_kwargs = find_setup_class(
+        input_params, args.setup, args.setup_args, args.setup_search_module
+    )
 
     print(f"This document uses the {setup.__class__.__qualname__} class as its Setup.")
     if setup_kwargs:
@@ -190,13 +211,10 @@ def wrap_describe(args: Any) -> None:
             f"The setup class generates a list of approximately {len(plugins)} plugins, with the following interfaces"
         )
 
-        anchors = StdAnchorPlugin()
-        plugins_with_anchors: List[EnvPlugin] = list(plugins)
-        plugins_with_anchors.append(anchors)
         fmt, doc_env = EnvPlugin._make_contexts(
             # Don't need the build system here
             None,  # type:ignore
-            plugins_with_anchors,
+            plugins,
         )
 
         # TODO fmt vs doc_env

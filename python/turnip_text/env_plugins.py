@@ -1,10 +1,13 @@
 import functools
 import inspect
+import re
+from collections import defaultdict
 from typing import (
     Any,
     Callable,
     Concatenate,
     Dict,
+    Optional,
     ParamSpec,
     Sequence,
     Tuple,
@@ -15,7 +18,7 @@ from typing import (
 
 from turnip_text import Block, Document, Header, Inline
 from turnip_text.build_system import BuildSystem
-from turnip_text.doc.anchors import Backref
+from turnip_text.doc.anchors import Anchor, Backref
 
 T = TypeVar("T")
 TBlockOrInline = TypeVar("TBlockOrInline", bound=Union[Block, Inline])
@@ -172,7 +175,7 @@ class EnvPlugin:
 
 
 def in_doc(
-    f: Callable[Concatenate[TEnvPlugin, "DocEnv", P], T]
+    f: Callable[Concatenate[TEnvPlugin, "DocEnv", P], T],
 ) -> Callable[Concatenate[TEnvPlugin, P], T]:
     """
     An annotation for plugin bound methods which access the __doc_env object i.e. other in_doc (and pure_fmt) functions and variables.
@@ -191,7 +194,7 @@ def in_doc(
 
 
 def pure_fmt(
-    f: Callable[Concatenate[TEnvPlugin, "FmtEnv", P], T]
+    f: Callable[Concatenate[TEnvPlugin, "FmtEnv", P], T],
 ) -> Callable[Concatenate[TEnvPlugin, P], T]:
     """
         An annotation for plugin bound methods which access the __fmt object i.e. other pure_fmt functions.
@@ -223,6 +226,7 @@ RESERVED_ENV_PLUGIN_EXPORTS = [
     "doc",
     "fmt",
     "anchors",
+    "backref",
 ]
 
 
@@ -237,6 +241,109 @@ class FmtEnv:
         raise AttributeError(name=name, obj=self)
 
 
+class AnchorEnv:
+    """Class responsible for keeping track of all the anchors in a document.
+
+    Has enough information to convert a Backref to the Anchor that it refers to (inferring the kind)
+    and retrieve information associated with the anchor.
+    Allows document code to create anchors with `register_new_anchor()` or `register_new_anchor_with_float()`.
+    Any backref can be converted to an Anchor (usually for rendering purposes) with `lookup_backref()`.
+    The data associated with an Anchor in `register_new_anchor_with_float()` can be retrieved with an Anchor `lookup_anchor_float()` or a Backref to that Anchor `lookup_backref_float()`.
+
+    Anchors can be created without knowing their ID, at which point this will generate an ID from a monotonic per-kind counter.
+    To avoid overlap with user-defined IDs, user-defined IDs must contain at least one alphabetic latin character (upper or lowercase).
+    """
+
+    _anchor_kind_counters: Dict[str, int]
+    _anchor_id_to_possible_kinds: Dict[str, Dict[str, Anchor]]
+    _anchored_floats: Dict[Anchor, Block]  # TODO rename floating_space
+
+    # Anchor IDs, if they're user-defined, they must be
+    _VALID_USER_ANCHOR_ID_REGEX = re.compile(r"\w*[a-zA-Z]\w*")
+
+    __doc_env: "DocEnv"
+
+    def __init__(self, doc_env: "DocEnv") -> None:
+        self._anchor_kind_counters = defaultdict(lambda: 1)
+        self._anchor_id_to_possible_kinds = defaultdict(dict)
+        self._anchored_floats = {}
+        self.__doc_env = doc_env
+
+    def register_new_anchor(self, kind: str, id: Optional[str]) -> Anchor:
+        """
+        When inside the document, create a new anchor.
+        """
+        if self.__doc_env._frozen:
+            raise RuntimeError("Can't register_new_anchor when the doc is frozen!")
+
+        if id is None:
+            id = str(self._anchor_kind_counters[kind])
+        else:
+            # Guarantee no overlap with auto-generated anchor IDs
+            assert self._VALID_USER_ANCHOR_ID_REGEX.match(
+                id
+            ), "User-defined anchor IDs must have at least one alphabetic character"
+
+        if self._anchor_id_to_possible_kinds[id].get(kind) is not None:
+            raise ValueError(
+                f"Tried to register anchor kind={kind}, id={id} when it already existed"
+            )
+
+        l = Anchor(
+            kind=kind,
+            id=id,
+        )
+        self._anchor_kind_counters[kind] += 1
+        self._anchor_id_to_possible_kinds[id][kind] = l
+        return l
+
+    def register_new_anchor_with_float(
+        self,
+        kind: str,
+        id: Optional[str],
+        float_gen: Callable[[Anchor], Block],
+    ) -> Anchor:
+        a = self.register_new_anchor(kind, id)
+        self._anchored_floats[a] = float_gen(a)
+        return a
+
+    def lookup_backref(self, backref: Backref) -> Anchor:
+        """
+        Should be called by renderers to resolve a backref into an anchor.
+        The renderer can then retrieve the counters for the anchor.
+        """
+
+        # TODO this would be perfect for raising an error with where the backref was emitted
+
+        if backref.id not in self._anchor_id_to_possible_kinds:
+            raise ValueError(
+                f"Backref {backref} refers to an ID '{backref.id}' with no anchor!"
+            )
+
+        possible_kinds = self._anchor_id_to_possible_kinds[backref.id]
+
+        if backref.kind is None:
+            if len(possible_kinds) != 1:
+                raise ValueError(
+                    f"Backref {backref} doesn't specify the kind of anchor it's referring to, and there are multiple with that ID: {possible_kinds}"
+                )
+            only_possible_anchor = next(iter(possible_kinds.values()))
+            return only_possible_anchor
+        else:
+            if backref.kind not in possible_kinds:
+                raise ValueError(
+                    f"Backref {backref} specifies an anchor of kind {backref.kind}, which doesn't exist for ID {backref.id}: {possible_kinds}"
+                )
+            return possible_kinds[backref.kind]
+
+    def lookup_anchor_float(self, anchor: Anchor) -> Optional[Block]:
+        return self._anchored_floats.get(anchor)
+
+    def lookup_backref_float(self, backref: Backref) -> Tuple[Anchor, Optional[Block]]:
+        a = self.lookup_backref(backref)
+        return a, self._anchored_floats.get(a)
+
+
 class DocEnv:
     _frozen: bool = (
         False  # Set to True when rendering the document, which disables functions annotated with @in_doc.
@@ -247,11 +354,16 @@ class DocEnv:
     build_sys: BuildSystem
     doc: "DocEnv"
     fmt: "FmtEnv"
+    anchors: AnchorEnv
+    # This can be used by all document code to create backrefs, optionally with custom labels.
+    backref: Type[Backref]
 
     def __init__(self, build_sys: BuildSystem, fmt: "FmtEnv") -> None:
         self.build_sys = build_sys
         self.doc = self
         self.fmt = fmt
+        self.anchors = AnchorEnv(self)
+        self.backref = Backref
 
     def __getattr__(self, name: str) -> Any:
         # The DocEnv has various things that we don't know at type-time.

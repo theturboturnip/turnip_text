@@ -6,8 +6,7 @@ from typing import Callable, Dict, Iterator, List, Optional, Union
 
 from turnip_text import Block, DocSegment, Document, Inline, Raw, Text
 from turnip_text.doc.anchors import Anchor, Backref
-from turnip_text.env_plugins import FmtEnv
-from turnip_text.plugins.anchors import StdAnchorPlugin
+from turnip_text.env_plugins import AnchorEnv, FmtEnv
 from turnip_text.render import EmitterDispatch, TextRenderer, Writable
 from turnip_text.render.counters import CounterState
 from turnip_text.render.latex.package_resolver import (
@@ -168,7 +167,7 @@ class LatexRenderer(TextRenderer):
     def __init__(
         self,
         fmt: FmtEnv,
-        anchors: StdAnchorPlugin,
+        anchors: AnchorEnv,
         requirements: LatexRequirements,
         tt_counters: CounterState,
         handlers: EmitterDispatch["LatexRenderer"],
@@ -190,7 +189,9 @@ class LatexRenderer(TextRenderer):
         if self.requirements.document_class:
             self.emit_raw("\\documentclass")
             if self.requirements.document_class_args:
-                self.emit_sqr_bracketed(Raw(",".join(self.requirements.document_class_args)))
+                self.emit_sqr_bracketed(
+                    Raw(",".join(self.requirements.document_class_args))
+                )
             self.emit_braced(Raw(self.requirements.document_class))
             self.emit_break_paragraph()
             for package in self.requirements.packages:
@@ -390,7 +391,7 @@ class LatexRenderer(TextRenderer):
             "&": "\&",
             "~": "\~{}",
             # Unicode NBSP -> LaTeX ~ NBSP
-            "\u00A0": "~",
+            "\u00a0": "~",
             # Unicode en, emdashes -> LaTeX dash shortcuts
             "\u2013": "--",
             "\u2014": "---",

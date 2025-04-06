@@ -12,7 +12,7 @@ from turnip_text import (
 )
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.user_nodes import UserNode
-from turnip_text.plugins.anchors import StdAnchorPlugin
+from turnip_text.env_plugins import AnchorEnv
 
 VisitorFilter = Tuple[Type[Any], ...] | Type[Any] | None
 VisitorFunc = Callable[[Any], None]
@@ -24,7 +24,7 @@ class DocumentDfsPass:
     def __init__(self, visitors: List[Tuple[VisitorFilter, VisitorFunc]]) -> None:
         self.visitors = visitors
 
-    def dfs_over_document(self, document: Document, anchors: StdAnchorPlugin) -> None:
+    def dfs_over_document(self, document: Document, anchors: AnchorEnv) -> None:
         # Floats are parsed when their portals are encountered
         dfs_queue: List[Block | Inline | DocSegment | Header] = []
         dfs_queue.extend(reversed((document.contents, *document.segments)))

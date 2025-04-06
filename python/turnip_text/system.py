@@ -28,7 +28,8 @@ TODO outdated
 4. Rendering
    Finally, the RenderSetup is converted into a single-use Renderer which outputs to a file/StringIO.
    The Renderer iterates through the frozen document, emitting the elements by calling into RendererPlugin-defined functions.
-   This mutates internal RendererPlugin state, may take info from the RenderSetup e.g. resolved LaTeX package information, consumes the document, and mutates a maybe-passed-in IO handle."""
+   This mutates internal RendererPlugin state, may take info from the RenderSetup e.g. resolved LaTeX package information, consumes the document, and mutates a maybe-passed-in IO handle.
+"""
 
 from typing import List, Optional, Sequence, Set, Type, Union
 
@@ -36,7 +37,6 @@ from turnip_text import Block, Header, Inline, parse_file
 from turnip_text.build_system import BuildSystem, InputRelPath, OutputRelPath
 from turnip_text.doc.dfs import DocumentDfsPass
 from turnip_text.env_plugins import EnvPlugin
-from turnip_text.plugins.anchors import StdAnchorPlugin
 from turnip_text.render import RenderPlugin, TRenderSetup
 
 
@@ -48,10 +48,7 @@ def parse_and_emit(
     plugins: Sequence[RenderPlugin[TRenderSetup]],
 ) -> None:
     # Phase 0 - Setup plugins, contexts, and initialize the render setup
-    anchors = StdAnchorPlugin()
-    plugins_with_anchors: List[EnvPlugin] = list(plugins)
-    plugins_with_anchors.append(anchors)
-    fmt, doc_env = EnvPlugin._make_contexts(build_sys, plugins_with_anchors)
+    fmt, doc_env = EnvPlugin._make_contexts(build_sys, plugins)
 
     render_setup.register_plugins(build_sys, plugins)
 
@@ -63,7 +60,7 @@ def parse_and_emit(
     exported_nodes: Set[Type[Union[Block, Inline, Header]]] = set()
     exported_countables: Set[str] = set()
 
-    for plugin in plugins_with_anchors:
+    for plugin in plugins:
         exported_nodes.update(plugin._doc_nodes())
         exported_countables.update(plugin._countables())
         plugin._mutate_document(doc_env, fmt, document)
@@ -96,10 +93,10 @@ def parse_and_emit(
     # Phase 3 - Visiting and Counting
     DocumentDfsPass(render_setup.gen_dfs_visitors()).dfs_over_document(
         document,
-        anchors,
+        doc_env.anchors,
     )
 
     # Phase 4 - Rendering
-    render_setup.render_document(fmt, anchors, document, build_sys, out_path)
+    render_setup.render_document(fmt, doc_env.anchors, document, build_sys, out_path)
     # Do any deferred jobs to generate supplementary files, if they aren't done already
     build_sys.run_deferred_jobs()

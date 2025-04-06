@@ -17,8 +17,6 @@ from typing import (
     Union,
 )
 
-from typing_extensions import override
-
 from turnip_text import (
     Block,
     BlockScope,
@@ -35,9 +33,9 @@ from turnip_text import (
 from turnip_text.build_system import BuildSystem, OutputRelPath, RelPath
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
-from turnip_text.env_plugins import EnvPlugin, FmtEnv
-from turnip_text.plugins.anchors import StdAnchorPlugin
+from turnip_text.env_plugins import AnchorEnv, EnvPlugin, FmtEnv
 from turnip_text.render.dyn_dispatch import DynDispatch
+from typing_extensions import override
 
 T = TypeVar("T")
 TBlockOrInline = TypeVar("TBlockOrInline", bound=Union[Block, Inline])
@@ -189,12 +187,12 @@ class Writable(Protocol):
 
 class Renderer(abc.ABC):
     fmt: FmtEnv
-    anchors: StdAnchorPlugin
+    anchors: AnchorEnv
 
     def __init__(
         self: TRenderer,
         fmt: FmtEnv,
-        anchors: StdAnchorPlugin,
+        anchors: AnchorEnv,
     ) -> None:
         self.fmt = fmt
         self.anchors = anchors
@@ -220,7 +218,7 @@ class TextRenderer(Renderer):
     def __init__(
         self: TTextRenderer,
         fmt: FmtEnv,
-        anchors: StdAnchorPlugin,
+        anchors: AnchorEnv,
         handlers: EmitterDispatch[TTextRenderer],
         write_to: Writable,
     ) -> None:
@@ -409,7 +407,7 @@ class RenderSetup(abc.ABC, Generic[TRenderer]):
     def render_document(
         self,
         fmt: FmtEnv,
-        anchors: StdAnchorPlugin,
+        anchors: AnchorEnv,
         document: Document,
         build_sys: BuildSystem,
         output_file_name: Optional[OutputRelPath],

@@ -6,8 +6,7 @@ from turnip_text import Block, Document, Header, Inline, Paragraph, Text
 from turnip_text.build_system import BuildSystem, OutputRelPath, RelPath
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
-from turnip_text.env_plugins import FmtEnv
-from turnip_text.plugins.anchors import StdAnchorPlugin
+from turnip_text.env_plugins import AnchorEnv, FmtEnv
 from turnip_text.render import (
     EmitterDispatch,
     RenderPlugin,
@@ -33,7 +32,7 @@ class MarkdownRenderer(TextRenderer):
     def __init__(
         self,
         fmt: FmtEnv,
-        anchors: StdAnchorPlugin,
+        anchors: AnchorEnv,
         handlers: EmitterDispatch["MarkdownRenderer"],
         counters: CounterState,
         counter_rendering: Dict[str, MarkdownCounterFormat],
@@ -277,7 +276,7 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
     def render_document(
         self,
         fmt: FmtEnv,
-        anchors: StdAnchorPlugin,
+        anchors: AnchorEnv,
         document: Document,
         build_sys: BuildSystem,
         output_file_name: Optional[OutputRelPath],
