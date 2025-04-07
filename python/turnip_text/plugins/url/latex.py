@@ -1,4 +1,4 @@
-from turnip_text import Raw
+from turnip_text import Raw, Text
 from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.plugins.url import NamedUrl, UrlEnvPlugin
@@ -31,11 +31,15 @@ class LatexUrlPlugin(LatexPlugin, UrlEnvPlugin):
         # this breaks if the hash is already escaped,
         # the solution is don't escape the hash in raw turnip-text lol
 
-        if url.name is None:
+        if url.name is None and "#" not in url.url:
             renderer.emit_macro("url")
             # The \url macro auto-escapes hashes
+            # EXCEPT INSIDE FRAMES
+            # https://tex.stackexchange.com/a/401749
+            # so don't rely on that behaviour.
             renderer.emit_braced(Raw(url.url))
         else:
+            name = url.name or [Text(url.url)]
             renderer.emit_macro("href")
             renderer.emit_braced(Raw(url.url.replace("#", "\\#")))
-            renderer.emit_braced(*url.name)
+            renderer.emit_braced(*name)
