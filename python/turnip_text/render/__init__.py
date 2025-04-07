@@ -32,7 +32,7 @@ from turnip_text import (
 )
 from turnip_text.build_system import BuildSystem, OutputRelPath, RelPath
 from turnip_text.doc.anchors import Anchor, Backref
-from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
+from turnip_text.env_plugins import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import AnchorEnv, EnvPlugin, FmtEnv
 from turnip_text.render.dyn_dispatch import DynDispatch
 from typing_extensions import override
@@ -434,11 +434,4 @@ class RenderSetup(abc.ABC, Generic[TRenderer]):
 # Because RenderPlugin is disjoint from EnvPlugin, and we can assume NamedUrlPlugin is disjoint from RenderPlugin, the methods will always resolve as one expects. No diamond problem.
 class RenderPlugin(Generic[TRenderSetup], EnvPlugin):
     def _register(self, build_sys: BuildSystem, setup: TRenderSetup) -> None:
-        return None
-
-    # Return a list of (filter, visitor) functions which are run in parallel over a single DFS pass on the frozen document.
-    # Right now there are no usecases for emitting serial sets of DFS passes, because these fundamentally don't mutate state.
-    # If you have some complex computation on the state of the document, you can glean all necessary information up front and then do the computation.
-    # TODO make this empty-list instead of None
-    def _make_visitors(self) -> Optional[List[Tuple[VisitorFilter, VisitorFunc]]]:
         return None

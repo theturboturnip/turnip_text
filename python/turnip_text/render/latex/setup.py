@@ -2,7 +2,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, cast
 
 from turnip_text import Block, Document, Header, Inline
 from turnip_text.build_system import BuildSystem, OutputRelPath, RelPath
-from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
+from turnip_text.env_plugins import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import AnchorEnv, FmtEnv
 from turnip_text.helpers import UNSET, MaybeUnset
 from turnip_text.render import EmitterDispatch, RenderPlugin, RenderSetup

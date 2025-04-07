@@ -5,7 +5,7 @@ from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple, U
 from turnip_text import Block, Document, Header, Inline, Paragraph, Text
 from turnip_text.build_system import BuildSystem, OutputRelPath, RelPath
 from turnip_text.doc.anchors import Anchor, Backref
-from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
+from turnip_text.env_plugins import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import AnchorEnv, FmtEnv
 from turnip_text.render import (
     EmitterDispatch,

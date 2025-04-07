@@ -3,7 +3,7 @@ from typing import Iterator, List, Tuple, Union
 from turnip_text import BlockScope, DocSegment, InlineScope, Raw, Text, join_inlines
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc.anchors import Backref
-from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
+from turnip_text.env_plugins import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.helpers import paragraph_of
 from turnip_text.plugins.doc_structure import (
@@ -81,7 +81,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
 
     known_headers: List[Union[BasicHeader, AppendixHeader]]
 
-    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
+    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
         self.known_headers = []
 
         def visit_header(s: Union[BasicHeader, AppendixHeader]) -> None:

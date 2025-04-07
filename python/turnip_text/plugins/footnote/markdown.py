@@ -3,7 +3,7 @@ from typing import List, Sequence, Tuple
 from turnip_text import Block, Document, Header, Inline, Text
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc.anchors import Backref
-from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
+from turnip_text.env_plugins import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import DocEnv, FmtEnv
 from turnip_text.helpers import paragraph_of
 from turnip_text.plugins.footnote import (
@@ -55,7 +55,7 @@ class MarkdownFootnotePlugin_AtEnd(MarkdownPlugin, FootnoteEnvPlugin):
             SimpleCounterFormat(name="^", style=SimpleCounterStyle.Arabic),
         )
 
-    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
+    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
         return [(FootnoteRef, lambda f: self.footnote_anchors.append(f.portal_to))]
 
     def _emit_footnote_ref(

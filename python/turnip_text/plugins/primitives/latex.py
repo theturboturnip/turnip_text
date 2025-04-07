@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, List, Literal, Sequence, Tuple, Type
-from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
+from turnip_text.env_plugins import VisitorFilter, VisitorFunc
 from typing_extensions import override
 
 from turnip_text import Block, Header, Inline, Raw

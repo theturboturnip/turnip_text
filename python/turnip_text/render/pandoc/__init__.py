@@ -30,7 +30,7 @@ from turnip_text import (
 )
 from turnip_text.build_system import BuildSystem, OutputRelPath, RelPath
 from turnip_text.doc.anchors import Anchor, Backref
-from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
+from turnip_text.env_plugins import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import AnchorEnv, FmtEnv, THeader
 from turnip_text.render import Renderer, RenderPlugin, RenderSetup
 from turnip_text.render.counters import (

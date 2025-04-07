@@ -7,7 +7,7 @@ import citeproc  # type: ignore
 
 from turnip_text import Block, BlockScope, Raw, Text
 from turnip_text.build_system import BuildSystem, InputRelPath
-from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
+from turnip_text.env_plugins import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.helpers import paragraph_of
 from turnip_text.plugins.cites import (
@@ -44,7 +44,7 @@ class MarkdownCitationPlugin_UncheckedBib(MarkdownPlugin, CitationEnvPlugin):
             self._referenced_citations.add(citekey)
             self._ordered_citations.append(citekey)
 
-    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
+    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
         def regsiter_many_citations(c: Citation) -> None:
             for k in c.citekeys:
                 self._register_citation(k)
@@ -380,7 +380,7 @@ class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
         setup.emitter.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
         setup.emitter.register_block_or_inline(Bibliography, self._emit_bibliography)
 
-    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
+    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
         def foreach_citation(citation: Citation) -> None:
             citeproc_citation = citeproc.Citation(
                 [citeproc.CitationItem(key) for key in citation.citekeys]

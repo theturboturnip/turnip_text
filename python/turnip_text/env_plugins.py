@@ -7,6 +7,7 @@ from typing import (
     Callable,
     Concatenate,
     Dict,
+    List,
     Optional,
     ParamSpec,
     Sequence,
@@ -29,6 +30,11 @@ TVisitorOutcome = TypeVar("TVisitorOutcome")
 TEnvPlugin = TypeVar("TEnvPlugin", bound="EnvPlugin")
 P = ParamSpec("P")
 
+"""
+Used for DFS.
+"""
+VisitorFilter = Tuple[Type[Any], ...] | Type[Any] | None
+VisitorFunc = Callable[[Any], None]
 
 class EnvPlugin:
     """
@@ -81,6 +87,12 @@ class EnvPlugin:
         """
         Tell the Document what nodes this plugin exports
         """
+        return []
+    
+    # Return a list of (filter, visitor) functions which are run in parallel over a single DFS pass on the frozen document.
+    # Right now there are no usecases for emitting serial sets of DFS passes, because these fundamentally don't mutate state.
+    # If you have some complex computation on the state of the document, you can glean all necessary information up front and then do the computation.
+    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
         return []
 
     def _mutate_document(self, doc_env: "DocEnv", fmt: "FmtEnv", doc: Document) -> None:

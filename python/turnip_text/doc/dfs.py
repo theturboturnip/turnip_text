@@ -12,10 +12,7 @@ from turnip_text import (
 )
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.user_nodes import UserNode
-from turnip_text.env_plugins import AnchorEnv
-
-VisitorFilter = Tuple[Type[Any], ...] | Type[Any] | None
-VisitorFunc = Callable[[Any], None]
+from turnip_text.env_plugins import AnchorEnv, VisitorFilter, VisitorFunc
 
 
 class DocumentDfsPass:

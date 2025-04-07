@@ -4,7 +4,7 @@ from typing_extensions import override
 
 from turnip_text import Inline, Raw
 from turnip_text.build_system import BuildSystem, InputRelPath, OutputRelPath
-from turnip_text.doc.dfs import VisitorFilter, VisitorFunc
+from turnip_text.env_plugins import VisitorFilter, VisitorFunc
 from turnip_text.env_plugins import DocEnv, FmtEnv, in_doc
 from turnip_text.plugins.cites import (
     Bibliography,
@@ -111,7 +111,7 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
         ).open_write_text() as f:
             self._citation_db.write_minimal_db(f)
 
-    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]] | None:
+    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
         def visit_cite_or_citeauthor(c: Union[Citation, CiteAuthor]) -> None:
             if isinstance(c, CiteAuthor):
                 self._citation_db.register_entry_used(c.citekey)
