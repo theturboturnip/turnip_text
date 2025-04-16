@@ -30,6 +30,7 @@ FORMAT_TYPE_TO_HTML = {
     InlineFormattingType.Mono: "code",
 }
 
+# TODO some formatting breaks when directly following text e.g. "AXI**\[TODO: cite\]** and PCIe**\[TODO: cite\]**" bold the " and PCIe" not the [TODO bits]
 
 class MarkdownInlineFormatPlugin(MarkdownPlugin, InlineFormatEnvPlugin):
     def _register(self, build_sys: BuildSystem, setup: MarkdownSetup) -> None:
