@@ -11,10 +11,12 @@ from typing import (
     Optional,
     ParamSpec,
     Sequence,
+    Set,
     Tuple,
     Type,
     TypeVar,
     Union,
+    cast,
 )
 
 from turnip_text import Block, Document, Header, Inline
@@ -144,7 +146,7 @@ class EnvPlugin:
         """Given a set of EnvPlugins, build a FmtEnv with annotated @pure_fmt functions + plain value, and DocEnv with annotated @in_doc functions, from the contents of all plugins.
         Is a method of EnvPlugin so it can use internal methods that begin with __"""
         fmt = FmtEnv()
-        doc_env = DocEnv(build_sys, fmt)
+        doc_env = DocEnv(build_sys, fmt, plugins)
 
         def register_plugin(plugin: "EnvPlugin") -> None:
             i = plugin._interface()
@@ -239,6 +241,7 @@ RESERVED_ENV_PLUGIN_EXPORTS = [
     "fmt",
     "anchors",
     "backref",
+    "plugins",
 ]
 
 
@@ -369,14 +372,33 @@ class DocEnv:
     anchors: AnchorEnv
     # This can be used by all document code to create backrefs, optionally with custom labels.
     backref: Type[Backref]
+    plugins: Sequence[EnvPlugin]
+    _safely_usable_as: Set[Type]
 
-    def __init__(self, build_sys: BuildSystem, fmt: "FmtEnv") -> None:
+    def __init__(self, build_sys: BuildSystem, fmt: "FmtEnv", plugins: Sequence[EnvPlugin]) -> None:
         self.build_sys = build_sys
         self.doc = self
         self.fmt = fmt
         self.anchors = AnchorEnv(self)
         self.backref = Backref
+        self.plugins = plugins
+        self._safely_usable_as = {
+            type(p) for p in plugins
+        }
 
+    def get(self, plugin_type: Type[TEnvPlugin]) -> TEnvPlugin:
+        if plugin_type not in self._safely_usable_as:
+            usable = False
+            for p in self.plugins:
+                if isinstance(p, plugin_type):
+                    self._safely_usable_as.add(plugin_type)
+                    usable = True
+                    break
+            if not usable:
+                raise RuntimeError(f"This DocEnv has no plugin of type '{plugin_type.__name__}' and cannot be used as one.")
+        return cast(TEnvPlugin, self)
+
+    # TODO get rid of this
     def __getattr__(self, name: str) -> Any:
         # The DocEnv has various things that we don't know at type-time.
         # We want to be able to use those things from Python code.
