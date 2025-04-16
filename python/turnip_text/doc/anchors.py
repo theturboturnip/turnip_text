@@ -13,7 +13,7 @@ The content it refers to is one of a bunch of types:
 References to specific text are a special case: the user needs to choose how to refer back to them, maybe by closest-structural-counter, maybe they're in some float (is there a floating quote environment?), maybe by page...
 It gets weird there too because some formats don't have pages. Markdown would probably change "on page X" to a link "here"?.
 
-These "label kinds" determine the in-text references to each item, and might (per-renderer) determine the kind of \label used.
+These "label kinds" determine the in-text references to each item, and might (per-renderer) determine the kind of \\label used.
 We need to find a way to make it work kinda like LaTeX - LaTeX lets you associated labels with multiple counters, and choose when counters reset, so you can say "figure 1.2.4" is figure 4 in chapter 1 in section 2.
 This system also needs to support creating new sub-labels: e.g. if I already have a "figure" label, I want to create a sub-figure to represent "figure 1.2.4.a"
 

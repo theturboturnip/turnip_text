@@ -31,7 +31,7 @@ BasicLatexDocClass = Literal["article"] | Literal["report"] | Literal["book"]
 class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
     """Defines rendering for structure headers in the three basic document classes: 'article', 'report', and 'book'.
 
-    - Headers with weight=0 are always \part. TODO make these available
+    - Headers with weight=0 are always \\part. TODO make these available
     - Headers with weight=1 are the macro specified by the h1 argument,
       and headers with greater weights follow in this order:
 
@@ -163,7 +163,7 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
                         # "\\" to put the subtitle on a separate line
                         renderer.emit_raw("\\\\")
                 if self._metadata.subtitle:
-                    renderer.emit_braced(Raw("\large "), self._metadata.subtitle)
+                    renderer.emit_braced(Raw("\\large "), self._metadata.subtitle)
                 renderer.emit_raw("}\n")
             else:
                 renderer.emit_comment_line("No title or subtitle supplied")

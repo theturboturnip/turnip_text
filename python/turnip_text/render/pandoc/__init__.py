@@ -217,7 +217,7 @@ class PandocRenderer(Renderer):
         """
         # Unsure how to handle non-breaking space, so passthrough the unicode character directly for now.
         # However, breaking space is counted as inter-word space.
-        words = [pan.Str(word) for word in re.split("\s+", text.text)]
+        words = [pan.Str(word) for word in re.split(r"\s+", text.text)]
         return generic_join(words, pan.Space())
 
     def make_raw(self, raw: Raw) -> pan.Inline:

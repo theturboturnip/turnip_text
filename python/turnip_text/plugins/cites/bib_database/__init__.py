@@ -5,7 +5,7 @@ from turnip_text.build_system import TextWriter
 """
 This library is intended to provide a consistent method for reducing bibliographies to the minimal required set for a given document (My_Whole_Library.bib -> This_Article.bib)
 
-Later, it might be used as a metadata hub (e.g. \citeauthor equivalent in LaTeX?)
+Later, it might be used as a metadata hub (e.g. \\citeauthor equivalent in LaTeX?)
 Other possible features:
 Automatic sanitization? e.g. if DOI and URL choose DOI?
 Automatic nice sorting?

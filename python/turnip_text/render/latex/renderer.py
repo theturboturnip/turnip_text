@@ -388,14 +388,14 @@ class LatexRenderer(TextRenderer):
         # note - right now this assumes we're using a unicode-compatible setup and thus don't need to escape unicode characters.
         ascii_map = {
             "\\": "\\textbackslash{}",
-            "%": "\%",
-            "$": "\$",
-            "{": "\{",
-            "}": "\}",
-            "_": "\_",
-            "#": "\#",
-            "&": "\&",
-            "~": "\~{}",
+            "%": "\\%",
+            "$": "\\$",
+            "{": "\\{",
+            "}": "\\}",
+            "_": "\\_",
+            "#": "\\#",
+            "&": "\\&",
+            "~": "\\~{}",
             # Unicode NBSP -> LaTeX ~ NBSP
             "\u00a0": "~",
             # Unicode en, emdashes -> LaTeX dash shortcuts
@@ -444,7 +444,7 @@ class LatexRenderer(TextRenderer):
         finally:
             self.pop_indent(indent)
             self.emit_newline()
-            self.emit_raw(f"\end{{{name}}}")
+            self.emit_raw(f"\\end{{{name}}}")
 
     def emit_anchor(self, anchor: Anchor) -> None:
         backref_method = self.requirements.tt_counter_to_latex[anchor.kind].backref_impl
