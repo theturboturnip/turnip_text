@@ -16,6 +16,8 @@ class UserNode(Protocol):
     # and the dataclass will try to use it in the constructor
     # but it won't have a setter.
     # TODO make this return list - or generator? - to be more easily combined with subclassing
+    # TODO rename this to 'expand()'? As an easy way to define renderer-independent nodes that don't have content at the start..? ah, but that would technically allow changing the content after a DFS. technically this is fine for e.g. wordcount nodes, which by definition change after the DFS...
+    # maybe the correct thing is to render a user node in terms of its child_nodes() if we don't find a renderer for it...
     @abc.abstractmethod
     def child_nodes(self) -> Iterable[Block | Inline] | None:
         """The children of this node, used by the DFS pass to iterate into nodes."""
