@@ -53,10 +53,23 @@ class MarkdownInlineFormatPlugin(MarkdownPlugin, InlineFormatEnvPlugin):
         elif renderer.in_html_mode:
             with renderer.emit_tag(FORMAT_TYPE_TO_HTML[f.format_type]):
                 renderer.emit(f.contents)
+        elif f.format_type in [InlineFormattingType.Bold, InlineFormattingType.Italic, InlineFormattingType.Emph, InlineFormattingType.Strong]:
+            # If preceded by a space, we're fine to use markdown
+            if renderer.peek(1).isspace():
+                surround = FORMAT_TYPE_TO_MARKDOWN[f.format_type]
+                renderer.emit_raw(surround)
+                renderer.emit(f.contents)
+                renderer.emit_raw(surround)
+            else:
+                # Otherwise doing e.g. "AXI**\[blah\]** " can have problems, so drop down to HTML
+                with renderer.html_mode():
+                    with renderer.emit_tag(FORMAT_TYPE_TO_HTML[f.format_type]):
+                        renderer.emit(f.contents)
         elif f.format_type == InlineFormattingType.Underline:
             # Have to go into html mode for this
-            with renderer.emit_tag("u"):
-                renderer.emit(f.contents)
+            with renderer.html_mode():
+                with renderer.emit_tag("u"):
+                    renderer.emit(f.contents)
         elif f.format_type == InlineFormattingType.Mono:
             if all(isinstance(i, Text) for i in f.contents):
                 # Markdown ` doesn't allow special formatting inside
@@ -69,8 +82,3 @@ class MarkdownInlineFormatPlugin(MarkdownPlugin, InlineFormatEnvPlugin):
                 with renderer.html_mode():
                     with renderer.emit_tag("code"):
                         renderer.emit(f.contents)
-        else:
-            surround = FORMAT_TYPE_TO_MARKDOWN[f.format_type]
-            renderer.emit_raw(surround)
-            renderer.emit(f.contents)
-            renderer.emit_raw(surround)

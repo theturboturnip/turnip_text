@@ -185,6 +185,30 @@ class Writable(Protocol):
     def write(self, s: str, /) -> int: ...
 
 
+class PeekableWriter:
+    underlying: Writable
+    n_peekable: int
+    last_n: str
+
+    def __init__(self, underlying: Writable, n_peekable: int = 4):
+        self.underlying = underlying
+        self.n_peekable = n_peekable
+        self.last_n = " " * n_peekable
+
+    def peek(self, n: int = 1) -> str:
+        if n > self.n_peekable:
+            raise RuntimeError(f"Cannot peek back more than {self.n_peekable}, requested {n}")
+        return self.last_n[-n:]
+
+    def write(self, s: str, /) -> int:
+        if len(s) >= self.n_peekable:
+            self.last_n = s[-self.n_peekable:]
+        else:
+            chars_left_over = self.n_peekable - len(s)
+            self.last_n = self.last_n[chars_left_over:] + s
+        return self.underlying.write(s)
+
+
 class Renderer(abc.ABC):
     fmt: FmtEnv
     anchors: AnchorEnv
@@ -205,7 +229,7 @@ class TextRenderer(Renderer):
     """
 
     handlers: EmitterDispatch  # type: ignore[type-arg]
-    write_to: Writable
+    write_to: PeekableWriter
 
     _indent: str = ""
     # After emitting a newline with emit_newline, this is set.
@@ -224,7 +248,7 @@ class TextRenderer(Renderer):
     ) -> None:
         super().__init__(fmt, anchors)
         self.handlers = handlers
-        self.write_to = write_to
+        self.write_to = PeekableWriter(write_to, n_peekable=4)
 
     @classmethod
     def default_emitter_dispatch(
@@ -373,6 +397,8 @@ class TextRenderer(Renderer):
         finally:
             self.pop_indent(n)
 
+    def peek(self, n: int = 1) -> str:
+        return self.write_to.peek(n)
 
 # Can't specify generic type bounds inside a TypeVar bound, so RenderSetup doesn't have a generic here
 # Contravariant so that if RenderSetupB subclasses RenderSetupA, i.e. RenderSetupB provides the same features as RenderSetupA, RenderPlugin[RenderSetupA] can be passed into a (self: RenderSetupB, plugins: Iterable[RenderPlugin[TRenderer, RenderSetupB]]) i.e. RenderPlugin[T, RenderSetupA] is considered a subtype of RenderPlugin[T, RenderSetupB].
