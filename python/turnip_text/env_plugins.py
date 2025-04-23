@@ -22,6 +22,7 @@ from typing import (
 from turnip_text import Block, Document, Header, Inline
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc.anchors import Anchor, Backref
+from turnip_text.helpers import UNSET, Unset
 
 T = TypeVar("T")
 TBlockOrInline = TypeVar("TBlockOrInline", bound=Union[Block, Inline])
@@ -271,7 +272,7 @@ class AnchorEnv:
 
     _anchor_kind_counters: Dict[str, int]
     _anchor_id_to_possible_kinds: Dict[str, Dict[str, Anchor]]
-    _anchored_floats: Dict[Anchor, Block]  # TODO rename floating_space
+    _anchored_floats: Dict[Anchor, Optional[Block]]
 
     # Anchor IDs, if they're user-defined, they must be
     _VALID_USER_ANCHOR_ID_REGEX = re.compile(r"\w*[a-zA-Z]\w*")
@@ -310,6 +311,7 @@ class AnchorEnv:
         )
         self._anchor_kind_counters[kind] += 1
         self._anchor_id_to_possible_kinds[id][kind] = l
+        self._anchored_floats[l] = None
         return l
 
     def register_new_anchor_with_float(
@@ -351,12 +353,34 @@ class AnchorEnv:
                 )
             return possible_kinds[backref.kind]
 
-    def lookup_anchor_float(self, anchor: Anchor) -> Optional[Block]:
-        return self._anchored_floats.get(anchor)
+    def lookup_anchor_float(self, anchor: Anchor) -> Block:
+        """
+        Looks up the float that was attached to the provided Anchor when that Anchor was registered through register_new_anchor_with_float.
+        
+        If the Anchor was not registered at all, a KeyError is thrown.
 
-    def lookup_backref_float(self, backref: Backref) -> Tuple[Anchor, Optional[Block]]:
+        If the Anchor was registered without a float, a RuntimeError is thrown.
+        """
+        float: Union[Unset, Optional[Block]] = \
+            self._anchored_floats.get(anchor, default=UNSET) # type: ignore
+        if isinstance(float, Unset):
+            raise KeyError(f"Anchor '{anchor}' is not registered in this document")
+        elif float is None:
+            raise RuntimeError(f"Anchor '{anchor}' was registered but did not have a float attached")
+        return float
+    
+    def lookup_backref_float(self, backref: Backref) -> Tuple[Anchor, Block]:
+        """
+        Lookup the Anchor for the provided Backref, and the float that was attached to said Anchor when it was registered through register_new_anchor_with_float.
+
+        If the Backref lookup fails, returns ValueError.
+
+        If the Anchor was not registered at all, a KeyError is thrown.
+
+        If the Anchor was registered without a float, a RuntimeError is thrown.
+        """
         a = self.lookup_backref(backref)
-        return a, self._anchored_floats.get(a)
+        return a, self.lookup_anchor_float(a)
 
 
 class DocEnv:
