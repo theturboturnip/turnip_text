@@ -26,6 +26,11 @@ class LatexListPlugin(LatexPlugin, ListEnvPlugin):
         renderer: LatexRenderer,
         fmt: FmtEnv,
     ) -> None:
+        # LaTeX does not like empty lists
+        # TODO do we need to emit some kind of empty-but-not-empty-block here?
+        if not list.contents:
+            return
+        
         mode = {
             DisplayListType.Itemize: "itemize",
             DisplayListType.Enumerate: "enumerate",
