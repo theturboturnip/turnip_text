@@ -24,5 +24,6 @@ class UserNode(Protocol):
         ...
 
 
+# TODO this can be expressed by having child_nodes return a Backref
 class NodePortal(Protocol):
     portal_to: Backref | Sequence[Backref]

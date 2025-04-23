@@ -172,12 +172,26 @@ class MarkdownRenderer(TextRenderer):
             self.emit_url(url, self.anchor_to_ref_text(anchor))
 
     def anchor_to_ref_text(self, anchor: Anchor) -> Text:
+        """
+        Return the Text used to refer to the anchor by backrefs, including the name and the number.
+
+        e.g. Hypothesis 1.
+
+        See anchor_to_number_text to get the number only, e.g. "1".
+        """
         counters = self.counters.anchor_counters[anchor]
         return SimpleCounterFormat.resolve(
             [(self.counter_rendering[kind], i) for (kind, i) in counters]
         )
 
     def anchor_to_number_text(self, anchor: Anchor) -> Text:
+        """
+        Return the Text used to number the anchor by backrefs, without the name.
+        
+        e.g. 1.
+        
+        See anchor_to_ref_text to get the number including the name e.g. "hypothesis 1".
+        """
         counters = self.counters.anchor_counters[anchor]
         return SimpleCounterFormat.resolve(
             [(self.counter_rendering[kind], i) for (kind, i) in counters],
