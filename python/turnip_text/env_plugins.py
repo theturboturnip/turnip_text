@@ -356,13 +356,12 @@ class AnchorEnv:
     def lookup_anchor_float(self, anchor: Anchor) -> Block:
         """
         Looks up the float that was attached to the provided Anchor when that Anchor was registered through register_new_anchor_with_float.
-        
+
         If the Anchor was not registered at all, a KeyError is thrown.
 
         If the Anchor was registered without a float, a RuntimeError is thrown.
         """
-        float: Union[Unset, Optional[Block]] = \
-            self._anchored_floats.get(anchor, default=UNSET) # type: ignore
+        float: Union[Unset, Optional[Block]] = self._anchored_floats.get(anchor, UNSET)
         if isinstance(float, Unset):
             raise KeyError(f"Anchor '{anchor}' is not registered in this document")
         elif float is None:
