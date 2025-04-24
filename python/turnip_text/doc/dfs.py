@@ -56,6 +56,7 @@ class DocumentDfsPass:
 
             # TODO would it be possible for the dfs_queue to contain Backref (usually emitted from node.child_nods())
             # instead of special-casing portals and creating another class user nodes have to inherit from?
+            # Not exactly Backref, but a PortalTo class could be created instead.
             if hasattr(node, "portal_to") and node.portal_to:
                 if isinstance(node.portal_to, Backref):
                     portal_to = [node.portal_to]
@@ -66,6 +67,7 @@ class DocumentDfsPass:
                     # Right now this doesn't work, because we don't insert() in visited_floats.
                     # That's actually OK! because right now our documents do not put countable things inside repeated floats.
                     # TODO: We should probably enforce floats cannot have countable things, and then we can remove this safely. This implies some kind of "document purity" for nodes that can be repeated ad infinitum...
+                    # Better solution: allow floats to have countable things except throw a warning or an error if the same anchor is found twice attached to the same class instance. Floats are allowed to repeat, anchors are not (or repeat anchors are ignored/undefined behaviour)
                     if anchor in visited_floats:
                         raise ValueError(f"Multiple nodes are portals to {anchor}")
                     if portal_contents:

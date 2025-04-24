@@ -114,7 +114,11 @@ class EnvPlugin:
         Ignores properties.
         Based on https://github.com/python/cpython/blob/a0773b89dfe5cd2190d539905dd89e7f6455668e/Lib/inspect.py#L562C5-L562C5.
 
-        May be overridden."""
+        May be overridden.
+
+        See `EnvPlugin._make_contexts` for the rules on what values are pulled into FmtEnv.
+        The @pure_fmt annotation may also be useful for this purpose.
+        """
 
         interface = {}
         names = dir(self)
@@ -144,8 +148,19 @@ class EnvPlugin:
         build_sys: BuildSystem,
         plugins: Sequence["EnvPlugin"],
     ) -> Tuple["FmtEnv", "DocEnv"]:
-        """Given a set of EnvPlugins, build a FmtEnv with annotated @pure_fmt functions + plain value, and DocEnv with annotated @in_doc functions, from the contents of all plugins.
-        Is a method of EnvPlugin so it can use internal methods that begin with __"""
+        """
+        Given a set of EnvPlugins, build a FmtEnv with annotated @pure_fmt functions + plain value, and DocEnv with annotated @in_doc functions, from the contents of all plugins.
+
+        Is a method of EnvPlugin so it can use internal methods that begin with __.
+
+        - For each plugin, _interface() is called and returns a single Dict[str, Any].
+            - For each (name, value) in that Dict:
+                - If the name is in the RESERVED_ENV_PLUGIN_EXPORTS field, the value is ignored and a warning is printed.
+                - The value is added to the DocEnv under the given name.
+                - If the value is a bound method, and the underlying method has a truthy attribute `_pure_fmt`, the value is added to FmtEnv
+                - Otherwise if the value is callable, and has a truthy attribute `_pure_fmt`, the value is added to FmtEnv
+                - Otherwise the value is assumed to be pure, because it likely has no way to gain access to a DocEnv, so it is added to FmtEnv
+        """
         fmt = FmtEnv()
         doc_env = DocEnv(build_sys, fmt, plugins)
 
@@ -158,6 +173,7 @@ class EnvPlugin:
                 # - class variables which aren't data descriptors (they don't have access to the plugin self and don't have access to __doc_env.)
 
                 if key in RESERVED_ENV_PLUGIN_EXPORTS:
+                    # TODO use Python's Warning feature
                     print(f"Warning: ignoring reserved field {key} of plugin {plugin}")
                     continue
 
