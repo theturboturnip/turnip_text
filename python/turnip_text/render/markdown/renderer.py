@@ -1,6 +1,7 @@
 import html
-from contextlib import contextmanager
-from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple, Union
+from contextlib import AbstractContextManager, contextmanager
+from typing import Dict, Generator, Iterable, Iterator, List, Optional, Tuple
+from typing_extensions import override
 
 from turnip_text import Block, Document, Header, Inline, Paragraph, Text
 from turnip_text.build_system import BuildSystem, OutputRelPath, RelPath
@@ -80,6 +81,13 @@ class MarkdownRenderer(TextRenderer):
             self.emit_raw("</p>")
         else:
             super().emit_paragraph(p)
+
+    @override
+    def emit_break_paragraph(self) -> None:
+        self.emit_newline()
+        # Force the indent, because it can carry block-quote state as well as space
+        self.emit_raw("") # This forces the indent
+        self.emit_newline()
 
     @property
     def in_html_mode(self) -> bool:
@@ -170,6 +178,21 @@ class MarkdownRenderer(TextRenderer):
             self.emit_url(url, backref.label_contents)
         else:
             self.emit_url(url, self.anchor_to_ref_text(anchor))
+
+    def blockquote(self) -> AbstractContextManager:
+        if self.in_html_mode:
+            return self.emit_tag("blockquote")
+        else:
+            @contextmanager
+            def markdown_blockquote() -> Iterator[None]:
+                self._indent += ">"
+                try:
+                    yield
+                finally:
+                    if len(self._indent) == 0:
+                        raise ValueError()
+                    self._indent = self._indent[:-1]
+            return markdown_blockquote()
 
     def anchor_to_ref_text(self, anchor: Anchor) -> Text:
         """
