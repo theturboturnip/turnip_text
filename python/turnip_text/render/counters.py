@@ -279,7 +279,7 @@ class CounterState:
             raise ValueError(f"Unknown counter kind '{anchor.kind}'")
         
         if anchor in self.anchor_counters:
-            warnings.warn(f"Anchor {anchor} is being counted multiple times. This may cause inconsistent behaviour once the document is compiled.")
+            warnings.warn(f"Anchor {anchor} {self.anchor_counters[anchor]} is being counted multiple times. This may cause inconsistent behaviour once the document is compiled.")
             return
 
         parent_chain = self.anchor_kind_to_parent_chain[anchor.kind]
