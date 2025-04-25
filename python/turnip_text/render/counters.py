@@ -13,6 +13,7 @@ from typing import (
     Set,
     Tuple,
 )
+import warnings
 
 from turnip_text.doc.anchors import Anchor, Backref
 
@@ -276,10 +277,15 @@ class CounterState:
     def count_anchor(self, anchor: Anchor) -> None:
         if anchor.kind not in self.anchor_kind_to_parent_chain:
             raise ValueError(f"Unknown counter kind '{anchor.kind}'")
+        
+        if anchor in self.anchor_counters:
+            warnings.warn(f"Anchor {anchor} is being counted multiple times. This may cause inconsistent behaviour once the document is compiled.")
+            return
+
         parent_chain = self.anchor_kind_to_parent_chain[anchor.kind]
 
         # The one at the end of the chain is the counter for this anchor kind
-        parent_chain[-1].increment()
+        parent_chain[-1].increment()            
 
         self.anchor_counters[anchor] = tuple(
             (c.anchor_id, c.value) for c in parent_chain
