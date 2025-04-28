@@ -2,6 +2,7 @@ import abc
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum, IntEnum
+import re
 from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 from turnip_text import Block, DocSegment, Document, Inline, Raw, Text
@@ -380,10 +381,23 @@ class LatexRenderer(TextRenderer):
             super().emit_document(doc)
 
     # TODO override emit_sentence to get sentence-break-whitespace at the end of each sentence?
+    # This is a more complicated problem than ensuring not-sentence-break-whitespace inside sentences
+    # because the nice way of correcting the space is "my PhD\@.", the modifier must be emitted at the sentence end not just before
+
+    # To prevent LaTeX from inserting sentence-break-sized spaces,
+    # use a regex before each space to figure out if LaTeX is going to upgrade the space based on these rules:
+    # 1. a sentence-ending character .!?
+    #   - see TeXByTopic section 20.5.2 https://ctan.math.illinois.edu/info/texbytopic/TeXbyTopic.pdf#chapter.20
+    #   - the .!? are given "space factor" of 3000,
+    #   - :;, are given space factor greater than the default 1000 but I think that's a stylistic choice that can't be misinterpreted - when I put down a comma I always want a comma, but sentence-end-period and a mid-sentence-period can get confused.
+    #   - TODO should that apply to ! and ??
+    # 2. with any number of right parentheses, quote marks, and right brackets between the punctuation and the space
+    #   - TODO not sure exactly which characters have "space factor of 0" which is the property to pass through the space factor
+    # 3. where the character before the sentence-ending character is not a capital
+    # and if the preceding chars meet this rule emit a \@ before the space
+    latex_sentence_break_space_regex = re.compile(r"(^|[^A-Z])[.!?][\)'}]*$")
 
     def emit_text(self, t: Text) -> None:
-        # TODO make sure whitespace we emit here *isn't* sentence break whitespace?
-
         # TODO consider using \detokenize?
         # note - right now this assumes we're using a unicode-compatible setup and thus don't need to escape unicode characters.
         ascii_map = {
@@ -406,6 +420,14 @@ class LatexRenderer(TextRenderer):
             if char in ascii_map:
                 self.emit_raw(ascii_map[char])
             else:
+                if char.isspace():
+                    # This is inside-sentence space which should not be sentence-ending space.
+                    # https://aperiodic.net/pip/archives/Geekery/latex-sentence-spacing/
+                    # TODO worth increasing?
+                    prior_chars = self.peek(4)
+                    match = self.latex_sentence_break_space_regex.search(prior_chars)
+                    if match:
+                        self.emit_raw('\\@')
                 self.emit_raw(char)
 
     def emit_macro(self, name: str) -> None:
