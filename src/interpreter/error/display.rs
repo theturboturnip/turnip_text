@@ -558,6 +558,19 @@ fn detailed_user_python_message(py: Python, err: &TTUserPythonError) -> Diagnost
                     .into_string()
                     .expect("Failed to stringify code"),
             ));
+            // TODO use the traceback module to include the stack trace?
+            // TODO when python prints it directly, we get
+            //
+            // Traceback (most recent call last):
+            // File "<string>", line 1, in <module>
+            // NameError: name 'tod' is not defined. Did you mean: 'toc'?
+            //
+            // But when err.to_string()
+            //
+            // NameError: name 'tod' is not defined
+            //
+            // ^ missing the suggestion!
+            notes.push(err.to_string());
             error_diag(
                 format!(
                     "{} raised when executing Python from eval-brackets",
