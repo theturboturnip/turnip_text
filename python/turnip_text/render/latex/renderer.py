@@ -205,7 +205,14 @@ class LatexRenderer(TextRenderer):
                 self.emit_comment_line(f"{package.package} required for")
                 for r in package.reasons:
                     self.emit_comment_line(f"- {r}")
-                self.emit_raw(package.as_latex_preamble_line(with_reason=False))
+                if package.already_included_by_document:
+                    if package.options: # TODO should reduce these to OptionsNotSetByDocumentClass
+                        self.emit_comment_line("but already included by document class, so just set the options")
+                        self.emit_raw(package.as_latex_preamble_line(with_reason=False, macro="RequirePackage"))
+                    else:
+                        self.emit_comment_line("but already included by document class, so ignore")
+                else:
+                    self.emit_raw(package.as_latex_preamble_line(with_reason=False, macro="usepackage"))
                 self.emit_newline()
 
             self.emit_break_paragraph()

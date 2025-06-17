@@ -18,9 +18,10 @@ class LatexPackageRequirements:
     package: str
     reasons: List[str]
     options: LatexPackageOptions
+    already_included_by_document: bool
 
-    def as_latex_preamble_line(self, with_reason: bool) -> str:
-        line = f"\\usepackage"
+    def as_latex_preamble_line(self, with_reason: bool, macro="usepackage") -> str:
+        line = f"\\{macro}"
         if self.options:
             opt_strs = [
                 opt if isinstance(opt, str) else f"{opt[0]}={opt[1]}"
@@ -38,7 +39,7 @@ class ResolvedLatexPackages:
     shell_escape_reasons: List[str]
     """Reasons the --shell-escape command-line flag is necessary"""
     packages: List[LatexPackageRequirements]
-    """A well-formed, (TODO correctly ordered), list of LaTeX packages to import with valid options."""
+    """A well-formed, correctly ordered, list of LaTeX packages to import with valid options."""
 
 
 # FUTURE: Try to make reasons for packages dependent on their actual use, not just "this plugin could theoretically use this package"
@@ -48,17 +49,20 @@ class LatexPackageResolver:
     requested_packages: Dict[str, LatexPackageRequirements]
     """Requested packages built up through calls to .request_latex_package()"""
 
-    # TODO resolve_all() method to fixup package order, package options
-
     def __init__(self) -> None:
         self.shell_escape_reasons = []
         self.requested_packages = {}
+
+    def register_class_preexisting_packages(self, *preexisting: str) -> None:
+        # TODO add package options to this, if user tries to set a conflicting option we need to complain, if user doesn't set any new options don't need to include it in the render
+        for package in preexisting:
+            self.request_latex_package(package, "docclass", used_by_docclass=True)
 
     def request_shell_escape(self, reason: str) -> None:
         self.shell_escape_reasons.append(reason)
 
     def request_latex_package(
-        self, package: str, reason: str, options: Sequence[LatexPackageOption] = []
+        self, package: str, reason: str, options: Sequence[LatexPackageOption] = [], used_by_docclass: bool = False,
     ) -> None:
         # str is a Sequence[str] returning each character in the str
         # Very low chance of anyone calling this function expecting
@@ -73,11 +77,14 @@ class LatexPackageResolver:
                 package=package,
                 reasons=[],
                 options=[],
+                already_included_by_document=used_by_docclass
             )
             self.requested_packages[package] = package_obj
 
         package_obj.reasons.append(reason)
         package_obj.options.extend(options)
+        if used_by_docclass:
+            package_obj.already_included_by_document = used_by_docclass
 
     def resolve_all(self) -> ResolvedLatexPackages:
         # Step 1: resolve all the package options
