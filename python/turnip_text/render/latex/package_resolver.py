@@ -243,7 +243,8 @@ def order_packages(
             "multibib",
             "natbib",
             "splitbib",
-            "titlesec",
+            # TODO this is benign - need an incompat warning, not an incompat error
+            # "titlesec",
             "ucs",
             "etextools",
         }
@@ -305,7 +306,7 @@ def order_packages(
             "ntheorem",
             "ntheorem-hyper",
             "prettyref",  # Requires a workaround
-            "titlesec",
+            # "titlesec", # TODO Requires a workaround (https://tex.stackexchange.com/questions/397031/conflict-with-hyperref-and-titlesec)
         }
         incompat.intersection_update(set(packages.keys()))
         if incompat:
