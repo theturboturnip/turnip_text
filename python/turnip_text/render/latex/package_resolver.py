@@ -240,7 +240,7 @@ def order_packages(
             "ucs",
             "etextools",
         }
-        incompat.intersection_update(*packages.keys())
+        incompat.intersection_update(set(packages.keys()))
         if incompat:
             raise_compat_error(
                 "biblatex", *incompat, reason="BibLaTeX documentation says so"
@@ -300,7 +300,7 @@ def order_packages(
             "prettyref",  # Requires a workaround
             "titlesec",
         }
-        incompat.intersection_update(*packages.keys())
+        incompat.intersection_update(set(packages.keys()))
         if incompat:
             raise_compat_error(
                 "hyperref", *incompat, reason="hyperref documentation says so"
