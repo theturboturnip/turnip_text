@@ -48,6 +48,7 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         # TODO make this be in terms of tt_counter so the whole thing is tt_counters?
         latex_counter_format_override: Optional[Dict[str, LatexCounterFormat]] = None,
         legal_backref_methods: Optional[List[LatexBackrefMethod]] = None,
+        default_font_packages: bool = True,
         # TODO config for the backref methods
     ) -> None:
         super().__init__()
@@ -58,13 +59,17 @@ class LatexSetup(RenderSetup[LatexRenderer]):
         self.document_class_args = []
 
         self.package_resolver = LatexPackageResolver()
-        # Default packages
-        self.package_resolver.request_latex_package(
-            "fontenc", reason="allows a wider array of text characters", options=["T1"]
-        )
-        self.package_resolver.request_latex_package(
-            "lmodern", reason="basic standard font for T1 text encoding"
-        )
+        # TODO including these by default screws up e.g. acmart document class which sets a font by default.
+        # Why do we use these here?
+        # TODO move this out into individual document class plugins...?
+        if default_font_packages:
+            # Default packages
+            self.package_resolver.request_latex_package(
+                "fontenc", reason="allows a wider array of text characters", options=["T1"]
+            )
+            self.package_resolver.request_latex_package(
+                "lmodern", reason="basic standard font for T1 text encoding"
+            )
 
         self.counter_resolver = LatexCounterResolver(
             counter_link_override, latex_counter_format_override, legal_backref_methods
