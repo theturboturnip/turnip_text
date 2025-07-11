@@ -40,11 +40,12 @@ class RawScopeBuilder(Protocol):
     def build_from_raw(self, raw: str) -> Union[Header, Block, Inline, None]: ...
 
 # The types that can be coerced into an Inline, in the order they are checked and attempted.
-# Sequence[Inline] is coerced by wrapping it in an InlineScope
-CoercibleToInline = Union[Inline, str, Sequence[Inline], int, float]
+# Sequence[Inline] is coerced by wrapping it in a list and wrapping that in an InlineScope
+CoercibleToInline = Union[Inline, EmitAs, str, Sequence[Inline], int, float]
 
 # The types that can be coerced into an InlineScope, in the order they are checked and attempted.
 # 1. InlineScopes are passed through.
+# 1a. EmitAs is coerced to Inline if the contents are Inline, else TypeError.
 # 2. Coercion to Inline is attempted, and must succeed.
 # 3. If it coerced to InlineScope by the inline process (i.e. it was originally Sequence[Inline]),
 # that InlineScope is passed through.
@@ -52,7 +53,10 @@ CoercibleToInline = Union[Inline, str, Sequence[Inline], int, float]
 CoercibleToInlineScope = Union[InlineScope, CoercibleToInline]
 
 # The types that can be coerced into a Block, in the order they are checked and attempted
-CoercibleToBlock = Union[Block, Sentence, Sequence[Block], CoercibleToInline]
+# Anything coercible to Inline but not coercible to Block is first coerced to Inline,
+# then converted into a Paragraph with just that Inline.
+# This includes EmitAs that contain Blocks.
+CoercibleToBlock = Union[Block, EmitAs, Sentence, Sequence[Block], CoercibleToInline]
 
 # The types that can be coerced into a BlockScope, in the order they are checked and attempted
 CoercibleToBlockScope = Union[BlockScope, CoercibleToBlock]
@@ -187,3 +191,8 @@ class TurnipTextSource:
     def from_string(contents: str) -> TurnipTextSource: ...
 
 class TurnipTextError(Exception): ...
+
+class EmitAs:
+    def __init__(self, emit_as: Block | Inline | EmitAs): ...
+    @property
+    def emit_as(self) -> Block | Inline: ...

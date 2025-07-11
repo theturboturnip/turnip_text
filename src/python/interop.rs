@@ -33,6 +33,7 @@ pub fn turnip_text(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Document>()?;
     m.add_class::<DocSegment>()?;
     m.add_class::<TurnipTextSource>()?;
+    m.add_class::<EmitAs>()?;
 
     m.add("TurnipTextError", py.get_type_bound::<TurnipTextError>())?;
 
@@ -81,6 +82,10 @@ pub fn coerce_to_inline_pytcref<'py>(
     // 1. if it's already Inline, return it
     if let Ok(inl) = PyTcRef::of(obj) {
         return Ok(inl);
+    }
+    // 1a. if it's an EmitAs, coerce the emit_as
+    if let Ok(emit_as) = obj.extract::<EmitAs>() {
+        return coerce_to_inline_pytcref(py, emit_as.emit_as.bind(py));
     }
     // 2. if it's str, return Text(it)
     // Do this before checking sequence-ness because str is a sequence of str.
@@ -145,24 +150,32 @@ pub fn coerce_to_block_pytcref<'py>(
     if let Ok(block) = PyTcRef::of(obj) {
         return Ok(block);
     }
-    // 2. if it's a Sentence, wrap it in a list -> Paragraph
-    // Do this before checking if it's a sequence, because Sentence is a sequence of InlineScope
-    if let Ok(sentence) = obj.extract::<Py<Sentence>>() {
-        let paragraph = Py::new(
-            py,
-            Paragraph::new(py, Some(&PyList::new_bound(py, [sentence]).as_sequence()))?,
-        )?;
-        return Ok(PyTcRef::of_unchecked(paragraph.bind(py)));
-    }
-    // 3. if it's an sequence of Block, wrap it in a BlockScope and return it
-    // Here we first check if it's sequence, then if so try to create a BlockScope - this will verify if it's a list of Blocks.
-    if let Ok(seq) = obj.downcast::<PySequence>() {
-        if let Ok(block_scope) = BlockScope::new(py, Some(&seq)) {
-            let block_scope = Py::new(py, block_scope)?;
-            return Ok(PyTcRef::of_unchecked(block_scope.bind(py)));
+    // 1a. if it's an EmitAs, try coercing the emit_as to Block.
+    if let Ok(emit_as) = obj.extract::<EmitAs>() {
+        if let Ok(block) = coerce_to_block_pytcref(py, emit_as.emit_as.bind(py)) {
+            return Ok(block);
+        }
+    } else {
+        // 2. if it's a Sentence, wrap it in a list -> Paragraph
+        // Do this before checking if it's a sequence, because Sentence is a sequence of InlineScope
+        if let Ok(sentence) = obj.extract::<Py<Sentence>>() {
+            let paragraph = Py::new(
+                py,
+                Paragraph::new(py, Some(&PyList::new_bound(py, [sentence]).as_sequence()))?,
+            )?;
+            return Ok(PyTcRef::of_unchecked(paragraph.bind(py)));
+        }
+        // 3. if it's an sequence of Block, wrap it in a BlockScope and return it
+        // Here we first check if it's sequence, then if so try to create a BlockScope - this will verify if it's a list of Blocks.
+        if let Ok(seq) = obj.downcast::<PySequence>() {
+            if let Ok(block_scope) = BlockScope::new(py, Some(&seq)) {
+                let block_scope = Py::new(py, block_scope)?;
+                return Ok(PyTcRef::of_unchecked(block_scope.bind(py)));
+            }
         }
     }
     // 4. if it can be coerced to an Inline, wrap that in list -> Sentence -> list -> Paragraph and return it
+    // - this also covers EmitAs that are inline, fail coercion above, then are coerced to inline here.
     if let Ok(inl) = coerce_to_inline(py, obj) {
         let paragraph = Py::new(
             py,
@@ -1349,5 +1362,40 @@ impl DocSegmentList {
             r#"DocSegmentList({})"#,
             self.0.bind(py).str()?.to_str()?
         ))
+    }
+}
+
+/// An inheritable class that is seen by turnip_text as one object, which can also be extended with functions to build other objects.
+#[pyclass(subclass)]
+#[derive(Debug, Clone)]
+struct EmitAs {
+    emit_as: PyObject,
+}
+#[pymethods]
+impl EmitAs {
+    #[new]
+    fn new<'py>(py: Python<'py>, emit_as: &Bound<'py, PyAny>) -> PyResult<EmitAs> {
+        let emit_as = if let Ok(inner_emit_as) = emit_as.downcast::<EmitAs>() {
+            inner_emit_as
+        } else {
+            emit_as
+        };
+        if Inline::fits_typeclass(emit_as)? || Block::fits_typeclass(emit_as)? {
+            Ok(Self {
+                emit_as: emit_as.to_object(py),
+            })
+        } else {
+            let obj_repr = emit_as.repr()?;
+            let err = PyTypeError::new_err(format!(
+                "EmitAs got parameter {}, expected to be an instance of Block or Inline, but it wasn't.",
+                obj_repr.to_str()?
+            ));
+            Err(err)
+        }
+    }
+
+    #[getter]
+    pub fn emit_as(&self) -> PyObject {
+        self.emit_as.clone()
     }
 }
