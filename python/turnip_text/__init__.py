@@ -116,6 +116,11 @@ def join_inlines(inlines: Sequence[Inline], joiner: Inline) -> InlineScope:
         new_inlines.pop()
     return InlineScope(new_inlines)
 
+def coerce_to_sentence(*inlines: CoercibleToInline) -> Sentence:
+    return Sentence([
+        coerce_to_inline(inl)
+        for inl in inlines
+    ])
 
 def open_turnip_text_source(path: str, encoding: str = "utf-8") -> TurnipTextSource:
     """A shortcut for opening a file from a real filesystem as a TurnipTextSource"""
