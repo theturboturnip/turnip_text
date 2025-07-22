@@ -417,6 +417,7 @@ class LatexRenderer(TextRenderer):
             "#": "\\#",
             "&": "\\&",
             "~": "\\~{}",
+            "^": "\\^{}",
             # Unicode NBSP -> LaTeX ~ NBSP
             "\u00a0": "~",
             # Unicode en, emdashes -> LaTeX dash shortcuts
