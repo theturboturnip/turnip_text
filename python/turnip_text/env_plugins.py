@@ -291,7 +291,7 @@ class AnchorEnv:
     _anchored_floats: Dict[Anchor, Optional[Block]]
 
     # Anchor IDs, if they're user-defined, they must be
-    _VALID_USER_ANCHOR_ID_REGEX = re.compile(r"\w*[a-zA-Z]\w*")
+    _VALID_USER_ANCHOR_ID_REGEX = re.compile(r"[\w-]*[a-zA-Z][\w-]*")
 
     __doc_env: "DocEnv"
 
