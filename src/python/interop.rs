@@ -109,9 +109,17 @@ pub fn coerce_to_inline_pytcref<'py>(
         return Ok(PyTcRef::of_unchecked(unescaped_text.bind(py)));
     }
     // 6. otherwise fail with TypeError
+    if let Ok(obj_repr) = obj.repr() {
+        if let Ok(obj_repr_str) = obj_repr.to_str() {
+            return Err(PyTypeError::new_err(
+            format!("Failed to coerce object to Inline: was not an Inline, list of Inline (coercible to \
+            InlineScope), str, float, or int. Object: {obj_repr_str}"),
+        ));
+        }
+    }
     Err(PyTypeError::new_err(
         "Failed to coerce object to Inline: was not an Inline, list of Inline (coercible to \
-         InlineScope), str, float, or int.",
+            InlineScope), str, float, or int. Failed to stringify object.",
     ))
 }
 
@@ -196,9 +204,17 @@ pub fn coerce_to_block_pytcref<'py>(
         return Ok(PyTcRef::of_unchecked(paragraph.bind(py)));
     }
     // 5. otherwise fail with TypeError
+    if let Ok(obj_repr) = obj.repr() {
+        if let Ok(obj_repr_str) = obj_repr.to_str() {
+            return Err(PyTypeError::new_err(format!(
+                "Failed to coerce object to Block: was not a Block, list of Blocks (coercible to \
+         BlockScope), Paragraph, Sentence, or coercible to Inline. Object: {obj_repr_str}"
+            )));
+        }
+    }
     Err(PyTypeError::new_err(
         "Failed to coerce object to Block: was not a Block, list of Blocks (coercible to \
-         BlockScope), Paragraph, Sentence, or coercible to Inline.",
+         BlockScope), Paragraph, Sentence, or coercible to Inline. Failed to stringify object.",
     ))
 }
 
