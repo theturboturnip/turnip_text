@@ -142,6 +142,24 @@ class EnvPlugin:
                 interface[key] = getattr(self, key)
 
         return interface
+    
+    def _in_doc_bound(
+        self, f: Callable[Concatenate["DocEnv", P], T],
+    ) -> Callable[Concatenate[P], T]:
+        """
+        An annotation for plugin bound methods which access the __doc_env object i.e. other in_doc (and pure_fmt) functions and variables.
+        This is the only way to access the doc_env, and thus theoretically the only way to mutate doc_env.
+        Unfortunately, we can't protect a plugin from modifying its private state in a so-annotated "pure_fmt" function.
+        """
+
+        def wrapper(*args: Any, **kwargs: Any) -> T:
+            return f(self._doc_env, *args, **kwargs)
+
+        wrapper._in_doc = True  # type: ignore
+        functools.update_wrapper(wrapper, f)
+        wrapper.__name__ = f"in_doc_bound wrapper of function {f.__name__}()"
+
+        return wrapper
 
     @staticmethod
     def _make_contexts(
