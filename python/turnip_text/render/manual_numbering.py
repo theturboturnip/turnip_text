@@ -120,6 +120,9 @@ class SimpleCounterFormat(Generic[TNumbering]):
     postfix_for_end: str = ""
     """If this is the end of the string of counters, what (if anything) should be placed at the end? e.g. for 'Question 1a)' the final counter would have `postfix_for_end=')'`"""
 
+    space_between_name_and_number: bool = True
+    """Define if a space should be included between {name}^{number}"""
+
     @classmethod
     def resolve(
         cls,
@@ -129,7 +132,9 @@ class SimpleCounterFormat(Generic[TNumbering]):
     ) -> Text:
         if with_name and counters[-1][0].name:
             # TODO - this is a hack to make it so that things are "correctly" capitalized - always capitalize! lol
-            c = counters[-1][0].name.capitalize() + " "
+            c = counters[-1][0].name.capitalize()
+            if counters[-1][0].space_between_name_and_number:
+                c += " "
         else:
             c = ""
         prev_fmt = None
