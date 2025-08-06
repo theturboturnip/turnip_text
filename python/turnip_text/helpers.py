@@ -357,25 +357,56 @@ class blocks_builder(Generic[P, TElement], UserBlockScopeBuilder[TElement]):
     args: Tuple[Any, ...]
     kwds: Dict[str, Any]
 
-    def __init__(self, func: Callable[P, TElement]) -> None:
+    def __init__(self, func: Callable[P, TElement], args = None, kwds = None) -> None:
         super().__init__()
         if "blocks" not in inspect.signature(func).parameters:
             raise ValueError(
                 f"Cannot wrap {func} in @blocks_builder, it doesn't take a 'blocks' parameter."
             )
         self.func = func
-        self.args = ()
-        self.kwds = {}
+        self.args = () if not args else args
+        self.kwds = {} if not kwds else kwds
         functools.update_wrapper(self, func)
 
     def __call__(self, *args: Any, **kwds: Any) -> UserBlockScopeBuilder[TElement]:
-        self.args = args
-        self.kwds = kwds
-        return self
-
+        # We need to return a new instance instead of mutating self here
+        # Consider that usually a field in an EnvPlugin, and therefore a top-level variable in the document,
+        # will be an instance of this class. Changing the arguments once should not change subsequent usages.
+        return blocks_builder(self.func, args, kwds)
+    
     def build_from_blocks(self, blocks: BlockScope) -> TElement:
-        self.kwds["blocks"] = blocks
-        return self.func(*self.args, **self.kwds)
+        return self.func(*self.args, **self.kwds, blocks=blocks) # type:ignore
+
+
+class raw_builder(Generic[P, TElement], UserRawScopeBuilder[TElement]):
+    """
+    Annotates a function that takes at least one parameter `raw: Raw`
+    to become a RawScopeBuilder.
+    """
+
+    func: Callable[P, TElement]
+    args: Tuple[Any, ...]
+    kwds: Dict[str, Any]
+
+    def __init__(self, func: Callable[P, TElement], args = None, kwds = None) -> None:
+        super().__init__()
+        if "raw" not in inspect.signature(func).parameters:
+            raise ValueError(
+                f"Cannot wrap {func} in @raw_builder, it doesn't take a 'raw' parameter."
+            )
+        self.func = func
+        self.args = () if not args else args
+        self.kwds = {} if not kwds else kwds
+        functools.update_wrapper(self, func)
+
+    def __call__(self, *args: Any, **kwds: Any) -> UserRawScopeBuilder[TElement]:
+        # We need to return a new instance instead of mutating self here
+        # Consider that usually a field in an EnvPlugin, and therefore a top-level variable in the document,
+        # will be an instance of this class. Changing the arguments once should not change subsequent usages.
+        return raw_builder(self.func, args, kwds)
+    
+    def build_from_raw(self, raw: Raw) -> TElement:
+        return self.func(*self.args, **self.kwds, raw=raw) # type:ignore
 
 
 def paragraph_of(i: CoercibleToInline) -> Paragraph:
