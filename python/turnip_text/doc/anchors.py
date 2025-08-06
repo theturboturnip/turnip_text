@@ -39,6 +39,7 @@ class Anchor(Inline):
 
     kind: str
     id: str
+    DONT_CREATE_ANCHORS_DIRECTLY: bool
 
     def canonical(self) -> str:
         return f"{self.kind}:{self.id}"

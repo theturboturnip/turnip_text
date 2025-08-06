@@ -324,6 +324,7 @@ class AnchorEnv:
         l = Anchor(
             kind=kind,
             id=id,
+            DONT_CREATE_ANCHORS_DIRECTLY=True,
         )
         self._anchor_kind_counters[kind] += 1
         self._anchor_id_to_possible_kinds[id][kind] = l
