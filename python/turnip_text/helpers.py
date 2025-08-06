@@ -1,6 +1,7 @@
 import abc
 import functools
 import inspect
+import itertools
 from typing import (
     Any,
     Callable,
@@ -372,7 +373,10 @@ class blocks_builder(Generic[P, TElement], UserBlockScopeBuilder[TElement]):
         # We need to return a new instance instead of mutating self here
         # Consider that usually a field in an EnvPlugin, and therefore a top-level variable in the document,
         # will be an instance of this class. Changing the arguments once should not change subsequent usages.
-        return blocks_builder(self.func, args, kwds)
+        new_args = tuple(itertools.chain(self.args, args))
+        new_kwds = self.kwds.copy()
+        new_kwds.update(kwds)
+        return blocks_builder(self.func, new_args, new_kwds)
     
     def build_from_blocks(self, blocks: BlockScope) -> TElement:
         return self.func(*self.args, **self.kwds, blocks=blocks) # type:ignore
@@ -403,7 +407,10 @@ class raw_builder(Generic[P, TElement], UserRawScopeBuilder[TElement]):
         # We need to return a new instance instead of mutating self here
         # Consider that usually a field in an EnvPlugin, and therefore a top-level variable in the document,
         # will be an instance of this class. Changing the arguments once should not change subsequent usages.
-        return raw_builder(self.func, args, kwds)
+        new_args = tuple(itertools.chain(self.args, args))
+        new_kwds = self.kwds.copy()
+        new_kwds.update(kwds)
+        return raw_builder(self.func, new_args, new_kwds)
     
     def build_from_raw(self, raw: Raw) -> TElement:
         return self.func(*self.args, **self.kwds, raw=raw) # type:ignore
