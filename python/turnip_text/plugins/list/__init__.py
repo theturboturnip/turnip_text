@@ -7,7 +7,7 @@ from typing_extensions import override
 from turnip_text import Block, BlockScope, Inline
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import EnvPlugin
-from turnip_text.helpers import block_scope_builder
+from turnip_text.helpers import block_scope_builder, block_scope_to_list
 
 
 class DisplayListType(Enum):
@@ -45,11 +45,11 @@ class ListEnvPlugin(EnvPlugin):
     @block_scope_builder
     @staticmethod
     def enumerate(contents: BlockScope) -> Block:
-        items = list(contents)
-        if not all(isinstance(x, (DisplayListItem, DisplayList)) for x in items):
-            raise TypeError(
-                f"Found blocks in this list that were not list [item]s or other lists!"
-            )
+        items: List[DisplayListItem | DisplayList] = block_scope_to_list(
+            contents,
+            Union[DisplayList, DisplayListItem],
+            error_context="[enumerate]",
+        )
         return DisplayList(
             list_type=DisplayListType.Enumerate,
             contents=cast(List[DisplayListItem | DisplayList], items),
@@ -58,14 +58,14 @@ class ListEnvPlugin(EnvPlugin):
     @block_scope_builder
     @staticmethod
     def itemize(contents: BlockScope) -> Block:
-        items = list(contents)
-        if not all(isinstance(x, (DisplayListItem, DisplayList)) for x in items):
-            raise TypeError(
-                f"Found blocks in this list that were not list [item]s or other lists!"
-            )
+        items: List[DisplayListItem | DisplayList] = block_scope_to_list(
+            contents,
+            Union[DisplayList, DisplayListItem],
+            error_context="[itemize]",
+        )
         return DisplayList(
             list_type=DisplayListType.Itemize,
-            contents=cast(List[DisplayListItem | DisplayList], items),
+            contents=items,
         )
 
     @block_scope_builder

@@ -5,31 +5,28 @@ import itertools
 from typing import (
     Any,
     Callable,
-    Concatenate,
     Dict,
     Generic,
     List,
-    Optional,
     ParamSpec,
     Tuple,
+    Type,
     TypeVar,
     Union,
+    overload,
 )
 
 from turnip_text import (
     Block,
     BlockScope,
-    BlockScopeBuilder,
     CoercibleToBlockScope,
     CoercibleToInline,
     CoercibleToInlineScope,
     Header,
     Inline,
     InlineScope,
-    InlineScopeBuilder,
     Paragraph,
     Raw,
-    RawScopeBuilder,
     Sentence,
     coerce_to_block_scope,
     coerce_to_inline,
@@ -38,6 +35,7 @@ from turnip_text import (
 
 # TODO tests for the helpers
 
+T = TypeVar("T")
 # TODO Python 3.12 use default here
 TElement = TypeVar("TElement", bound=Union[Header, Block, Inline, None])
 
@@ -419,6 +417,19 @@ class raw_builder(Generic[P, TElement], UserRawScopeBuilder[TElement]):
 def paragraph_of(i: CoercibleToInline) -> Paragraph:
     return Paragraph([Sentence([coerce_to_inline(i)])])
 
+# TODO TypeForm[T] would work here if we were using Python 3.15(??)
+# https://peps.python.org/pep-0747/
+@overload
+def block_scope_to_list(bs: BlockScope, t: Type[T], error_context: str) -> List[T]: ...
+@overload
+def block_scope_to_list(bs: BlockScope, t, error_context: str) -> List: ...
+def block_scope_to_list(bs: BlockScope, t, error_context: str) -> List:
+    ts: List = []
+    for b in bs:
+        if not isinstance(b, t):
+            raise TypeError(f"{error_context} tried to convert a BlockScope to a List[{t}] but the blocks weren't all the right type.\n\tThe BlockScope: \n\t{bs}")
+        ts.append(b)
+    return ts
 
 class Unset:
     def __eq__(self, __value: object) -> bool:
