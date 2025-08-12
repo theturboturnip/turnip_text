@@ -163,7 +163,7 @@ class EmitterDispatch(Generic[TRenderer_contra]):
     ) -> None:
         f = self.block_inline_emitters.get_handler(n)
         if f is None:
-            raise NotImplementedError(f"Didn't have renderer for {n}")
+            raise NotImplementedError(f"Didn't have renderer for {type(n)}")
         f(n, renderer, fmt)
 
     def emit_doc_segment(
@@ -174,7 +174,7 @@ class EmitterDispatch(Generic[TRenderer_contra]):
     ) -> None:
         f = self.header_emitters.get_handler(s.header)
         if f is None:
-            raise NotImplementedError(f"Didn't have renderer for {s.header}")
+            raise NotImplementedError(f"Didn't have renderer for {type(s.header)}")
         f(s.header, s.contents, s.subsegments, renderer, fmt)
 
     def renderer_keys(self) -> Set[Type[Block | Inline | Header]]:
