@@ -50,6 +50,7 @@ class Anchor(Inline):
     def __str__(self) -> str:
         return self.canonical()
 
+# TODO add a text-only backref if I just want to use consistent numbering, not a backlink
 
 @dataclasses.dataclass(frozen=True)
 class Backref(Inline, InlineScopeBuilder):
