@@ -5,9 +5,16 @@ from turnip_text.render.latex.setup import LatexSetup
 from turnip_text.render.latex.std_plugins import STD_LATEX_RENDER_PLUGINS
 from turnip_text.render.markdown.renderer import HtmlSetup, MarkdownSetup
 from turnip_text.render.markdown.std_plugins import STD_MARKDOWN_RENDER_PLUGINS
-from turnip_text.render.pandoc import PandocSetup, recommend_pandoc_format_ext
-from turnip_text.render.pandoc.std_plugins import STD_PANDOC_RENDER_PLUGINS
 
+try:
+    from turnip_text.render.pandoc import PandocSetup, recommend_pandoc_format_ext
+    from turnip_text.render.pandoc.std_plugins import STD_PANDOC_RENDER_PLUGINS
+
+    HAS_PANDOC=True
+except RuntimeError:
+    print("WARNING: Something went wrong importing pandoc - perhaps you don't have it installed?\n"
+          "pandoc support will be disabled for this run.")
+    HAS_PANDOC=False
 
 class DefaultTurnipTextSetup(TurnipTextSetup):
     """
@@ -104,6 +111,8 @@ class DefaultTurnipTextSetup(TurnipTextSetup):
                 f"{input_stem}.html",
             )
         elif requested_format.startswith("pandoc-"):
+            if not HAS_PANDOC:
+                raise RuntimeError("pandoc was not found on this system.")
             if not csl_bib:
                 print(
                     "Warning, no CSL bibliography was supplied so Pandoc will not have citation commands"
