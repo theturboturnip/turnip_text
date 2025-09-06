@@ -261,9 +261,21 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
         renderer.emit(
             head.anchor
         )  # i.e. r"\refstepcounter{appendix}\label{appendix:1}"
-        # TODO This doesn't appear in the ToC at allllllllllll
         # Emit \chapter* or \section* with the counter hardcoded
         latex_name = "section" if self.doc_class == "article" else "chapter"
+        # Add to TOC
+        renderer.emit_macro("addcontentsline")
+        renderer.emit_braced(Raw("toc"))
+        renderer.emit_braced(Raw(latex_name))
+        renderer.emit_braced(
+            renderer.get_resolved_anchor_text(head.anchor),
+            Text(" "),
+            fmt.emdash,
+            Text(" "),
+            head.title,
+        )  # i.e. r"\section*" + "{Appendix A --- Section Name}"
+        renderer.emit_newline()
+        # Actually emit the chapter* or section*
         renderer.emit_macro(latex_name + "*")
         renderer.emit_braced(
             renderer.get_resolved_anchor_text(head.anchor),
