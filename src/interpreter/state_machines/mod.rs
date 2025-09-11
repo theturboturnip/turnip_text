@@ -87,7 +87,7 @@ enum BlockElem {
     Para(Py<Paragraph>),
 }
 impl BlockElem {
-    fn bind<'py>(&'py self, py: Python<'py>) -> &Bound<'py, PyAny> {
+    fn bind<'py>(&'py self, py: Python<'py>) -> &'py Bound<'py, PyAny> {
         match self {
             BlockElem::FromCode(b) => b.bind(py),
             BlockElem::BlockScope(bs) => bs.bind(py),
@@ -117,7 +117,7 @@ enum InlineElem {
     Raw(Py<Raw>),
 }
 impl InlineElem {
-    fn bind<'py>(&'py self, py: Python<'py>) -> &Bound<'py, PyAny> {
+    fn bind<'py>(&'py self, py: Python<'py>) -> &'py Bound<'py, PyAny> {
         match self {
             InlineElem::FromCode(i) => i.bind(py),
             InlineElem::InlineScope(is) => is.bind(py),
