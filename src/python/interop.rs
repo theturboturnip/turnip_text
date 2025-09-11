@@ -2,7 +2,7 @@ use std::num::NonZeroUsize;
 
 use pyo3::{
     create_exception,
-    exceptions::{PyTypeError, PyValueError},
+    exceptions::{PyRuntimeError, PyTypeError, PyValueError},
     intern,
     prelude::*,
     types::{PyDict, PyFloat, PyIterator, PyList, PyLong, PySequence, PyString},
@@ -33,7 +33,6 @@ pub fn turnip_text(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Document>()?;
     m.add_class::<DocSegment>()?;
     m.add_class::<TurnipTextSource>()?;
-    m.add_class::<EmitAs>()?;
 
     m.add("TurnipTextError", py.get_type_bound::<TurnipTextError>())?;
 
@@ -83,9 +82,10 @@ pub fn coerce_to_inline_pytcref<'py>(
     if let Ok(inl) = PyTcRef::of(obj) {
         return Ok(inl);
     }
-    // 1a. if it's an EmitAs, coerce the emit_as
-    if let Ok(emit_as) = obj.extract::<EmitAs>() {
-        return coerce_to_inline_pytcref(py, emit_as.emit_as.bind(py));
+    // 1a. if it's a CoerceBuilder, tell it to build something and coerce the result
+    if let Ok(coerce_builder) = PyTcRef::<CoerceBuilder>::of(obj) {
+        let coerced = CoerceBuilder::resolve_coercion(py, coerce_builder)?;
+        return coerce_to_inline_pytcref(py, &coerced);
     }
     // 2. if it's str, return Text(it)
     // Do this before checking sequence-ness because str is a sequence of str.
@@ -158,28 +158,25 @@ pub fn coerce_to_block_pytcref<'py>(
     if let Ok(block) = PyTcRef::of(obj) {
         return Ok(block);
     }
-    // 1a. if it's an EmitAs, try coercing the emit_as to Block.
-    if let Ok(emit_as) = obj.extract::<EmitAs>() {
-        if let Ok(block) = coerce_to_block_pytcref(py, emit_as.emit_as.bind(py)) {
-            return Ok(block);
-        }
-    } else {
-        // 2. if it's a Sentence, wrap it in a list -> Paragraph
-        // Do this before checking if it's a sequence, because Sentence is a sequence of InlineScope
-        if let Ok(sentence) = obj.extract::<Py<Sentence>>() {
-            let paragraph = Py::new(
-                py,
-                Paragraph::new(py, Some(&PyList::new_bound(py, [sentence]).as_sequence()))?,
-            )?;
-            return Ok(PyTcRef::of_unchecked(paragraph.bind(py)));
-        }
-        // 3. if it's an sequence of Block, wrap it in a BlockScope and return it
-        // Here we first check if it's sequence, then if so try to create a BlockScope - this will verify if it's a list of Blocks.
-        if let Ok(seq) = obj.downcast::<PySequence>() {
-            if let Ok(block_scope) = BlockScope::new(py, Some(&seq)) {
-                let block_scope = Py::new(py, block_scope)?;
-                return Ok(PyTcRef::of_unchecked(block_scope.bind(py)));
-            }
+    // 1a. if it's a CoerceBuilder, tell it to build something and coerce the result to Block.
+    if let Ok(coerce_builder) = PyTcRef::<CoerceBuilder>::of(obj) {
+        return coerce_to_block_pytcref(py, &CoerceBuilder::resolve_coercion(py, coerce_builder)?);
+    }
+    // 2. if it's a Sentence, wrap it in a list -> Paragraph
+    // Do this before checking if it's a sequence, because Sentence is a sequence of InlineScope
+    if let Ok(sentence) = obj.extract::<Py<Sentence>>() {
+        let paragraph = Py::new(
+            py,
+            Paragraph::new(py, Some(&PyList::new_bound(py, [sentence]).as_sequence()))?,
+        )?;
+        return Ok(PyTcRef::of_unchecked(paragraph.bind(py)));
+    }
+    // 3. if it's an sequence of Block, wrap it in a BlockScope and return it
+    // Here we first check if it's sequence, then if so try to create a BlockScope - this will verify if it's a list of Blocks.
+    if let Ok(seq) = obj.downcast::<PySequence>() {
+        if let Ok(block_scope) = BlockScope::new(py, Some(&seq)) {
+            let block_scope = Py::new(py, block_scope)?;
+            return Ok(PyTcRef::of_unchecked(block_scope.bind(py)));
         }
     }
     // 4. if it can be coerced to an Inline, wrap that in list -> Sentence -> list -> Paragraph and return it
@@ -451,8 +448,13 @@ impl PyTypeclass for Header {
     }
 }
 
+// TODO: experiment with a) a class for indicating ttext snippets for error handling (e.g. this block came from this line of code)
+// b) a static global CURRENT_SNIPPET variable that Blocks, Inlines, etc. pull from to specify their snippet,
+// which may require c) a global base class for Blocks, Inlines, etc.
+
 // FUTURE BlockScopeBuilder => BuilderFromBlockScope?
 /// Typeclass representing a "builder" which takes a BlockScope and produces a new DocElement.
+/// 
 /// Doesn't typecheck the output of the build method, that's done in [`crate::interpreter::state_machines::code`]
 ///
 /// Requires a method
@@ -499,8 +501,9 @@ impl PyTypeclass for BlockScopeBuilder {
 }
 
 /// Typeclass representing a "builder" which takes an InlineScope and produces a new DocElement.
-////// Doesn't typecheck the output of the build method, that's done in [`crate::interpreter::state_machines::code`]
-
+///
+/// Doesn't typecheck the output of the build method, that's done in [`crate::interpreter::state_machines::code`]
+/// 
 /// Requires a method
 /// ```python
 /// def build_from_inlines(self, inlines: InlineScope) -> Block | Inline | Header | None: ...
@@ -545,8 +548,9 @@ impl PyTypeclass for InlineScopeBuilder {
 }
 
 /// Typeclass representing a "builder" which takes a Raw scope and produces a new DocElement.
-////// Doesn't typecheck the output of the build method, that's done in [`crate::interpreter::state_machines::code`]
-
+///
+/// Doesn't typecheck the output of the build method, that's done in [`crate::interpreter::state_machines::code`]
+///
 /// Requires a method
 /// ```python
 /// def build_from_raw(self, raw: Raw) -> Block | Inline | Header | None: ...
@@ -590,6 +594,67 @@ impl PyTypeclass for RawScopeBuilder {
         }
     }
 }
+
+/// A typeclass for objects that should be coerced to another object, like a builder without arguments.
+/// This allows objects that *can* be customised through building
+/// to not *require* that customization
+/// 
+/// TODO: The purpose of this is to stop people from needing to implement both a Node type and a Builder type,
+/// but they could still try! Can we stop it?
+pub struct CoerceBuilder {}
+impl CoerceBuilder {
+    fn marker_func_name(py: Python<'_>) -> &Bound<'_, PyString> {
+        intern!(py, "build_without_args")
+    }
+    /// Calls builder.build_without_args() in a loop until it resolves to a non-CoerceBuilder
+    pub fn resolve_coercion<'py>(
+        py: Python<'py>,
+        first_builder: PyTcRef<Self>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let mut builder = first_builder.bind(py).clone();
+        let mut iters = 0;
+        while iters < 64 {
+            iters += 1;
+            let obj = builder
+                .getattr(Self::marker_func_name(py))?
+                .call0()?;
+            if let Ok(_) = PyTcRef::<CoerceBuilder>::of(&obj) {
+                builder = obj;
+            } else {
+                return Ok(obj)
+            }
+        }
+        let first_builder_repr = first_builder.bind(py).repr()?;
+        let last_builder_repr = builder.repr()?;
+        return Err(PyRuntimeError::new_err(format!(
+            "CoerceBuilder loop: The CoerceBuilder {} returned another instance of CoerceBuilder,
+            which returned another, until we stopped it at {} iterations {}.",
+            first_builder_repr, iters, last_builder_repr,
+        )));
+    }
+}
+impl PyTypeclass for CoerceBuilder {
+    const NAME: &'static str = "CoerceBuilder";
+
+    fn fits_typeclass(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
+        obj.hasattr(Self::marker_func_name(obj.py()))
+    }
+    fn get_typeclass_err(obj: &Bound<'_, PyAny>, context: &str) -> PyResult<Option<PyErr>> {
+        if Self::fits_typeclass(obj)? {
+            Ok(None)
+        } else {
+            let obj_repr = obj.repr()?;
+            let err = PyTypeError::new_err(format!(
+                "Expected {} to be an instance of {}, but it didn't have a build_without_args() method. Got {}",
+                context,
+                Self::NAME,
+                obj_repr.to_str()?
+            ));
+            Ok(Some(err))
+        }
+    }
+}
+
 
 /// Represents plain inline text that has not yet been "escaped" for rendering.
 ///
@@ -670,6 +735,8 @@ impl Raw {
 /// A sequence of objects that represents a single sentence.
 ///
 /// Typically created by Rust while parsing input files.
+/// 
+/// TODO allow passing in Sequence[CoercibleToInline]
 #[pyclass(sequence)]
 #[derive(Debug, Clone)]
 pub struct Sentence(pub PyTypeclassList<Inline>);
@@ -778,6 +845,8 @@ impl Paragraph {
 /// A group of [Block]s inside non-code-preceded squiggly braces
 ///
 /// Typically created by Rust while parsing input files.
+/// 
+/// TODO allow passing in Sequence[CoercibleToBlock]
 #[pyclass(sequence)]
 #[derive(Debug, Clone)]
 pub struct BlockScope(pub PyTypeclassList<Block>);
@@ -832,6 +901,8 @@ impl BlockScope {
 /// A group of [Inline]s inside non-code-preceded squiggly braces
 ///
 /// Typically created by Rust while parsing input files.
+/// 
+/// TODO allow passing in Sequence[CoercibleToInline]
 #[pyclass(sequence)]
 #[derive(Debug, Clone)]
 pub struct InlineScope(pub PyTypeclassList<Inline>);
@@ -994,8 +1065,8 @@ impl Document {
         &'py self,
         py: Python<'py>,
         index: usize,
-        new_header: &'py Bound<'_, PyAny>,
-    ) -> PyResult<Bound<'_, DocSegment>> {
+        new_header: &'py Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, DocSegment>> {
         // First, make sure the header is a header - this means we provide a good error message to user Python
         let new_header = PyTcRef::of_friendly(new_header, "input to .insert_header()")?;
         self.segments.insert_header(py, index, new_header)
@@ -1233,7 +1304,7 @@ impl DocSegmentList {
         py: Python<'py>,
         new_weight: i64,
         index: usize,
-    ) -> PyResult<Bound<PyList>> {
+    ) -> PyResult<Bound<'py, PyList>> {
         let new_list = PyList::empty_bound(py);
         let self_list = self.0.bind(py);
         while index < self_list.len() {
@@ -1378,40 +1449,5 @@ impl DocSegmentList {
             r#"DocSegmentList({})"#,
             self.0.bind(py).str()?.to_str()?
         ))
-    }
-}
-
-/// An inheritable class that is seen by turnip_text as one object, which can also be extended with functions to build other objects.
-#[pyclass(subclass)]
-#[derive(Debug, Clone)]
-struct EmitAs {
-    emit_as: PyObject,
-}
-#[pymethods]
-impl EmitAs {
-    #[new]
-    fn new<'py>(py: Python<'py>, emit_as: &Bound<'py, PyAny>) -> PyResult<EmitAs> {
-        let emit_as = if let Ok(inner_emit_as) = emit_as.downcast::<EmitAs>() {
-            inner_emit_as
-        } else {
-            emit_as
-        };
-        if Inline::fits_typeclass(emit_as)? || Block::fits_typeclass(emit_as)? {
-            Ok(Self {
-                emit_as: emit_as.to_object(py),
-            })
-        } else {
-            let obj_repr = emit_as.repr()?;
-            let err = PyTypeError::new_err(format!(
-                "EmitAs got parameter {}, expected to be an instance of Block or Inline, but it wasn't.",
-                obj_repr.to_str()?
-            ));
-            Err(err)
-        }
-    }
-
-    #[getter]
-    pub fn emit_as(&self) -> PyObject {
-        self.emit_as.clone()
     }
 }

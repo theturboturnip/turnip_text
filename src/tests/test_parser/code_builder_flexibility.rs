@@ -1,4 +1,7 @@
-// All kinds of builder should be able to build Header | Block | Inline | None.
+//! {Coerce,BlockScope,InlineScope,RawScope}Builder should be able to build
+//! Header | Block | Inline | None | CoerceBuilder[Header | Block | Inline | None]
+//! TODO they should probably also be able to build CoercibleToInline?
+//! None of them can produce TurnipTextSource.
 
 use super::*;
 
@@ -45,6 +48,26 @@ fn test_raw_scope_builder_building_inline() {
         Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
             test_text("building "),
             TestInline::CustomRaw("some raw stuff".to_string()),
+        ]])])),
+    )
+}
+
+#[test]
+fn test_coerce_builder_building_inline() {
+    expect_parse(
+        "[CustomCoerceBuilder(Text('hello'))]",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("hello"),
+        ]])])),
+    )
+}
+
+#[test]
+fn test_recursive_coerce_builder_building_inline() {
+    expect_parse(
+        "[CustomCoerceBuilder(Text('hello'), iters=10)]",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("hello"),
         ]])])),
     )
 }
@@ -96,6 +119,30 @@ fn test_raw_scope_builder_building_inline_creates_paragraph() {
     )
 }
 
+#[test]
+fn test_coerce_builder_building_inline_creates_paragraph() {
+    expect_parse(
+        "building [CustomCoerceBuilder(Text('content'))] which continus",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("building "),
+            test_text("content"),
+            test_text(" which continus"),
+        ]])])),
+    )
+}
+
+#[test]
+fn test_recursive_coerce_builder_building_inline_creates_paragraph() {
+    expect_parse(
+        "building [CustomCoerceBuilder(Text('content'), iters=10)] which continus",
+        Ok(test_doc(vec![TestBlock::Paragraph(vec![vec![
+            test_text("building "),
+            test_text("content"),
+            test_text(" which continus"),
+        ]])])),
+    )
+}
+
 // All kinds of builder should be able to build blocks, even if their arguments aren't blocks
 
 #[test]
@@ -131,6 +178,22 @@ fn test_raw_scope_builder_building_block() {
         Ok(test_doc(vec![TestBlock::CustomBlock(vec![
             TestBlock::Paragraph(vec![vec![test_raw_text(" block! ")]]),
         ])])),
+    )
+}
+
+#[test]
+fn test_coerce_builder_building_block() {
+    expect_parse(
+        "[-CustomCoerceBuilder(CustomBlock(BlockScope([])))-]",
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![])])),
+    )
+}
+
+#[test]
+fn test_recursive_coerce_builder_building_block() {
+    expect_parse(
+        "[-CustomCoerceBuilder(CustomBlock(BlockScope([])), iters=10)-]",
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![])])),
     )
 }
 
@@ -176,6 +239,33 @@ fn test_raw_scope_builder_building_block_in_inline() {
                 scope_start: TestParseSpan("{"),
             },
             code_span: TestParseSpan("[BUILD_CUSTOM_BLOCK_FROM_RAW]#{ block! }#"),
+        },
+    )
+}
+
+#[test]
+fn test_coerce_builder_building_block_in_inline() {
+    expect_parse_err(
+        "{wow I'm inline [-CustomCoerceBuilder(CustomBlock([]))-]}",
+        TestSyntaxError::CodeEmittedBlockInInlineMode {
+            inl_mode: TestInlineModeContext::InlineScope {
+                scope_start: TestParseSpan("{"),
+            },
+            code_span: TestParseSpan("[-CustomCoerceBuilder(CustomBlock([]))-]"),
+        },
+    )
+}
+
+
+#[test]
+fn test_recursive_coerce_builder_building_block_in_inline() {
+    expect_parse_err(
+        "{wow I'm inline [-CustomCoerceBuilder(CustomBlock([]), iters=10)-]}",
+        TestSyntaxError::CodeEmittedBlockInInlineMode {
+            inl_mode: TestInlineModeContext::InlineScope {
+                scope_start: TestParseSpan("{"),
+            },
+            code_span: TestParseSpan("[-CustomCoerceBuilder(CustomBlock([]), iters=10)-]"),
         },
     )
 }
@@ -238,6 +328,44 @@ fn test_raw_scope_builder_building_header() {
                     Some(TestInline::InlineScope(vec![test_raw_text(
                         " Wowee i wish I had inline content ",
                     )])),
+                ),
+                contents: TestBlock::BlockScope(vec![]),
+                subsegments: vec![],
+            }],
+        }),
+    )
+}
+
+#[test]
+fn test_coerce_builder_building_header() {
+    expect_parse(
+        "[CustomCoerceBuilder(CustomHeader())]",
+        Ok(TestDocument {
+            contents: TestBlock::BlockScope(vec![]),
+            segments: vec![TestDocSegment {
+                header: (
+                    0,
+                    None,
+                    None,
+                ),
+                contents: TestBlock::BlockScope(vec![]),
+                subsegments: vec![],
+            }],
+        }),
+    )
+}
+
+#[test]
+fn test_recursive_coerce_builder_building_header() {
+    expect_parse(
+        "[CustomCoerceBuilder(CustomHeader(), iters=10)]",
+        Ok(TestDocument {
+            contents: TestBlock::BlockScope(vec![]),
+            segments: vec![TestDocSegment {
+                header: (
+                    0,
+                    None,
+                    None,
                 ),
                 contents: TestBlock::BlockScope(vec![]),
                 subsegments: vec![],
@@ -309,7 +437,41 @@ fn test_raw_scope_builder_building_header_in_inline() {
     )
 }
 
-// All kinds of builder should be able to build None
+#[test]
+fn test_coerce_builder_building_header_in_inline() {
+    expect_parse_err(
+        "And as I was saying [CustomCoerceBuilder(CustomHeader())]",
+        TestSyntaxError::CodeEmittedHeaderInInlineMode {
+            inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
+                "And",
+                " as I was saying",
+                " ",
+            )),
+            code_span: TestParseSpan(
+                "[CustomCoerceBuilder(CustomHeader())]",
+            ),
+        },
+    )
+}
+
+#[test]
+fn test_recursive_coerce_builder_building_header_in_inline() {
+    expect_parse_err(
+        "And as I was saying [CustomCoerceBuilder(CustomHeader(), iters=10)]",
+        TestSyntaxError::CodeEmittedHeaderInInlineMode {
+            inl_mode: TestInlineModeContext::Paragraph(TestParseContext(
+                "And",
+                " as I was saying",
+                " ",
+            )),
+            code_span: TestParseSpan(
+                "[CustomCoerceBuilder(CustomHeader(), iters=10)]",
+            ),
+        },
+    )
+}
+
+// All kinds of builder except CoerceBuilder should be able to build None
 
 // if an inline emits None inside a sentence with other content
 #[test]
@@ -371,13 +533,104 @@ fn test_raw_scope_builder_building_none() {
     )
 }
 
-// Builders are *only* allowed to emit Header | Inline | Block | None.
+#[test]
+fn test_coerce_builder_building_none() {
+    expect_parse(
+        "[CustomCoerceBuilder(None)]",
+        Ok(test_doc(vec![])),
+    )
+}
+
+#[test]
+fn test_recursive_coerce_builder_building_none() {
+    expect_parse(
+        "[CustomCoerceBuilder(None, iters=10)]",
+        Ok(test_doc(vec![])),
+    )
+}
+
+// All builders should be able to emit CoerceBuilder. Recursive CoerceBuilders are thoroughly tested above.
+// Test that {Block,Inline,Raw}ScopeBuilders can each return CoerceBuilders and recursive CoerceBuilders,
+// and assume that the specific rules tested above (e.g. BlockScopeBuilder taking Block but emitting Inline via CoerceBuilder)
+// still hold. This is imperfect.
+// TODO (yet another) refactor to tokenize stuff into a stream of DocElements, so that we can test (tokenize source to DocElement)
+// and (convert stream of DocElements to Document) separately?
+
+#[test]
+fn test_inline_scope_building_coerce_builder() {
+    expect_parse(
+        "[CustomCoerceBuilderPassthroughFromScopeBuilder()]{inline data}",
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![test_text("inline data")])]])
+        ]))
+    )
+}
+
+#[test]
+fn test_inline_scope_building_recursive_coerce_builder() {
+    expect_parse(
+        "[CustomCoerceBuilderPassthroughFromScopeBuilder(iters=10)]{inline data}",
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![vec![TestInline::InlineScope(vec![test_text("inline data")])]])
+        ]))
+    )
+}
+
+#[test]
+fn test_block_scope_building_coerce_builder() {
+    expect_parse(
+        "[CustomCoerceBuilderPassthroughFromScopeBuilder()]{
+            block para
+        }",
+        Ok(test_doc(vec![
+            TestBlock::BlockScope(vec![
+                TestBlock::Paragraph(vec![vec![test_text("block para")]])
+            ])
+        ]))
+    )
+}
+
+#[test]
+fn test_block_scope_building_recursive_coerce_builder() {
+    expect_parse(
+        "[CustomCoerceBuilderPassthroughFromScopeBuilder(iters=10)]{
+            block para
+        }",
+        Ok(test_doc(vec![
+            TestBlock::BlockScope(vec![
+                TestBlock::Paragraph(vec![vec![test_text("block para")]])
+            ])
+        ]))
+    )
+}
+
+#[test]
+fn test_raw_scope_building_coerce_builder() {
+    expect_parse(
+        "[CustomCoerceBuilderPassthroughFromScopeBuilder()]#{raw data}#",
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![vec![test_raw_text("raw data")]])
+        ]))
+    )
+}
+
+#[test]
+fn test_raw_scope_building_recursive_coerce_builder() {
+    expect_parse(
+        "[CustomCoerceBuilderPassthroughFromScopeBuilder(iters=10)]#{raw data}#",
+        Ok(test_doc(vec![
+            TestBlock::Paragraph(vec![vec![test_raw_text("raw data")]])
+        ]))
+    )
+}
+
+// Builders are *only* allowed to emit Header | Inline | Block | CoerceBuilder | None.
 // They aren't allowed to emit objects that fit none of those,
 // and aren't allowed to emit objects that fit multiple of those.
 // That includes things that are typically coercible to inline like lists, ints, floats, strings.
 
 #[test]
-fn test_builders_cant_emit_objects_fitting_none() {
+fn test_builders_cant_emit_objects_fitting_no_typeclasses() {
     // Test for block, raw, inline builders
     expect_parse_err(
         r#"
@@ -426,6 +679,21 @@ fn test_builders_cant_emit_objects_fitting_none() {
         TestUserPythonError::CoercingBuildResultToElement {
             code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
             arg_ctx: TestParseContext("#{", "raw", "}#"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        r#"
+    [-
+    class ObjectBuilder:
+        def build_without_args(self):
+            return object() # This isn't header, inline, block, or none
+    -]
+
+    [-ObjectBuilder()-]
+    "#,
+        TestUserPythonError::CoercingEvalBracketToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
             err: Regex::new("TypeError").unwrap(),
         },
     );
@@ -481,6 +749,90 @@ fn test_builders_cant_emit_coercible_to_inline() {
         TestUserPythonError::CoercingBuildResultToElement {
             code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
             arg_ctx: TestParseContext("#{", "raw", "}#"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        r#"
+    [-
+    class ObjectBuilder:
+        def build_without_args(self):
+            return "a tasty string" # This is coercible, but that's invalid
+    -]
+
+    [-ObjectBuilder()-]
+    "#,
+        TestUserPythonError::CoercingEvalBracketToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+}
+
+#[test]
+fn test_builders_cant_emit_turniptextsource() {
+    expect_parse_err(
+        r#"
+    [-
+    class ObjectBuilder:
+        def build_from_blocks(self, arg):
+            return test_src("dummy whatever content") # Builders can't return TurnipTextSource
+    -]
+
+    [-ObjectBuilder()-]{
+        block
+    }
+    "#,
+        TestUserPythonError::CoercingBuildResultToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
+            arg_ctx: TestParseContext("{", "\n        block\n    ", "}"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        r#"
+    [-
+    class ObjectBuilder:
+        def build_from_inlines(self, arg):
+            return test_src("dummy whatever content") # Builders can't return TurnipTextSource
+    -]
+
+    [-ObjectBuilder()-]{ inline }
+    "#,
+        TestUserPythonError::CoercingBuildResultToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
+            arg_ctx: TestParseContext("{", " inline ", "}"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        r#"
+    [-
+    class ObjectBuilder:
+        def build_from_raw(self, arg):
+            return test_src("dummy whatever content") # Builders can't return TurnipTextSource
+    -]
+
+    [-ObjectBuilder()-]#{raw}#
+    "#,
+        TestUserPythonError::CoercingBuildResultToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
+            arg_ctx: TestParseContext("#{", "raw", "}#"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        r#"
+    [-
+    class ObjectBuilder:
+        def build_without_args(self):
+            return test_src("dummy whatever content") # Builders can't return TurnipTextSource
+    -]
+
+    [-ObjectBuilder()-]
+    "#,
+        TestUserPythonError::CoercingEvalBracketToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
             err: Regex::new("TypeError").unwrap(),
         },
     );
@@ -551,6 +903,26 @@ fn test_builders_cant_emit_objects_fitting_multiple() {
         TestUserPythonError::CoercingBuildResultToElement {
             code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
             arg_ctx: TestParseContext("#{", "raw", "}#"),
+            err: Regex::new("TypeError").unwrap(),
+        },
+    );
+    expect_parse_err(
+        r#"
+    [-
+    class FitMultiple:
+        is_block = True
+        is_inline = True
+        is_header = True
+        weight = 0
+    class ObjectBuilder:
+        def build_without_args(self):
+            return FitMultiple() # This is header, inline, and block!
+    -]
+
+    [-ObjectBuilder()-]
+    "#,
+        TestUserPythonError::CoercingEvalBracketToElement {
+            code_ctx: TestParseContext("[-", "ObjectBuilder()", "-]"),
             err: Regex::new("TypeError").unwrap(),
         },
     );

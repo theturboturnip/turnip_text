@@ -18,8 +18,7 @@ use crate::{
     },
     python::{
         interop::{
-            coerce_to_inline_pytcref, Block, BlockScopeBuilder, Header, Inline, InlineScopeBuilder,
-            RawScopeBuilder, TurnipTextSource,
+            coerce_to_inline_pytcref, Block, BlockScopeBuilder, CoerceBuilder, Header, Inline, InlineScopeBuilder, RawScopeBuilder, TurnipTextSource
         },
         typeclass::{PyTcRef, PyTypeclass},
     },
@@ -306,6 +305,7 @@ impl OnResolveAmbiguousScope for ScopeKindChecker {
 /// If it's neither, it needs to be *coerced*.
 /// But what should coercion look like? What should we try to coerce the object *to*?
 /// Well, what can be coerced?
+/// CoerceBuilder, where we call the build_without_args function which can return Header, Block, or Inline (or None).
 /// Coercible to inline:
 /// - `Inline`        -> `x`
 /// - `List[Inline]`  -> `InlineScope(x)`
@@ -318,7 +318,8 @@ impl OnResolveAmbiguousScope for ScopeKindChecker {
 /// I do not see the need to allow eval-brackets to directly return `List[Block]` or `Sentence` at all.
 /// Similar outcomes can be acheived by wrapping in `BlockScope` or `Paragraph` manually in the evaluated code, which better demonstrates intent.
 /// If we always coerce to inline, then the wrapping in `Paragraph` and `Sentence` happens naturally in the interpreter.
-/// => We check if it's a block, and if it isn't we try to coerce to inline.
+/// => We do any CoerceBuilder coercion,
+/// check if it's a block or a header or an inline, and if it isn't any of them we try to coerce to inline.
 pub enum EvalDirectOutcome {
     // This does not handle TurnipTextSource.
     // TurnipTextSource is handled exactly when the eval-brackets finish,
@@ -338,20 +339,65 @@ impl EvalDirectOutcome {
             let is_block = Block::fits_typeclass(obj)?;
             let is_inline = Inline::fits_typeclass(obj)?;
             let is_header = Header::fits_typeclass(obj)?;
+            let is_coercebuilder = CoerceBuilder::fits_typeclass(obj)?;
 
-            match (is_block, is_inline, is_header) {
-                (true, false, false) => Ok(EvalDirectOutcome::Block(PyTcRef::of_unchecked(obj))),
-                (false, true, false) => Ok(EvalDirectOutcome::Inline(PyTcRef::of_unchecked(obj))),
-                (false, false, true) => Ok(EvalDirectOutcome::Header(PyTcRef::of_unchecked(obj))),
+            match (is_block, is_inline, is_header, is_coercebuilder) {
+                (true, false, false, false) => Ok(EvalDirectOutcome::Block(PyTcRef::of_unchecked(obj))),
+                (false, true, false, false) => Ok(EvalDirectOutcome::Inline(PyTcRef::of_unchecked(obj))),
+                (false, false, true, false) => Ok(EvalDirectOutcome::Header(PyTcRef::of_unchecked(obj))),
+                (false, false, false, true) => {
+                    // Re-coerce the result of the CoerceBuilder
+                    let coerce_builder = obj;
+                    let obj = &CoerceBuilder::resolve_coercion(obj.py(), PyTcRef::of_unchecked(obj))?;
 
-                (false, false, false) => {
+                    if obj.is_none() {
+                        Ok(EvalDirectOutcome::None)
+                    } else {
+                        let is_block = Block::fits_typeclass(obj)?;
+                        let is_inline = Inline::fits_typeclass(obj)?;
+                        let is_header = Header::fits_typeclass(obj)?;
+                        // is_coercebuilder guaranteed to be false through resolve_coercion
+
+                        match (is_block, is_inline, is_header) {
+                            (true, false, false) => Ok(EvalDirectOutcome::Block(PyTcRef::of_unchecked(obj))),
+                            (false, true, false) => Ok(EvalDirectOutcome::Inline(PyTcRef::of_unchecked(obj))),
+                            (false, false, true) => Ok(EvalDirectOutcome::Header(PyTcRef::of_unchecked(obj))),
+
+                            (false, false, false) => {
+                                let builder_repr = coerce_builder.repr()?;
+                                let obj_repr = obj.repr()?;
+                                Err(PyTypeError::new_err(format!(
+                                    "Eval-bracket produced a CoerceBuilder {} which should have resolved to None, \
+                                    a Header, a Block, or Inline (not just something coercible to Inline). \
+                                    {} isn't any of those.",
+                                    builder_repr.to_str()?,
+                                    obj_repr.to_str()?
+                                )))
+                            }
+                            _ => {
+                                let obj_repr = obj.repr()?;
+                                Err(PyTypeError::new_err(format!(
+                                    "Eval-bracket produced a CoerceBuilder which should have resolved to None, \
+                                    a Header, a Block, or Inline (not just something coercible to Inline). \
+                                    {} fits multiple typeclasses: (Block? {}) (Inline? {}) (Header? {}).",
+                                    obj_repr.to_str()?,
+                                    is_block,
+                                    is_inline,
+                                    is_header
+                                )))
+                            }
+                        }
+                    }
+                }
+
+                (false, false, false, false) => {
                     // FUTURE this may swallow allocation errors
                     if let Ok(inline) = coerce_to_inline_pytcref(obj.py(), obj) {
                         Ok(EvalDirectOutcome::Inline(inline))
                     } else {
                         let obj_repr = obj.repr()?;
                         Err(PyTypeError::new_err(format!(
-                            "Expected eval-bracket to produce None, a TurnipTextSource, a Header, \
+                            "Expected eval-bracket to produce None, a TurnipTextSource, a CoerceBuilder, a Header, \
                             a Block, or something coercible to Inline. {} isn't any of those.",
                             obj_repr.to_str()?
                         )))
@@ -360,13 +406,14 @@ impl EvalDirectOutcome {
                 _ => {
                     let obj_repr = obj.repr()?;
                     Err(PyTypeError::new_err(format!(
-                        "Expected eval-bracket to produce None, a TurnipTextSource, a Header, \
+                        "Expected eval-bracket to produce None, a TurnipTextSource, a CoerceBuilder, a Header, \
                         a Block, or something coercible to Inline. \
-                        {} fits multiple typeclasses: (block? {}) (inline? {}) (header? {}).",
+                        {} fits multiple typeclasses: (Block? {}) (Inline? {}) (Header? {}) (CoerceBuilder? {}).",
                         obj_repr.to_str()?,
                         is_block,
                         is_inline,
-                        is_header
+                        is_header,
+                        is_coercebuilder
                     )))
                 }
             }
@@ -374,7 +421,9 @@ impl EvalDirectOutcome {
     }
 }
 
-/// The possible options that can be returned by build_from_{blocks,inlines,raw}() on a builder
+/// The possible options that can be returned by build_from_{blocks,inlines,raw}() on a builder.
+/// 
+/// If passed a CoerceBuilder, will try to resolve it before using it.
 pub enum BuildOutcome {
     Header(PyTcRef<Header>),
     Block(PyTcRef<Block>),
@@ -389,28 +438,75 @@ impl BuildOutcome {
             let is_block = Block::fits_typeclass(obj)?;
             let is_inline = Inline::fits_typeclass(obj)?;
             let is_header = Header::fits_typeclass(obj)?;
+            let is_coercebuilder = CoerceBuilder::fits_typeclass(obj)?;
 
-            match (is_block, is_inline, is_header) {
-                (true, false, false) => Ok(BuildOutcome::Block(PyTcRef::of_unchecked(obj))),
-                (false, true, false) => Ok(BuildOutcome::Inline(PyTcRef::of_unchecked(obj))),
-                (false, false, true) => Ok(BuildOutcome::Header(PyTcRef::of_unchecked(obj))),
+            match (is_block, is_inline, is_header, is_coercebuilder) {
+                (true, false, false, false) => Ok(BuildOutcome::Block(PyTcRef::of_unchecked(obj))),
+                (false, true, false, false) => Ok(BuildOutcome::Inline(PyTcRef::of_unchecked(obj))),
+                (false, false, true, false) => Ok(BuildOutcome::Header(PyTcRef::of_unchecked(obj))),
+                (false, false, false, true) => {
+                    // Re-coerce the result of the CoerceBuilder
+                    let coerce_builder = obj;
+                    let obj = &CoerceBuilder::resolve_coercion(obj.py(), PyTcRef::of_unchecked(obj))?;
 
-                (false, false, false) => {
+                    if obj.is_none() {
+                        Ok(BuildOutcome::None)
+                    } else {
+                        let is_block = Block::fits_typeclass(obj)?;
+                        let is_inline = Inline::fits_typeclass(obj)?;
+                        let is_header = Header::fits_typeclass(obj)?;
+                        // is_coercebuilder guaranteed to be false through resolve_coercion
+
+                        match (is_block, is_inline, is_header) {
+                            (true, false, false) => Ok(BuildOutcome::Block(PyTcRef::of_unchecked(obj))),
+                            (false, true, false) => Ok(BuildOutcome::Inline(PyTcRef::of_unchecked(obj))),
+                            (false, false, true) => Ok(BuildOutcome::Header(PyTcRef::of_unchecked(obj))),
+
+                            (false, false, false) => {
+                                let builder_repr = coerce_builder.repr()?;
+                                let obj_repr = obj.repr()?;
+                                Err(PyTypeError::new_err(format!(
+                                    "Build result produced a CoerceBuilder {} which should have resolved to None, \
+                                    a Header, a Block, or an Inline. \
+                                    {} isn't any of those.",
+                                    builder_repr.to_str()?,
+                                    obj_repr.to_str()?
+                                )))
+                            }
+                            _ => {
+                                let obj_repr = obj.repr()?;
+                                Err(PyTypeError::new_err(format!(
+                                    "Build result produced a CoerceBuilder which should have resolved to None, \
+                                    a Header, a Block, or an Inline. \
+                                    {} fits multiple typeclasses: (Block? {}) (Inline? {}) (Header? {}).",
+                                    obj_repr.to_str()?,
+                                    is_block,
+                                    is_inline,
+                                    is_header
+                                )))
+                            }
+                        }
+                    }
+                }
+
+                (false, false, false, false) => {
                     let obj_repr = obj.repr()?;
                     Err(PyTypeError::new_err(format!(
-                        "Expected build result to be None or an object fitting Block, Inline, or Header - got {} which fits none of them.",
+                        "Expected build result to produce None, a CoerceBuilder, a Header, \
+                        a Block, or an Inline. {} isn't any of those.",
                         obj_repr.to_str()?
                     )))
                 }
                 _ => {
                     let obj_repr = obj.repr()?;
                     Err(PyTypeError::new_err(format!(
-                        "Expected build result to be None or an object fitting Block, Inline, or Header \
-                         - got {} which fits (block? {}) (inline? {}) (header? {}).",
+                        "Expected build result to produce None, a CoerceBuilder, a Header, a Block, or an Inline. \
+                        {} fits multiple typeclasses: (Block? {}) (Inline? {}) (Header? {}) (CoerceBuilder? {}).",
                         obj_repr.to_str()?,
                         is_block,
                         is_inline,
-                        is_header
+                        is_header,
+                        is_coercebuilder
                     )))
                 }
             }

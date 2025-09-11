@@ -55,6 +55,45 @@ class CustomRawBuilder:
     def build_from_raw(self, raw):
         return CustomRaw(raw.data)
 
+# The custom coercebuilders can take an `iters` param
+# to specify how many levels of CoerceBuilder they should return before actually resolving.
+
+class CustomCoerceBuilder:
+    iters: int
+    def __init__(self, obj, iters: int=1):
+        self.obj = obj
+        self.iters = iters
+    def build_without_args(self):
+        if self.iters > 1:
+            return CustomCoerceBuilder(self.obj, iters=self.iters - 1)
+        return self.obj
+
+# TODO CustomInlineCoerceBuilder
+
+def CustomBlockCoerceBuilder(iters: int = 1):
+    return CustomCoerceBuilder(
+        CustomBlock(BlockScope([Paragraph([Sentence([Text(f"CoerceBuilder{iters}")])])])),
+        iters=iters,
+    )
+def CustomHeaderCoerceBuilder(iters: int = 1):
+    return CustomCoerceBuilder(
+        CustomHeader(weight=1, test_inline=InlineScope([Text(f"CoerceBuilder{iters}")])),
+        iters=iters,
+    )
+
+# A Builder that takes InlineScope or BlockScope or Raw, and returns a CoerceBuilder
+# that will eventually resolve to the builder argument.
+class CustomCoerceBuilderPassthroughFromScopeBuilder:
+    iters: int
+    def __init__(self, iters: int = 1):
+        self.iters = iters
+    def build_from_inlines(self, inls):
+        return CustomCoerceBuilder(inls, iters=self.iters)
+    def build_from_blocks(self, bs):
+        return CustomCoerceBuilder(bs, iters=self.iters)
+    def build_from_raw(self, raw):
+        return CustomCoerceBuilder(raw, iters=self.iters)
+
 BUILD_CUSTOM_BLOCK = CustomBlockBuilder()
 BUILD_CUSTOM_BLOCK_FROM_INLINE = CustomBlockBuilderFromInline()
 BUILD_CUSTOM_BLOCK_FROM_RAW = CustomBlockBuilderFromRaw()

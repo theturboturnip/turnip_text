@@ -518,14 +518,15 @@ fn non_indent_errors_dont_trigger_indented_exec_mode() {
 // Code is must only be able to emit:
 // - None
 // - instance of TurnipTextSource
-// - object fitting Header
-// - object fitting Block
-// - object fitting Inline, or coercible to inline
+// - (object) or (CoerceBuilder that builds an object) that fits
+//      - Header
+//      - Block
+//      - Inline, or coercible to inline
 //
 // It must not be able to emit something that isn't any of those,
 // and it must not be able to emit something that is multiple of those.
 // coercible-to-inline cannot directly fit inline, turniptextsources and none cannot fit anything,
-// so we have to test emitting something that fits header+block+inline
+// so we have to test emitting something that fits header+block+inline+coercebuilder
 
 #[test]
 fn code_returns_uncoercible_when_emitting_uncoercible_that_fits_none() {
@@ -568,6 +569,9 @@ fn code_returns_uncoercible_when_emitting_uncoercible_that_fits_many() {
             is_inline = True
             is_header = True
             weight = 0
+
+            def build_without_args(self):
+                ...
         -]
         
         [-----FitMultiple()-----]",
@@ -576,6 +580,7 @@ fn code_returns_uncoercible_when_emitting_uncoercible_that_fits_many() {
             err: Regex::new("TypeError").unwrap(),
         },
     );
+    // TODO more tests for more combinations?
 }
 
 // User Python code can throw errors in various places - when it's initially run, and when the result is built.

@@ -42,6 +42,10 @@ const CREATED_BLOCK_FROM_INLINE: &str = "[CustomBlockBuilderFromInline()]{ inlin
 const CREATED_BLOCK_FROM_INLINE_SPAN: TestParseSpan = TestParseSpan(CREATED_BLOCK_FROM_INLINE);
 const CREATED_BLOCK_FROM_RAW: &str = "[CustomBlockBuilderFromRaw()]#{raw_in_block}#";
 const CREATED_BLOCK_FROM_RAW_SPAN: TestParseSpan = TestParseSpan(CREATED_BLOCK_FROM_RAW);
+const CREATED_BLOCK_FROM_COERCEBUILDER: &str = "[CustomBlockCoerceBuilder()]";
+const CREATED_BLOCK_FROM_COERCEBUILDER_SPAN: TestParseSpan = TestParseSpan(CREATED_BLOCK_FROM_COERCEBUILDER);
+const CREATED_BLOCK_FROM_COERCEBUILDER_ITER: &str = "[CustomBlockCoerceBuilder(iters=10)]";
+const CREATED_BLOCK_FROM_COERCEBUILDER_ITER_SPAN: TestParseSpan = TestParseSpan(CREATED_BLOCK_FROM_COERCEBUILDER_ITER);
 
 const CREATED_HEADER_BARE: &str = "[CustomHeader(weight=1)]";
 const CREATED_HEADER_BARE_SPAN: TestParseSpan = TestParseSpan(CREATED_HEADER_BARE);
@@ -51,6 +55,10 @@ const CREATED_HEADER_FROM_INLINE: &str = "[CustomHeaderBuilder(weight=1)]{ inlin
 const CREATED_HEADER_FROM_INLINE_SPAN: TestParseSpan = TestParseSpan(CREATED_HEADER_FROM_INLINE);
 const CREATED_HEADER_FROM_RAW: &str = "[CustomHeaderBuilder(weight=1)]#{raw_in_header}#";
 const CREATED_HEADER_FROM_RAW_SPAN: TestParseSpan = TestParseSpan(CREATED_HEADER_FROM_RAW);
+const CREATED_HEADER_FROM_COERCEBUILDER: &str = "[CustomHeaderCoerceBuilder()]";
+const CREATED_HEADER_FROM_COERCEBUILDER_SPAN: TestParseSpan = TestParseSpan(CREATED_HEADER_FROM_COERCEBUILDER);
+const CREATED_HEADER_FROM_COERCEBUILDER_ITER: &str = "[CustomHeaderCoerceBuilder(iters=10)]";
+const CREATED_HEADER_FROM_COERCEBUILDER_ITER_SPAN: TestParseSpan = TestParseSpan(CREATED_HEADER_FROM_COERCEBUILDER_ITER);
 
 const CREATED_FILE: &str = "[test_src('beans')]";
 const CREATED_FILE_SPAN: TestParseSpan = TestParseSpan(CREATED_FILE);
@@ -92,6 +100,18 @@ fn test_primitives() {
         CREATED_BLOCK_FROM_RAW,
         Ok(test_doc(vec![TestBlock::CustomBlock(vec![
             TestBlock::Paragraph(vec![vec![test_raw_text("raw_in_block")]]),
+        ])])),
+    );
+    expect_parse(
+        CREATED_BLOCK_FROM_COERCEBUILDER,
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![
+            TestBlock::Paragraph(vec![vec![test_text("CoerceBuilder1")]]),
+        ])])),
+    );
+    expect_parse(
+        CREATED_BLOCK_FROM_COERCEBUILDER_ITER,
+        Ok(test_doc(vec![TestBlock::CustomBlock(vec![
+            TestBlock::Paragraph(vec![vec![test_text("CoerceBuilder10")]]),
         ])])),
     );
 
@@ -148,6 +168,40 @@ fn test_primitives() {
                     None,
                     Some(TestInline::InlineScope(vec![test_raw_text(
                         "raw_in_header",
+                    )])),
+                ),
+                contents: TestBlock::BlockScope(vec![]),
+                subsegments: vec![],
+            }],
+        }),
+    );
+    expect_parse(
+        CREATED_HEADER_FROM_COERCEBUILDER,
+        Ok(TestDocument {
+            contents: TestBlock::BlockScope(vec![]),
+            segments: vec![TestDocSegment {
+                header: (
+                    1,
+                    None,
+                    Some(TestInline::InlineScope(vec![test_text(
+                        "CoerceBuilder1",
+                    )])),
+                ),
+                contents: TestBlock::BlockScope(vec![]),
+                subsegments: vec![],
+            }],
+        }),
+    );
+    expect_parse(
+        CREATED_HEADER_FROM_COERCEBUILDER_ITER,
+        Ok(TestDocument {
+            contents: TestBlock::BlockScope(vec![]),
+            segments: vec![TestDocSegment {
+                header: (
+                    1,
+                    None,
+                    Some(TestInline::InlineScope(vec![test_text(
+                        "CoerceBuilder10",
                     )])),
                 ),
                 contents: TestBlock::BlockScope(vec![]),
@@ -231,6 +285,8 @@ macro_rules! test_needs_newline {
             expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_BLOCK_FROM_BLOCK));
             expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_BLOCK_FROM_INLINE));
             expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_BLOCK_FROM_RAW));
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_BLOCK_FROM_COERCEBUILDER));
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_BLOCK_FROM_COERCEBUILDER_ITER));
 
             expect_parse_err(
                 concatcp!($last_block, " ", CREATED_BLOCK_BARE),
@@ -260,6 +316,20 @@ macro_rules! test_needs_newline {
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
                 },
             );
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_BLOCK_FROM_COERCEBUILDER),
+                TestSyntaxError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+                },
+            );
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_BLOCK_FROM_COERCEBUILDER_ITER),
+                TestSyntaxError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+                },
+            );
         }
 
         #[test]
@@ -268,6 +338,8 @@ macro_rules! test_needs_newline {
             expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_HEADER_FROM_BLOCK));
             expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_HEADER_FROM_INLINE));
             expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_HEADER_FROM_RAW));
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_HEADER_FROM_COERCEBUILDER));
+            expect_parse_any_ok(concatcp!($last_block, "\n", CREATED_HEADER_FROM_COERCEBUILDER_ITER));
 
             expect_parse_err(
                 concatcp!($last_block, " ", CREATED_HEADER_BARE),
@@ -292,6 +364,20 @@ macro_rules! test_needs_newline {
             );
             expect_parse_err(
                 concatcp!($last_block, " ", CREATED_HEADER_FROM_RAW),
+                TestSyntaxError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+                },
+            );
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_HEADER_FROM_COERCEBUILDER),
+                TestSyntaxError::InsufficientBlockSeparation {
+                    last_block: $last_block_elem,
+                    next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
+                },
+            );
+            expect_parse_err(
+                concatcp!($last_block, " ", CREATED_HEADER_FROM_COERCEBUILDER_ITER),
                 TestSyntaxError::InsufficientBlockSeparation {
                     last_block: $last_block_elem,
                     next_block_start: TestBlockModeElem::AnyToken(TestParseSpan("[")),
@@ -381,6 +467,8 @@ mod para {
         expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_BLOCK_FROM_BLOCK));
         expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_BLOCK_FROM_INLINE));
         expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_BLOCK_FROM_RAW));
+        expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_BLOCK_FROM_COERCEBUILDER));
+        expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_BLOCK_FROM_COERCEBUILDER_ITER));
 
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_BLOCK_BARE),
@@ -410,6 +498,20 @@ mod para {
                 next_block_start: TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_RAW_SPAN),
             },
         );
+        expect_parse_err(
+            concatcp!(CREATED_PARA, CREATED_BLOCK_FROM_COERCEBUILDER),
+            TestSyntaxError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
+                next_block_start: TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_COERCEBUILDER_SPAN),
+            },
+        );
+        expect_parse_err(
+            concatcp!(CREATED_PARA, CREATED_BLOCK_FROM_COERCEBUILDER_ITER),
+            TestSyntaxError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
+                next_block_start: TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_COERCEBUILDER_ITER_SPAN),
+            },
+        );
     }
 
     /// There should always be a blank line between a paragraph ending and code-emitting-header
@@ -419,6 +521,8 @@ mod para {
         expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_HEADER_FROM_BLOCK));
         expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_HEADER_FROM_INLINE));
         expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_HEADER_FROM_RAW));
+        expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_HEADER_FROM_COERCEBUILDER));
+        expect_parse_any_ok(concatcp!(CREATED_PARA, "\n", CREATED_HEADER_FROM_COERCEBUILDER_ITER));
 
         expect_parse_err(
             concatcp!(CREATED_PARA, CREATED_HEADER_BARE),
@@ -448,6 +552,20 @@ mod para {
             TestSyntaxError::InsufficientBlockSeparation {
                 last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
                 next_block_start: TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_RAW_SPAN),
+            },
+        );
+        expect_parse_err(
+            concatcp!(CREATED_PARA, CREATED_HEADER_FROM_COERCEBUILDER),
+            TestSyntaxError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
+                next_block_start: TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_COERCEBUILDER_SPAN),
+            },
+        );
+        expect_parse_err(
+            concatcp!(CREATED_PARA, CREATED_HEADER_FROM_COERCEBUILDER_ITER),
+            TestSyntaxError::InsufficientBlockSeparation {
+                last_block: TestBlockModeElem::Para(CREATED_PARA_CTX),
+                next_block_start: TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_COERCEBUILDER_ITER_SPAN),
             },
         );
     }
@@ -509,6 +627,20 @@ mod code_emitting_block {
             TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_RAW_SPAN)
         );
     }
+    mod from_coercebuilder {
+        use super::super::*;
+        test_needs_newline!(
+            CREATED_BLOCK_FROM_COERCEBUILDER,
+            TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_COERCEBUILDER_SPAN)
+        );
+    }
+    mod from_coercebuilder_iter {
+        use super::super::*;
+        test_needs_newline!(
+            CREATED_BLOCK_FROM_COERCEBUILDER_ITER,
+            TestBlockModeElem::BlockFromCode(CREATED_BLOCK_FROM_COERCEBUILDER_ITER_SPAN)
+        );
+    }
 }
 
 mod code_emitting_header {
@@ -538,6 +670,20 @@ mod code_emitting_header {
         test_needs_newline!(
             CREATED_HEADER_FROM_RAW,
             TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_RAW_SPAN)
+        );
+    }
+    mod from_coercebuilder {
+        use super::super::*;
+        test_needs_newline!(
+            CREATED_HEADER_FROM_COERCEBUILDER,
+            TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_COERCEBUILDER_SPAN)
+        );
+    }
+    mod from_coercebuilder_iter {
+        use super::super::*;
+        test_needs_newline!(
+            CREATED_HEADER_FROM_COERCEBUILDER_ITER,
+            TestBlockModeElem::HeaderFromCode(CREATED_HEADER_FROM_COERCEBUILDER_ITER_SPAN)
         );
     }
 }
