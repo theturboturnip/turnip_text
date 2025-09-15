@@ -95,6 +95,7 @@ pub fn coerce_to_inline_pytcref<'py>(
     }
     // 3. if it's an Sequence of Inline, return InlineScope(it)
     // Here we first check if it's sequence, then if so try to create an InlineScope - this will verify if it's a list of Inlines.
+    // TODO WE SHOULD DO COERCION HERE! THAT MEANS YOU CAN COERCE (Inline, CoerceBuilder[Inline]) TO AN InlineScope!!!
     if let Ok(seq) = obj.downcast::<PySequence>() {
         if let Ok(inline_scope) = InlineScope::new(py, Some(&seq)) {
             let inline_scope = Py::new(py, inline_scope)?;
@@ -454,7 +455,7 @@ impl PyTypeclass for Header {
 
 // FUTURE BlockScopeBuilder => BuilderFromBlockScope?
 /// Typeclass representing a "builder" which takes a BlockScope and produces a new DocElement.
-/// 
+///
 /// Doesn't typecheck the output of the build method, that's done in [`crate::interpreter::state_machines::code`]
 ///
 /// Requires a method
@@ -503,7 +504,7 @@ impl PyTypeclass for BlockScopeBuilder {
 /// Typeclass representing a "builder" which takes an InlineScope and produces a new DocElement.
 ///
 /// Doesn't typecheck the output of the build method, that's done in [`crate::interpreter::state_machines::code`]
-/// 
+///
 /// Requires a method
 /// ```python
 /// def build_from_inlines(self, inlines: InlineScope) -> Block | Inline | Header | None: ...
@@ -598,7 +599,7 @@ impl PyTypeclass for RawScopeBuilder {
 /// A typeclass for objects that should be coerced to another object, like a builder without arguments.
 /// This allows objects that *can* be customised through building
 /// to not *require* that customization
-/// 
+///
 /// TODO: The purpose of this is to stop people from needing to implement both a Node type and a Builder type,
 /// but they could still try! Can we stop it?
 pub struct CoerceBuilder {}
@@ -615,13 +616,11 @@ impl CoerceBuilder {
         let mut iters = 0;
         while iters < 64 {
             iters += 1;
-            let obj = builder
-                .getattr(Self::marker_func_name(py))?
-                .call0()?;
+            let obj = builder.getattr(Self::marker_func_name(py))?.call0()?;
             if let Ok(_) = PyTcRef::<CoerceBuilder>::of(&obj) {
                 builder = obj;
             } else {
-                return Ok(obj)
+                return Ok(obj);
             }
         }
         let first_builder_repr = first_builder.bind(py).repr()?;
@@ -654,7 +653,6 @@ impl PyTypeclass for CoerceBuilder {
         }
     }
 }
-
 
 /// Represents plain inline text that has not yet been "escaped" for rendering.
 ///
@@ -735,7 +733,7 @@ impl Raw {
 /// A sequence of objects that represents a single sentence.
 ///
 /// Typically created by Rust while parsing input files.
-/// 
+///
 /// TODO allow passing in Sequence[CoercibleToInline]
 #[pyclass(sequence)]
 #[derive(Debug, Clone)]
@@ -845,7 +843,7 @@ impl Paragraph {
 /// A group of [Block]s inside non-code-preceded squiggly braces
 ///
 /// Typically created by Rust while parsing input files.
-/// 
+///
 /// TODO allow passing in Sequence[CoercibleToBlock]
 #[pyclass(sequence)]
 #[derive(Debug, Clone)]
@@ -901,7 +899,7 @@ impl BlockScope {
 /// A group of [Inline]s inside non-code-preceded squiggly braces
 ///
 /// Typically created by Rust while parsing input files.
-/// 
+///
 /// TODO allow passing in Sequence[CoercibleToInline]
 #[pyclass(sequence)]
 #[derive(Debug, Clone)]
