@@ -141,6 +141,7 @@ class LatexCounterSpec:
 class LatexPreamblePoint(IntEnum):
     CODE = 0
     CONTENT = 1
+    PRE_DOCCLASS = 2
 
 @dataclass
 class LatexRequirements:
@@ -194,6 +195,9 @@ class LatexRenderer(TextRenderer):
                 f"Requires `--shell-escape` command-line option for {', '.join(self.requirements.shell_escape)}"
             )
         if self.requirements.document_class:
+            for (point, cb) in self.requirements.preamble_callbacks:
+                if point == LatexPreamblePoint.PRE_DOCCLASS:
+                    cb(self)
             self.emit_raw("\\documentclass")
             if self.requirements.document_class_args:
                 self.emit_sqr_bracketed(
