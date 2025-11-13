@@ -96,6 +96,7 @@ class PrimitivesPlugin(abc.ABC, EnvPlugin):
             del self.captured[name]
         return val
 
+    # TODO rename to emit_if
     def if_cond(self, cond: bool) -> UserBlockOrInlineScopeBuilder:
         """
         If the condition evaluates to true, returns a builder which immediately
