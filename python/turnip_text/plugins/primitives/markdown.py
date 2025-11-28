@@ -6,7 +6,10 @@ from turnip_text.build_system import BuildSystem
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.helpers import (
     NullRawBuilder,
+    PassthroughBuilder,
     PassthroughRawBuilder,
+    RawBuilderIgnoringContents,
+    UserBlockOrInlineScopeBuilder,
     UserRawScopeBuilder,
 )
 from turnip_text.plugins.primitives import PageBreak, PrimitivesPlugin
@@ -42,6 +45,13 @@ class MarkdownPrimitivesPlugin(MarkdownPlugin, PrimitivesPlugin):
             return PassthroughRawBuilder()
         else:
             return NullRawBuilder()
+        
+    def or_raw(self, lang: str, raw: str) -> UserBlockOrInlineScopeBuilder:
+        lang = lang.lower().strip()
+        if lang in ["tex", "latex"]:
+            return RawBuilderIgnoringContents(Raw(raw))
+        else:
+            return PassthroughBuilder()
 
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline] | type[Header]]:
         return list(super()._doc_nodes()) + [MarkdownOnlyRaw]

@@ -176,6 +176,19 @@ class PassthroughRawBuilder(UserRawScopeBuilder):
         return raw
 
 
+class RawBuilderIgnoringContents(UserBlockOrInlineScopeBuilder):
+    """Builder that ignores the arguments given and always passes out an appropriate Raw element."""
+    raw: Raw
+    def __init__(self, raw: Raw):
+        super().__init__()
+        self.raw = raw
+
+    def build_from_blocks(self, blocks):
+        return Paragraph([Sentence([self.raw])])
+    def build_from_inlines(self, inls):
+        return self.raw
+
+
 class NullBuilder(UserBlockOrInlineScopeBuilder):
     """Block-or-inline scope builder that always returns None"""
 

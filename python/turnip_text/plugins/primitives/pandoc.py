@@ -4,7 +4,7 @@ from typing import Any, Sequence
 import turnip_text.render.pandoc.pandoc_types as pan
 from turnip_text import Block, Header, Inline, Raw
 from turnip_text.build_system import BuildSystem
-from turnip_text.helpers import NullRawBuilder, UserRawScopeBuilder
+from turnip_text.helpers import NullRawBuilder, PassthroughBuilder, UserBlockOrInlineScopeBuilder, UserRawScopeBuilder
 from turnip_text.plugins.primitives import PageBreak, PrimitivesPlugin
 from turnip_text.render.pandoc import PandocPlugin, PandocSetup, null_attr
 
@@ -35,6 +35,8 @@ class PandocPrimitivesPlugin(PandocPlugin, PrimitivesPlugin):
     e.g. `[raw("pandoc-latex")]#{\\newcommand}#`
 
     Does not support page breaks.
+
+    Does not support or_raw. TODO fix that!
     """
 
     def raw(self, lang: str, **kwargs: Any) -> UserRawScopeBuilder:
@@ -43,6 +45,9 @@ class PandocPrimitivesPlugin(PandocPlugin, PrimitivesPlugin):
             return PandocRawBuilder(lang)
         else:
             return NullRawBuilder()
+        
+    def or_raw(self, lang: str, raw: str) -> UserBlockOrInlineScopeBuilder:
+        return PassthroughBuilder()
 
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline] | type[Header]]:
         return list(super()._doc_nodes()) + [PandocRaw]

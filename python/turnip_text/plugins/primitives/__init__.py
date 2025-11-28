@@ -115,6 +115,14 @@ class PrimitivesPlugin(abc.ABC, EnvPlugin):
         """
         ...
 
+    @abc.abstractmethod
+    def or_raw(self, lang: str, raw: str) -> UserBlockOrInlineScopeBuilder:
+        """
+        If the document is being rendered in the given language, emit the raw string directly into the output.
+        Otherwise, build the block/inline supplied as an argument.
+        """
+        ...
+
     def __init__(self) -> None:
         super().__init__()
         self.captured = {}

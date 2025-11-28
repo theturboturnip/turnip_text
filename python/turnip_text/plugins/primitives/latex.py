@@ -3,13 +3,16 @@ from typing import Any, List, Literal, Sequence, Tuple, Type
 from turnip_text.env_plugins import VisitorFilter, VisitorFunc
 from typing_extensions import override
 
-from turnip_text import Block, Header, Inline, Raw
+from turnip_text import Block, Header, Inline, Paragraph, Raw, Sentence
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import FmtEnv
 from turnip_text.helpers import (
     NullRawBuilder,
+    PassthroughBuilder,
     PassthroughRawBuilder,
+    RawBuilderIgnoringContents,
+    UserBlockOrInlineScopeBuilder,
     UserRawScopeBuilder,
 )
 from turnip_text.plugins.primitives import PageBreak, PrimitivesPlugin
@@ -61,6 +64,13 @@ class LatexPrimitivesPlugin(LatexPlugin, PrimitivesPlugin):
                 return PassthroughRawBuilder()
         else:
             return NullRawBuilder()
+        
+    def or_raw(self, lang: str, raw: str) -> UserBlockOrInlineScopeBuilder:
+        lang = lang.lower().strip()
+        if lang in ["tex", "latex"]:
+            return RawBuilderIgnoringContents(Raw(raw))
+        else:
+            return PassthroughBuilder()
 
     def _register(self, build_sys: BuildSystem, setup: LatexSetup) -> None:
         setup.add_preamble_section(
