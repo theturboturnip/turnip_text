@@ -178,3 +178,113 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
     def register_raw_cite(self, *citekeys: str) -> None:
         for k in citekeys:
             self._citation_db.register_entry_used(k)
+
+
+class LatexBibtexCitationPlugin(LatexPlugin, CitationEnvPlugin):
+    _biblatex_path: InputRelPath
+    _db_type: Type[BibLatexCitationDB]
+    _citation_db: BibLatexCitationDB
+    _minimal_bib_name: OutputRelPath
+    _bibtex_style: Optional[str] = None
+
+    def __init__(
+        self,
+        bibtex_path: InputRelPath,
+        output_bib_name: OutputRelPath,
+        # Parameterizable db_type if you want to override functions in citation DB
+        db_type: Type[BibLatexCitationDB]=BibLatexCitationDB,
+        style: Optional[str] = None,
+    ) -> None:
+        if bibtex_path:
+            self._biblatex_path = bibtex_path
+        else:
+            raise ValueError(f"Specify bibtex_path")
+
+        if output_bib_name:
+            self._minimal_bib_name = output_bib_name
+        else:
+            raise ValueError(f"Specify output_bib_name")
+        
+        self._db_type = db_type
+        self._bibtex_style = style
+
+    def _register(self, build_sys: BuildSystem, setup: LatexSetup) -> None:
+        self._citation_db = self._db_type(build_sys, [self._biblatex_path])
+
+        if self._minimal_bib_name:
+            # Write out the bibliography once we know the exact set of items we want in it
+            build_sys.defer_supplementary_file(self._write_minimal_citation_db)
+
+        setup.package_resolver.request_latex_package(
+            "natbib",
+            reason="bibliography",
+        )
+
+        setup.emitter.register_block_or_inline(Citation, self._emit_citation)
+        setup.emitter.register_block_or_inline(CiteAuthor, self._emit_citeauthor)
+        setup.emitter.register_block_or_inline(Bibliography, self._emit_bibliography)
+
+    def _write_minimal_citation_db(self, build_sys: BuildSystem) -> None:
+        assert (
+            self._minimal_bib_name
+        ), "Shouldn't be calling _write_minimal_citation_db if there isn't a path for the minimal citation db"
+        with build_sys.resolve_output_file(
+            self._minimal_bib_name
+        ).open_write_text() as f:
+            self._citation_db.write_minimal_db(f)
+
+    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
+        def visit_cite_or_citeauthor(c: Union[Citation, CiteAuthor]) -> None:
+            if isinstance(c, CiteAuthor):
+                self._citation_db.register_entry_used(c.citekey)
+            else:
+                for k in c.citekeys:
+                    self._citation_db.register_entry_used(k)
+
+        return [((Citation, CiteAuthor), visit_cite_or_citeauthor)]
+
+    def _emit_citation(
+        self,
+        citation: Citation,
+        renderer: LatexRenderer,
+        fmt: FmtEnv,
+    ) -> None:
+        renderer.emit_macro("cite")
+        if citation.citenote is not None:
+            renderer.emit_sqr_bracketed(citation.citenote)
+        renderer.emit_braced(Raw(",".join(citation.citekeys)))
+
+    def _emit_citeauthor(
+        self,
+        citation: CiteAuthor,
+        renderer: LatexRenderer,
+        fmt: FmtEnv,
+    ) -> None:
+        renderer.emit_macro("citeauthor")
+        renderer.emit_braced(Raw(citation.citekey))
+
+    def _emit_bibliography(
+        self,
+        bibliography: Bibliography,
+        renderer: LatexRenderer,
+        fmt: FmtEnv,
+    ) -> None:
+        renderer.emit_raw("{")
+        with renderer.indent(4):
+            renderer.emit_newline()
+            renderer.emit_macro("raggedright")
+            renderer.emit_newline()
+            # TODO THIS ALWAYS ADDS A HEADER
+            renderer.emit_macro("bibliographystyle")
+            renderer.emit_braced(Raw(self._bibtex_style or "plain"))
+            renderer.emit_newline()
+            renderer.emit_macro("bibliography")
+            renderer.emit_braced(Raw(str(self._minimal_bib_name)))
+            renderer.emit_newline()
+        renderer.emit_raw("}")
+        renderer.emit_newline()
+
+    @override
+    def register_raw_cite(self, *citekeys: str) -> None:
+        for k in citekeys:
+            self._citation_db.register_entry_used(k)
