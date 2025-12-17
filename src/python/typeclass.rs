@@ -103,6 +103,11 @@ impl<T: PyTypeclass> PyTypeclassList<T> {
         ))
     }
 
+    pub fn append_prechecked(&self, py: Python<'_>, obj: &PyTcRef<T>) -> PyResult<()> {
+        self.0.bind(py).append(obj.0.bind(py))?;
+        Ok(())
+    }
+
     pub fn append_checked(&self, obj: &Bound<'_, PyAny>) -> PyResult<()> {
         match T::get_typeclass_err(obj, "new list element")? {
             None => {

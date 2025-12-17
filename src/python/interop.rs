@@ -67,9 +67,13 @@ fn parse_file<'py>(
     }
 }
 
-#[pyfunction]
-pub fn coerce_to_inline<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<PyObject> {
-    Ok(coerce_to_inline_pytcref(py, obj)?.unbox())
+#[pyfunction(signature=(obj, recursive=true))]
+pub fn coerce_to_inline<'py>(
+    py: Python<'py>,
+    obj: &Bound<'py, PyAny>,
+    recursive: bool,
+) -> PyResult<PyObject> {
+    Ok(coerce_to_inline_pytcref(py, obj, recursive)?.unbox())
 }
 
 // FUTURE separate the failure condition of the coercion from other potential failures e.g. allocation failure.
@@ -77,7 +81,18 @@ pub fn coerce_to_inline<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResu
 pub fn coerce_to_inline_pytcref<'py>(
     py: Python<'py>,
     obj: &Bound<'py, PyAny>,
+    recursive: bool,
 ) -> PyResult<PyTcRef<Inline>> {
+    // Lambda for error messages
+    let get_obj_repr_str = || -> String {
+        if let Ok(obj_repr) = obj.repr() {
+            if let Ok(obj_repr_str) = obj_repr.to_str() {
+                return obj_repr_str.into();
+            }
+        }
+        return "Could not stringify object".into();
+    };
+
     // 1. if it's already Inline, return it
     if let Ok(inl) = PyTcRef::of(obj) {
         return Ok(inl);
@@ -85,7 +100,7 @@ pub fn coerce_to_inline_pytcref<'py>(
     // 1a. if it's a CoerceBuilder, tell it to build something and coerce the result
     if let Ok(coerce_builder) = PyTcRef::<CoerceBuilder>::of(obj) {
         let coerced = CoerceBuilder::resolve_coercion(py, coerce_builder)?;
-        return coerce_to_inline_pytcref(py, &coerced);
+        return coerce_to_inline_pytcref(py, &coerced, recursive);
     }
     // 2. if it's str, return Text(it)
     // Do this before checking sequence-ness because str is a sequence of str.
@@ -94,12 +109,76 @@ pub fn coerce_to_inline_pytcref<'py>(
         return Ok(PyTcRef::of_unchecked(unescaped_text.bind(py)));
     }
     // 3. if it's an Sequence of Inline, return InlineScope(it)
-    // Here we first check if it's sequence, then if so try to create an InlineScope - this will verify if it's a list of Inlines.
-    // TODO WE SHOULD DO COERCION HERE! THAT MEANS YOU CAN COERCE (Inline, CoerceBuilder[Inline]) TO AN InlineScope!!!
+    // Here we first check if it's sequence, then we try to coerce each individual object.
     if let Ok(seq) = obj.downcast::<PySequence>() {
-        if let Ok(inline_scope) = InlineScope::new(py, Some(&seq)) {
-            let inline_scope = Py::new(py, inline_scope)?;
-            return Ok(PyTcRef::of_unchecked(inline_scope.bind(py)));
+        // Get the iterator and length of the sequence
+        match (seq.iter(), seq.len()) {
+            (Ok(iter), Ok(len)) => {
+                // Check each item to see if it's an inline
+                let mut inlines = InlineScope::new_empty(py);
+                for (i, item) in iter.enumerate() {
+                    match item {
+                        Ok(item) => {
+                            if recursive {
+                                match coerce_to_inline_pytcref(py, &item, recursive) {
+                                    Ok(inline) => {
+                                        inlines.0.append_prechecked(py, &inline);
+                                        continue;
+                                    }
+                                    Err(cause) => {
+                                        let obj_repr_str = get_obj_repr_str();
+                                        let err = PyTypeError::new_err(format!(
+                                        "Failed to coerce sequence to InlineScope\n{obj_repr_str}\nElement #{i} could not be coerced to Inline."
+                                    ));
+                                        err.set_cause(py, Some(cause));
+                                        return Err(err);
+                                    }
+                                }
+                            } else {
+                                match PyTcRef::of_friendly(&item, &format!("Element #{i}")) {
+                                    Ok(inline) => {
+                                        inlines.0.append_prechecked(py, &inline);
+                                        continue;
+                                    }
+                                    Err(cause) => {
+                                        let obj_repr_str = get_obj_repr_str();
+                                        let err = PyTypeError::new_err(format!(
+                                            "Failed to coerce sequence to InlineScope\n{obj_repr_str}\nElement #{i} was not Inline."
+                                        ));
+                                        err.set_cause(py, Some(cause));
+                                        return Err(err);
+                                    }
+                                }
+                            }
+                        }
+                        Err(cause) => {
+                            let obj_repr_str = get_obj_repr_str();
+                            let err = PyTypeError::new_err(format!(
+                                "Failed to coerce sequence to InlineScope\n{obj_repr_str}\nCouldn't extract element #{i}."
+                            ));
+                            err.set_cause(py, Some(cause));
+                            return Err(err);
+                        }
+                    }
+                }
+                return Ok(PyTcRef::of_unchecked(Py::new(py, inlines)?.bind(py)));
+            }
+            (Err(cause), _) => {
+                let obj_repr_str = get_obj_repr_str();
+                let err = PyTypeError::new_err(format!(
+                    "Failed to coerce sequence to Inline.\n{obj_repr_str}\nCould not get the iterator of the sequence."
+                ));
+                err.set_cause(py, Some(cause));
+                return Err(err);
+            }
+            (_, Err(cause)) => {
+                let obj_repr_str = get_obj_repr_str();
+                let err = PyTypeError::new_err(format!(
+                    "Failed to coerce sequence to Inline.\n{obj_repr_str}\nCould not get the length of the sequence."
+                ));
+                err.set_cause(py, Some(cause));
+                return Err(err);
+            }
         }
     }
     // 4. if it's float, return Text(str(it))
@@ -110,31 +189,30 @@ pub fn coerce_to_inline_pytcref<'py>(
         return Ok(PyTcRef::of_unchecked(unescaped_text.bind(py)));
     }
     // 6. otherwise fail with TypeError
-    if let Ok(obj_repr) = obj.repr() {
-        if let Ok(obj_repr_str) = obj_repr.to_str() {
-            return Err(PyTypeError::new_err(
-            format!("Failed to coerce object to Inline: was not an Inline, list of Inline (coercible to \
-            InlineScope), str, float, or int. Object: {obj_repr_str}"),
-        ));
-        }
+    let obj_repr_str = get_obj_repr_str();
+    if recursive {
+        return Err(PyTypeError::new_err(format!(
+            "Failed to coerce object to Inline.\n{obj_repr_str}\nWas not an Inline, str, float, or int, or a sequence of coercible-to-Inline (recursive=True)."
+        )));
+    } else {
+        return Err(PyTypeError::new_err(format!(
+            "Failed to coerce object to Inline.\n{obj_repr_str}\nWas not an Inline, str, float, or int, or a sequence of Inline (recursive=False)."
+        )));
     }
-    Err(PyTypeError::new_err(
-        "Failed to coerce object to Inline: was not an Inline, list of Inline (coercible to \
-            InlineScope), str, float, or int. Failed to stringify object.",
-    ))
 }
 
-#[pyfunction]
+#[pyfunction(signature = (obj, recursive=true))]
 pub fn coerce_to_inline_scope<'py>(
     py: Python<'py>,
     obj: &Bound<'py, PyAny>,
+    recursive: bool,
 ) -> PyResult<Py<InlineScope>> {
     // 1. if it's already InlineScope, return it
     if let Ok(inline_scope) = obj.extract() {
         return Ok(inline_scope);
     }
     // 2. attempt coercion to inline, if it fails return typeerror
-    let obj = coerce_to_inline(py, obj)?;
+    let obj = coerce_to_inline(py, obj, recursive)?;
     // 3. if the coercion produced InlineScope, return that
     if let Ok(inline_scope) = obj.extract(py) {
         return Ok(inline_scope);
@@ -182,7 +260,7 @@ pub fn coerce_to_block_pytcref<'py>(
     }
     // 4. if it can be coerced to an Inline, wrap that in list -> Sentence -> list -> Paragraph and return it
     // - this also covers EmitAs that are inline, fail coercion above, then are coerced to inline here.
-    if let Ok(inl) = coerce_to_inline(py, obj) {
+    if let Ok(inl) = coerce_to_inline(py, obj, true) {
         let paragraph = Py::new(
             py,
             Paragraph::new(

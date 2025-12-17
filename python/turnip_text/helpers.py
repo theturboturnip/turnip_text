@@ -74,7 +74,7 @@ class UserInlineScopeBuilder(abc.ABC, Generic[TElement]):
     def build_from_inlines(self, inls: InlineScope) -> TElement: ...
 
     def __matmul__(self, maybe_inls: CoercibleToInlineScope) -> TElement:
-        inls = enhanced_coerce_to_inline_scope(maybe_inls)
+        inls = coerce_to_inline_scope(maybe_inls)
         return self.build_from_inlines(inls)
 
 
@@ -124,7 +124,7 @@ class UserBlockOrInlineScopeBuilder(
         self, maybe_inls: Union[CoercibleToInlineScope, CoercibleToBlockScope]
     ) -> TElement:
         try:
-            inl = enhanced_coerce_to_inline_scope(maybe_inls)  # type:ignore
+            inl = coerce_to_inline_scope(maybe_inls)  # type:ignore
         except TypeError:
             # Wasn't an inline, may be a block
             blk = coerce_to_block_scope(maybe_inls)
@@ -455,15 +455,3 @@ UNSET = Unset()
 
 T = TypeVar("T")
 MaybeUnset = Union[T, Unset]
-
-# TODO: Make this recursive, or the default behaviour
-def enhanced_coerce_to_inline_scope(obj: CoercibleToInlineScope | List[CoercibleToInline]) -> InlineScope:
-    try:
-        return coerce_to_inline_scope(obj) # type: ignore
-    except TypeError:
-        if isinstance(obj, list):
-            return InlineScope([
-                coerce_to_inline(x)
-                for x in obj
-            ])
-        raise

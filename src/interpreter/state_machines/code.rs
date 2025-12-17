@@ -309,6 +309,7 @@ impl OnResolveAmbiguousScope for ScopeKindChecker {
 /// Coercible to inline:
 /// - `Inline`        -> `x`
 /// - `List[Inline]`  -> `InlineScope(x)`
+/// - `List[CoercibleToInline]` -> `InlineScope(x)`
 /// - `str/float/int` -> `Text(str(x))`
 /// Coercible to block:
 /// - `Block`             -> `x`
@@ -392,15 +393,22 @@ impl EvalDirectOutcome {
 
                 (false, false, false, false) => {
                     // FUTURE this may swallow allocation errors
-                    if let Ok(inline) = coerce_to_inline_pytcref(obj.py(), obj) {
-                        Ok(EvalDirectOutcome::Inline(inline))
-                    } else {
-                        let obj_repr = obj.repr()?;
-                        Err(PyTypeError::new_err(format!(
-                            "Expected eval-bracket to produce None, a TurnipTextSource, a CoerceBuilder, a Header, \
-                            a Block, or something coercible to Inline. {} isn't any of those.",
-                            obj_repr.to_str()?
-                        )))
+                    // TODO check if recursive behaviour is what we want here.
+                    // Benefit: consistent which coercing to block, which recursively coerces to inline by default
+                    // Benefit: means list of [CoerceBuilder<Inline>()] will have its contents coerced correctly
+                    // Drawback: [- (1,2,3) -] will produce [- (Text("1"), Text("2"), Text("3")) -] i.e. "123"
+                    match coerce_to_inline_pytcref(obj.py(), obj, true) {
+                        Ok(inline) => Ok(EvalDirectOutcome::Inline(inline)),
+                        Err(cause) => {
+                            let obj_repr = obj.repr()?;
+                            let err = PyTypeError::new_err(format!(
+                                "Expected eval-bracket to produce None, a TurnipTextSource, a CoerceBuilder, a Header, \
+                                a Block, or something coercible to Inline. {} isn't any of those.",
+                                obj_repr.to_str()?
+                            ));
+                            err.set_cause(obj.py(), Some(cause));
+                            Err(err)
+                        }
                     }
                 }
                 _ => {
