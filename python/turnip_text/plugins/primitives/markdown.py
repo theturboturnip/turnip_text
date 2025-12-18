@@ -48,10 +48,8 @@ class MarkdownPrimitivesPlugin(MarkdownPlugin, PrimitivesPlugin):
         
     def or_raw(self, lang: str, raw: str) -> UserBlockOrInlineScopeBuilder:
         lang = lang.lower().strip()
-        if lang in ["tex", "latex"]:
-            return RawBuilderIgnoringContents(Raw(raw))
-        else:
-            return PassthroughBuilder()
+        # TODO implement
+        return PassthroughBuilder()
 
     def _doc_nodes(self) -> Sequence[type[Block] | type[Inline] | type[Header]]:
         return list(super()._doc_nodes()) + [MarkdownOnlyRaw]
