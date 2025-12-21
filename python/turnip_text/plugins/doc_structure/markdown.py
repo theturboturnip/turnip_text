@@ -192,7 +192,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
                 renderer.emit(
                     head.anchor,
                     renderer.anchor_to_number_text(head.anchor),
-                    Raw(" \u2014 "),
+                    Text(" \u2014 "),
                 )
             renderer.emit(head.title)
 
@@ -213,18 +213,24 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
             tag = f"h{head.weight}"
 
             with renderer.emit_tag(tag):
+                if head.anchor:
+                    renderer.emit(
+                        head.anchor,
+                        renderer.anchor_to_ref_text(head.anchor),
+                        Text(" \u2014 "),
+                    )
                 renderer.emit(
-                    head.anchor,
-                    renderer.anchor_to_ref_text(head.anchor),
-                    Text(" \u2014 "),
                     head.title,
                 )
         else:
             renderer.emit_raw("#" * (head.weight) + " ")
+            if head.anchor:
+                renderer.emit(
+                    head.anchor,
+                    renderer.anchor_to_ref_text(head.anchor),
+                    Text(" \u2014 "),
+                )
             renderer.emit(
-                head.anchor,
-                renderer.anchor_to_ref_text(head.anchor),
-                Text(" \u2014 "),
                 head.title,
             )
 
