@@ -202,6 +202,8 @@ class MarkdownRenderer(TextRenderer):
 
         See anchor_to_number_text to get the number only, e.g. "1".
         """
+        if anchor not in self.counters.anchor_counters:
+            raise RuntimeError(f"The anchor '{anchor}' was registered, i.e. it was created while this document was compiled, but it wasn't found in the document itself. It cannot be backreferenced.")
         counters = self.counters.anchor_counters[anchor]
         return SimpleCounterFormat.resolve(
             [(self.counter_rendering[kind], i) for (kind, i) in counters]

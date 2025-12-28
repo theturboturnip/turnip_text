@@ -26,7 +26,7 @@ This requires me to make Blocks and Inlines implement "here are my children" so 
 """
 
 import dataclasses
-from typing import Optional
+from typing import Optional, Union
 
 from turnip_text import Inline, InlineScope, InlineScopeBuilder
 
@@ -52,7 +52,7 @@ class Anchor(Inline):
 
 # TODO add a text-only backref if I just want to use consistent numbering, not a backlink
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass()
 class Backref(Inline, InlineScopeBuilder):
     """A reference to an Anchor in the file, which can optionally have a custom label.
 
@@ -65,6 +65,17 @@ class Backref(Inline, InlineScopeBuilder):
         None  # Usually there should be exactly one Anchor for every one ID. This is used to disambiguate otherwise
     )
     label_contents: Optional[Inline] = None  # Override for label
+
+    def __init__(self, id: Union[Anchor, str], kind: Optional[str] = None, label_contents: Optional[Inline] = None):
+        if isinstance(id, Anchor):
+            self.id = id.id
+            self.kind = id.kind
+        elif isinstance(id, str):
+            self.id = id
+            self.kind = kind
+        else:
+            raise RuntimeError(f"The 'id' parameter for Backref was neither a string nor an Anchor - it was '{id}'")
+        self.label_contents = label_contents
 
     def build_from_inlines(self, inls: InlineScope) -> Inline:
         assert self.label_contents is None
