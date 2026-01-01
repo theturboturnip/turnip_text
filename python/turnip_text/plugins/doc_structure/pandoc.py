@@ -61,7 +61,7 @@ class PandocStructurePlugin(PandocPlugin, StructureEnvPlugin):
         setup.define_renderable_counter(
             "appendix",
             SimpleCounterFormat(
-                name="appendix",
+                prefix="appendix",
                 style=SimpleCounterStyle.AlphUpper,
             ),
         )

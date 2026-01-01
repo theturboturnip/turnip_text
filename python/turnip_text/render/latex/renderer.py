@@ -497,10 +497,8 @@ class LatexRenderer(TextRenderer):
             )
         backref_method.emit_backref(backref, anchor, self, self.fmt)
 
-    def get_anchor_name(self, anchor: Anchor) -> Text:
-        return Text(
-            self.requirements.tt_counter_to_latex[anchor.kind].get_manual_fmt().name
-        )
+    def get_anchor_manual_fmt(self, anchor: Anchor) -> LatexCounterFormat:
+        return self.requirements.tt_counter_to_latex[anchor.kind].get_manual_fmt()
 
     def get_resolved_anchor_text(self, anchor: Anchor) -> Text:
         counter_to_resolve = [

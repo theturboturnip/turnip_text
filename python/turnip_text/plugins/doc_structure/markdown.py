@@ -36,35 +36,35 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
         setup.define_counter_rendering(
             "h1",
             SimpleCounterFormat(
-                name=("chapter" if self._has_chapter else "section"),
+                prefix=("chapter" if self._has_chapter else "section"),
                 style=SimpleCounterStyle.Arabic,
             ),
         )
         setup.define_counter_rendering(
             "h2",
             SimpleCounterFormat(
-                name=("section" if self._has_chapter else "subsection"),
+                prefix=("section" if self._has_chapter else "subsection"),
                 style=SimpleCounterStyle.Arabic,
             ),
         )
         setup.define_counter_rendering(
             "h3",
             SimpleCounterFormat(
-                name=("subsection" if self._has_chapter else "subsubsection"),
+                prefix=("subsection" if self._has_chapter else "subsubsection"),
                 style=SimpleCounterStyle.Arabic,
             ),
         )
         setup.define_counter_rendering(
             "h4",
             SimpleCounterFormat(
-                name=("subsubsection" if self._has_chapter else "subsubsubsection"),
+                prefix=("subsubsection" if self._has_chapter else "subsubsubsection"),
                 style=SimpleCounterStyle.Arabic,
             ),
         )
         setup.define_counter_rendering(
             "appendix",
             SimpleCounterFormat(
-                name="appendix",
+                prefix="appendix",
                 style=SimpleCounterStyle.AlphUpper,
             ),
         )

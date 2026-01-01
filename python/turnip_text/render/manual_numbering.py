@@ -108,7 +108,7 @@ class SimpleCounterFormat(Generic[TNumbering]):
     The formatting (name and numbering style) for a given counter, and how it's combined with other counters.
     """
 
-    name: str
+    prefix: str
     """The name references use as a prefix e.g. for figures this would be 'Figure' to produce 'Figure 1.2'. Only the name of the last counter in the chain is used."""
 
     style: TNumbering
@@ -130,9 +130,9 @@ class SimpleCounterFormat(Generic[TNumbering]):
         counters: Sequence[Tuple["SimpleCounterFormat", int]],  # type: ignore[type-arg]
         with_name: bool = True,
     ) -> Text:
-        if with_name and counters[-1][0].name:
+        if with_name and counters[-1][0].prefix:
             # TODO - this is a hack to make it so that things are "correctly" capitalized - always capitalize! lol
-            c = counters[-1][0].name.capitalize()
+            c = counters[-1][0].prefix.capitalize()
             if counters[-1][0].space_between_name_and_number:
                 c += " "
         else:

@@ -109,7 +109,7 @@ class LatexCleveref(LatexBackrefMethodImpl):
             renderer.emit_macro("crefformat")
             renderer.emit_braced(Raw(spec.latex_counter))
             renderer.emit_braced(
-                Text(fmt.name),
+                Text(fmt.prefix),
                 Raw("~#2#1"),
                 Text(fmt.postfix_for_end),
                 Raw("#3"),
@@ -222,10 +222,15 @@ class LatexManualRef(LatexBackrefMethodImpl):
         fmt: FmtEnv,
     ) -> None:
         if backref.label_contents is None:
+            anchor_fmt = renderer.get_anchor_manual_fmt(anchor)
             renderer.emit(
-                renderer.get_anchor_name(anchor),
-                fmt.nbsp,
+                Text(anchor_fmt.prefix),
+            )
+            if anchor_fmt.space_between_name_and_number:
+                renderer.emit(fmt.nbsp)
+            renderer.emit(
                 Raw(f"\\ref{{{anchor.canonical()}}}"),
+                Text(anchor_fmt.postfix_for_end),
             )
         else:
             renderer.emit_macro("hyperref")

@@ -52,7 +52,7 @@ class MarkdownFootnotePlugin_AtEnd(MarkdownPlugin, FootnoteEnvPlugin):
         setup.emitter.register_block_or_inline(FootnoteList, self._emit_footnotes)
         setup.define_counter_rendering(
             "footnote",
-            SimpleCounterFormat(name="^", style=SimpleCounterStyle.Arabic),
+            SimpleCounterFormat(prefix="^", style=SimpleCounterStyle.Arabic),
         )
 
     def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
