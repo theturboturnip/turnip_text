@@ -107,9 +107,9 @@ class LatexPackageResolver:
                 infos.append(f"Package '{package_name}' requested because {', '.join(package.reasons)}")
             if infos:
                 msg = f"Requested packages that were not in the whitelist:\n" + "\n".join(infos)
-                # raise RuntimeError(msg)
-                # TODO make this a hard error?
-                warnings.warn(msg, RuntimeWarning)
+                # TODO should this be a hard error or a warning
+                raise RuntimeError(msg)
+                # warnings.warn(msg, RuntimeWarning)
         for package in self.requested_packages.values():
             # Pass in the list of all packages - this is because it might be nice to add options to packages
             # if they need to be compatible with other packages
