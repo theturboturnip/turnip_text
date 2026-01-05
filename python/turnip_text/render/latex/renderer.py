@@ -206,18 +206,24 @@ class LatexRenderer(TextRenderer):
             self.emit_braced(Raw(self.requirements.document_class))
             self.emit_break_paragraph()
             for package in self.requirements.packages:
-                self.emit_comment_line(f"{package.package} required for")
-                for r in package.reasons:
-                    self.emit_comment_line(f"- {r}")
-                if package.already_included_by_document:
-                    if package.options: # TODO should reduce these to OptionsNotSetByDocumentClass
-                        self.emit_comment_line("but already included by document class, so just set the options")
-                        self.emit_raw(package.as_latex_preamble_line(with_reason=False, macro="RequirePackage"))
+                if package.reasons:
+                    self.emit_comment_headline(f"{package.package} required for")
+                    for r in package.reasons:
+                        self.emit_comment_line(f"- {r}")
+
+                    if package.already_included_by_document:
+                        if package.options: # TODO should reduce these to OptionsNotSetByDocumentClass
+                            self.emit_comment_line("but already included by document class, so just set the options")
+                            self.emit_raw(package.as_latex_preamble_line(with_reason=False, macro="RequirePackage"))
+                            self.emit_newline()
+                        else:
+                            self.emit_comment_line("but already included by document class, so ignore")
                     else:
-                        self.emit_comment_line("but already included by document class, so ignore")
+                        self.emit_raw(package.as_latex_preamble_line(with_reason=False, macro="usepackage"))
+                        self.emit_newline()
                 else:
-                    self.emit_raw(package.as_latex_preamble_line(with_reason=False, macro="usepackage"))
-                self.emit_newline()
+                    assert package.already_included_by_document
+                    self.emit_comment_headline(f"{package.package} included by docclass")
 
             self.emit_break_paragraph()
             self.emit_comment_headline("Configuring counters...")
@@ -382,6 +388,8 @@ class LatexRenderer(TextRenderer):
         else:
             self.emit_comment_headline("Required packages:")
             for package in self.requirements.packages:
+                # TODO figure out if packages can get to this point without a reason
+                # i.e. provided by docclass
                 self.emit_comment_line(package.as_latex_preamble_line(with_reason=True))
 
             # Emit custom preamble contents in the preamble

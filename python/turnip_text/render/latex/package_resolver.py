@@ -60,10 +60,29 @@ class LatexPackageResolver:
     def register_package_whitelist(self, *whitelist: str) -> None:
         self.whitelisted_packages.update(whitelist)
 
+    # Given a LatexPackageRequirements, merge it with the existing requirements if there are any - else, add it as a new requirement
+    def _merge_package_reqs(self, package_obj: LatexPackageRequirements):
+        existing_package_obj = self.requested_packages.get(package_obj.package, None)
+        if existing_package_obj is None:
+            self.requested_packages[package_obj.package] = package_obj
+        else:
+            existing_package_obj.reasons.extend(package_obj.reasons)
+            existing_package_obj.options.extend(package_obj.options)
+            if package_obj.already_included_by_document:
+                existing_package_obj.already_included_by_document = package_obj.already_included_by_document
+
+
     def register_class_preexisting_packages(self, *preexisting: str) -> None:
         # TODO add package options to this, if user tries to set a conflicting option we need to complain, if user doesn't set any new options don't need to include it in the render
         for package in preexisting:
-            self.request_latex_package(package, "docclass", used_by_docclass=True)
+            self._merge_package_reqs(
+                package_obj=LatexPackageRequirements(
+                    package,
+                    reasons=[],
+                    options=[],
+                    already_included_by_document=True
+                )
+            )
 
     def request_shell_escape(self, reason: str) -> None:
         self.shell_escape_reasons.append(reason)
@@ -77,21 +96,15 @@ class LatexPackageResolver:
         # Instead, replace options with a list containing that string.
         if isinstance(options, str):
             options = [options]
-        package_obj = self.requested_packages.get(package, None)
-        if package_obj is None:
-            # Wasn't in the dict
-            package_obj = LatexPackageRequirements(
-                package=package,
-                reasons=[],
-                options=[],
-                already_included_by_document=used_by_docclass
-            )
-            self.requested_packages[package] = package_obj
 
-        package_obj.reasons.append(reason)
-        package_obj.options.extend(options)
-        if used_by_docclass:
-            package_obj.already_included_by_document = used_by_docclass
+        package_obj = LatexPackageRequirements(
+            package=package,
+            reasons=[reason],
+            options=list(options),
+            already_included_by_document=used_by_docclass
+        )
+        self._merge_package_reqs(package_obj)
+
 
     def resolve_all(self) -> ResolvedLatexPackages:
         # Step 1: resolve all the package options
@@ -104,7 +117,10 @@ class LatexPackageResolver:
                 package = self.requested_packages[package_name]
                 if package.already_included_by_document:
                     continue
-                infos.append(f"Package '{package_name}' requested because {', '.join(package.reasons)}")
+                if package.reasons:
+                    infos.append(f"Package '{package_name}' requested because {', '.join(package.reasons)}")
+                else:
+                    infos.append(f"Package '{package_name}' included by document class")
             if infos:
                 msg = f"Requested packages that were not in the whitelist:\n" + "\n".join(infos)
                 # TODO should this be a hard error or a warning
@@ -206,8 +222,8 @@ def order_packages(
             f"Package {package_names[0]} not compatible with {[', '.join(package_names[1:])]}. Reason: {reason}"
             + "".join(
                 (
-                    "\n"
-                    + f"Included {package} because {', '.join(packages[package].reasons)}"
+                    f"\nIncluded {package} because {', '.join(packages[package].reasons)}" if packages[package].reasons
+                    else f"\nIncluded {package} from document class"
                 )
                 for package in package_names
             )
