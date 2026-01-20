@@ -26,6 +26,7 @@ MarkdownCounterFormat = SimpleCounterFormat[SimpleCounterStyle]
 
 
 class MarkdownRenderer(TextRenderer):
+    sentence_line_break: bool
     force_plain_text: bool
     html_mode_stack: List[bool]
     counters: CounterState
@@ -41,6 +42,7 @@ class MarkdownRenderer(TextRenderer):
         write_to: Writable,
         html_mode: bool = False,
         force_plain_text: bool = False,
+        sentence_line_break: bool = True,
     ) -> None:
         super().__init__(fmt, anchors, handlers, write_to)
         self.counters = counters
@@ -55,6 +57,8 @@ class MarkdownRenderer(TextRenderer):
         self.html_mode_stack = [html_mode]
         # Forcing plain text makes plugins do a best-effort rendering in plain text without worrying about specific markdown compatability.
         self.force_plain_text = force_plain_text
+        # Allow line wrapping if requested
+        self.sentence_line_break = sentence_line_break
 
     def emit_text(self, t: Text) -> None:
         if self.in_html_mode:
@@ -94,10 +98,10 @@ class MarkdownRenderer(TextRenderer):
 
     @override
     def emit_break_sentence(self) -> None:
-        if self.force_plain_text:
+        if self.sentence_line_break:
+            self.emit_newline()
+        else:
             self.emit_raw(" ")
-            return
-        return super().emit_break_sentence()
 
     @override
     def emit_break_paragraph(self) -> None:
@@ -283,6 +287,7 @@ class MarkdownRenderer(TextRenderer):
 
 
 class MarkdownSetup(RenderSetup[MarkdownRenderer]):
+    sentence_line_break: bool
     force_plain_text: bool
     html_only: bool
     emitter: EmitterDispatch[MarkdownRenderer]
@@ -296,10 +301,12 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
         requested_counter_links: Optional[Iterable[CounterLink]] = None,
         html_only: bool = False,
         force_plain_text: bool = False,
+        sentence_line_break: bool = True,
     ) -> None:
         super().__init__()
         self.html_only = html_only
         self.force_plain_text = force_plain_text
+        self.sentence_line_break = sentence_line_break
 
         if force_plain_text and html_only:
             raise ValueError(f"Cannot construct a MarkdownRenderer with force_plain_text=True and html_mode=True at the same time")
@@ -386,6 +393,7 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
                 write_to,
                 html_mode=self.html_only,
                 force_plain_text=self.force_plain_text,
+                sentence_line_break=self.sentence_line_break,
             )
             renderer.emit_document(document)
 
@@ -400,6 +408,7 @@ class HtmlSetup(MarkdownSetup):
             requested_counter_formatting,
             requested_counter_links,
             html_only=True,
+            sentence_line_break=True,
         )
 
 
@@ -408,11 +417,13 @@ class PlainTextSetup(MarkdownSetup):
         self,
         requested_counter_formatting: Dict[str, MarkdownCounterFormat] = {},
         requested_counter_links: Optional[Iterable[CounterLink]] = None,
+        sentence_line_break: bool = True,
     ) -> None:
         super().__init__(
             requested_counter_formatting,
             requested_counter_links,
             force_plain_text=True,
+            sentence_line_break=sentence_line_break,
         )
 
 
