@@ -42,6 +42,7 @@ class MarkdownPrimitivesPlugin(MarkdownPlugin, PrimitivesPlugin):
             return MarkdownOnlyRawWrapper()
         elif lang == "html":
             # HTML is always allowed inside markdown
+            # TODO unless using a force_plain_text Markdown renderer?
             return PassthroughRawBuilder()
         else:
             return NullRawBuilder()

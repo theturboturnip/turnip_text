@@ -362,8 +362,11 @@ class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
             )
 
         # TODO need to implement a Markdown-friendly formatter
+
+        formatter = citeproc.formatter.plain if setup.force_plain_text else citeproc.formatter.html
+
         self._bib = citeproc.CitationStylesBibliography(
-            bib_style, bib_source, citeproc.formatter.html
+            bib_style, bib_source, formatter
         )
 
         self._author_bib = citeproc.CitationStylesBibliography(
@@ -371,7 +374,7 @@ class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
                 io.StringIO(AUTHOR_CSL), validate=False
             ),
             bib_source,
-            citeproc.formatter.html
+            formatter
         )
 
         # TODO need to manually sort once the document parse has finished?
@@ -438,17 +441,31 @@ class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
         renderer: MarkdownRenderer,
         fmt: FmtEnv,
     ) -> None:
-        # The citeproc formatter producess HTML
-        with renderer.html_mode():
+        if renderer.html_allowed:
+          # The citeproc formatter produces HTML
+          with renderer.html_mode():
+              renderer.emit(
+                  BlockScope(
+                      [
+                          paragraph_of(
+                              Raw(f'<a id="cite-{citekey}"></a>{str(bibitem_html)}')
+                          )
+                          for citekey, bibitem_html in zip(
+                              self._bib.keys, self._bib.bibliography()
+                          )
+                      ]
+                  )
+              )
+        else:
             renderer.emit(
-                BlockScope(
-                    [
-                        paragraph_of(
-                            Raw(f'<a id="cite-{citekey}"></a>{str(bibitem_html)}')
-                        )
-                        for citekey, bibitem_html in zip(
-                            self._bib.keys, self._bib.bibliography()
-                        )
-                    ]
-                )
-            )
+                  BlockScope(
+                      [
+                          paragraph_of(
+                              Text(str(bibitem_text))
+                          )
+                          for citekey, bibitem_text in zip(
+                              self._bib.keys, self._bib.bibliography()
+                          )
+                      ]
+                  )
+              )

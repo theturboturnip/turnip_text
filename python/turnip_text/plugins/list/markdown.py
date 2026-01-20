@@ -58,7 +58,7 @@ class MarkdownListPlugin(MarkdownPlugin, ListEnvPlugin):
             tag = "ol" if numbered else "ul"
             renderer.emit_raw(f"<{tag}>\n")
             with renderer.indent(4):
-                renderer.emit_join_gen(emit_elem(), renderer.emit_break_sentence)
+                renderer.emit_join_gen(emit_elem(), renderer.emit_newline)
             renderer.emit_raw(f"</{tag}>")
         else:
             if numbered:
@@ -74,7 +74,7 @@ class MarkdownListPlugin(MarkdownPlugin, ListEnvPlugin):
                                 renderer.emit_blockscope(item.contents)
                         yield None
 
-                renderer.emit_join_gen(emit_numbered(), renderer.emit_break_sentence)
+                renderer.emit_join_gen(emit_numbered(), renderer.emit_newline)
             else:
 
                 def emit_dashed() -> Generator[None, None, None]:
@@ -88,4 +88,4 @@ class MarkdownListPlugin(MarkdownPlugin, ListEnvPlugin):
                                 renderer.emit_blockscope(item.contents)
                         yield None
 
-                renderer.emit_join_gen(emit_dashed(), renderer.emit_break_sentence)
+                renderer.emit_join_gen(emit_dashed(), renderer.emit_newline)

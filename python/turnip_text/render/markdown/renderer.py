@@ -26,6 +26,7 @@ MarkdownCounterFormat = SimpleCounterFormat[SimpleCounterStyle]
 
 
 class MarkdownRenderer(TextRenderer):
+    force_plain_text: bool
     html_mode_stack: List[bool]
     counters: CounterState
     counter_rendering: Dict[str, MarkdownCounterFormat]
@@ -39,18 +40,27 @@ class MarkdownRenderer(TextRenderer):
         counter_rendering: Dict[str, MarkdownCounterFormat],
         write_to: Writable,
         html_mode: bool = False,
+        force_plain_text: bool = False,
     ) -> None:
         super().__init__(fmt, anchors, handlers, write_to)
         self.counters = counters
         self.counter_rendering = counter_rendering
+
+        if force_plain_text and html_mode:
+            raise ValueError(f"Cannot construct a MarkdownRenderer with force_plain_text=True and html_mode=True at the same time")
+
         # Once you're in HTML mode, you can't drop down to Markdown mode again.
         # If they asked for HTML mode only, just make that the first entry in the stack.
         # If they didn't, we start in Markdown mode.
         self.html_mode_stack = [html_mode]
+        # Forcing plain text makes plugins do a best-effort rendering in plain text without worrying about specific markdown compatability.
+        self.force_plain_text = force_plain_text
 
     def emit_text(self, t: Text) -> None:
         if self.in_html_mode:
             self.emit_raw(html.escape(t.text))
+        elif self.force_plain_text:
+            self.emit_raw(t.text)
         else:
             # TODO if at the start of the document, - has a different meaning. Not sure where to address this but if you want to make a list, be aware of that
 
@@ -83,6 +93,13 @@ class MarkdownRenderer(TextRenderer):
             super().emit_paragraph(p)
 
     @override
+    def emit_break_sentence(self) -> None:
+        if self.force_plain_text:
+            self.emit_raw(" ")
+            return
+        return super().emit_break_sentence()
+
+    @override
     def emit_break_paragraph(self) -> None:
         self.emit_newline()
         # Force the indent, because it can carry block-quote state as well as space
@@ -90,11 +107,18 @@ class MarkdownRenderer(TextRenderer):
         self.emit_newline()
 
     @property
+    def html_allowed(self) -> bool:
+        return not self.force_plain_text
+
+    @property
     def in_html_mode(self) -> bool:
         return self.html_mode_stack[-1]
 
     @contextmanager
     def html_mode(self) -> Iterator[None]:
+        if self.force_plain_text:
+            raise RuntimeError("Cannot enter HTML mode in a plain-text renderer")
+
         self.html_mode_stack.append(True)
 
         try:
@@ -126,6 +150,9 @@ class MarkdownRenderer(TextRenderer):
             self.emit_raw(f"</{tag}>")
 
     def emit_empty_tag(self, tag: str, props: str | None = None) -> None:
+        if self.force_plain_text:
+            return
+        
         # This is allowed outside of HTML mode because it doesn't contain anything.
         if props:
             self.emit_raw(f"<{tag} {props}></{tag}>")
@@ -133,6 +160,14 @@ class MarkdownRenderer(TextRenderer):
             self.emit_raw(f"<{tag}></{tag}>")
 
     def emit_url(self, url: str, label: Optional[Inline]) -> None:
+        if self.force_plain_text:
+            if label:
+                self.emit_inline(label)
+                self.emit_raw(f" ({url})")
+            else:
+                self.emit_raw(f"<{url}>")
+            return
+
         if "<" in url or ">" in url or ")" in url or '"' in url:
             raise RuntimeError(
                 f"Can't handle url {url} with a <, >, \", or ) in it. Please use proper percent-encoding to escape it."
@@ -169,10 +204,20 @@ class MarkdownRenderer(TextRenderer):
             self.emit_raw("</a>")
 
     def emit_anchor(self, anchor: Anchor) -> None:
+        if self.force_plain_text:
+            return
         self.emit_empty_tag("a", f'id="{html.escape(anchor.canonical())}"')
 
     def emit_backref(self, backref: Backref) -> None:
         anchor = self.anchors.lookup_backref(backref)
+
+        if self.force_plain_text:
+            if backref.label_contents:
+                self.emit_inline(backref.label_contents)
+            else:
+                self.emit_text(self.anchor_to_ref_text(anchor))
+            return
+
         url = f"#{anchor.canonical()}"
         if backref.label_contents:
             self.emit_url(url, backref.label_contents)
@@ -238,6 +283,7 @@ class MarkdownRenderer(TextRenderer):
 
 
 class MarkdownSetup(RenderSetup[MarkdownRenderer]):
+    force_plain_text: bool
     html_only: bool
     emitter: EmitterDispatch[MarkdownRenderer]
     counter_rendering: Dict[str, MarkdownCounterFormat]
@@ -249,9 +295,15 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
         requested_counter_formatting: Dict[str, MarkdownCounterFormat] = {},
         requested_counter_links: Optional[Iterable[CounterLink]] = None,
         html_only: bool = False,
+        force_plain_text: bool = False,
     ) -> None:
         super().__init__()
         self.html_only = html_only
+        self.force_plain_text = force_plain_text
+
+        if force_plain_text and html_only:
+            raise ValueError(f"Cannot construct a MarkdownRenderer with force_plain_text=True and html_mode=True at the same time")
+
         self.emitter = MarkdownRenderer.default_emitter_dispatch()
         self.counter_rendering = {}
         if requested_counter_links:
@@ -333,6 +385,7 @@ class MarkdownSetup(RenderSetup[MarkdownRenderer]):
                 self.counter_rendering,
                 write_to,
                 html_mode=self.html_only,
+                force_plain_text=self.force_plain_text,
             )
             renderer.emit_document(document)
 
@@ -347,6 +400,19 @@ class HtmlSetup(MarkdownSetup):
             requested_counter_formatting,
             requested_counter_links,
             html_only=True,
+        )
+
+
+class PlainTextSetup(MarkdownSetup):
+    def __init__(
+        self,
+        requested_counter_formatting: Dict[str, MarkdownCounterFormat] = {},
+        requested_counter_links: Optional[Iterable[CounterLink]] = None,
+    ) -> None:
+        super().__init__(
+            requested_counter_formatting,
+            requested_counter_links,
+            force_plain_text=True,
         )
 
 

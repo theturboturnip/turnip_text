@@ -55,7 +55,8 @@ class MarkdownInlineFormatPlugin(MarkdownPlugin, InlineFormatEnvPlugin):
                 renderer.emit(f.contents)
         elif f.format_type in [InlineFormattingType.Bold, InlineFormattingType.Italic, InlineFormattingType.Emph, InlineFormattingType.Strong]:
             # If preceded by a space, we're fine to use markdown
-            if renderer.peek(1).isspace():
+            # If in plain-text mode, we can use this too.
+            if renderer.peek(1).isspace() or (not renderer.html_allowed):
                 surround = FORMAT_TYPE_TO_MARKDOWN[f.format_type]
                 renderer.emit_raw(surround)
                 renderer.emit(f.contents)
@@ -67,12 +68,16 @@ class MarkdownInlineFormatPlugin(MarkdownPlugin, InlineFormatEnvPlugin):
                         renderer.emit(f.contents)
         elif f.format_type == InlineFormattingType.Underline:
             # Have to go into html mode for this
-            with renderer.html_mode():
-                with renderer.emit_tag("u"):
-                    renderer.emit(f.contents)
+            if renderer.html_allowed:
+                with renderer.html_mode():
+                    with renderer.emit_tag("u"):
+                        renderer.emit(f.contents)
+            else:
+                # best effort, just render contents
+                renderer.emit(f.contents)
         elif f.format_type == InlineFormattingType.Mono:
-            if all(isinstance(i, Text) for i in f.contents):
-                # Markdown ` doesn't allow special formatting inside
+            if all(isinstance(i, Text) for i in f.contents) or (not renderer.html_allowed):
+                # Markdown ` doesn't allow special formatting inside, but plain text does
                 renderer.emit_raw("`")
                 for text in f.contents:
                     renderer.emit_raw(cast(Text, text).text.replace("`", "\\`"))
