@@ -402,12 +402,16 @@ class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
         fmt: FmtEnv,
     ) -> None:
         # self._bib stores the keys as all lowercase
-        anchor_target = f"#cite-{next(iter(citation.citekeys)).lower()}"
         citeproc_cite: citeproc.Citation = citation.citeproc_cite  # type:ignore
-        renderer.emit(
-            fmt.url(anchor_target)
-            @ self._bib.cite(citeproc_cite, self._warn_invalid_citationitem)
-        )
+        c = self._bib.cite(citeproc_cite, self._warn_invalid_citationitem)
+        if renderer.force_plain_text:
+            renderer.emit(c)
+        else:
+            anchor_target = f"#cite-{next(iter(citation.citekeys)).lower()}"
+            renderer.emit(
+                fmt.url(anchor_target)
+                @ c
+            )
 
     @staticmethod
     def _warn_invalid_citationitem(item: citeproc.CitationItem) -> None:
