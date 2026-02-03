@@ -405,7 +405,7 @@ class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
         citeproc_cite: citeproc.Citation = citation.citeproc_cite  # type:ignore
         c = self._bib.cite(citeproc_cite, self._warn_invalid_citationitem)
         if renderer.force_plain_text:
-            renderer.emit(c)
+            renderer.emit_text(Text(c))
         else:
             anchor_target = f"#cite-{next(iter(citation.citekeys)).lower()}"
             renderer.emit(
