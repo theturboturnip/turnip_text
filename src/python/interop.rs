@@ -1230,6 +1230,22 @@ impl DocSegment {
     pub fn subsegments<'py>(&'py self, py: Python<'py>) -> PyResult<Bound<'py, PyIterator>> {
         self.subsegments.list(py).as_sequence().iter()
     }
+    #[getter]
+    pub fn final_contents<'py>(
+        self_: PyRef<'py, Self>,
+        py: Python<'py>,
+    ) -> PyResult<Py<BlockScope>> {
+        let mut last_subsegment = self_;
+        loop {
+            let subsegments_list = last_subsegment.subsegments.list(py);
+            if subsegments_list.is_empty() {
+                return Ok(last_subsegment.contents.clone_ref(py));
+            } else {
+                let idx = subsegments_list.len() - 1;
+                last_subsegment = subsegments_list.get_item(idx)?.extract()?;
+            }
+        }
+    }
     pub fn append_header<'py>(
         &'py self,
         py: Python<'py>,

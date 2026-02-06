@@ -175,6 +175,13 @@ class DocSegment:
     @property
     def contents(self) -> BlockScope: ...
     @property
+    def final_contents(self) -> BlockScope:
+        """
+        The bottommost BlockScope in this segment.
+        Traverses the document => should be cached where sensible instead of called repeatedly.
+        """
+        ...
+    @property
     def subsegments(self) -> Iterator["DocSegment"]: ...
     # In order to create new DocSegments correctly, use append_header() and insert_header()
     # These call into the DocSegmentList to make sure you don't create invalid trees.
