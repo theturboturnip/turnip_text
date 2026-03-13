@@ -104,6 +104,11 @@ class EnvPlugin:
         """
         return None
 
+    def _post_freeze(self, doc_env: "DocEnv", fmt: "FmtEnv", doc: Document) -> None:
+        """
+        Called after the document has been frozen (i.e. no new elements can be created) and before any DFS lookups/visitors
+        """
+
     def _interface(self) -> Dict[str, Any]:
         """
         Define the interface available to the document/formatting environments,

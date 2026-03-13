@@ -67,6 +67,8 @@ def parse_and_emit(
 
     # Now freeze the document so other code can't mutate it
     doc_env._frozen = True
+    for plugin in plugins:
+        plugin._post_freeze(doc_env, fmt, document)
 
     # TODO right now the document parsing process uses portals instead of actually expecting the mutation phase to pull things out of floating-space. Once that changes, re-enable this check.
     # if doc_setup.anchors._anchored_floats:
