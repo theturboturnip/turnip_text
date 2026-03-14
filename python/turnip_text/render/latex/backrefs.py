@@ -63,6 +63,8 @@ class LatexHyperlink(LatexBackrefMethodImpl):
         renderer: "LatexRenderer",
         _fmt: FmtEnv,
     ) -> None:
+        # Protect to try to make sure it can exist e.g. inside captions  https://tex.stackexchange.com/a/12699
+        renderer.emit_macro("protect")
         renderer.emit_macro("hyperlink")
         renderer.emit_braced(Raw(anchor.canonical()))
         if backref.label_contents is None:
@@ -132,6 +134,8 @@ class LatexCleveref(LatexBackrefMethodImpl):
     ) -> None:
         raw_anchor = Raw(anchor.canonical())
         if backref.label_contents:
+            # Protect to try to make sure it can exist e.g. inside captions  https://tex.stackexchange.com/a/12699
+            renderer.emit_macro("protect")
             renderer.emit_macro("hyperref")
             renderer.emit_sqr_bracketed(raw_anchor)
             renderer.emit_braced(backref.label_contents)
@@ -173,6 +177,8 @@ class LatexPageRef(LatexBackrefMethodImpl):
     ) -> None:
         raw_anchor = Raw(anchor.canonical())
         if backref.label_contents:
+            # Protect to try to make sure it can exist e.g. inside captions  https://tex.stackexchange.com/a/12699
+            renderer.emit_macro("protect")
             renderer.emit_macro("hyperref")
             renderer.emit_sqr_bracketed(raw_anchor)
             renderer.emit_braced(backref.label_contents)
@@ -233,6 +239,8 @@ class LatexManualRef(LatexBackrefMethodImpl):
                 Text(anchor_fmt.postfix_for_end),
             )
         else:
+            # Protect to try to make sure it can exist e.g. inside captions  https://tex.stackexchange.com/a/12699
+            renderer.emit_macro("protect")
             renderer.emit_macro("hyperref")
             renderer.emit_sqr_bracketed(Raw(anchor.canonical()))
             renderer.emit_braced(backref.label_contents)
