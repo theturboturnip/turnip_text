@@ -350,6 +350,13 @@ def order_packages(
                 "hyperref", *incompat, reason="hyperref documentation says so"
             )
 
+    if "glossaries" in packages:
+        sorter.add("glossaries", "hyperref")
+        sorter.add("glossaries", "babel")
+        sorter.add("glossaries", "polyglossia")
+        sorter.add("glossaries", "inputenc")
+        sorter.add("glossaries", "fontenc")
+
     return [
         packages[package_name]
         for package_name in sorter.static_order()
