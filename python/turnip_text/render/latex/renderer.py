@@ -457,6 +457,18 @@ class LatexRenderer(TextRenderer):
         self.emit_raw("[")
         self.emit(*args)
         self.emit_raw("]")
+    
+    def emit_sqr_bracketed_braced(self, *args: Union[Inline, Block, DocSegment]) -> None:
+        """
+        Surround the contents with [{ }].
+        
+        Use for e.g. citation notes and short figure captions, which are enclosed in [] but might contain complex contents with further [].
+        The inner {} prevent those inner [] from interfering.
+        https://stackoverflow.com/a/21872673
+        """
+        self.emit_raw("[{")
+        self.emit(*args)
+        self.emit_raw("}]")
 
     def emit_braced(self, *args: Union[Inline, Block, DocSegment]) -> None:
         self.emit_raw("{")

@@ -26,7 +26,7 @@ class LatexBiblatexPlugin_Unchecked(LatexPlugin, CitationEnvPlugin):
     def _emit_cite(self, cite: Citation, renderer: LatexRenderer, fmt: FmtEnv) -> None:
         renderer.emit_macro("cite")
         if cite.citenote:
-            renderer.emit_sqr_bracketed(cite.citenote)
+            renderer.emit_sqr_bracketed_braced(cite.citenote)
         renderer.emit_braced(Raw(",".join(cite.citekeys)))
 
     def _emit_citeauthor(
@@ -145,7 +145,7 @@ class LatexBiblatexCitationPlugin(LatexPlugin, CitationEnvPlugin):
     ) -> None:
         renderer.emit_macro("cite")
         if citation.citenote is not None:
-            renderer.emit_sqr_bracketed(citation.citenote)
+            renderer.emit_sqr_bracketed_braced(citation.citenote)
         renderer.emit_braced(Raw(",".join(citation.citekeys)))
 
     def _emit_citeauthor(
@@ -251,7 +251,7 @@ class LatexBibtexCitationPlugin(LatexPlugin, CitationEnvPlugin):
     ) -> None:
         renderer.emit_macro("cite")
         if citation.citenote is not None:
-            renderer.emit_sqr_bracketed(citation.citenote)
+            renderer.emit_sqr_bracketed_braced(citation.citenote)
         renderer.emit_braced(Raw(",".join(citation.citekeys)))
 
     def _emit_citeauthor(
