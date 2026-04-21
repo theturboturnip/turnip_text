@@ -44,11 +44,11 @@ class ListEnvPlugin(EnvPlugin):
 
     @block_scope_builder
     @staticmethod
-    def enumerate(contents: BlockScope) -> Block:
+    def num_list(contents: BlockScope) -> Block:
         items: List[DisplayListItem | DisplayList] = block_scope_to_list(
             contents,
             Union[DisplayList, DisplayListItem],
-            error_context="[enumerate]",
+            error_context="[num_list]",
         )
         return DisplayList(
             list_type=DisplayListType.Enumerate,
@@ -57,16 +57,25 @@ class ListEnvPlugin(EnvPlugin):
 
     @block_scope_builder
     @staticmethod
-    def itemize(contents: BlockScope) -> Block:
+    def item_list(contents: BlockScope) -> Block:
         items: List[DisplayListItem | DisplayList] = block_scope_to_list(
             contents,
             Union[DisplayList, DisplayListItem],
-            error_context="[itemize]",
+            error_context="[item_list]",
         )
         return DisplayList(
             list_type=DisplayListType.Itemize,
             contents=items,
         )
+    
+    @block_scope_builder
+    @staticmethod
+    def itemize(contents: BlockScope) -> Block:
+        """
+        Deprecated legacy name,
+        TODO remove
+        """
+        return ListEnvPlugin.item_list @ contents
 
     @block_scope_builder
     @staticmethod

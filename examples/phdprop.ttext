@@ -41,7 +41,7 @@ However, as the next section will show, CHERI's CPU-centric capabilities may nee
 
 Current systems that use CHERI capabilities make a few basic assumptions:
 
-[enumerate]{
+[num_list]{
     [item]{
         Capabilities hold memory addresses that are controlled by the Operating System (OS) from the CPU
 
