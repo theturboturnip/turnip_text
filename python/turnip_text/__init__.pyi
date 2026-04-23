@@ -1,5 +1,6 @@
 from typing import (
     Any,
+    Callable,
     Dict,
     Generic,
     Iterator,
@@ -162,6 +163,7 @@ class Document:
     # `append_header(subsection)` will push the subsection into the last `section` instead of appending it at the same level as the other `sections`.
     def append_header(self, h: Header) -> DocSegment: ...
     def insert_header(self, index: int, h: Header) -> DocSegment: ...
+    def sort_segments(self, *, key: Callable[[DocSegment], Any], reverse=False): ...
 
 class DocSegment:
     def __init__(
@@ -189,6 +191,7 @@ class DocSegment:
     # `append_header(subsection)` will push the subsection into the last `section` instead of appending it at the same level as the other `sections`.
     def append_header(self, h: Header) -> DocSegment: ...
     def insert_header(self, index: int, h: Header) -> DocSegment: ...
+    def sort_subsegments(self, *, key: Callable[[DocSegment], Any], reverse=False): ...
 
 class TextReadable(Protocol):
     """The protocol expected by TurnipTextSource.from_file().

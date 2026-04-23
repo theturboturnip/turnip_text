@@ -1147,6 +1147,15 @@ impl Document {
         let new_header = PyTcRef::of_friendly(new_header, "input to .insert_header()")?;
         self.segments.insert_header(py, index, new_header)
     }
+    #[pyo3(signature=(*, key, reverse=false))]
+    pub fn sort_segments<'py>(
+        &self,
+        py: Python<'py>,
+        key: &'py Bound<'py, PyAny>,
+        reverse: bool,
+    ) -> PyResult<()> {
+        self.segments.sort(py, key, reverse)
+    }
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         Ok(self.contents.bind(py).eq(other.contents.bind(py))?
             && self.segments.__eq__(py, &other.segments)?)
@@ -1283,6 +1292,15 @@ impl DocSegment {
             )));
         };
         self.subsegments.insert_header(py, index, new_header)
+    }
+    #[pyo3(signature=(*, key, reverse=false))]
+    pub fn sort_subsegments<'py>(
+        &self,
+        py: Python<'py>,
+        key: &'py Bound<'py, PyAny>,
+        reverse: bool,
+    ) -> PyResult<()> {
+        self.subsegments.sort(py, key, reverse)
     }
     pub fn __eq__(&self, py: Python, other: &Self) -> PyResult<bool> {
         Ok(self.header.bind(py).eq(other.header.bind(py))?
@@ -1518,6 +1536,20 @@ impl DocSegmentList {
         }
 
         Ok(new_docsegment)
+    }
+
+    pub fn sort<'py>(
+        &self,
+        py: Python<'py>,
+        key: &'py Bound<'py, PyAny>,
+        reverse: bool,
+    ) -> PyResult<()> {
+        let sort = self.0.bind(py).getattr(intern!(py, "sort"))?;
+        let kwargs = PyDict::new_bound(py);
+        kwargs.set_item("key", key)?;
+        kwargs.set_item("reverse", reverse)?;
+        sort.call((), Some(&kwargs))?;
+        Ok(())
     }
 
     pub fn __len__(&self, py: Python) -> usize {
