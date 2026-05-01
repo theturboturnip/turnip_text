@@ -415,7 +415,7 @@ class LatexRenderer(TextRenderer):
     # 3. where the character before the sentence-ending character is not a capital
     # and if the preceding chars meet this rule emit a \@ before the space
     # TODO need to update this e.g. https://stackoverflow.com/a/2024341
-    latex_sentence_break_space_regex = re.compile(r"^[^.!?]*[^A-Z][.!?][\)'}]*$")
+    latex_sentence_break_space_regex = re.compile(r"[^A-Z][.!?][\)'}]*$")
 
     def emit_text(self, t: Text) -> None:
         # TODO consider using \detokenize?
@@ -439,6 +439,7 @@ class LatexRenderer(TextRenderer):
         }
         for char in t.text:
             if char in ascii_map:
+                # TODO batch this
                 self.emit_raw(ascii_map[char])
             else:
                 if char.isspace():
@@ -446,7 +447,7 @@ class LatexRenderer(TextRenderer):
                     # https://aperiodic.net/pip/archives/Geekery/latex-sentence-spacing/
                     # TODO worth increasing?
                     prior_chars = self.peek(4)
-                    match = self.latex_sentence_break_space_regex.match(prior_chars)
+                    match = self.latex_sentence_break_space_regex.search(prior_chars)
                     if match:
                         self.emit_raw('\\@')
                 self.emit_raw(char)

@@ -204,8 +204,8 @@ class PeekableWriter:
         if len(s) >= self.n_peekable:
             self.last_n = s[-self.n_peekable:]
         else:
-            chars_left_over = self.n_peekable - len(s)
-            self.last_n = self.last_n[chars_left_over:] + s
+            self.last_n += s
+            self.last_n = self.last_n[-self.n_peekable:]            
         return self.underlying.write(s)
 
 
