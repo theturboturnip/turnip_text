@@ -243,6 +243,11 @@ class LatexBibtexCitationPlugin(LatexPlugin, CitationEnvPlugin):
 
         return [((Citation, CiteAuthor), visit_cite_or_citeauthor)]
 
+    @property
+    @override
+    def _has_citations(self) -> bool:
+        return bool(self._citation_db.used_entries)
+
     def _emit_citation(
         self,
         citation: Citation,

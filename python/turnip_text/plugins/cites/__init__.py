@@ -1,5 +1,6 @@
+import abc
 from dataclasses import dataclass
-from typing import List, Sequence, Set
+from typing import List, Sequence, Set, Tuple
 
 from typing_extensions import override
 
@@ -14,7 +15,15 @@ from turnip_text import (
     InlineScopeBuilder,
 )
 from turnip_text.doc.user_nodes import UserNode
-from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
+from turnip_text.env_plugins import (
+    DocEnv,
+    EnvPlugin,
+    FmtEnv,
+    VisitorFilter,
+    VisitorFunc,
+    in_doc,
+    pure_fmt,
+)
 from turnip_text.helpers import UserInlineScopeBuilder
 
 
@@ -45,7 +54,6 @@ class Bibliography(Block):
 
 
 class CitationEnvPlugin(EnvPlugin):
-    _has_citations: bool = False
     _has_bib: bool = False
 
     def _doc_nodes(
@@ -63,8 +71,13 @@ class CitationEnvPlugin(EnvPlugin):
         # TODO only add the bibliography if walking the doc finds Citation
         if not self._has_bib:
             doc.append_header(
-                doc_env.h1(num=False) @ "Bibliography"
+                doc_env.h1(num=False, hide=lambda: not self._has_citations)
+                @ "Bibliography"
             ).contents.append_block(Bibliography())
+
+    @property
+    @abc.abstractmethod
+    def _has_citations(self) -> bool: ...
 
     def cite(self, *citekeys: str) -> Inline:
         if not citekeys:

@@ -1,8 +1,11 @@
 import json
+from typing import List, Tuple
+
+from typing_extensions import override
 
 import turnip_text.render.pandoc.pandoc_types as pan
 from turnip_text.build_system import BuildSystem, InputRelPath
-from turnip_text.env_plugins import FmtEnv
+from turnip_text.env_plugins import FmtEnv, VisitorFilter, VisitorFunc
 from turnip_text.plugins.cites import (
     Bibliography,
     Citation,
@@ -21,6 +24,7 @@ from turnip_text.render.pandoc import (
 class PandocCitationPlugin(PandocPlugin, CitationEnvPlugin):
     _csl_json_path: InputRelPath
     _citationNoteNum: int
+    _has_citations_backing: bool = False
 
     def __init__(self, csl_json_path: InputRelPath):
         self._csl_json_path = csl_json_path
@@ -53,6 +57,17 @@ class PandocCitationPlugin(PandocPlugin, CitationEnvPlugin):
             Bibliography,
             lambda bib, renderer, fmt: pan.Div(("refs", [], []), []),
         )
+
+    def _make_visitors(self) -> List[Tuple[VisitorFilter, VisitorFunc]]:
+        def hit_citation(c):
+            self._has_citations_backing = True
+
+        return [((Citation, CiteAuthor), hit_citation)]
+
+    @property
+    @override
+    def _has_citations(self) -> bool:
+        return bool(self._has_citations_backing)
 
     def _make_cite(
         self, citation: Citation, renderer: PandocRenderer, fmt: FmtEnv

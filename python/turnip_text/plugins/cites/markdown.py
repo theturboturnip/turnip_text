@@ -21,6 +21,7 @@ from turnip_text.render.markdown.renderer import (
     MarkdownRenderer,
     MarkdownSetup,
 )
+from typing_extensions import override
 
 # TODO: in Markdown citations should be Backrefs, bibliography items should be Blocks
 
@@ -54,6 +55,12 @@ class MarkdownCitationPlugin_UncheckedBib(MarkdownPlugin, CitationEnvPlugin):
             (CiteAuthor, lambda ca: self._register_citation(ca.citekey)),
         ]
 
+
+    @property
+    @override
+    def _has_citations(self) -> bool:
+        return bool(self._referenced_citations)
+        
     # TODO make Citations use backrefs? Requires document mutations which we don't have yet.
 
     def _emit_cite(
@@ -394,6 +401,11 @@ class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
         return [
             (Citation, foreach_citation),
         ]
+        
+    @property
+    @override
+    def _has_citations(self) -> bool:
+        return bool(self._bib.keys)
 
     def _emit_citation(
         self,
