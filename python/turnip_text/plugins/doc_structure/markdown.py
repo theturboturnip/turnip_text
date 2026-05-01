@@ -3,8 +3,7 @@ from typing import Iterator, List, Tuple, Union
 from turnip_text import BlockScope, DocSegment, InlineScope, Raw, Text, join_inlines
 from turnip_text.build_system import BuildSystem
 from turnip_text.doc.anchors import Backref
-from turnip_text.env_plugins import VisitorFilter, VisitorFunc
-from turnip_text.env_plugins import FmtEnv
+from turnip_text.env_plugins import FmtEnv, VisitorFilter, VisitorFunc
 from turnip_text.helpers import paragraph_of
 from turnip_text.plugins.doc_structure import (
     AppendixHeader,
@@ -24,7 +23,9 @@ from turnip_text.render.markdown.renderer import (
 class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
     _has_chapter: bool
 
-    def __init__(self, use_chapters: bool, add_title: bool = True, add_toc: bool = True) -> None:
+    def __init__(
+        self, use_chapters: bool, add_title: bool = True, add_toc: bool = True
+    ) -> None:
         super().__init__(add_title, add_toc)
         self._has_chapter = use_chapters
 
@@ -182,19 +183,28 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
                 if head.anchor:
                     renderer.emit(
                         head.anchor,
-                        renderer.anchor_to_number_text(head.anchor),
-                        Text(" \u2014 "),
                     )
-                renderer.emit(head.title)
+                    if not head.hidden():
+                        renderer.emit(
+                            renderer.anchor_to_number_text(head.anchor),
+                            Text(" \u2014 "),
+                        )
+                if not head.hidden():
+                    renderer.emit(head.title)
         else:
-            renderer.emit_raw("#" * (head.weight) + " ")
+            if not head.hidden():
+                renderer.emit_raw("#" * (head.weight) + " ")
             if head.anchor:
                 renderer.emit(
                     head.anchor,
-                    renderer.anchor_to_number_text(head.anchor),
-                    Text(" \u2014 "),
                 )
-            renderer.emit(head.title)
+                if not head.hidden():
+                    renderer.emit(
+                        renderer.anchor_to_number_text(head.anchor),
+                        Text(" \u2014 "),
+                    )
+            if not head.hidden():
+                renderer.emit(head.title)
 
         renderer.emit_break_paragraph()
         renderer.emit_blockscope(contents)

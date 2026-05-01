@@ -80,7 +80,9 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
     def _register(self, build_sys: BuildSystem, setup: LatexSetup) -> None:
         setup.require_document_class(self.doc_class)
 
-        setup.add_preamble_section(self._emit_metadata_preamble, point=LatexPreamblePoint.CONTENT)
+        setup.add_preamble_section(
+            self._emit_metadata_preamble, point=LatexPreamblePoint.CONTENT
+        )
 
         # TODO enable more backref methods
         backref_methods = (
@@ -228,13 +230,15 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
             raise ValueError(
                 f"Can't emit {head} because it uses an unusable weight: {head.weight}"
             )
+        if not head.hidden():
+            if head.anchor:
+                # This is a numbered entry with a label
+                renderer.emit_macro(latex_name)  # i.e. r"\section"
+            else:
+                renderer.emit_macro(latex_name + "*")
+            renderer.emit_braced(head.title)  # i.e. r"\section*" + "{Section Name}"
         if head.anchor:
-            # This is a numbered entry with a label
-            renderer.emit_macro(latex_name)  # i.e. r"\section"
-        else:
-            renderer.emit_macro(latex_name + "*")
-        renderer.emit_braced(head.title)  # i.e. r"\section*" + "{Section Name}"
-        if head.anchor:
+            # Always emit the anchor even if the rest is hidden
             renderer.emit(
                 head.anchor
             )  # i.e. r"\section*{Section Name}\label{h1:Section_Name}"
@@ -252,6 +256,7 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
         renderer: LatexRenderer,
         fmt: FmtEnv,
     ) -> None:
+        # TODO fixup appendix handling, TODO support hiding
         # Step the LaTeX counter - do this before the section header so that when you click it zips to the start of the header.
         renderer.emit_comment_headline(
             "New appendix - refstep the counter here so the label attaches to it"

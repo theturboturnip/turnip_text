@@ -1,5 +1,7 @@
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Callable, Iterable, List, Optional, Sequence, Tuple, Union
+
+from typing_extensions import override
 
 from turnip_text import (
     Block,
@@ -16,7 +18,6 @@ from turnip_text.doc.anchors import Anchor
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import DocEnv, EnvPlugin, FmtEnv, in_doc, pure_fmt
 from turnip_text.helpers import UserInlineScopeBuilder
-from typing_extensions import override
 
 
 @dataclass
@@ -52,10 +53,14 @@ class BasicHeader(UserNode, Header):
     """Set to None if the header as a whole is unnumbered.
     Has a non-None Anchor with `id == None` if the header is numbered, but didn't have a label."""
     weight: int
+    hide: Callable[[], bool] | None = None
 
     @override
     def child_nodes(self) -> InlineScope:
         return self.title
+
+    def hidden(self) -> bool:
+        return (self.hide is not None) and self.hide()
 
 
 @dataclass(frozen=True)
@@ -63,10 +68,14 @@ class AppendixHeader(UserNode, Header):
     title: InlineScope  # The title of the segment
     anchor: Anchor
     weight: int
+    hide: Callable[[], bool] | None = None
 
     @override
     def child_nodes(self) -> InlineScope:
         return self.title
+
+    def hidden(self) -> bool:
+        return (self.hide is not None) and self.hide()
 
 
 @dataclass(frozen=True)
@@ -79,6 +88,7 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
     weight: int
     label: Optional[str]
     num: bool
+    hide: Callable[[], bool] | None
     appendix: bool
 
     # TODO "not numbered" != "not included in ToC"
@@ -89,6 +99,7 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
         weight: int,
         label: Optional[str],
         num: bool,
+        hide: Callable[[], bool] | None = None,
         appendix: bool = False,
     ) -> None:
         super().__init__()
@@ -96,9 +107,10 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
         self.weight = weight
         self.label = label
         self.num = num
+        self.hide = hide
         self.appendix = appendix
 
-    def build_from_inlines(self, inlines: InlineScope) -> Header:
+    def build_from_inlines(self, inls: InlineScope) -> Header:
         if self.appendix:
             kind = "appendix"
         else:
@@ -109,11 +121,17 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
 
         if self.num:
             return ty(
-                title=inlines,
+                title=inls,
                 anchor=self.doc_env.anchors.register_new_anchor(kind, self.label),
                 weight=weight,
+                hide=self.hide,
             )  # type: ignore
-        return ty(title=inlines, anchor=None, weight=weight)  # type: ignore
+        return ty(
+            title=inls,
+            anchor=None,
+            weight=weight,
+            hide=self.hide,
+        )  # type: ignore
 
 
 class StructureEnvPlugin(EnvPlugin):
@@ -201,40 +219,65 @@ class StructureEnvPlugin(EnvPlugin):
         weight: int,
         label: Optional[str] = None,
         num: bool = True,
+        hide: Callable[[], bool] | None = None,
     ) -> InlineScopeBuilder:
-        return StructureHeaderGenerator(doc_env, weight, label, num)
+        return StructureHeaderGenerator(doc_env, weight, label, num, hide)
 
     @in_doc
     def h1(
-        self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
+        self,
+        doc_env: DocEnv,
+        label: Optional[str] = None,
+        num: bool = True,
+        hide: Callable[[], bool] | None = None,
     ) -> InlineScopeBuilder:
-        return self.h(1, label, num)
+        return self.h(1, label, num, hide)
 
     @in_doc
     def h2(
-        self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
+        self,
+        doc_env: DocEnv,
+        label: Optional[str] = None,
+        num: bool = True,
+        hide: Callable[[], bool] | None = None,
     ) -> InlineScopeBuilder:
-        return self.h(2, label, num)
+        return self.h(2, label, num, hide)
 
     @in_doc
     def h3(
-        self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
+        self,
+        doc_env: DocEnv,
+        label: Optional[str] = None,
+        num: bool = True,
+        hide: Callable[[], bool] | None = None,
     ) -> InlineScopeBuilder:
-        return self.h(3, label, num)
+        return self.h(3, label, num, hide)
 
     @in_doc
     def h4(
-        self, doc_env: DocEnv, label: Optional[str] = None, num: bool = True
+        self,
+        doc_env: DocEnv,
+        label: Optional[str] = None,
+        num: bool = True,
+        hide: Callable[[], bool] | None = None,
     ) -> InlineScopeBuilder:
-        return self.h(4, label, num)
+        return self.h(4, label, num, hide)
 
     @in_doc
     def appendix(
-        self, doc_env: DocEnv, label: Optional[str] = None
+        self,
+        doc_env: DocEnv,
+        label: Optional[str] = None,
+        hide: Callable[[], bool] | None = None,
     ) -> InlineScopeBuilder:
         """Builds an inline scope to create a header that starts an appendix at weight=1."""
         return StructureHeaderGenerator(
-            doc_env, weight=1, label=label, num=True, appendix=True
+            doc_env,
+            weight=1,
+            label=label,
+            num=True,
+            appendix=True,
+            hide=hide,
         )
 
     @pure_fmt

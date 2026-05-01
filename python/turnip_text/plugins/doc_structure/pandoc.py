@@ -33,7 +33,12 @@ class PandocStructurePlugin(PandocPlugin, StructureEnvPlugin):
     # 0-indexed list of formats e.g. h1 uses self.header_fmts[0]
     _header_fmts: List[SimpleCounterFormat[SimpleCounterStyle]]
 
-    def __init__(self, h1: Literal["chapter"] | Literal["section"] = "section", add_title: bool=True, add_toc: bool=True) -> None:
+    def __init__(
+        self,
+        h1: Literal["chapter"] | Literal["section"] = "section",
+        add_title: bool = True,
+        add_toc: bool = True,
+    ) -> None:
         super().__init__(add_title, add_toc)
         self._header_fmts = [
             SimpleCounterFormat(
@@ -55,9 +60,9 @@ class PandocStructurePlugin(PandocPlugin, StructureEnvPlugin):
         setup.makers.register_header(AppendixHeader, self._make_appendix_header)
 
         for i, fmt in enumerate(self._header_fmts):
-            setup.define_renderable_counter(f"h{i+1}", fmt)
+            setup.define_renderable_counter(f"h{i + 1}", fmt)
             if i > 0:
-                setup.request_counter_parent(f"h{i+1}", f"h{i}")
+                setup.request_counter_parent(f"h{i + 1}", f"h{i}")
         setup.define_renderable_counter(
             "appendix",
             SimpleCounterFormat(
@@ -102,6 +107,7 @@ class PandocStructurePlugin(PandocPlugin, StructureEnvPlugin):
         renderer: PandocRenderer,
         fmt: FmtEnv,
     ) -> pan.Header:
+        # TODO - handle hiding
         # TODO - if in e.g. docx warn people to use numbered-sections-template.docx instead of numbering?
         attr = renderer.make_anchor_attr(header.anchor)
         title = renderer.make_inline_scope_list(header.title)
@@ -123,6 +129,7 @@ class PandocStructurePlugin(PandocPlugin, StructureEnvPlugin):
         renderer: PandocRenderer,
         fmt: FmtEnv,
     ) -> pan.Header:
+        # TODO - handle hiding
         attr = renderer.make_anchor_attr(header.anchor)
         # Do the numbering: compute the number, put "Appendix {number} [emdash] {title}"
         title = renderer.make_text_inline_list(
