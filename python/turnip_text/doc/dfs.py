@@ -10,7 +10,7 @@ from turnip_text import (
     InlineScope,
     Paragraph,
 )
-from turnip_text.doc.anchors import Anchor, Backref
+from turnip_text.doc.anchors import Anchor, Backref, TextAnchor
 from turnip_text.doc.user_nodes import UserNode
 from turnip_text.env_plugins import AnchorEnv, VisitorFilter, VisitorFunc
 
@@ -40,7 +40,12 @@ class DocumentDfsPass:
 
             # Extract children as a reversed iterator.
             # reversed is important because we pop the last thing in the queue off first.
-            children: Iterable[Block | Inline | DocSegment | Header | SentenceEnd] | None = None
+            children: (
+                Iterable[
+                    Block | Inline | DocSegment | Header | SentenceEnd | TextAnchor
+                ]
+                | None
+            ) = None
             if isinstance(node, (BlockScope, InlineScope)):
                 children = reversed(tuple(node))
             elif isinstance(node, DocSegment):

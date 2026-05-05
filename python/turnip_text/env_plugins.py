@@ -21,7 +21,7 @@ from typing import (
 
 from turnip_text import Block, Document, Header, Inline
 from turnip_text.build_system import BuildSystem
-from turnip_text.doc.anchors import Anchor, Backref
+from turnip_text.doc.anchors import Anchor, Backref, TextAnchor
 from turnip_text.helpers import UNSET, Unset
 
 T = TypeVar("T")
@@ -38,6 +38,7 @@ Used for DFS.
 """
 VisitorFilter = Tuple[Type[Any], ...] | Type[Any] | None
 VisitorFunc = Callable[[Any], None]
+
 
 class EnvPlugin:
     """
@@ -91,7 +92,7 @@ class EnvPlugin:
         Tell the Document what nodes this plugin exports
         """
         return []
-    
+
     # Return a list of (filter, visitor) functions which are run in parallel over a single DFS pass on the frozen document.
     # Right now there are no usecases for emitting serial sets of DFS passes, because these fundamentally don't mutate state.
     # If you have some complex computation on the state of the document, you can glean all necessary information up front and then do the computation.
@@ -147,9 +148,10 @@ class EnvPlugin:
                 interface[key] = getattr(self, key)
 
         return interface
-    
+
     def _in_doc_bound(
-        self, f: Callable[Concatenate["DocEnv", P], T],
+        self,
+        f: Callable[Concatenate["DocEnv", P], T],
     ) -> Callable[Concatenate[P], T]:
         """
         An annotation for plugin bound methods which access the __doc_env object i.e. other in_doc (and pure_fmt) functions and variables.
@@ -324,6 +326,34 @@ class AnchorEnv:
         self._anchored_floats = {}
         self.__doc_env = doc_env
 
+    def register_text_anchor(self, *, kind: str, id: str) -> TextAnchor:
+        """
+        When inside the document, create a new text anchor. This will be linked up to the most recent header's Anchor
+        after the document is constructed.
+        """
+        if self.__doc_env._frozen:
+            raise RuntimeError("Can't register_text_anchor when the doc is frozen!")
+
+        # Guarantee no overlap with auto-generated anchor IDs
+        assert self._VALID_USER_ANCHOR_ID_REGEX.match(id), (
+            "User-defined anchor IDs must have at least one alphabetic character"
+        )
+
+        if self._anchor_id_to_possible_kinds[id].get(kind) is not None:
+            raise ValueError(
+                f"Tried to register anchor kind={kind}, id={id} when it already existed"
+            )
+
+        l = TextAnchor(
+            kind=kind,
+            id=id,
+            DONT_CREATE_ANCHORS_DIRECTLY=True,
+        )
+        self._anchor_kind_counters[kind] += 1
+        self._anchor_id_to_possible_kinds[id][kind] = l
+        self._anchored_floats[l] = None
+        return l
+
     def register_new_anchor(self, kind: str, id: Optional[str]) -> Anchor:
         """
         When inside the document, create a new anchor.
@@ -335,9 +365,9 @@ class AnchorEnv:
             id = str(self._anchor_kind_counters[kind])
         else:
             # Guarantee no overlap with auto-generated anchor IDs
-            assert self._VALID_USER_ANCHOR_ID_REGEX.match(
-                id
-            ), "User-defined anchor IDs must have at least one alphabetic character"
+            assert self._VALID_USER_ANCHOR_ID_REGEX.match(id), (
+                "User-defined anchor IDs must have at least one alphabetic character"
+            )
 
         if self._anchor_id_to_possible_kinds[id].get(kind) is not None:
             raise ValueError(
@@ -405,9 +435,11 @@ class AnchorEnv:
         if isinstance(float, Unset):
             raise KeyError(f"Anchor '{anchor}' is not registered in this document")
         elif float is None:
-            raise RuntimeError(f"Anchor '{anchor}' was registered but did not have a float attached")
+            raise RuntimeError(
+                f"Anchor '{anchor}' was registered but did not have a float attached"
+            )
         return float
-    
+
     def lookup_backref_float(self, backref: Backref) -> Tuple[Anchor, Block]:
         """
         Lookup the Anchor for the provided Backref, and the float that was attached to said Anchor when it was registered through register_new_anchor_with_float.
@@ -423,9 +455,7 @@ class AnchorEnv:
 
 
 class DocEnv:
-    _frozen: bool = (
-        False  # Set to True when rendering the document, which disables functions annotated with @in_doc.
-    )
+    _frozen: bool = False  # Set to True when rendering the document, which disables functions annotated with @in_doc.
 
     # These are reserved fields, so plugins can't export them.
     # Evaluated code can call directly out to doc.blah or fmt.blah.
@@ -438,16 +468,16 @@ class DocEnv:
     plugins: Sequence[EnvPlugin]
     _safely_usable_as: Set[Type]
 
-    def __init__(self, build_sys: BuildSystem, fmt: "FmtEnv", plugins: Sequence[EnvPlugin]) -> None:
+    def __init__(
+        self, build_sys: BuildSystem, fmt: "FmtEnv", plugins: Sequence[EnvPlugin]
+    ) -> None:
         self.build_sys = build_sys
         self.doc = self
         self.fmt = fmt
         self.anchors = AnchorEnv(self)
         self.backref = Backref
         self.plugins = plugins
-        self._safely_usable_as = {
-            type(p) for p in plugins
-        }
+        self._safely_usable_as = {type(p) for p in plugins}
 
     def get(self, plugin_type: Type[TEnvPlugin]) -> TEnvPlugin:
         if plugin_type not in self._safely_usable_as:
@@ -458,7 +488,9 @@ class DocEnv:
                     usable = True
                     break
             if not usable:
-                raise RuntimeError(f"This DocEnv has no plugin of type '{plugin_type.__name__}' and cannot be used as one.")
+                raise RuntimeError(
+                    f"This DocEnv has no plugin of type '{plugin_type.__name__}' and cannot be used as one."
+                )
         return cast(TEnvPlugin, self)
 
     # TODO get rid of this

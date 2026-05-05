@@ -35,6 +35,7 @@ from typing import List, Optional, Sequence, Set, Type, Union
 
 from turnip_text import Block, Header, Inline, parse_file
 from turnip_text.build_system import BuildSystem, InputRelPath, OutputRelPath
+from turnip_text.doc.anchors import TextAnchor
 from turnip_text.doc.dfs import DocumentDfsPass
 from turnip_text.env_plugins import EnvPlugin
 from turnip_text.render import RenderPlugin, TRenderSetup
@@ -67,6 +68,31 @@ def parse_and_emit(
 
     # Now freeze the document so other code can't mutate it
     doc_env._frozen = True
+
+    # Compute TextAnchor inheritors
+    def fixup_textanchors():
+        latest_header = None
+
+        def set_latest_header(h: Header):
+            nonlocal latest_header
+            anchor = getattr(h, "anchor", None)
+            if anchor is not None:
+                latest_header = anchor
+
+        def set_inheritor(t: TextAnchor):
+            nonlocal latest_header
+            t.inherit_from = latest_header
+
+        DocumentDfsPass(
+            [(Header, set_latest_header), (TextAnchor, set_inheritor)]
+        ).dfs_over_document(
+            document,
+            doc_env.anchors,
+        )
+
+    fixup_textanchors()
+
+    # Run post-freeze
     for plugin in plugins:
         plugin._post_freeze(doc_env, fmt, document)
 

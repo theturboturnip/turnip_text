@@ -17,7 +17,7 @@ These "label kinds" determine the in-text references to each item, and might (pe
 We need to find a way to make it work kinda like LaTeX - LaTeX lets you associated labels with multiple counters, and choose when counters reset, so you can say "figure 1.2.4" is figure 4 in chapter 1 in section 2.
 This system also needs to support creating new sub-labels: e.g. if I already have a "figure" label, I want to create a sub-figure to represent "figure 1.2.4.a"
 
-Clearly we need to make a hierarchy of some kind. 
+Clearly we need to make a hierarchy of some kind.
 Represent it as an acyclic tree.
 If a LaTeX renderer wants, it could choose to implement that through configuring counters in the preamble
 
@@ -31,7 +31,7 @@ from typing import Optional, Union
 from turnip_text import Inline, InlineScope, InlineScopeBuilder
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass
 class Anchor(Inline):
     """An Anchor in the file which can always be referenced back to using a Backref.
 
@@ -50,7 +50,19 @@ class Anchor(Inline):
     def __str__(self) -> str:
         return self.canonical()
 
+
+class TextAnchor(Anchor):
+    inherit_from: Anchor | None = None
+
+    def __init__(self, *, kind: str, id: str, DONT_CREATE_ANCHORS_DIRECTLY: bool):
+        super().__init__(
+            kind=kind, id=id, DONT_CREATE_ANCHORS_DIRECTLY=DONT_CREATE_ANCHORS_DIRECTLY
+        )
+        self.inherit_from = None
+
+
 # TODO add a text-only backref if I just want to use consistent numbering, not a backlink
+
 
 @dataclasses.dataclass()
 class Backref(Inline, InlineScopeBuilder):
@@ -66,7 +78,12 @@ class Backref(Inline, InlineScopeBuilder):
     )
     label_contents: Optional[Inline] = None  # Override for label
 
-    def __init__(self, id: Union[Anchor, str], kind: Optional[str] = None, label_contents: Optional[Inline] = None):
+    def __init__(
+        self,
+        id: Union[Anchor, str],
+        kind: Optional[str] = None,
+        label_contents: Optional[Inline] = None,
+    ):
         if isinstance(id, Anchor):
             self.id = id.id
             self.kind = id.kind
@@ -74,7 +91,9 @@ class Backref(Inline, InlineScopeBuilder):
             self.id = id
             self.kind = kind
         else:
-            raise RuntimeError(f"The 'id' parameter for Backref was neither a string nor an Anchor - it was '{id}'")
+            raise RuntimeError(
+                f"The 'id' parameter for Backref was neither a string nor an Anchor - it was '{id}'"
+            )
         self.label_contents = label_contents
 
     def build_from_inlines(self, inls: InlineScope) -> Inline:
