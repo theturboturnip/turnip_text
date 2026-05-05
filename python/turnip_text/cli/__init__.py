@@ -1,7 +1,7 @@
 import pathlib
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Any, Dict, Generic, List, Optional, Tuple, Union
+from typing import Any, Dict, Generic, List, Optional, Sequence, Tuple, Union
 
 from turnip_text.build_system import (
     BuildSystem,
@@ -16,7 +16,7 @@ from turnip_text.system import parse_and_emit
 @dataclass
 class GeneratedSetup(Generic[TRenderSetup]):
     render_setup: TRenderSetup
-    plugins: List[RenderPlugin[TRenderSetup]]
+    plugins: Sequence[RenderPlugin[TRenderSetup]]
     output_filename: str
 
 class TurnipTextSetup:
