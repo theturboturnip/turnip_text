@@ -178,13 +178,16 @@ class PassthroughRawBuilder(UserRawScopeBuilder):
 
 class RawBuilderIgnoringContents(UserBlockOrInlineScopeBuilder):
     """Builder that ignores the arguments given and always passes out an appropriate Raw element."""
+
     raw: Raw
+
     def __init__(self, raw: Raw):
         super().__init__()
         self.raw = raw
 
     def build_from_blocks(self, blocks):
         return Paragraph([Sentence([self.raw])])
+
     def build_from_inlines(self, inls):
         return self.raw
 
@@ -369,7 +372,7 @@ class blocks_builder(Generic[P, TElement], UserBlockScopeBuilder[TElement]):
     args: Tuple[Any, ...]
     kwds: Dict[str, Any]
 
-    def __init__(self, func: Callable[P, TElement], args = None, kwds = None) -> None:
+    def __init__(self, func: Callable[P, TElement], args=None, kwds=None) -> None:
         super().__init__()
         if "blocks" not in inspect.signature(func).parameters:
             raise ValueError(
@@ -388,9 +391,9 @@ class blocks_builder(Generic[P, TElement], UserBlockScopeBuilder[TElement]):
         new_kwds = self.kwds.copy()
         new_kwds.update(kwds)
         return blocks_builder(self.func, new_args, new_kwds)
-    
+
     def build_from_blocks(self, blocks: BlockScope) -> TElement:
-        return self.func(*self.args, **self.kwds, blocks=blocks) # type:ignore
+        return self.func(*self.args, **self.kwds, blocks=blocks)  # type:ignore
 
 
 class raw_builder(Generic[P, TElement], UserRawScopeBuilder[TElement]):
@@ -403,7 +406,7 @@ class raw_builder(Generic[P, TElement], UserRawScopeBuilder[TElement]):
     args: Tuple[Any, ...]
     kwds: Dict[str, Any]
 
-    def __init__(self, func: Callable[P, TElement], args = None, kwds = None) -> None:
+    def __init__(self, func: Callable[P, TElement], args=None, kwds=None) -> None:
         super().__init__()
         if "raw" not in inspect.signature(func).parameters:
             raise ValueError(
@@ -422,13 +425,14 @@ class raw_builder(Generic[P, TElement], UserRawScopeBuilder[TElement]):
         new_kwds = self.kwds.copy()
         new_kwds.update(kwds)
         return raw_builder(self.func, new_args, new_kwds)
-    
+
     def build_from_raw(self, raw: Raw) -> TElement:
-        return self.func(*self.args, **self.kwds, raw=raw) # type:ignore
+        return self.func(*self.args, **self.kwds, raw=raw)  # type:ignore
 
 
-def paragraph_of(i: CoercibleToInline) -> Paragraph:
-    return Paragraph([Sentence([coerce_to_inline(i)])])
+def paragraph_of(*ss: CoercibleToInline) -> Paragraph:
+    return Paragraph([Sentence([coerce_to_inline(s)]) for s in ss])
+
 
 # TODO TypeForm[T] would work here if we were using Python 3.15(??)
 # https://peps.python.org/pep-0747/
@@ -440,9 +444,12 @@ def block_scope_to_list(bs: BlockScope, t, error_context: str) -> List:
     ts: List = []
     for b in bs:
         if not isinstance(b, t):
-            raise TypeError(f"{error_context} tried to convert a BlockScope to a List[{t}] but the blocks weren't all the right type.\n\tThe BlockScope: \n\t{bs}")
+            raise TypeError(
+                f"{error_context} tried to convert a BlockScope to a List[{t}] but the blocks weren't all the right type.\n\tThe BlockScope: \n\t{bs}"
+            )
         ts.append(b)
     return ts
+
 
 class Unset:
     def __eq__(self, __value: object) -> bool:
