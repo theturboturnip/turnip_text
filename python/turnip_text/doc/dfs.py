@@ -1,4 +1,4 @@
-from typing import Any, Callable, Iterable, List, Set, Tuple, Type
+from typing import Iterable, List, Set, Tuple
 
 from turnip_text import (
     Block,
@@ -9,6 +9,7 @@ from turnip_text import (
     Inline,
     InlineScope,
     Paragraph,
+    Sentence,
 )
 from turnip_text.doc.anchors import Anchor, Backref
 from turnip_text.doc.user_nodes import UserNode
@@ -27,7 +28,7 @@ class DocumentDfsPass:
 
     def dfs_over_document(self, document: Document, anchors: AnchorEnv) -> None:
         # Floats are parsed when their portals are encountered
-        dfs_queue: List[Block | Inline | DocSegment | Header | SentenceEnd] = []
+        dfs_queue: List[Block | Inline | DocSegment | Header | Sentence | SentenceEnd] = []
         dfs_queue.extend(reversed((document.contents, *document.segments)))
         visited_floats: Set[Anchor] = set()
         while dfs_queue:
@@ -40,16 +41,16 @@ class DocumentDfsPass:
 
             # Extract children as a reversed iterator.
             # reversed is important because we pop the last thing in the queue off first.
-            children: Iterable[Block | Inline | DocSegment | Header | SentenceEnd] | None = None
+            children: Iterable[Block | Inline | DocSegment | Header | Sentence | SentenceEnd] | None = None
             if isinstance(node, (BlockScope, InlineScope)):
                 children = reversed(tuple(node))
             elif isinstance(node, DocSegment):
                 children = reversed((node.header, node.contents, *node.subsegments))
             elif isinstance(node, Paragraph):
-                inls: List[Inline | SentenceEnd] = []
-                for s in reversed(list(node)):
-                    inls.append(SentenceEnd())
-                    inls.extend(reversed(list(s)))
+                children = reversed(list(iter(node)))
+            elif isinstance(node, Sentence):
+                inls: List[Inline | SentenceEnd] = [SentenceEnd()]
+                inls.extend(reversed(list(node)))
                 children = inls
             elif node is None:
                 children = None
