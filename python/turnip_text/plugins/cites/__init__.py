@@ -48,6 +48,10 @@ class Citation(UserNode, Inline, UserInlineScopeBuilder):
 class CiteAuthor(Inline):
     citekey: str
 
+    @property
+    def citekeys(self) -> List[str]:
+        return [self.citekey]
+
 
 class Bibliography(Block):
     pass
