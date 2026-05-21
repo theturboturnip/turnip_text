@@ -6,6 +6,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Generator,
     Generic,
     List,
     ParamSpec,
@@ -32,6 +33,7 @@ from turnip_text import (
     coerce_to_inline,
     coerce_to_inline_scope,
 )
+from turnip_text.doc.user_nodes import UserNode
 
 # TODO tests for the helpers
 
@@ -432,6 +434,27 @@ class raw_builder(Generic[P, TElement], UserRawScopeBuilder[TElement]):
 
 def paragraph_of(*ss: CoercibleToInline) -> Paragraph:
     return Paragraph([Sentence([coerce_to_inline(s)]) for s in ss])
+
+
+def flatten_inls(
+    x: Paragraph | Sentence | InlineScope,
+    recurse_into_usernode: bool = True,
+) -> Generator[Inline, None, None]:
+    if isinstance(x, Paragraph):
+        top_inls = sum((list(s) for s in x), start=[])
+    else:
+        top_inls = list(x)
+
+    for i in top_inls:
+        if isinstance(i, InlineScope):
+            yield from flatten_inls(i, recurse_into_usernode=recurse_into_usernode)
+        elif isinstance(i, UserNode):
+            yield i
+            child = i.child_nodes()
+            if child and recurse_into_usernode:
+                yield from flatten_inls(child)
+        else:
+            yield i
 
 
 # TODO TypeForm[T] would work here if we were using Python 3.15(??)
