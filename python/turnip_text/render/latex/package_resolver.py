@@ -357,6 +357,8 @@ def order_packages(
         sorter.add("glossaries", "inputenc")
         sorter.add("glossaries", "fontenc")
 
+    sorter.add("unicode-math", "amsmath")
+
     return [
         packages[package_name]
         for package_name in sorter.static_order()
