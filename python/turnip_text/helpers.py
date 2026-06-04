@@ -8,6 +8,7 @@ from typing import (
     Dict,
     Generator,
     Generic,
+    Iterable,
     List,
     ParamSpec,
     Tuple,
@@ -455,6 +456,22 @@ def flatten_inls(
                 yield from flatten_inls(child)
         else:
             yield i
+
+
+def flatten_blks(
+    x: BlockScope | Iterable[Block],
+    recurse_into_usernode: bool = True,
+) -> Generator[Inline, None, None]:
+    for b in x:
+        if isinstance(b, BlockScope):
+            yield from flatten_blks(b, recurse_into_usernode=recurse_into_usernode)
+        elif isinstance(b, UserNode):
+            yield b
+            child = b.child_nodes()
+            if child and recurse_into_usernode:
+                yield from flatten_blks(child)
+        else:
+            yield b
 
 
 # TODO TypeForm[T] would work here if we were using Python 3.15(??)
