@@ -100,7 +100,10 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
             renderer.emit(
                 DocSegment(
                     BasicHeader(
-                        title=InlineScope([title.metadata.title]), anchor=None, weight=1
+                        title=InlineScope([title.metadata.title]),
+                        anchor=None,
+                        weight=1,
+                        toc=False,
                     ),
                     contents=BlockScope([]),
                     subsegments=[],
@@ -113,6 +116,7 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
                         title=InlineScope([title.metadata.subtitle]),
                         anchor=None,
                         weight=2,
+                        toc=False,
                     ),
                     contents=BlockScope([]),
                     subsegments=[],
@@ -132,7 +136,10 @@ class MarkdownStructurePlugin(MarkdownPlugin, StructureEnvPlugin):
         renderer.emit(
             DocSegment(
                 BasicHeader(
-                    title=InlineScope([Text("Contents")]), anchor=None, weight=1
+                    title=InlineScope([Text("Contents")]),
+                    anchor=None,
+                    weight=1,
+                    toc=False,
                 ),
                 contents=BlockScope(
                     [

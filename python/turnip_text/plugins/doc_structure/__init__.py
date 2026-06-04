@@ -52,6 +52,7 @@ class BasicHeader(UserNode, Header):
     anchor: Anchor | None
     """Set to None if the header as a whole is unnumbered.
     Has a non-None Anchor with `id == None` if the header is numbered, but didn't have a label."""
+    toc: bool
     weight: int
     hide: Callable[[], bool] | None = None
 
@@ -67,6 +68,7 @@ class BasicHeader(UserNode, Header):
 class AppendixHeader(UserNode, Header):
     title: InlineScope  # The title of the segment
     anchor: Anchor
+    toc: bool
     weight: int
     hide: Callable[[], bool] | None = None
 
@@ -90,6 +92,7 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
     num: bool
     hide: Callable[[], bool] | None
     appendix: bool
+    toc: bool
 
     # TODO "not numbered" != "not included in ToC"
 
@@ -101,6 +104,7 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
         num: bool,
         hide: Callable[[], bool] | None = None,
         appendix: bool = False,
+        toc: bool = True,
     ) -> None:
         super().__init__()
         self.doc_env = doc_env
@@ -109,6 +113,7 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
         self.num = num
         self.hide = hide
         self.appendix = appendix
+        self.toc = toc
 
     def build_from_inlines(self, inls: InlineScope) -> Header:
         if self.appendix:
@@ -125,12 +130,14 @@ class StructureHeaderGenerator(UserInlineScopeBuilder):
                 anchor=self.doc_env.anchors.register_new_anchor(kind, self.label),
                 weight=weight,
                 hide=self.hide,
+                toc=self.toc,
             )  # type: ignore
         return ty(
             title=inls,
             anchor=None,
             weight=weight,
             hide=self.hide,
+            toc=self.toc,
         )  # type: ignore
 
 
@@ -220,8 +227,16 @@ class StructureEnvPlugin(EnvPlugin):
         label: Optional[str] = None,
         num: bool = True,
         hide: Callable[[], bool] | None = None,
+        toc: Optional[bool] = None,
     ) -> InlineScopeBuilder:
-        return StructureHeaderGenerator(doc_env, weight, label, num, hide)
+        return StructureHeaderGenerator(
+            doc_env,
+            weight,
+            label,
+            num,
+            hide,
+            toc=num if toc is None else toc,
+        )
 
     @in_doc
     def h1(
@@ -230,8 +245,9 @@ class StructureEnvPlugin(EnvPlugin):
         label: Optional[str] = None,
         num: bool = True,
         hide: Callable[[], bool] | None = None,
+        toc: Optional[bool] = None,
     ) -> InlineScopeBuilder:
-        return self.h(1, label, num, hide)
+        return self.h(1, label, num, hide, toc)
 
     @in_doc
     def h2(
@@ -240,8 +256,9 @@ class StructureEnvPlugin(EnvPlugin):
         label: Optional[str] = None,
         num: bool = True,
         hide: Callable[[], bool] | None = None,
+        toc: Optional[bool] = None,
     ) -> InlineScopeBuilder:
-        return self.h(2, label, num, hide)
+        return self.h(2, label, num, hide, toc)
 
     @in_doc
     def h3(
@@ -250,8 +267,9 @@ class StructureEnvPlugin(EnvPlugin):
         label: Optional[str] = None,
         num: bool = True,
         hide: Callable[[], bool] | None = None,
+        toc: Optional[bool] = None,
     ) -> InlineScopeBuilder:
-        return self.h(3, label, num, hide)
+        return self.h(3, label, num, hide, toc)
 
     @in_doc
     def h4(
@@ -260,8 +278,9 @@ class StructureEnvPlugin(EnvPlugin):
         label: Optional[str] = None,
         num: bool = True,
         hide: Callable[[], bool] | None = None,
+        toc: Optional[bool] = None,
     ) -> InlineScopeBuilder:
-        return self.h(4, label, num, hide)
+        return self.h(4, label, num, hide, toc)
 
     @in_doc
     def appendix(
@@ -269,6 +288,7 @@ class StructureEnvPlugin(EnvPlugin):
         doc_env: DocEnv,
         label: Optional[str] = None,
         hide: Callable[[], bool] | None = None,
+        toc: Optional[bool] = None,
     ) -> InlineScopeBuilder:
         """Builds an inline scope to create a header that starts an appendix at weight=1."""
         return StructureHeaderGenerator(
@@ -278,6 +298,7 @@ class StructureEnvPlugin(EnvPlugin):
             num=True,
             appendix=True,
             hide=hide,
+            toc=True if toc is None else toc,
         )
 
     @pure_fmt

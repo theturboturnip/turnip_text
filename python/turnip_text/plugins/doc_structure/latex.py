@@ -242,6 +242,13 @@ class LatexDocumentClassPlugin_Basic(LatexPlugin, StructureEnvPlugin):
             renderer.emit(
                 head.anchor
             )  # i.e. r"\section*{Section Name}\label{h1:Section_Name}"
+        if head.toc and not head.anchor:
+            renderer.emit_newline()
+            renderer.emit_raw(
+                f"\\addcontentsline{{toc}}{{{latex_name}}}{{\\protect\\numberline{{}}"
+            )
+            renderer.emit_inline(head.title)
+            renderer.emit_raw(f"}}")
         renderer.emit_break_paragraph()
         # Now emit the rest of the damn doc :)
         renderer.emit_blockscope(contents)
