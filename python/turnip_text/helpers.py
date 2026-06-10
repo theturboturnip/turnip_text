@@ -461,7 +461,7 @@ def flatten_inls(
 def flatten_blks(
     x: BlockScope | Iterable[Block],
     recurse_into_usernode: bool = True,
-) -> Generator[Inline, None, None]:
+) -> Generator[Block, None, None]:
     for b in x:
         if isinstance(b, BlockScope):
             yield from flatten_blks(b, recurse_into_usernode=recurse_into_usernode)
