@@ -447,7 +447,7 @@ class MarkdownCiteProcCitationPlugin(MarkdownPlugin, CitationEnvPlugin):
               str(self._author_bib.cite(
                   citation,
                   self._warn_invalid_citationitem
-              ))
+              )).strip()
             )
         )
 
