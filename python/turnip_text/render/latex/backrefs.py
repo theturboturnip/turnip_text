@@ -216,7 +216,7 @@ class LatexManualRef(LatexBackrefMethodImpl):
         self, anchor: Anchor, renderer: "LatexRenderer", fmt: FmtEnv
     ) -> None:
         renderer.emit_raw(
-            f"\\label{{{anchor.canonical()}}}"
+            f"\\refstepcounter{{{anchor.kind}}}\\label{{{anchor.canonical()}}}"
         )  # TODO include caption for anchor?
 
     @override
