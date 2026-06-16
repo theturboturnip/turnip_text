@@ -1,7 +1,7 @@
 import graphlib
+import warnings
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Set, Tuple, Union
-import warnings
 
 LatexPackageOptions = List["LatexPackageOption"]
 """turnip_text treats the options to packages as a comma-separated order-sensitive list of options."""
@@ -69,18 +69,16 @@ class LatexPackageResolver:
             existing_package_obj.reasons.extend(package_obj.reasons)
             existing_package_obj.options.extend(package_obj.options)
             if package_obj.already_included_by_document:
-                existing_package_obj.already_included_by_document = package_obj.already_included_by_document
-
+                existing_package_obj.already_included_by_document = (
+                    package_obj.already_included_by_document
+                )
 
     def register_class_preexisting_packages(self, *preexisting: str) -> None:
         # TODO add package options to this, if user tries to set a conflicting option we need to complain, if user doesn't set any new options don't need to include it in the render
         for package in preexisting:
             self._merge_package_reqs(
                 package_obj=LatexPackageRequirements(
-                    package,
-                    reasons=[],
-                    options=[],
-                    already_included_by_document=True
+                    package, reasons=[], options=[], already_included_by_document=True
                 )
             )
 
@@ -88,7 +86,11 @@ class LatexPackageResolver:
         self.shell_escape_reasons.append(reason)
 
     def request_latex_package(
-        self, package: str, reason: str, options: Sequence[LatexPackageOption] = [], used_by_docclass: bool = False,
+        self,
+        package: str,
+        reason: str,
+        options: Sequence[LatexPackageOption] = [],
+        used_by_docclass: bool = False,
     ) -> None:
         # str is a Sequence[str] returning each character in the str
         # Very low chance of anyone calling this function expecting
@@ -101,28 +103,34 @@ class LatexPackageResolver:
             package=package,
             reasons=[reason],
             options=list(options),
-            already_included_by_document=used_by_docclass
+            already_included_by_document=used_by_docclass,
         )
         self._merge_package_reqs(package_obj)
-
 
     def resolve_all(self) -> ResolvedLatexPackages:
         # Step 1: resolve all the package options
         # (I'm pretty sure theoretically options may affect ordering, but I'm not 100% on that.)
         all_packages = set(self.requested_packages.keys())
         if self.whitelisted_packages:
-            requested_not_whitelisted = all_packages.difference(self.whitelisted_packages)
+            requested_not_whitelisted = all_packages.difference(
+                self.whitelisted_packages
+            )
             infos = []
             for package_name in requested_not_whitelisted:
                 package = self.requested_packages[package_name]
                 if package.already_included_by_document:
                     continue
                 if package.reasons:
-                    infos.append(f"Package '{package_name}' requested because {', '.join(package.reasons)}")
+                    infos.append(
+                        f"Package '{package_name}' requested because {', '.join(package.reasons)}"
+                    )
                 else:
                     infos.append(f"Package '{package_name}' included by document class")
             if infos:
-                msg = f"Requested packages that were not in the whitelist:\n" + "\n".join(infos)
+                msg = (
+                    f"Requested packages that were not in the whitelist:\n"
+                    + "\n".join(infos)
+                )
                 # TODO should this be a hard error or a warning
                 raise RuntimeError(msg)
                 # warnings.warn(msg, RuntimeWarning)
@@ -210,7 +218,7 @@ def resolve_package_options(
 
 
 def order_packages(
-    packages: Dict[str, LatexPackageRequirements]
+    packages: Dict[str, LatexPackageRequirements],
 ) -> List[LatexPackageRequirements]:
     """Find a correct order of packages based on what their options are.
 
@@ -222,7 +230,8 @@ def order_packages(
             f"Package {package_names[0]} not compatible with {[', '.join(package_names[1:])]}. Reason: {reason}"
             + "".join(
                 (
-                    f"\nIncluded {package} because {', '.join(packages[package].reasons)}" if packages[package].reasons
+                    f"\nIncluded {package} because {', '.join(packages[package].reasons)}"
+                    if packages[package].reasons
                     else f"\nIncluded {package} from document class"
                 )
                 for package in package_names
@@ -232,9 +241,14 @@ def order_packages(
     # Use graphlib to build a DAG of packages
     sorter = graphlib.TopologicalSorter({package: [] for package in packages})
 
+    # The correct syntax for A -> B is sorter.add(B, A)
+
     # As per cleveref documentation, the correct order is varioref, hyperref, cleveref
     sorter.add("hyperref", "varioref")
     sorter.add("cleveref", "hyperref")
+
+    sorter.add("pdfx", "hyperref")
+    sorter.add("pdfx", "xcolor")
 
     if "cleveref" in packages:
         # https://mirror.its.dal.ca/ctan/macros/latex/contrib/cleveref/cleveref.pdf
