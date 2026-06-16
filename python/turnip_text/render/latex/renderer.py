@@ -379,9 +379,14 @@ class LatexRenderer(TextRenderer):
             self.emit_break_paragraph()
 
             # Emit custom preamble contents in the preamble
-            for (_point, callback) in sorted(self.requirements.preamble_callbacks, key=lambda cb: cb[0]):
-                callback(self)
-                self.emit_break_paragraph()
+            for (point, callback) in sorted(self.requirements.preamble_callbacks, key=lambda cb: cb[0]):
+                if point == LatexPreamblePoint.CODE:
+                    callback(self)
+                    self.emit_break_paragraph()
+            for (point, callback) in sorted(self.requirements.preamble_callbacks, key=lambda cb: cb[0]):
+                if point == LatexPreamblePoint.CONTENT:
+                    callback(self)
+                    self.emit_break_paragraph()
 
             with self.emit_env("document", indent=0):
                 super().emit_document(doc)
@@ -393,9 +398,14 @@ class LatexRenderer(TextRenderer):
                 self.emit_comment_line(package.as_latex_preamble_line(with_reason=True))
 
             # Emit custom preamble contents in the preamble
-            for (_point, callback) in sorted(self.requirements.preamble_callbacks, key=lambda cb: cb[0]):
-                callback(self)
-                self.emit_break_paragraph()
+            for (point, callback) in sorted(self.requirements.preamble_callbacks, key=lambda cb: cb[0]):
+                if point == LatexPreamblePoint.CODE:
+                    callback(self)
+                    self.emit_break_paragraph()
+            for (point, callback) in sorted(self.requirements.preamble_callbacks, key=lambda cb: cb[0]):
+                if point == LatexPreamblePoint.CONTENT:
+                    callback(self)
+                    self.emit_break_paragraph()
 
             super().emit_document(doc)
 
