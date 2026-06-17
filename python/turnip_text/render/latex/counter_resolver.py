@@ -41,7 +41,7 @@ class ResolvedTTAndLatexCounters:
 
     tt_counters: CounterState
     """The hierarchy of turnip_text counters, stored in a CounterState ready for incrementing and tracking counter values.
-    
+
     Magic turnip_text counters are stored as if they have no parent (e.g. are parented to the top level) and should not be incremented."""
     magic_tt_counter_to_latex_counter: Dict[str, str]
     """Mapping of (magic turnip_text counter) to (magic latex counter)"""
@@ -112,7 +112,8 @@ class LatexCounterResolver:
             LatexBackrefMethod.Cleveref: LatexCleveref(),
             LatexBackrefMethod.Hyperlink: LatexHyperlink(),
             LatexBackrefMethod.PageRef: LatexPageRef(),
-            LatexBackrefMethod.ManualRef: LatexManualRef(),
+            LatexBackrefMethod.ManualRef: LatexManualRef(manual_step=False),
+            LatexBackrefMethod.ManualRefAndStep: LatexManualRef(manual_step=True),
         }
         if legal_backref_methods:
             # redefine backref_impls only with keys in legal_backref_methods

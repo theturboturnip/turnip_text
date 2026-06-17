@@ -20,6 +20,7 @@ class LatexBackrefMethod(IntEnum):
     Hyperlink = 1
     PageRef = 2
     ManualRef = 3
+    ManualRefAndStep = 4
 
 
 # TODO latex \autoref support?
@@ -193,13 +194,15 @@ class LatexPageRef(LatexBackrefMethodImpl):
 class LatexManualRef(LatexBackrefMethodImpl):
     """A means of referring back to a position in the document using the \\label and \\hyperref or \\ref where possible."""
 
+    manual_step: bool
     manual_counter_method: Dict[str, LatexCounterFormat]
 
     description: str = "\\label, \\ref and \\hyperref"
 
-    def __init__(self) -> None:
+    def __init__(self, manual_step: bool = False) -> None:
         super().__init__()
         self.manual_counter_method = {}
+        self.manual_step = manual_step
 
     @override
     def request_packages(self, package_resolver: LatexPackageResolver) -> None:
@@ -215,8 +218,10 @@ class LatexManualRef(LatexBackrefMethodImpl):
     def emit_anchor(
         self, anchor: Anchor, renderer: "LatexRenderer", fmt: FmtEnv
     ) -> None:
+        if self.manual_step:
+            renderer.emit_raw(f"\\refstepcounter{{{anchor.kind}}}")
         renderer.emit_raw(
-            f"\\refstepcounter{{{anchor.kind}}}\\label{{{anchor.canonical()}}}"
+            f"\\label{{{anchor.canonical()}}}"
         )  # TODO include caption for anchor?
 
     @override
