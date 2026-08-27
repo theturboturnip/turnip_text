@@ -333,6 +333,10 @@ class LatexRenderer(TextRenderer):
                         reasons_to_reset_counter_fmt.append(
                             f"parent counter '{latex_counter_spec.reset_latex_counter}' uses a non-default parent-child separator '{reset_counter_fmt.postfix_for_child}'"
                         )
+                    if not latex_counter_spec.provided_by_docclass_or_package:
+                        reasons_to_reset_counter_fmt.append(
+                            "new counters that have a parent need to explicitly state their formatting(?)"
+                        )
                 else:
                     reset_counter_fmt = None
 
